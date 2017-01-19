@@ -1,0 +1,150 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/string-icalls.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - string-icalls.c<span style="font-size: 80%;"> (source / <a href="string-icalls.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">14</td>
+            <td class="headerCovTableEntryLo">21.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">1</td>
+            <td class="headerCovTableEntry">5</td>
+            <td class="headerCovTableEntryLo">20.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * string-icalls.c: String internal calls for the corlib
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Patrik Torstensson (patrik.torstensson@labs2.com)
+<span class="lineNum">       6 </span>            :  *   Duncan Mak  (duncan@ximian.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright 2001-2003 Ximian, Inc (http://www.ximian.com)
+<span class="lineNum">       9 </span>            :  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      16 </span>            : #include &quot;mono/utils/mono-membar.h&quot;
+<span class="lineNum">      17 </span>            : #include &lt;mono/metadata/string-icalls.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/metadata/class-internals.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/appdomain.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/metadata/tabledefs.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/metadata/loader.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;mono/metadata/object.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/metadata/exception.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;mono/metadata/profiler.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/metadata/profiler-private.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;mono/metadata/gc-internals.h&gt;
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : /* This function is redirected to String.CreateString ()
+<a name="30"><span class="lineNum">      30 </span>            :    by mono_marshal_get_native_wrapper () */</a>
+<span class="lineNum">      31 </span>            : void
+<span class="lineNum">      32 </span>            : ves_icall_System_String_ctor_RedirectToCreateString (void)
+<span class="lineNum">      33 </span>            : {
+<span class="lineNum">      34 </span><span class="lineNoCov">          0 :         g_assert_not_reached ();</span>
+<span class="lineNum">      35 </span><span class="lineNoCov">          0 : }</span>
+<a name="36"><span class="lineNum">      36 </span>            : </a>
+<span class="lineNum">      37 </span>            : MonoString *
+<span class="lineNum">      38 </span>            : ves_icall_System_String_InternalAllocateStr (gint32 length)
+<span class="lineNum">      39 </span>            : {
+<span class="lineNum">      40 </span>            :         MonoError error;
+<span class="lineNum">      41 </span><span class="lineCov">   33281671 :         MonoString *str = mono_string_new_size_checked (mono_domain_get (), length, &amp;error);</span>
+<span class="lineNum">      42 </span><span class="lineCov">   33281671 :         mono_error_set_pending_exception (&amp;error);</span>
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span><span class="lineCov">   33281671 :         return str;</span>
+<span class="lineNum">      45 </span>            : }
+<a name="46"><span class="lineNum">      46 </span>            : </a>
+<span class="lineNum">      47 </span>            : MonoString  *
+<span class="lineNum">      48 </span>            : ves_icall_System_String_InternalIntern (MonoString *str)
+<span class="lineNum">      49 </span>            : {
+<span class="lineNum">      50 </span>            :         MonoError error;
+<span class="lineNum">      51 </span>            :         MonoString *res;
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span><span class="lineNoCov">          0 :         res = mono_string_intern_checked (str, &amp;error);</span>
+<span class="lineNum">      54 </span><span class="lineNoCov">          0 :         if (!res) {</span>
+<span class="lineNum">      55 </span><span class="lineNoCov">          0 :                 mono_error_set_pending_exception (&amp;error);</span>
+<span class="lineNum">      56 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">      57 </span>            :         }
+<span class="lineNum">      58 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">      59 </span><span class="lineNoCov">          0 : }</span>
+<a name="60"><span class="lineNum">      60 </span>            : </a>
+<span class="lineNum">      61 </span>            : MonoString * 
+<span class="lineNum">      62 </span>            : ves_icall_System_String_InternalIsInterned (MonoString *str)
+<span class="lineNum">      63 </span>            : {
+<span class="lineNum">      64 </span><span class="lineNoCov">          0 :         return mono_string_is_interned (str);</span>
+<span class="lineNum">      65 </span>            : }
+<a name="66"><span class="lineNum">      66 </span>            : </a>
+<span class="lineNum">      67 </span>            : int
+<span class="lineNum">      68 </span>            : ves_icall_System_String_GetLOSLimit (void)
+<span class="lineNum">      69 </span>            : {
+<span class="lineNum">      70 </span><span class="lineNoCov">          0 :         int limit = mono_gc_get_los_limit ();</span>
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :         return (limit - 2 - G_STRUCT_OFFSET (MonoString, chars)) / 2;</span>
+<span class="lineNum">      73 </span>            : }
+<span class="lineNum">      74 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

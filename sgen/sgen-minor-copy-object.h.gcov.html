@@ -1,0 +1,314 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-minor-copy-object.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-minor-copy-object.h<span style="font-size: 80%;"> (source / <a href="sgen-minor-copy-object.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">37</td>
+            <td class="headerCovTableEntry">54</td>
+            <td class="headerCovTableEntryLo">68.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntryLo">50.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-minor-copy-object.h: Copy functions for nursery collections.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright 2001-2003 Ximian, Inc
+<span class="lineNum">       5 </span>            :  * Copyright 2003-2010 Novell, Inc.
+<span class="lineNum">       6 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #undef SERIAL_COPY_OBJECT
+<span class="lineNum">      12 </span>            : #undef SERIAL_COPY_OBJECT_FROM_OBJ
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #if defined(SGEN_SIMPLE_NURSERY)
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #ifdef SGEN_CONCURRENT_MAJOR
+<span class="lineNum">      17 </span>            : #define SERIAL_COPY_OBJECT simple_nursery_serial_with_concurrent_major_copy_object
+<span class="lineNum">      18 </span>            : #define SERIAL_COPY_OBJECT_FROM_OBJ simple_nursery_serial_with_concurrent_major_copy_object_from_obj
+<span class="lineNum">      19 </span>            : #else
+<span class="lineNum">      20 </span>            : #define SERIAL_COPY_OBJECT simple_nursery_serial_copy_object
+<span class="lineNum">      21 </span>            : #define SERIAL_COPY_OBJECT_FROM_OBJ simple_nursery_serial_copy_object_from_obj
+<span class="lineNum">      22 </span>            : #endif
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #elif defined (SGEN_SPLIT_NURSERY)
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : #ifdef SGEN_CONCURRENT_MAJOR
+<span class="lineNum">      27 </span>            : #define SERIAL_COPY_OBJECT split_nursery_serial_with_concurrent_major_copy_object
+<span class="lineNum">      28 </span>            : #define SERIAL_COPY_OBJECT_FROM_OBJ split_nursery_serial_with_concurrent_major_copy_object_from_obj
+<span class="lineNum">      29 </span>            : #else
+<span class="lineNum">      30 </span>            : #define SERIAL_COPY_OBJECT split_nursery_serial_copy_object
+<span class="lineNum">      31 </span>            : #define SERIAL_COPY_OBJECT_FROM_OBJ split_nursery_serial_copy_object_from_obj
+<span class="lineNum">      32 </span>            : #endif
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : #else
+<span class="lineNum">      35 </span>            : #error &quot;No nursery configuration specified&quot;
+<span class="lineNum">      36 </span>            : #endif
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : extern guint64 stat_nursery_copy_object_failed_to_space; /* from sgen-gc.c */
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span>            : /*
+<span class="lineNum">      42 </span>            :  * This is how the copying happens from the nursery to the old generation.
+<span class="lineNum">      43 </span>            :  * We assume that at this time all the pinned objects have been identified and
+<span class="lineNum">      44 </span>            :  * marked as such.
+<span class="lineNum">      45 </span>            :  * We run scan_object() for each pinned object so that each referenced
+<span class="lineNum">      46 </span>            :  * objects if possible are copied. The new gray objects created can have
+<span class="lineNum">      47 </span>            :  * scan_object() run on them right away, too.
+<span class="lineNum">      48 </span>            :  * Then we run copy_object() for the precisely tracked roots. At this point
+<span class="lineNum">      49 </span>            :  * all the roots are either gray or black. We run scan_object() on the gray
+<span class="lineNum">      50 </span>            :  * objects until no more gray objects are created.
+<span class="lineNum">      51 </span>            :  * At the end of the process we walk again the pinned list and we unmark
+<span class="lineNum">      52 </span>            :  * the pinned flag. As we go we also create the list of free space for use
+<span class="lineNum">      53 </span>            :  * in the next allocation runs.
+<span class="lineNum">      54 </span>            :  *
+<span class="lineNum">      55 </span>            :  * We need to remember objects from the old generation that point to the new one
+<span class="lineNum">      56 </span>            :  * (or just addresses?).
+<span class="lineNum">      57 </span>            :  *
+<span class="lineNum">      58 </span>            :  * copy_object could be made into a macro once debugged (use inline for now).
+<span class="lineNum">      59 </span>            :  */
+<a name="60"><span class="lineNum">      60 </span>            : </a>
+<span class="lineNum">      61 </span>            : static MONO_ALWAYS_INLINE void
+<span class="lineNum">      62 </span>            : SERIAL_COPY_OBJECT (GCObject **obj_slot, SgenGrayQueue *queue) 
+<span class="lineNum">      63 </span>            : {
+<span class="lineNum">      64 </span>            :         GCObject *forwarded;
+<span class="lineNum">      65 </span>            :         GCObject *copy;
+<span class="lineNum">      66 </span><span class="lineCov">   31538016 :         GCObject *obj = *obj_slot;</span>
+<span class="lineNum">      67 </span>            : 
+<span class="lineNum">      68 </span><span class="lineCov">   63076032 :         SGEN_ASSERT (9, current_collection_generation == GENERATION_NURSERY, &quot;calling minor-serial-copy from a %d generation collection&quot;, current_collection_generation);</span>
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span>            :         HEAVY_STAT (++stat_copy_object_called_nursery);
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span><span class="lineCov">   31538016 :         if (!sgen_ptr_in_nursery (obj)) {</span>
+<span class="lineNum">      73 </span>            :                 HEAVY_STAT (++stat_nursery_copy_object_failed_from_space);
+<span class="lineNum">      74 </span><span class="lineCov">   27884131 :                 return;</span>
+<span class="lineNum">      75 </span>            :         }
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span><span class="lineCov">    7307770 :         SGEN_LOG (9, &quot;Precise copy of %p from %p&quot;, obj, obj_slot);</span>
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            :         /*
+<span class="lineNum">      80 </span>            :          * Before we can copy the object we must make sure that we are
+<span class="lineNum">      81 </span>            :          * allowed to, i.e. that the object not pinned, not already
+<span class="lineNum">      82 </span>            :          * forwarded or belongs to the nursery To Space.
+<span class="lineNum">      83 </span>            :          */
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span><span class="lineCov">   10961655 :         if ((forwarded = SGEN_OBJECT_IS_FORWARDED (obj))) {</span>
+<span class="lineNum">      86 </span><span class="lineCov">    5292498 :                 SGEN_ASSERT (9, sgen_obj_get_descriptor (forwarded),  &quot;forwarded object %p has no gc descriptor&quot;, forwarded);</span>
+<span class="lineNum">      87 </span><span class="lineCov">    5292498 :                 SGEN_LOG (9, &quot; (already forwarded to %p)&quot;, forwarded);</span>
+<span class="lineNum">      88 </span>            :                 HEAVY_STAT (++stat_nursery_copy_object_failed_forwarded);
+<span class="lineNum">      89 </span><span class="lineCov">    2646249 :                 SGEN_UPDATE_REFERENCE (obj_slot, forwarded);</span>
+<span class="lineNum">      90 </span><span class="lineCov">    2646249 :                 return;</span>
+<span class="lineNum">      91 </span>            :         }
+<span class="lineNum">      92 </span><span class="lineCov">    1007636 :         if (G_UNLIKELY (SGEN_OBJECT_IS_PINNED (obj))) {</span>
+<span class="lineNum">      93 </span><span class="lineCov">     233450 :                 SGEN_ASSERT (9, sgen_vtable_get_descriptor (SGEN_LOAD_VTABLE(obj)), &quot;pinned object %p has no gc descriptor&quot;, obj);</span>
+<span class="lineNum">      94 </span><span class="lineCov">     233450 :                 SGEN_LOG (9, &quot; (pinned, no change)&quot;);</span>
+<span class="lineNum">      95 </span>            :                 HEAVY_STAT (++stat_nursery_copy_object_failed_pinned);
+<span class="lineNum">      96 </span><span class="lineCov">     116725 :                 return;</span>
+<span class="lineNum">      97 </span>            :         }
+<span class="lineNum">      98 </span>            : 
+<span class="lineNum">      99 </span>            : #ifndef SGEN_SIMPLE_NURSERY
+<span class="lineNum">     100 </span><span class="lineNoCov">          0 :         if (sgen_nursery_is_to_space (obj)) {</span>
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :                 SGEN_ASSERT (9, sgen_vtable_get_descriptor (SGEN_LOAD_VTABLE(obj)), &quot;to space object %p has no gc descriptor&quot;, obj);</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :                 SGEN_LOG (9, &quot; (tospace, no change)&quot;);</span>
+<span class="lineNum">     103 </span>            :                 HEAVY_STAT (++stat_nursery_copy_object_failed_to_space);                
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     105 </span>            :         }
+<span class="lineNum">     106 </span>            : #endif
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span>            :         HEAVY_STAT (++stat_objects_copied_nursery);
+<span class="lineNum">     109 </span>            : 
+<span class="lineNum">     110 </span><span class="lineCov">     890911 :         copy = copy_object_no_checks (obj, queue);</span>
+<span class="lineNum">     111 </span><span class="lineCov">     890911 :         SGEN_UPDATE_REFERENCE (obj_slot, copy);</span>
+<span class="lineNum">     112 </span><span class="lineCov">   32428927 : }</span>
+<span class="lineNum">     113 </span>            : 
+<span class="lineNum">     114 </span>            : /*
+<span class="lineNum">     115 </span>            :  * SERIAL_COPY_OBJECT_FROM_OBJ:
+<span class="lineNum">     116 </span>            :  *
+<span class="lineNum">     117 </span>            :  *   Similar to SERIAL_COPY_OBJECT, but assumes that OBJ_SLOT is part of an object, so it handles global remsets as well.
+<a name="118"><span class="lineNum">     118 </span>            :  */</a>
+<span class="lineNum">     119 </span>            : static MONO_ALWAYS_INLINE void
+<span class="lineNum">     120 </span>            : SERIAL_COPY_OBJECT_FROM_OBJ (GCObject **obj_slot, SgenGrayQueue *queue)
+<span class="lineNum">     121 </span>            : {
+<span class="lineNum">     122 </span>            :         GCObject *forwarded;
+<span class="lineNum">     123 </span><span class="lineCov">  595066456 :         GCObject *obj = *obj_slot;</span>
+<span class="lineNum">     124 </span>            :         GCObject *copy;
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span><span class="lineCov"> 1190132912 :         SGEN_ASSERT (9, current_collection_generation == GENERATION_NURSERY, &quot;calling minor-serial-copy-from-obj from a %d generation collection&quot;, current_collection_generation);</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            :         HEAVY_STAT (++stat_copy_object_called_nursery);
+<span class="lineNum">     129 </span>            : 
+<span class="lineNum">     130 </span><span class="lineCov">  595066456 :         if (!sgen_ptr_in_nursery (obj)) {</span>
+<span class="lineNum">     131 </span>            :                 HEAVY_STAT (++stat_nursery_copy_object_failed_from_space);
+<span class="lineNum">     132 </span><span class="lineCov">  289358227 :                 return;</span>
+<span class="lineNum">     133 </span>            :         }
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span><span class="lineCov">  611416458 :         SGEN_LOG (9, &quot;Precise copy of %p from %p&quot;, obj, obj_slot);</span>
+<span class="lineNum">     136 </span>            : 
+<span class="lineNum">     137 </span>            :         /*
+<span class="lineNum">     138 </span>            :          * Before we can copy the object we must make sure that we are
+<span class="lineNum">     139 </span>            :          * allowed to, i.e. that the object not pinned, not already
+<span class="lineNum">     140 </span>            :          * forwarded or belongs to the nursery To Space.
+<span class="lineNum">     141 </span>            :          */
+<span class="lineNum">     142 </span>            : 
+<span class="lineNum">     143 </span><span class="lineCov">  917124687 :         if ((forwarded = SGEN_OBJECT_IS_FORWARDED (obj))) {</span>
+<span class="lineNum">     144 </span><span class="lineCov">  281167112 :                 SGEN_ASSERT (9, sgen_obj_get_descriptor (forwarded),  &quot;forwarded object %p has no gc descriptor&quot;, forwarded);</span>
+<span class="lineNum">     145 </span><span class="lineCov">  281167112 :                 SGEN_LOG (9, &quot; (already forwarded to %p)&quot;, forwarded);</span>
+<span class="lineNum">     146 </span>            :                 HEAVY_STAT (++stat_nursery_copy_object_failed_forwarded);
+<span class="lineNum">     147 </span>            : #ifdef SGEN_CONCURRENT_MAJOR
+<span class="lineNum">     148 </span>            :                 /* See comment on STORE_STORE_FENCE below. */
+<span class="lineNum">     149 </span>            :                 STORE_STORE_FENCE;
+<span class="lineNum">     150 </span>            : #endif
+<span class="lineNum">     151 </span><span class="lineCov">  140583556 :                 SGEN_UPDATE_REFERENCE (obj_slot, forwarded);</span>
+<span class="lineNum">     152 </span>            : #ifndef SGEN_SIMPLE_NURSERY
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                 if (G_UNLIKELY (sgen_ptr_in_nursery (forwarded) &amp;&amp; !sgen_ptr_in_nursery (obj_slot) &amp;&amp; !SGEN_OBJECT_IS_CEMENTED (forwarded)))</span>
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :                         sgen_add_to_global_remset (obj_slot, forwarded);</span>
+<span class="lineNum">     155 </span>            : #endif
+<span class="lineNum">     156 </span><span class="lineCov">  140583556 :                 return;</span>
+<span class="lineNum">     157 </span>            :         }
+<span class="lineNum">     158 </span><span class="lineCov">  165124673 :         if (G_UNLIKELY (SGEN_OBJECT_IS_PINNED (obj))) {</span>
+<span class="lineNum">     159 </span><span class="lineCov">   94998594 :                 SGEN_ASSERT (9, sgen_vtable_get_descriptor (SGEN_LOAD_VTABLE(obj)), &quot;pinned object %p has no gc descriptor&quot;, obj);</span>
+<span class="lineNum">     160 </span><span class="lineCov">   94998594 :                 SGEN_LOG (9, &quot; (pinned, no change)&quot;);</span>
+<span class="lineNum">     161 </span>            :                 HEAVY_STAT (++stat_nursery_copy_object_failed_pinned);
+<span class="lineNum">     162 </span><span class="lineCov">   94211059 :                 if (!sgen_ptr_in_nursery (obj_slot) &amp;&amp; !SGEN_OBJECT_IS_CEMENTED (obj))</span>
+<span class="lineNum">     163 </span><span class="lineCov">   20324935 :                         sgen_add_to_global_remset (obj_slot, obj);</span>
+<span class="lineNum">     164 </span><span class="lineCov">   47499297 :                 return;</span>
+<span class="lineNum">     165 </span>            :         }
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span>            : #ifndef SGEN_SIMPLE_NURSERY
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :         if (sgen_nursery_is_to_space (obj)) {</span>
+<span class="lineNum">     169 </span>            :                 /* FIXME: all of these could just use `sgen_obj_get_descriptor_safe()` */
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :                 SGEN_ASSERT (9, sgen_vtable_get_descriptor (SGEN_LOAD_VTABLE(obj)), &quot;to space object %p has no gc descriptor&quot;, obj);</span>
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :                 SGEN_LOG (9, &quot; (tospace, no change)&quot;);</span>
+<span class="lineNum">     172 </span>            :                 HEAVY_STAT (++stat_nursery_copy_object_failed_to_space);                
+<span class="lineNum">     173 </span>            : 
+<span class="lineNum">     174 </span>            :                 /*
+<span class="lineNum">     175 </span>            :                  * FIXME:
+<span class="lineNum">     176 </span>            :                  *
+<span class="lineNum">     177 </span>            :                  * The card table scanning code sometimes clears cards
+<span class="lineNum">     178 </span>            :                  * that have just been set for a global remset.  In
+<span class="lineNum">     179 </span>            :                  * the split nursery the following situation can
+<span class="lineNum">     180 </span>            :                  * occur:
+<span class="lineNum">     181 </span>            :                  *
+<span class="lineNum">     182 </span>            :                  * Let's say object A starts in card C but continues
+<span class="lineNum">     183 </span>            :                  * into C+1.  Within A, at offset O there's a
+<span class="lineNum">     184 </span>            :                  * reference to a new nursery object X.  A+O is in
+<span class="lineNum">     185 </span>            :                  * card C+1.  Now card C is scanned, and as part of
+<span class="lineNum">     186 </span>            :                  * it, object A.  The reference at A+O is processed by
+<span class="lineNum">     187 </span>            :                  * copying X into nursery to-space at Y.  Since it's
+<span class="lineNum">     188 </span>            :                  * still in the nursery, a global remset must be added
+<span class="lineNum">     189 </span>            :                  * for A+O, so card C+1 is marked.  Now, however, card
+<span class="lineNum">     190 </span>            :                  * C+1 is scanned, which means that it's cleared
+<span class="lineNum">     191 </span>            :                  * first.  This wouldn't be terribly bad if reference
+<span class="lineNum">     192 </span>            :                  * A+O were re-scanned and the global remset re-added,
+<span class="lineNum">     193 </span>            :                  * but since the reference points to to-space, that
+<span class="lineNum">     194 </span>            :                  * doesn't happen, and C+1 remains cleared: the remset
+<span class="lineNum">     195 </span>            :                  * is lost.
+<span class="lineNum">     196 </span>            :                  *
+<span class="lineNum">     197 </span>            :                  * There's at least two ways to fix this.  The easy
+<span class="lineNum">     198 </span>            :                  * one is to re-add the remset on the re-scan.  This
+<span class="lineNum">     199 </span>            :                  * is that - the following two lines of code.
+<span class="lineNum">     200 </span>            :                  *
+<span class="lineNum">     201 </span>            :                  * The proper solution appears to be to first make a
+<span class="lineNum">     202 </span>            :                  * copy of the cards before scanning a block, then to
+<span class="lineNum">     203 </span>            :                  * clear all the cards and scan from the copy, so no
+<span class="lineNum">     204 </span>            :                  * remsets will be overwritten.  Scanning objects at
+<span class="lineNum">     205 </span>            :                  * most once would be the icing on the cake.
+<span class="lineNum">     206 </span>            :                  */
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                 if (!sgen_ptr_in_nursery (obj_slot) &amp;&amp; !SGEN_OBJECT_IS_CEMENTED (obj))</span>
+<span class="lineNum">     208 </span><span class="lineNoCov">          0 :                         sgen_add_to_global_remset (obj_slot, obj);</span>
+<span class="lineNum">     209 </span>            : 
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     211 </span>            :         }
+<span class="lineNum">     212 </span>            : #endif
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span>            :         HEAVY_STAT (++stat_objects_copied_nursery);
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span><span class="lineCov">  117625376 :         copy = copy_object_no_checks (obj, queue);</span>
+<span class="lineNum">     217 </span>            : #ifdef SGEN_CONCURRENT_MAJOR
+<span class="lineNum">     218 </span>            :         /*
+<span class="lineNum">     219 </span>            :          * If an object is evacuated to the major heap and a reference to it, from the major
+<span class="lineNum">     220 </span>            :          * heap, updated, the concurrent major collector might follow that reference and
+<span class="lineNum">     221 </span>            :          * scan the new major object.  To make sure the object contents are seen by the
+<span class="lineNum">     222 </span>            :          * major collector we need this write barrier, so that the reference is seen after
+<span class="lineNum">     223 </span>            :          * the object.
+<span class="lineNum">     224 </span>            :          */
+<span class="lineNum">     225 </span>            :         STORE_STORE_FENCE;
+<span class="lineNum">     226 </span>            : #endif
+<span class="lineNum">     227 </span><span class="lineCov">  117625376 :         SGEN_UPDATE_REFERENCE (obj_slot, copy);</span>
+<span class="lineNum">     228 </span>            : #ifndef SGEN_SIMPLE_NURSERY
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :         if (G_UNLIKELY (sgen_ptr_in_nursery (copy) &amp;&amp; !sgen_ptr_in_nursery (obj_slot) &amp;&amp; !SGEN_OBJECT_IS_CEMENTED (copy)))</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :                 sgen_add_to_global_remset (obj_slot, copy);</span>
+<span class="lineNum">     231 </span>            : #else
+<span class="lineNum">     232 </span>            :         /* copy_object_no_checks () can return obj on OOM */
+<span class="lineNum">     233 </span><span class="lineCov">  117625376 :         if (G_UNLIKELY (obj == copy)) {</span>
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :                 if (G_UNLIKELY (sgen_ptr_in_nursery (copy) &amp;&amp; !sgen_ptr_in_nursery (obj_slot) &amp;&amp; !SGEN_OBJECT_IS_CEMENTED (copy)))</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                         sgen_add_to_global_remset (obj_slot, copy);</span>
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     237 </span>            : #endif
+<span class="lineNum">     238 </span><span class="lineCov">  595066456 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

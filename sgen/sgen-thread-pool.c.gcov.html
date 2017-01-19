@@ -1,0 +1,351 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-thread-pool.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-thread-pool.c<span style="font-size: 80%;"> (source / <a href="sgen-thread-pool.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">112</td>
+            <td class="headerCovTableEntry">115</td>
+            <td class="headerCovTableEntryHi">97.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">15</td>
+            <td class="headerCovTableEntry">15</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-thread-pool.c: Threadpool for all concurrent GC work.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright (C) 2015 Xamarin Inc
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      10 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &quot;mono/sgen/sgen-gc.h&quot;
+<span class="lineNum">      13 </span>            : #include &quot;mono/sgen/sgen-thread-pool.h&quot;
+<span class="lineNum">      14 </span>            : #include &quot;mono/sgen/sgen-pointer-queue.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;mono/utils/mono-os-mutex.h&quot;
+<span class="lineNum">      16 </span>            : #ifndef SGEN_WITHOUT_MONO
+<span class="lineNum">      17 </span>            : #include &quot;mono/utils/mono-threads.h&quot;
+<span class="lineNum">      18 </span>            : #endif
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : static mono_mutex_t lock;
+<span class="lineNum">      21 </span>            : static mono_cond_t work_cond;
+<span class="lineNum">      22 </span>            : static mono_cond_t done_cond;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : static MonoNativeThreadId thread;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : /* Only accessed with the lock held. */
+<span class="lineNum">      27 </span>            : static SgenPointerQueue job_queue;
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : static SgenThreadPoolThreadInitFunc thread_init_func;
+<span class="lineNum">      30 </span>            : static SgenThreadPoolIdleJobFunc idle_job_func;
+<span class="lineNum">      31 </span>            : static SgenThreadPoolContinueIdleJobFunc continue_idle_job_func;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : static volatile gboolean threadpool_shutdown;
+<span class="lineNum">      34 </span>            : static volatile gboolean thread_finished;
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : enum {
+<span class="lineNum">      37 </span>            :         STATE_WAITING,
+<span class="lineNum">      38 </span>            :         STATE_IN_PROGRESS,
+<span class="lineNum">      39 </span>            :         STATE_DONE
+<span class="lineNum">      40 </span>            : };
+<span class="lineNum">      41 </span>            : 
+<a name="42"><span class="lineNum">      42 </span>            : /* Assumes that the lock is held. */</a>
+<span class="lineNum">      43 </span>            : static SgenThreadPoolJob*
+<span class="lineNum">      44 </span>            : get_job_and_set_in_progress (void)
+<span class="lineNum">      45 </span>            : {
+<span class="lineNum">      46 </span><span class="lineCov">    1095702 :         for (size_t i = 0; i &lt; job_queue.next_slot; ++i) {</span>
+<span class="lineNum">      47 </span><span class="lineCov">     359769 :                 SgenThreadPoolJob *job = (SgenThreadPoolJob *)job_queue.data [i];</span>
+<span class="lineNum">      48 </span><span class="lineCov">     359769 :                 if (job-&gt;state == STATE_WAITING) {</span>
+<span class="lineNum">      49 </span><span class="lineCov">     359769 :                         job-&gt;state = STATE_IN_PROGRESS;</span>
+<span class="lineNum">      50 </span><span class="lineCov">     359769 :                         return job;</span>
+<span class="lineNum">      51 </span>            :                 }
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      53 </span><span class="lineCov">     188082 :         return NULL;</span>
+<span class="lineNum">      54 </span><span class="lineCov">     547851 : }</span>
+<span class="lineNum">      55 </span>            : 
+<a name="56"><span class="lineNum">      56 </span>            : /* Assumes that the lock is held. */</a>
+<span class="lineNum">      57 </span>            : static ssize_t
+<span class="lineNum">      58 </span>            : find_job_in_queue (SgenThreadPoolJob *job)
+<span class="lineNum">      59 </span>            : {
+<span class="lineNum">      60 </span><span class="lineCov">    2005566 :         for (ssize_t i = 0; i &lt; job_queue.next_slot; ++i) {</span>
+<span class="lineNum">      61 </span><span class="lineCov">     751488 :                 if (job_queue.data [i] == job)</span>
+<span class="lineNum">      62 </span><span class="lineCov">     611054 :                         return i;</span>
+<span class="lineNum">      63 </span><span class="lineCov">     140434 :         }</span>
+<span class="lineNum">      64 </span><span class="lineCov">     251295 :         return -1;</span>
+<span class="lineNum">      65 </span><span class="lineCov">     862349 : }</span>
+<span class="lineNum">      66 </span>            : 
+<a name="67"><span class="lineNum">      67 </span>            : /* Assumes that the lock is held. */</a>
+<span class="lineNum">      68 </span>            : static void
+<span class="lineNum">      69 </span>            : remove_job (SgenThreadPoolJob *job)
+<span class="lineNum">      70 </span>            : {
+<span class="lineNum">      71 </span>            :         ssize_t index;
+<span class="lineNum">      72 </span><span class="lineCov">    1079307 :         SGEN_ASSERT (0, job-&gt;state == STATE_DONE, &quot;Why are we removing a job that's not done?&quot;);</span>
+<span class="lineNum">      73 </span><span class="lineCov">     359769 :         index = find_job_in_queue (job);</span>
+<span class="lineNum">      74 </span><span class="lineCov">    1079307 :         SGEN_ASSERT (0, index &gt;= 0, &quot;Why is the job we're trying to remove not in the queue?&quot;);</span>
+<span class="lineNum">      75 </span><span class="lineCov">     359769 :         job_queue.data [index] = NULL;</span>
+<span class="lineNum">      76 </span><span class="lineCov">     359769 :         sgen_pointer_queue_remove_nulls (&amp;job_queue);</span>
+<span class="lineNum">      77 </span><span class="lineCov">     359769 :         sgen_thread_pool_job_free (job);</span>
+<span class="lineNum">      78 </span><span class="lineCov">     359769 : }</span>
+<a name="79"><span class="lineNum">      79 </span>            : </a>
+<span class="lineNum">      80 </span>            : static gboolean
+<span class="lineNum">      81 </span>            : continue_idle_job (void)
+<span class="lineNum">      82 </span>            : {
+<span class="lineNum">      83 </span><span class="lineCov">    3926900 :         if (!continue_idle_job_func)</span>
+<span class="lineNum">      84 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">      85 </span><span class="lineCov">    3926900 :         return continue_idle_job_func ();</span>
+<span class="lineNum">      86 </span><span class="lineCov">    3926900 : }</span>
+<a name="87"><span class="lineNum">      87 </span>            : </a>
+<span class="lineNum">      88 </span>            : static mono_native_thread_return_t
+<span class="lineNum">      89 </span>            : thread_func (void *thread_data)
+<span class="lineNum">      90 </span>            : {
+<span class="lineNum">      91 </span><span class="lineCov">       3285 :         thread_init_func (thread_data);</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span><span class="lineCov">       3285 :         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">      94 </span><span class="lineCov">     363564 :         for (;;) {</span>
+<span class="lineNum">      95 </span>            :                 /*
+<span class="lineNum">      96 </span>            :                  * It's important that we check the continue idle flag with the lock held.
+<span class="lineNum">      97 </span>            :                  * Suppose we didn't check with the lock held, and the result is FALSE.  The
+<span class="lineNum">      98 </span>            :                  * main thread might then set continue idle and signal us before we can take
+<span class="lineNum">      99 </span>            :                  * the lock, and we'd lose the signal.
+<span class="lineNum">     100 </span>            :                  */
+<span class="lineNum">     101 </span><span class="lineCov">     547851 :                 gboolean do_idle = continue_idle_job ();</span>
+<span class="lineNum">     102 </span><span class="lineCov">     547851 :                 SgenThreadPoolJob *job = get_job_and_set_in_progress ();</span>
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineCov">     923505 :                 if (!job &amp;&amp; !do_idle &amp;&amp; !threadpool_shutdown) {</span>
+<span class="lineNum">     105 </span>            :                         /*
+<span class="lineNum">     106 </span>            :                          * pthread_cond_wait() can return successfully despite the condition
+<span class="lineNum">     107 </span>            :                          * not being signalled, so we have to run this in a loop until we
+<span class="lineNum">     108 </span>            :                          * really have work to do.
+<span class="lineNum">     109 </span>            :                          */
+<span class="lineNum">     110 </span><span class="lineCov">     184300 :                         mono_os_cond_wait (&amp;work_cond, &amp;lock);</span>
+<span class="lineNum">     111 </span><span class="lineCov">     184300 :                         continue;</span>
+<span class="lineNum">     112 </span>            :                 }
+<span class="lineNum">     113 </span>            : 
+<span class="lineNum">     114 </span><span class="lineCov">     363551 :                 mono_os_mutex_unlock (&amp;lock);</span>
+<span class="lineNum">     115 </span>            : 
+<span class="lineNum">     116 </span><span class="lineCov">     363551 :                 if (job) {</span>
+<span class="lineNum">     117 </span><span class="lineCov">     359769 :                         job-&gt;func (thread_data, job);</span>
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span><span class="lineCov">     359769 :                         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span><span class="lineCov">    1079307 :                         SGEN_ASSERT (0, job-&gt;state == STATE_IN_PROGRESS, &quot;The job should still be in progress.&quot;);</span>
+<span class="lineNum">     122 </span><span class="lineCov">     359769 :                         job-&gt;state = STATE_DONE;</span>
+<span class="lineNum">     123 </span><span class="lineCov">     359769 :                         remove_job (job);</span>
+<span class="lineNum">     124 </span>            :                         /*
+<span class="lineNum">     125 </span>            :                          * Only the main GC thread will ever wait on the done condition, so we don't
+<span class="lineNum">     126 </span>            :                          * have to broadcast.
+<span class="lineNum">     127 </span>            :                          */
+<span class="lineNum">     128 </span><span class="lineCov">     359769 :                         mono_os_cond_signal (&amp;done_cond);</span>
+<span class="lineNum">     129 </span><span class="lineCov">     363551 :                 } else if (do_idle) {</span>
+<span class="lineNum">     130 </span><span class="lineCov">       1530 :                         SGEN_ASSERT (0, idle_job_func, &quot;Why do we have idle work when there's no idle job function?&quot;);</span>
+<span class="lineNum">     131 </span><span class="lineCov">        510 :                         do {</span>
+<span class="lineNum">     132 </span><span class="lineCov">    3379049 :                                 idle_job_func (thread_data);</span>
+<span class="lineNum">     133 </span><span class="lineCov">    3379049 :                                 do_idle = continue_idle_job ();</span>
+<span class="lineNum">     134 </span><span class="lineCov">   13515915 :                         } while (do_idle &amp;&amp; !job_queue.next_slot);</span>
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineCov">        510 :                         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     137 </span>            : 
+<span class="lineNum">     138 </span><span class="lineCov">        510 :                         if (!do_idle)</span>
+<span class="lineNum">     139 </span><span class="lineCov">        281 :                                 mono_os_cond_signal (&amp;done_cond);</span>
+<span class="lineNum">     140 </span><span class="lineCov">        510 :                 } else {</span>
+<span class="lineNum">     141 </span><span class="lineCov">       9816 :                         SGEN_ASSERT (0, threadpool_shutdown, &quot;Why did we unlock if no jobs and not shutting down?&quot;);</span>
+<span class="lineNum">     142 </span><span class="lineCov">       3272 :                         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     143 </span><span class="lineCov">       3272 :                         thread_finished = TRUE;</span>
+<span class="lineNum">     144 </span><span class="lineCov">       3272 :                         mono_os_cond_signal (&amp;done_cond);</span>
+<span class="lineNum">     145 </span><span class="lineCov">       3272 :                         mono_os_mutex_unlock (&amp;lock);</span>
+<span class="lineNum">     146 </span><span class="lineCov">       3272 :                         return 0;</span>
+<span class="lineNum">     147 </span>            :                 }
+<span class="lineNum">     148 </span>            :         }
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span>            :         return (mono_native_thread_return_t)0;
+<span class="lineNum">     151 </span>            : }
+<a name="152"><span class="lineNum">     152 </span>            : </a>
+<span class="lineNum">     153 </span>            : void
+<span class="lineNum">     154 </span>            : sgen_thread_pool_init (int num_threads, SgenThreadPoolThreadInitFunc init_func, SgenThreadPoolIdleJobFunc idle_func, SgenThreadPoolContinueIdleJobFunc continue_idle_func, void **thread_datas)
+<span class="lineNum">     155 </span>            : {
+<span class="lineNum">     156 </span><span class="lineCov">       9855 :         SGEN_ASSERT (0, num_threads == 1, &quot;We only support 1 thread pool thread for now.&quot;);</span>
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span><span class="lineCov">       3285 :         mono_os_mutex_init (&amp;lock);</span>
+<span class="lineNum">     159 </span><span class="lineCov">       3285 :         mono_os_cond_init (&amp;work_cond);</span>
+<span class="lineNum">     160 </span><span class="lineCov">       3285 :         mono_os_cond_init (&amp;done_cond);</span>
+<span class="lineNum">     161 </span>            : 
+<span class="lineNum">     162 </span><span class="lineCov">       3285 :         thread_init_func = init_func;</span>
+<span class="lineNum">     163 </span><span class="lineCov">       3285 :         idle_job_func = idle_func;</span>
+<span class="lineNum">     164 </span><span class="lineCov">       3285 :         continue_idle_job_func = continue_idle_func;</span>
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span><span class="lineCov">       9855 :         mono_native_thread_create (&amp;thread, thread_func, thread_datas ? thread_datas [0] : NULL);</span>
+<span class="lineNum">     167 </span><span class="lineCov">       3285 : }</span>
+<a name="168"><span class="lineNum">     168 </span>            : </a>
+<span class="lineNum">     169 </span>            : void
+<span class="lineNum">     170 </span>            : sgen_thread_pool_shutdown (void)
+<span class="lineNum">     171 </span>            : {
+<span class="lineNum">     172 </span><span class="lineCov">       3272 :         if (!thread)</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span><span class="lineCov">       3272 :         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     176 </span><span class="lineCov">       3272 :         threadpool_shutdown = TRUE;</span>
+<span class="lineNum">     177 </span><span class="lineCov">       3272 :         mono_os_cond_signal (&amp;work_cond);</span>
+<span class="lineNum">     178 </span><span class="lineCov">      13088 :         while (!thread_finished)</span>
+<span class="lineNum">     179 </span><span class="lineCov">       3272 :                 mono_os_cond_wait (&amp;done_cond, &amp;lock);</span>
+<span class="lineNum">     180 </span><span class="lineCov">       3272 :         mono_os_mutex_unlock (&amp;lock);</span>
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span><span class="lineCov">       3272 :         mono_os_mutex_destroy (&amp;lock);</span>
+<span class="lineNum">     183 </span><span class="lineCov">       3272 :         mono_os_cond_destroy (&amp;work_cond);</span>
+<span class="lineNum">     184 </span><span class="lineCov">       3272 :         mono_os_cond_destroy (&amp;done_cond);</span>
+<span class="lineNum">     185 </span><span class="lineCov">       6544 : }</span>
+<a name="186"><span class="lineNum">     186 </span>            : </a>
+<span class="lineNum">     187 </span>            : SgenThreadPoolJob*
+<span class="lineNum">     188 </span>            : sgen_thread_pool_job_alloc (const char *name, SgenThreadPoolJobFunc func, size_t size)
+<span class="lineNum">     189 </span>            : {
+<span class="lineNum">     190 </span><span class="lineCov">    1320058 :         SgenThreadPoolJob *job = (SgenThreadPoolJob *)sgen_alloc_internal_dynamic (size, INTERNAL_MEM_THREAD_POOL_JOB, TRUE);</span>
+<span class="lineNum">     191 </span><span class="lineCov">    1320058 :         job-&gt;name = name;</span>
+<span class="lineNum">     192 </span><span class="lineCov">    1320058 :         job-&gt;size = size;</span>
+<span class="lineNum">     193 </span><span class="lineCov">    1320058 :         job-&gt;state = STATE_WAITING;</span>
+<span class="lineNum">     194 </span><span class="lineCov">    1320058 :         job-&gt;func = func;</span>
+<span class="lineNum">     195 </span><span class="lineCov">    1320058 :         return job;</span>
+<span class="lineNum">     196 </span>            : }
+<a name="197"><span class="lineNum">     197 </span>            : </a>
+<span class="lineNum">     198 </span>            : void
+<span class="lineNum">     199 </span>            : sgen_thread_pool_job_free (SgenThreadPoolJob *job)
+<span class="lineNum">     200 </span>            : {
+<span class="lineNum">     201 </span><span class="lineCov">    1320038 :         sgen_free_internal_dynamic (job, job-&gt;size, INTERNAL_MEM_THREAD_POOL_JOB);</span>
+<span class="lineNum">     202 </span><span class="lineCov">    1320038 : }</span>
+<a name="203"><span class="lineNum">     203 </span>            : </a>
+<span class="lineNum">     204 </span>            : void
+<span class="lineNum">     205 </span>            : sgen_thread_pool_job_enqueue (SgenThreadPoolJob *job)
+<span class="lineNum">     206 </span>            : {
+<span class="lineNum">     207 </span><span class="lineCov">     359769 :         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     208 </span>            : 
+<span class="lineNum">     209 </span><span class="lineCov">     359769 :         sgen_pointer_queue_add (&amp;job_queue, job);</span>
+<span class="lineNum">     210 </span>            :         /*
+<span class="lineNum">     211 </span>            :          * FIXME: We could check whether there is a job in progress.  If there is, there's
+<span class="lineNum">     212 </span>            :          * no need to signal the condition, at least as long as we have only one thread.
+<span class="lineNum">     213 </span>            :          */
+<span class="lineNum">     214 </span><span class="lineCov">     359769 :         mono_os_cond_signal (&amp;work_cond);</span>
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span><span class="lineCov">     359769 :         mono_os_mutex_unlock (&amp;lock);</span>
+<span class="lineNum">     217 </span><span class="lineCov">     359769 : }</span>
+<a name="218"><span class="lineNum">     218 </span>            : </a>
+<span class="lineNum">     219 </span>            : void
+<span class="lineNum">     220 </span>            : sgen_thread_pool_job_wait (SgenThreadPoolJob *job)
+<span class="lineNum">     221 </span>            : {
+<span class="lineNum">     222 </span><span class="lineCov">     753885 :         SGEN_ASSERT (0, job, &quot;Where's the job?&quot;);</span>
+<span class="lineNum">     223 </span>            : 
+<span class="lineNum">     224 </span><span class="lineCov">     251295 :         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span><span class="lineCov">    1005160 :         while (find_job_in_queue (job) &gt;= 0)</span>
+<span class="lineNum">     227 </span><span class="lineCov">     251285 :                 mono_os_cond_wait (&amp;done_cond, &amp;lock);</span>
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span><span class="lineCov">     251295 :         mono_os_mutex_unlock (&amp;lock);</span>
+<span class="lineNum">     230 </span><span class="lineCov">     251295 : }</span>
+<a name="231"><span class="lineNum">     231 </span>            : </a>
+<span class="lineNum">     232 </span>            : void
+<span class="lineNum">     233 </span>            : sgen_thread_pool_idle_signal (void)
+<span class="lineNum">     234 </span>            : {
+<span class="lineNum">     235 </span><span class="lineCov">        843 :         SGEN_ASSERT (0, idle_job_func, &quot;Why are we signaling idle without an idle function?&quot;);</span>
+<span class="lineNum">     236 </span>            : 
+<span class="lineNum">     237 </span><span class="lineCov">        281 :         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span><span class="lineCov">        281 :         if (continue_idle_job_func ())</span>
+<span class="lineNum">     240 </span><span class="lineCov">        281 :                 mono_os_cond_signal (&amp;work_cond);</span>
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span><span class="lineCov">        281 :         mono_os_mutex_unlock (&amp;lock);</span>
+<span class="lineNum">     243 </span><span class="lineCov">        281 : }</span>
+<a name="244"><span class="lineNum">     244 </span>            : </a>
+<span class="lineNum">     245 </span>            : void
+<span class="lineNum">     246 </span>            : sgen_thread_pool_idle_wait (void)
+<span class="lineNum">     247 </span>            : {
+<span class="lineNum">     248 </span><span class="lineCov">        843 :         SGEN_ASSERT (0, idle_job_func, &quot;Why are we waiting for idle without an idle function?&quot;);</span>
+<span class="lineNum">     249 </span>            : 
+<span class="lineNum">     250 </span><span class="lineCov">        281 :         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span><span class="lineCov">        672 :         while (continue_idle_job_func ())</span>
+<span class="lineNum">     253 </span><span class="lineCov">         55 :                 mono_os_cond_wait (&amp;done_cond, &amp;lock);</span>
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineCov">        281 :         mono_os_mutex_unlock (&amp;lock);</span>
+<span class="lineNum">     256 </span><span class="lineCov">        281 : }</span>
+<a name="257"><span class="lineNum">     257 </span>            : </a>
+<span class="lineNum">     258 </span>            : void
+<span class="lineNum">     259 </span>            : sgen_thread_pool_wait_for_all_jobs (void)
+<span class="lineNum">     260 </span>            : {
+<span class="lineNum">     261 </span><span class="lineCov">        281 :         mono_os_mutex_lock (&amp;lock);</span>
+<span class="lineNum">     262 </span>            : 
+<span class="lineNum">     263 </span><span class="lineCov">        580 :         while (!sgen_pointer_queue_is_empty (&amp;job_queue))</span>
+<span class="lineNum">     264 </span><span class="lineCov">          9 :                 mono_os_cond_wait (&amp;done_cond, &amp;lock);</span>
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span><span class="lineCov">        281 :         mono_os_mutex_unlock (&amp;lock);</span>
+<span class="lineNum">     267 </span><span class="lineCov">        281 : }</span>
+<a name="268"><span class="lineNum">     268 </span>            : </a>
+<span class="lineNum">     269 </span>            : gboolean
+<span class="lineNum">     270 </span>            : sgen_thread_pool_is_thread_pool_thread (MonoNativeThreadId some_thread)
+<span class="lineNum">     271 </span>            : {
+<span class="lineNum">     272 </span><span class="lineCov">    1844048 :         return some_thread == thread;</span>
+<span class="lineNum">     273 </span>            : }
+<span class="lineNum">     274 </span>            : 
+<span class="lineNum">     275 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,992 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-nursery-allocator.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-nursery-allocator.c<span style="font-size: 80%;"> (source / <a href="sgen-nursery-allocator.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">223</td>
+            <td class="headerCovTableEntry">285</td>
+            <td class="headerCovTableEntryMed">78.2 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">27</td>
+            <td class="headerCovTableEntry">30</td>
+            <td class="headerCovTableEntryHi">90.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-nursery-allocator.c: Nursery allocation code.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright 2009-2010 Novell, Inc.
+<span class="lineNum">       5 </span>            :  *           2011 Rodrigo Kumpera
+<span class="lineNum">       6 </span>            :  * 
+<span class="lineNum">       7 </span>            :  * Copyright 2011 Xamarin Inc  (http://www.xamarin.com)
+<span class="lineNum">       8 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : /*
+<span class="lineNum">      14 </span>            :  * The young generation is divided into fragments. This is because
+<span class="lineNum">      15 </span>            :  * we can hand one fragments to a thread for lock-less fast alloc and
+<span class="lineNum">      16 </span>            :  * because the young generation ends up fragmented anyway by pinned objects.
+<span class="lineNum">      17 </span>            :  * Once a collection is done, a list of fragments is created. When doing
+<span class="lineNum">      18 </span>            :  * thread local alloc we use smallish nurseries so we allow new threads to
+<span class="lineNum">      19 </span>            :  * allocate memory from gen0 without triggering a collection. Threads that
+<span class="lineNum">      20 </span>            :  * are found to allocate lots of memory are given bigger fragments. This
+<span class="lineNum">      21 </span>            :  * should make the finalizer thread use little nursery memory after a while.
+<span class="lineNum">      22 </span>            :  * We should start assigning threads very small fragments: if there are many
+<span class="lineNum">      23 </span>            :  * threads the nursery will be full of reserved space that the threads may not
+<span class="lineNum">      24 </span>            :  * use at all, slowing down allocation speed.
+<span class="lineNum">      25 </span>            :  * Thread local allocation is done from areas of memory Hotspot calls Thread Local 
+<span class="lineNum">      26 </span>            :  * Allocation Buffers (TLABs).
+<span class="lineNum">      27 </span>            :  */
+<span class="lineNum">      28 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      29 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">      32 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      33 </span>            : #endif
+<span class="lineNum">      34 </span>            : #ifdef HAVE_PTHREAD_H
+<span class="lineNum">      35 </span>            : #include &lt;pthread.h&gt;
+<span class="lineNum">      36 </span>            : #endif
+<span class="lineNum">      37 </span>            : #ifdef HAVE_SEMAPHORE_H
+<span class="lineNum">      38 </span>            : #include &lt;semaphore.h&gt;
+<span class="lineNum">      39 </span>            : #endif
+<span class="lineNum">      40 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      41 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      42 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      43 </span>            : #include &lt;assert.h&gt;
+<span class="lineNum">      44 </span>            : #ifdef __MACH__
+<span class="lineNum">      45 </span>            : #undef _XOPEN_SOURCE
+<span class="lineNum">      46 </span>            : #endif
+<span class="lineNum">      47 </span>            : #ifdef __MACH__
+<span class="lineNum">      48 </span>            : #define _XOPEN_SOURCE
+<span class="lineNum">      49 </span>            : #endif
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : #include &quot;mono/sgen/sgen-gc.h&quot;
+<span class="lineNum">      52 </span>            : #include &quot;mono/sgen/sgen-cardtable.h&quot;
+<span class="lineNum">      53 </span>            : #include &quot;mono/sgen/sgen-protocol.h&quot;
+<span class="lineNum">      54 </span>            : #include &quot;mono/sgen/sgen-memory-governor.h&quot;
+<span class="lineNum">      55 </span>            : #include &quot;mono/sgen/sgen-pinning.h&quot;
+<span class="lineNum">      56 </span>            : #include &quot;mono/sgen/sgen-client.h&quot;
+<span class="lineNum">      57 </span>            : #include &quot;mono/utils/mono-membar.h&quot;
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span>            : /* Enable it so nursery allocation diagnostic data is collected */
+<span class="lineNum">      60 </span>            : //#define NALLOC_DEBUG 1
+<span class="lineNum">      61 </span>            : 
+<span class="lineNum">      62 </span>            : /* The mutator allocs from here. */
+<span class="lineNum">      63 </span>            : static SgenFragmentAllocator mutator_allocator;
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : /* freeelist of fragment structures */
+<span class="lineNum">      66 </span>            : static SgenFragment *fragment_freelist = NULL;
+<span class="lineNum">      67 </span>            : 
+<span class="lineNum">      68 </span>            : /* Allocator cursors */
+<span class="lineNum">      69 </span>            : static char *nursery_last_pinned_end = NULL;
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span>            : char *sgen_nursery_start;
+<span class="lineNum">      72 </span>            : char *sgen_nursery_end;
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span>            : #ifdef USER_CONFIG
+<span class="lineNum">      75 </span>            : size_t sgen_nursery_size = (1 &lt;&lt; 22);
+<span class="lineNum">      76 </span>            : int sgen_nursery_bits = 22;
+<span class="lineNum">      77 </span>            : #endif
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            : char *sgen_space_bitmap;
+<span class="lineNum">      80 </span>            : size_t sgen_space_bitmap_size;
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">      83 </span>            : 
+<span class="lineNum">      84 </span>            : static mword stat_wasted_bytes_trailer = 0;
+<span class="lineNum">      85 </span>            : static mword stat_wasted_bytes_small_areas = 0;
+<span class="lineNum">      86 </span>            : static mword stat_wasted_bytes_discarded_fragments = 0;
+<span class="lineNum">      87 </span>            : static guint64 stat_nursery_alloc_requests = 0;
+<span class="lineNum">      88 </span>            : static guint64 stat_alloc_iterations = 0;
+<span class="lineNum">      89 </span>            : static guint64 stat_alloc_retries = 0;
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span>            : static guint64 stat_nursery_alloc_range_requests = 0;
+<span class="lineNum">      92 </span>            : static guint64 stat_alloc_range_iterations = 0;
+<span class="lineNum">      93 </span>            : static guint64 stat_alloc_range_retries = 0;
+<span class="lineNum">      94 </span>            : 
+<span class="lineNum">      95 </span>            : #endif
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span>            : /************************************Nursery allocation debugging *********************************************/
+<span class="lineNum">      98 </span>            : 
+<span class="lineNum">      99 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span>            : enum {
+<span class="lineNum">     102 </span>            :         FIXED_ALLOC = 1,
+<span class="lineNum">     103 </span>            :         RANGE_ALLOC,
+<span class="lineNum">     104 </span>            :         PINNING,
+<span class="lineNum">     105 </span>            :         BLOCK_ZEROING,
+<span class="lineNum">     106 </span>            :         CLEAR_NURSERY_FRAGS
+<span class="lineNum">     107 </span>            : };
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span>            : typedef struct {
+<span class="lineNum">     110 </span>            :         char *address;
+<span class="lineNum">     111 </span>            :         size_t size;
+<span class="lineNum">     112 </span>            :         int reason;
+<span class="lineNum">     113 </span>            :         int seq;
+<span class="lineNum">     114 </span>            :         MonoNativeThreadId tid;
+<span class="lineNum">     115 </span>            : } AllocRecord;
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span>            : #define ALLOC_RECORD_COUNT 128000
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span>            : 
+<span class="lineNum">     120 </span>            : static AllocRecord *alloc_records;
+<span class="lineNum">     121 </span>            : static volatile int next_record;
+<span class="lineNum">     122 </span>            : static volatile int alloc_count;
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span>            : void dump_alloc_records (void);
+<span class="lineNum">     125 </span>            : void verify_alloc_records (void);
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span>            : static const char*
+<span class="lineNum">     128 </span>            : get_reason_name (AllocRecord *rec)
+<span class="lineNum">     129 </span>            : {
+<span class="lineNum">     130 </span>            :         switch (rec-&gt;reason) {
+<span class="lineNum">     131 </span>            :         case FIXED_ALLOC: return &quot;fixed-alloc&quot;;
+<span class="lineNum">     132 </span>            :         case RANGE_ALLOC: return &quot;range-alloc&quot;;
+<span class="lineNum">     133 </span>            :         case PINNING: return &quot;pinning&quot;;
+<span class="lineNum">     134 </span>            :         case BLOCK_ZEROING: return &quot;block-zeroing&quot;;
+<span class="lineNum">     135 </span>            :         case CLEAR_NURSERY_FRAGS: return &quot;clear-nursery-frag&quot;;
+<span class="lineNum">     136 </span>            :         default: return &quot;invalid&quot;;
+<span class="lineNum">     137 </span>            :         }
+<span class="lineNum">     138 </span>            : }
+<span class="lineNum">     139 </span>            : 
+<span class="lineNum">     140 </span>            : static void
+<span class="lineNum">     141 </span>            : reset_alloc_records (void)
+<span class="lineNum">     142 </span>            : {
+<span class="lineNum">     143 </span>            :         next_record = 0;
+<span class="lineNum">     144 </span>            :         alloc_count = 0;
+<span class="lineNum">     145 </span>            : }
+<span class="lineNum">     146 </span>            : 
+<span class="lineNum">     147 </span>            : static void
+<span class="lineNum">     148 </span>            : add_alloc_record (char *addr, size_t size, int reason)
+<span class="lineNum">     149 </span>            : {
+<span class="lineNum">     150 </span>            :         int idx = InterlockedIncrement (&amp;next_record) - 1;
+<span class="lineNum">     151 </span>            :         alloc_records [idx].address = addr;
+<span class="lineNum">     152 </span>            :         alloc_records [idx].size = size;
+<span class="lineNum">     153 </span>            :         alloc_records [idx].reason = reason;
+<span class="lineNum">     154 </span>            :         alloc_records [idx].seq = idx;
+<span class="lineNum">     155 </span>            :         alloc_records [idx].tid = mono_native_thread_id_get ();
+<span class="lineNum">     156 </span>            : }
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span>            : static int
+<span class="lineNum">     159 </span>            : comp_alloc_record (const void *_a, const void *_b)
+<span class="lineNum">     160 </span>            : {
+<span class="lineNum">     161 </span>            :         const AllocRecord *a = _a;
+<span class="lineNum">     162 </span>            :         const AllocRecord *b = _b;
+<span class="lineNum">     163 </span>            :         if (a-&gt;address == b-&gt;address)
+<span class="lineNum">     164 </span>            :                 return a-&gt;seq - b-&gt;seq;
+<span class="lineNum">     165 </span>            :         return a-&gt;address - b-&gt;address;
+<span class="lineNum">     166 </span>            : }
+<span class="lineNum">     167 </span>            : 
+<span class="lineNum">     168 </span>            : #define rec_end(REC) ((REC)-&gt;address + (REC)-&gt;size)
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span>            : void
+<span class="lineNum">     171 </span>            : dump_alloc_records (void)
+<span class="lineNum">     172 </span>            : {
+<span class="lineNum">     173 </span>            :         int i;
+<span class="lineNum">     174 </span>            :         sgen_qsort (alloc_records, next_record, sizeof (AllocRecord), comp_alloc_record);
+<span class="lineNum">     175 </span>            : 
+<span class="lineNum">     176 </span>            :         printf (&quot;------------------------------------DUMP RECORDS----------------------------\n&quot;);
+<span class="lineNum">     177 </span>            :         for (i = 0; i &lt; next_record; ++i) {
+<span class="lineNum">     178 </span>            :                 AllocRecord *rec = alloc_records + i;
+<span class="lineNum">     179 </span>            :                 printf (&quot;obj [%p, %p] size %d reason %s seq %d tid %x\n&quot;, rec-&gt;address, rec_end (rec), (int)rec-&gt;size, get_reason_name (rec), rec-&gt;seq, (size_t)rec-&gt;tid);
+<span class="lineNum">     180 </span>            :         }
+<span class="lineNum">     181 </span>            : }
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span>            : void
+<span class="lineNum">     184 </span>            : verify_alloc_records (void)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span>            :         int i;
+<span class="lineNum">     187 </span>            :         int total = 0;
+<span class="lineNum">     188 </span>            :         int holes = 0;
+<span class="lineNum">     189 </span>            :         int max_hole = 0;
+<span class="lineNum">     190 </span>            :         AllocRecord *prev = NULL;
+<span class="lineNum">     191 </span>            : 
+<span class="lineNum">     192 </span>            :         sgen_qsort (alloc_records, next_record, sizeof (AllocRecord), comp_alloc_record);
+<span class="lineNum">     193 </span>            :         printf (&quot;------------------------------------DUMP RECORDS- %d %d---------------------------\n&quot;, next_record, alloc_count);
+<span class="lineNum">     194 </span>            :         for (i = 0; i &lt; next_record; ++i) {
+<span class="lineNum">     195 </span>            :                 AllocRecord *rec = alloc_records + i;
+<span class="lineNum">     196 </span>            :                 int hole_size = 0;
+<span class="lineNum">     197 </span>            :                 total += rec-&gt;size;
+<span class="lineNum">     198 </span>            :                 if (prev) {
+<span class="lineNum">     199 </span>            :                         if (rec_end (prev) &gt; rec-&gt;address)
+<span class="lineNum">     200 </span>            :                                 printf (&quot;WE GOT OVERLAPPING objects %p and %p\n&quot;, prev-&gt;address, rec-&gt;address);
+<span class="lineNum">     201 </span>            :                         if ((rec-&gt;address - rec_end (prev)) &gt;= 8)
+<span class="lineNum">     202 </span>            :                                 ++holes;
+<span class="lineNum">     203 </span>            :                         hole_size = rec-&gt;address - rec_end (prev);
+<span class="lineNum">     204 </span>            :                         max_hole = MAX (max_hole, hole_size);
+<span class="lineNum">     205 </span>            :                 }
+<span class="lineNum">     206 </span>            :                 printf (&quot;obj [%p, %p] size %d hole to prev %d reason %s seq %d tid %zx\n&quot;, rec-&gt;address, rec_end (rec), (int)rec-&gt;size, hole_size, get_reason_name (rec), rec-&gt;seq, (size_t)rec-&gt;tid);
+<span class="lineNum">     207 </span>            :                 prev = rec;
+<span class="lineNum">     208 </span>            :         }
+<span class="lineNum">     209 </span>            :         printf (&quot;SUMMARY total alloc'd %d holes %d max_hole %d\n&quot;, total, holes, max_hole);
+<span class="lineNum">     210 </span>            : }
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span>            : #endif
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span>            : /*********************************************************************************/
+<span class="lineNum">     215 </span>            : 
+<a name="216"><span class="lineNum">     216 </span>            : </a>
+<span class="lineNum">     217 </span>            : static inline gpointer
+<span class="lineNum">     218 </span>            : mask (gpointer n, uintptr_t bit)
+<span class="lineNum">     219 </span>            : {
+<span class="lineNum">     220 </span><span class="lineCov">     376053 :         return (gpointer)(((uintptr_t)n) | bit);</span>
+<span class="lineNum">     221 </span>            : }
+<a name="222"><span class="lineNum">     222 </span>            : </a>
+<span class="lineNum">     223 </span>            : static inline gpointer
+<span class="lineNum">     224 </span>            : unmask (gpointer p)
+<span class="lineNum">     225 </span>            : {
+<span class="lineNum">     226 </span><span class="lineCov">  357066044 :         return (gpointer)((uintptr_t)p &amp; ~(uintptr_t)0x3);</span>
+<span class="lineNum">     227 </span>            : }
+<a name="228"><span class="lineNum">     228 </span>            : </a>
+<span class="lineNum">     229 </span>            : static inline uintptr_t
+<span class="lineNum">     230 </span>            : get_mark (gpointer n)
+<span class="lineNum">     231 </span>            : {
+<span class="lineNum">     232 </span><span class="lineCov">   11165698 :         return (uintptr_t)n &amp; 0x1;</span>
+<span class="lineNum">     233 </span>            : }
+<span class="lineNum">     234 </span>            : 
+<a name="235"><span class="lineNum">     235 </span>            : /*MUST be called with world stopped*/</a>
+<span class="lineNum">     236 </span>            : SgenFragment*
+<span class="lineNum">     237 </span>            : sgen_fragment_allocator_alloc (void)
+<span class="lineNum">     238 </span>            : {
+<span class="lineNum">     239 </span><span class="lineCov">     929524 :         SgenFragment *frag = fragment_freelist;</span>
+<span class="lineNum">     240 </span><span class="lineCov">     929524 :         if (frag) {</span>
+<span class="lineNum">     241 </span><span class="lineCov">     896493 :                 fragment_freelist = frag-&gt;next_in_order;</span>
+<span class="lineNum">     242 </span><span class="lineCov">     896493 :                 frag-&gt;next = frag-&gt;next_in_order = NULL;</span>
+<span class="lineNum">     243 </span><span class="lineCov">     896493 :                 return frag;</span>
+<span class="lineNum">     244 </span>            :         }
+<span class="lineNum">     245 </span><span class="lineCov">      33031 :         frag = (SgenFragment *)sgen_alloc_internal (INTERNAL_MEM_FRAGMENT);</span>
+<span class="lineNum">     246 </span><span class="lineCov">      33031 :         frag-&gt;next = frag-&gt;next_in_order = NULL;</span>
+<span class="lineNum">     247 </span><span class="lineCov">      33031 :         return frag;</span>
+<span class="lineNum">     248 </span><span class="lineCov">     929524 : }</span>
+<a name="249"><span class="lineNum">     249 </span>            : </a>
+<span class="lineNum">     250 </span>            : void
+<span class="lineNum">     251 </span>            : sgen_fragment_allocator_add (SgenFragmentAllocator *allocator, char *start, char *end)
+<span class="lineNum">     252 </span>            : {
+<span class="lineNum">     253 </span>            :         SgenFragment *fragment;
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineCov">     929524 :         fragment = sgen_fragment_allocator_alloc ();</span>
+<span class="lineNum">     256 </span><span class="lineCov">     929524 :         fragment-&gt;fragment_start = start;</span>
+<span class="lineNum">     257 </span><span class="lineCov">     929524 :         fragment-&gt;fragment_next = start;</span>
+<span class="lineNum">     258 </span><span class="lineCov">     929524 :         fragment-&gt;fragment_end = end;</span>
+<span class="lineNum">     259 </span><span class="lineCov">     929524 :         fragment-&gt;next_in_order = fragment-&gt;next = (SgenFragment *)unmask (allocator-&gt;region_head);</span>
+<span class="lineNum">     260 </span>            : 
+<span class="lineNum">     261 </span><span class="lineCov">     929524 :         allocator-&gt;region_head = allocator-&gt;alloc_head = fragment;</span>
+<span class="lineNum">     262 </span><span class="lineCov">    2788572 :         g_assert (fragment-&gt;fragment_end &gt; fragment-&gt;fragment_start);</span>
+<span class="lineNum">     263 </span><span class="lineCov">     929524 : }</span>
+<a name="264"><span class="lineNum">     264 </span>            : </a>
+<span class="lineNum">     265 </span>            : void
+<span class="lineNum">     266 </span>            : sgen_fragment_allocator_release (SgenFragmentAllocator *allocator)
+<span class="lineNum">     267 </span>            : {
+<span class="lineNum">     268 </span><span class="lineCov">     189716 :         SgenFragment *last = allocator-&gt;region_head;</span>
+<span class="lineNum">     269 </span><span class="lineCov">     189716 :         if (!last)</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span>            :         /* Find the last fragment in insert order */
+<span class="lineNum">     273 </span><span class="lineCov">    2588674 :         for (; last-&gt;next_in_order; last = last-&gt;next_in_order) ;</span>
+<span class="lineNum">     274 </span>            : 
+<span class="lineNum">     275 </span><span class="lineCov">     189716 :         last-&gt;next_in_order = fragment_freelist;</span>
+<span class="lineNum">     276 </span><span class="lineCov">     189716 :         fragment_freelist = allocator-&gt;region_head;</span>
+<span class="lineNum">     277 </span><span class="lineCov">     189716 :         allocator-&gt;alloc_head = allocator-&gt;region_head = NULL;</span>
+<span class="lineNum">     278 </span><span class="lineCov">     379432 : }</span>
+<a name="279"><span class="lineNum">     279 </span>            : </a>
+<span class="lineNum">     280 </span>            : static SgenFragment**
+<span class="lineNum">     281 </span>            : find_previous_pointer_fragment (SgenFragmentAllocator *allocator, SgenFragment *frag)
+<span class="lineNum">     282 </span>            : {
+<span class="lineNum">     283 </span>            :         SgenFragment **prev;
+<span class="lineNum">     284 </span><span class="lineCov">     376046 :         SgenFragment *cur, *next;</span>
+<span class="lineNum">     285 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     286 </span>            :         int count = 0;
+<span class="lineNum">     287 </span>            : #endif
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span>            : try_again:
+<span class="lineNum">     290 </span><span class="lineCov">     376362 :         prev = &amp;allocator-&gt;alloc_head;</span>
+<span class="lineNum">     291 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     292 </span>            :         if (count++ &gt; 5)
+<span class="lineNum">     293 </span>            :                 printf (&quot;retry count for fppf is %d\n&quot;, count);
+<span class="lineNum">     294 </span>            : #endif
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span><span class="lineCov">     376362 :         cur = (SgenFragment *)unmask (*prev);</span>
+<span class="lineNum">     297 </span>            : 
+<span class="lineNum">     298 </span><span class="lineCov">   10786364 :         while (1) {</span>
+<span class="lineNum">     299 </span><span class="lineCov">   10767620 :                 if (cur == NULL)</span>
+<span class="lineNum">     300 </span><span class="lineCov">         39 :                         return NULL;</span>
+<span class="lineNum">     301 </span><span class="lineCov">   10799338 :                 next = cur-&gt;next;</span>
+<span class="lineNum">     302 </span>            : 
+<span class="lineNum">     303 </span>            :                 /*
+<span class="lineNum">     304 </span>            :                  * We need to make sure that we dereference prev below
+<span class="lineNum">     305 </span>            :                  * after reading cur-&gt;next above, so we need a read
+<span class="lineNum">     306 </span>            :                  * barrier.
+<span class="lineNum">     307 </span>            :                  */
+<span class="lineNum">     308 </span><span class="lineCov">   10799338 :                 mono_memory_read_barrier ();</span>
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span><span class="lineCov">   10799338 :                 if (*prev != cur)</span>
+<span class="lineNum">     311 </span><span class="lineCov">        284 :                         goto try_again;</span>
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span><span class="lineCov">   10791604 :                 if (!get_mark (next)) {</span>
+<span class="lineNum">     314 </span><span class="lineCov">   10796800 :                         if (cur == frag)</span>
+<span class="lineNum">     315 </span><span class="lineCov">     375985 :                                 return prev;</span>
+<span class="lineNum">     316 </span><span class="lineCov">   10421490 :                         prev = &amp;cur-&gt;next;</span>
+<span class="lineNum">     317 </span><span class="lineCov">   10421490 :                 } else {</span>
+<span class="lineNum">     318 </span><span class="lineCov">         72 :                         next = (SgenFragment *)unmask (next);</span>
+<span class="lineNum">     319 </span><span class="lineCov">         72 :                         if (InterlockedCompareExchangePointer ((volatile gpointer*)prev, next, cur) != cur)</span>
+<span class="lineNum">     320 </span><span class="lineCov">         33 :                                 goto try_again;</span>
+<span class="lineNum">     321 </span>            :                         /*we must make sure that the next from cur-&gt;next happens after*/
+<span class="lineNum">     322 </span><span class="lineCov">         39 :                         mono_memory_write_barrier ();</span>
+<span class="lineNum">     323 </span>            :                 }
+<span class="lineNum">     324 </span>            : 
+<span class="lineNum">     325 </span><span class="lineCov">   10410002 :                 cur = (SgenFragment *)unmask (next);</span>
+<span class="lineNum">     326 </span>            :         }
+<span class="lineNum">     327 </span>            :         return NULL;
+<span class="lineNum">     328 </span><span class="lineCov">     376010 : }</span>
+<a name="329"><span class="lineNum">     329 </span>            : </a>
+<span class="lineNum">     330 </span>            : static gboolean
+<span class="lineNum">     331 </span>            : claim_remaining_size (SgenFragment *frag, char *alloc_end)
+<span class="lineNum">     332 </span>            : {
+<span class="lineNum">     333 </span>            :         /* All space used, nothing to claim. */
+<span class="lineNum">     334 </span><span class="lineCov">     376009 :         if (frag-&gt;fragment_end &lt;= alloc_end)</span>
+<span class="lineNum">     335 </span><span class="lineCov">     308526 :                 return FALSE;</span>
+<span class="lineNum">     336 </span>            : 
+<span class="lineNum">     337 </span>            :         /* Try to alloc all the remaining space. */
+<span class="lineNum">     338 </span><span class="lineCov">      67462 :         return InterlockedCompareExchangePointer ((volatile gpointer*)&amp;frag-&gt;fragment_next, frag-&gt;fragment_end, alloc_end) == alloc_end;</span>
+<span class="lineNum">     339 </span><span class="lineCov">     376008 : }</span>
+<a name="340"><span class="lineNum">     340 </span>            : </a>
+<span class="lineNum">     341 </span>            : static void*
+<span class="lineNum">     342 </span>            : par_alloc_from_fragment (SgenFragmentAllocator *allocator, SgenFragment *frag, size_t size)
+<span class="lineNum">     343 </span>            : {
+<span class="lineNum">     344 </span><span class="lineCov">   15611957 :         char *p = frag-&gt;fragment_next;</span>
+<span class="lineNum">     345 </span><span class="lineCov">   15611957 :         char *end = p + size;</span>
+<span class="lineNum">     346 </span>            : 
+<span class="lineNum">     347 </span><span class="lineCov">   15611957 :         if (end &gt; frag-&gt;fragment_end)</span>
+<span class="lineNum">     348 </span><span class="lineCov">        929 :                 return NULL;</span>
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span>            :         /* p = frag-&gt;fragment_next must happen before */
+<span class="lineNum">     351 </span><span class="lineCov">   15617744 :         mono_memory_barrier ();</span>
+<span class="lineNum">     352 </span>            : 
+<span class="lineNum">     353 </span><span class="lineCov">   15617744 :         if (InterlockedCompareExchangePointer ((volatile gpointer*)&amp;frag-&gt;fragment_next, end, p) != p)</span>
+<span class="lineNum">     354 </span><span class="lineCov">      22397 :                 return NULL;</span>
+<span class="lineNum">     355 </span>            : 
+<span class="lineNum">     356 </span><span class="lineCov">   15595205 :         if (frag-&gt;fragment_end - end &lt; SGEN_MAX_NURSERY_WASTE) {</span>
+<span class="lineNum">     357 </span>            :                 SgenFragment *next, **prev_ptr;
+<span class="lineNum">     358 </span>            :                 
+<span class="lineNum">     359 </span>            :                 /*
+<span class="lineNum">     360 </span>            :                  * Before we clean the remaining nursery, we must claim the remaining space
+<span class="lineNum">     361 </span>            :                  * as it could end up been used by the range allocator since it can end up
+<span class="lineNum">     362 </span>            :                  * allocating from this dying fragment as it doesn't respect SGEN_MAX_NURSERY_WASTE
+<span class="lineNum">     363 </span>            :                  * when doing second chance allocation.
+<span class="lineNum">     364 </span>            :                  */
+<span class="lineNum">     365 </span><span class="lineCov">     752018 :                 if ((sgen_get_nursery_clear_policy () == CLEAR_AT_TLAB_CREATION || sgen_get_nursery_clear_policy () == CLEAR_AT_TLAB_CREATION_DEBUG) &amp;&amp; claim_remaining_size (frag, end)) {</span>
+<span class="lineNum">     366 </span><span class="lineCov">      67462 :                         sgen_clear_range (end, frag-&gt;fragment_end);</span>
+<span class="lineNum">     367 </span>            :                         HEAVY_STAT (stat_wasted_bytes_trailer += frag-&gt;fragment_end - end);
+<span class="lineNum">     368 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     369 </span>            :                         add_alloc_record (end, frag-&gt;fragment_end - end, BLOCK_ZEROING);
+<span class="lineNum">     370 </span>            : #endif
+<span class="lineNum">     371 </span><span class="lineCov">      67462 :                 }</span>
+<span class="lineNum">     372 </span>            : 
+<span class="lineNum">     373 </span><span class="lineCov">     375937 :                 prev_ptr = find_previous_pointer_fragment (allocator, frag);</span>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span>            :                 /*Use Michaels linked list remove*/
+<span class="lineNum">     376 </span>            : 
+<span class="lineNum">     377 </span>            :                 /*prev_ptr will be null if the fragment was removed concurrently */
+<span class="lineNum">     378 </span><span class="lineCov">     752010 :                 while (prev_ptr) {</span>
+<span class="lineNum">     379 </span><span class="lineCov">     376019 :                         next = frag-&gt;next;</span>
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span>            :                         /*already deleted*/
+<span class="lineNum">     382 </span><span class="lineCov">     376019 :                         if (!get_mark (next)) {</span>
+<span class="lineNum">     383 </span>            :                                 /*frag-&gt;next read must happen before the first CAS*/
+<span class="lineNum">     384 </span><span class="lineCov">     376059 :                                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     385 </span>            : 
+<span class="lineNum">     386 </span>            :                                 /*Fail if the next node is removed concurrently and its CAS wins */
+<span class="lineNum">     387 </span><span class="lineCov">     376059 :                                 if (InterlockedCompareExchangePointer ((volatile gpointer*)&amp;frag-&gt;next, mask (next, 1), next) != next) {</span>
+<span class="lineNum">     388 </span><span class="lineCov">         64 :                                         continue;</span>
+<span class="lineNum">     389 </span>            :                                 }
+<span class="lineNum">     390 </span><span class="lineCov">     375996 :                         }</span>
+<span class="lineNum">     391 </span>            : 
+<span class="lineNum">     392 </span>            :                         /* The second CAS must happen after the first CAS or frag-&gt;next. */
+<span class="lineNum">     393 </span><span class="lineCov">     376007 :                         mono_memory_write_barrier ();</span>
+<span class="lineNum">     394 </span>            : 
+<span class="lineNum">     395 </span>            :                         /* Fail if the previous node was deleted and its CAS wins */
+<span class="lineNum">     396 </span><span class="lineCov">     376007 :                         if (InterlockedCompareExchangePointer ((volatile gpointer*)prev_ptr, unmask (next), frag) != frag) {</span>
+<span class="lineNum">     397 </span><span class="lineCov">         39 :                                 prev_ptr = find_previous_pointer_fragment (allocator, frag);</span>
+<span class="lineNum">     398 </span><span class="lineCov">         39 :                                 continue;</span>
+<span class="lineNum">     399 </span>            :                         }
+<span class="lineNum">     400 </span><span class="lineCov">     375968 :                         break;</span>
+<span class="lineNum">     401 </span>            :                 }
+<span class="lineNum">     402 </span><span class="lineCov">     376006 :         }</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineCov">   15595232 :         return p;</span>
+<span class="lineNum">     405 </span><span class="lineCov">   15613523 : }</span>
+<a name="406"><span class="lineNum">     406 </span>            : </a>
+<span class="lineNum">     407 </span>            : static void*
+<span class="lineNum">     408 </span>            : serial_alloc_from_fragment (SgenFragment **previous, SgenFragment *frag, size_t size)
+<span class="lineNum">     409 </span>            : {
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :         char *p = frag-&gt;fragment_next;</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         char *end = p + size;</span>
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span><span class="lineNoCov">          0 :         if (end &gt; frag-&gt;fragment_end)</span>
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     415 </span>            : 
+<span class="lineNum">     416 </span><span class="lineNoCov">          0 :         frag-&gt;fragment_next = end;</span>
+<span class="lineNum">     417 </span>            : 
+<span class="lineNum">     418 </span><span class="lineNoCov">          0 :         if (frag-&gt;fragment_end - end &lt; SGEN_MAX_NURSERY_WASTE) {</span>
+<span class="lineNum">     419 </span><span class="lineNoCov">          0 :                 *previous = frag-&gt;next;</span>
+<span class="lineNum">     420 </span>            :                 
+<span class="lineNum">     421 </span>            :                 /* Clear the remaining space, pinning depends on this. FIXME move this to use phony arrays */
+<span class="lineNum">     422 </span><span class="lineNoCov">          0 :                 memset (end, 0, frag-&gt;fragment_end - end);</span>
+<span class="lineNum">     423 </span>            : 
+<span class="lineNum">     424 </span><span class="lineNoCov">          0 :                 *previous = frag-&gt;next;</span>
+<span class="lineNum">     425 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     426 </span>            : 
+<span class="lineNum">     427 </span><span class="lineNoCov">          0 :         return p;</span>
+<span class="lineNum">     428 </span><span class="lineNoCov">          0 : }</span>
+<a name="429"><span class="lineNum">     429 </span>            : </a>
+<span class="lineNum">     430 </span>            : void*
+<span class="lineNum">     431 </span>            : sgen_fragment_allocator_par_alloc (SgenFragmentAllocator *allocator, size_t size)
+<span class="lineNum">     432 </span>            : {
+<span class="lineNum">     433 </span><span class="lineCov">     390878 :         SgenFragment *frag;</span>
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     436 </span>            :         InterlockedIncrement (&amp;alloc_count);
+<span class="lineNum">     437 </span>            : #endif
+<span class="lineNum">     438 </span>            : 
+<span class="lineNum">     439 </span>            : restart:
+<span class="lineNum">     440 </span><span class="lineCov">    6253362 :         for (frag = (SgenFragment *)unmask (allocator-&gt;alloc_head); unmask (frag); frag = (SgenFragment *)unmask (frag-&gt;next)) {</span>
+<span class="lineNum">     441 </span>            :                 HEAVY_STAT (++stat_alloc_iterations);
+<span class="lineNum">     442 </span>            : 
+<span class="lineNum">     443 </span><span class="lineCov">    3125769 :                 if (size &lt;= (size_t)(frag-&gt;fragment_end - frag-&gt;fragment_next)) {</span>
+<span class="lineNum">     444 </span><span class="lineCov">     390378 :                         void *p = par_alloc_from_fragment (allocator, frag, size);</span>
+<span class="lineNum">     445 </span><span class="lineCov">     390378 :                         if (!p) {</span>
+<span class="lineNum">     446 </span>            :                                 HEAVY_STAT (++stat_alloc_retries);
+<span class="lineNum">     447 </span><span class="lineCov">        435 :                                 goto restart;</span>
+<span class="lineNum">     448 </span>            :                         }
+<span class="lineNum">     449 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     450 </span>            :                         add_alloc_record (p, size, FIXED_ALLOC);
+<span class="lineNum">     451 </span>            : #endif
+<span class="lineNum">     452 </span><span class="lineCov">     389946 :                         return p;</span>
+<span class="lineNum">     453 </span>            :                 }
+<span class="lineNum">     454 </span><span class="lineCov">    2735423 :         }</span>
+<span class="lineNum">     455 </span><span class="lineCov">        977 :         return NULL;</span>
+<span class="lineNum">     456 </span><span class="lineCov">     390923 : }</span>
+<a name="457"><span class="lineNum">     457 </span>            : </a>
+<span class="lineNum">     458 </span>            : void*
+<span class="lineNum">     459 </span>            : sgen_fragment_allocator_serial_alloc (SgenFragmentAllocator *allocator, size_t size)
+<span class="lineNum">     460 </span>            : {
+<span class="lineNum">     461 </span>            :         SgenFragment *frag;
+<span class="lineNum">     462 </span>            :         SgenFragment **previous;
+<span class="lineNum">     463 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     464 </span>            :         InterlockedIncrement (&amp;alloc_count);
+<span class="lineNum">     465 </span>            : #endif
+<span class="lineNum">     466 </span>            : 
+<span class="lineNum">     467 </span><span class="lineNoCov">          0 :         previous = &amp;allocator-&gt;alloc_head;</span>
+<span class="lineNum">     468 </span>            : 
+<span class="lineNum">     469 </span><span class="lineNoCov">          0 :         for (frag = *previous; frag; frag = *previous) {</span>
+<span class="lineNum">     470 </span><span class="lineNoCov">          0 :                 char *p = (char *)serial_alloc_from_fragment (previous, frag, size);</span>
+<span class="lineNum">     471 </span>            : 
+<span class="lineNum">     472 </span>            :                 HEAVY_STAT (++stat_alloc_iterations);
+<span class="lineNum">     473 </span>            : 
+<span class="lineNum">     474 </span><span class="lineNoCov">          0 :                 if (p) {</span>
+<span class="lineNum">     475 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     476 </span>            :                         add_alloc_record (p, size, FIXED_ALLOC);
+<span class="lineNum">     477 </span>            : #endif
+<span class="lineNum">     478 </span><span class="lineNoCov">          0 :                         return p;</span>
+<span class="lineNum">     479 </span>            :                 }
+<span class="lineNum">     480 </span><span class="lineNoCov">          0 :                 previous = &amp;frag-&gt;next;</span>
+<span class="lineNum">     481 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     482 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     483 </span><span class="lineNoCov">          0 : }</span>
+<a name="484"><span class="lineNum">     484 </span>            : </a>
+<span class="lineNum">     485 </span>            : void*
+<span class="lineNum">     486 </span>            : sgen_fragment_allocator_serial_range_alloc (SgenFragmentAllocator *allocator, size_t desired_size, size_t minimum_size, size_t *out_alloc_size)
+<span class="lineNum">     487 </span>            : {
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :         SgenFragment *frag, **previous, *min_frag = NULL, **prev_min_frag = NULL;</span>
+<span class="lineNum">     489 </span><span class="lineNoCov">          0 :         size_t current_minimum = minimum_size;</span>
+<span class="lineNum">     490 </span>            : 
+<span class="lineNum">     491 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     492 </span>            :         InterlockedIncrement (&amp;alloc_count);
+<span class="lineNum">     493 </span>            : #endif
+<span class="lineNum">     494 </span>            : 
+<span class="lineNum">     495 </span><span class="lineNoCov">          0 :         previous = &amp;allocator-&gt;alloc_head;</span>
+<span class="lineNum">     496 </span>            : 
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :         for (frag = *previous; frag; frag = *previous) {</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :                 size_t frag_size = frag-&gt;fragment_end - frag-&gt;fragment_next;</span>
+<span class="lineNum">     499 </span>            : 
+<span class="lineNum">     500 </span>            :                 HEAVY_STAT (++stat_alloc_range_iterations);
+<span class="lineNum">     501 </span>            : 
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 :                 if (desired_size &lt;= frag_size) {</span>
+<span class="lineNum">     503 </span>            :                         void *p;
+<span class="lineNum">     504 </span><span class="lineNoCov">          0 :                         *out_alloc_size = desired_size;</span>
+<span class="lineNum">     505 </span>            : 
+<span class="lineNum">     506 </span><span class="lineNoCov">          0 :                         p = serial_alloc_from_fragment (previous, frag, desired_size);</span>
+<span class="lineNum">     507 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     508 </span>            :                         add_alloc_record (p, desired_size, RANGE_ALLOC);
+<span class="lineNum">     509 </span>            : #endif
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :                         return p;</span>
+<span class="lineNum">     511 </span>            :                 }
+<span class="lineNum">     512 </span><span class="lineNoCov">          0 :                 if (current_minimum &lt;= frag_size) {</span>
+<span class="lineNum">     513 </span><span class="lineNoCov">          0 :                         min_frag = frag;</span>
+<span class="lineNum">     514 </span><span class="lineNoCov">          0 :                         prev_min_frag = previous;</span>
+<span class="lineNum">     515 </span><span class="lineNoCov">          0 :                         current_minimum = frag_size;</span>
+<span class="lineNum">     516 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :                 previous = &amp;frag-&gt;next;</span>
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     519 </span>            : 
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :         if (min_frag) {</span>
+<span class="lineNum">     521 </span>            :                 void *p;
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :                 size_t frag_size = min_frag-&gt;fragment_end - min_frag-&gt;fragment_next;</span>
+<span class="lineNum">     523 </span><span class="lineNoCov">          0 :                 *out_alloc_size = frag_size;</span>
+<span class="lineNum">     524 </span>            : 
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :                 p = serial_alloc_from_fragment (prev_min_frag, min_frag, frag_size);</span>
+<span class="lineNum">     526 </span>            : 
+<span class="lineNum">     527 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     528 </span>            :                 add_alloc_record (p, frag_size, RANGE_ALLOC);
+<span class="lineNum">     529 </span>            : #endif
+<span class="lineNum">     530 </span><span class="lineNoCov">          0 :                 return p;</span>
+<span class="lineNum">     531 </span>            :         }
+<span class="lineNum">     532 </span>            : 
+<span class="lineNum">     533 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 : }</span>
+<a name="535"><span class="lineNum">     535 </span>            : </a>
+<span class="lineNum">     536 </span>            : void*
+<span class="lineNum">     537 </span>            : sgen_fragment_allocator_par_range_alloc (SgenFragmentAllocator *allocator, size_t desired_size, size_t minimum_size, size_t *out_alloc_size)
+<span class="lineNum">     538 </span>            : {
+<span class="lineNum">     539 </span>            :         SgenFragment *frag, *min_frag;
+<span class="lineNum">     540 </span><span class="lineCov">   15226818 :         size_t current_minimum;</span>
+<span class="lineNum">     541 </span>            : 
+<span class="lineNum">     542 </span>            : restart:
+<span class="lineNum">     543 </span><span class="lineCov">   15256467 :         min_frag = NULL;</span>
+<span class="lineNum">     544 </span><span class="lineCov">   15256467 :         current_minimum = minimum_size;</span>
+<span class="lineNum">     545 </span>            : 
+<span class="lineNum">     546 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     547 </span>            :         InterlockedIncrement (&amp;alloc_count);
+<span class="lineNum">     548 </span>            : #endif
+<span class="lineNum">     549 </span>            : 
+<span class="lineNum">     550 </span><span class="lineCov">  675671144 :         for (frag = (SgenFragment *)unmask (allocator-&gt;alloc_head); frag; frag = (SgenFragment *)unmask (frag-&gt;next)) {</span>
+<span class="lineNum">     551 </span><span class="lineCov">  337026077 :                 size_t frag_size = frag-&gt;fragment_end - frag-&gt;fragment_next;</span>
+<span class="lineNum">     552 </span>            : 
+<span class="lineNum">     553 </span>            :                 HEAVY_STAT (++stat_alloc_range_iterations);
+<span class="lineNum">     554 </span>            : 
+<span class="lineNum">     555 </span><span class="lineCov">  337026077 :                 if (desired_size &lt;= frag_size) {</span>
+<span class="lineNum">     556 </span>            :                         void *p;
+<span class="lineNum">     557 </span><span class="lineCov">   14929814 :                         *out_alloc_size = desired_size;</span>
+<span class="lineNum">     558 </span>            : 
+<span class="lineNum">     559 </span><span class="lineCov">   14929814 :                         p = par_alloc_from_fragment (allocator, frag, desired_size);</span>
+<span class="lineNum">     560 </span><span class="lineCov">   14929814 :                         if (!p) {</span>
+<span class="lineNum">     561 </span>            :                                 HEAVY_STAT (++stat_alloc_range_retries);
+<span class="lineNum">     562 </span><span class="lineCov">      20974 :                                 goto restart;</span>
+<span class="lineNum">     563 </span>            :                         }
+<span class="lineNum">     564 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     565 </span>            :                         add_alloc_record (p, desired_size, RANGE_ALLOC);
+<span class="lineNum">     566 </span>            : #endif
+<span class="lineNum">     567 </span><span class="lineCov">   14908840 :                         return p;</span>
+<span class="lineNum">     568 </span>            :                 }
+<span class="lineNum">     569 </span><span class="lineCov">  323230241 :                 if (current_minimum &lt;= frag_size) {</span>
+<span class="lineNum">     570 </span><span class="lineCov">   73946282 :                         min_frag = frag;</span>
+<span class="lineNum">     571 </span><span class="lineCov">   73946282 :                         current_minimum = frag_size;</span>
+<span class="lineNum">     572 </span><span class="lineCov">   73946282 :                 }</span>
+<span class="lineNum">     573 </span><span class="lineCov">  322431184 :         }</span>
+<span class="lineNum">     574 </span>            : 
+<span class="lineNum">     575 </span>            :         /* The second fragment_next read should be ordered in respect to the first code block */
+<span class="lineNum">     576 </span><span class="lineCov">     333181 :         mono_memory_barrier ();</span>
+<span class="lineNum">     577 </span>            : 
+<span class="lineNum">     578 </span><span class="lineCov">     333181 :         if (min_frag) {</span>
+<span class="lineNum">     579 </span>            :                 void *p;
+<span class="lineNum">     580 </span>            :                 size_t frag_size;
+<span class="lineNum">     581 </span>            : 
+<span class="lineNum">     582 </span><span class="lineCov">     304940 :                 frag_size = min_frag-&gt;fragment_end - min_frag-&gt;fragment_next;</span>
+<span class="lineNum">     583 </span><span class="lineCov">     304940 :                 if (frag_size &lt; minimum_size)</span>
+<span class="lineNum">     584 </span><span class="lineCov">       6641 :                         goto restart;</span>
+<span class="lineNum">     585 </span>            : 
+<span class="lineNum">     586 </span><span class="lineCov">     298449 :                 *out_alloc_size = frag_size;</span>
+<span class="lineNum">     587 </span>            : 
+<span class="lineNum">     588 </span><span class="lineCov">     298449 :                 mono_memory_barrier ();</span>
+<span class="lineNum">     589 </span><span class="lineCov">     298449 :                 p = par_alloc_from_fragment (allocator, min_frag, frag_size);</span>
+<span class="lineNum">     590 </span>            : 
+<span class="lineNum">     591 </span>            :                 /*XXX restarting here is quite dubious given this is already second chance allocation. */
+<span class="lineNum">     592 </span><span class="lineCov">     298449 :                 if (!p) {</span>
+<span class="lineNum">     593 </span>            :                         HEAVY_STAT (++stat_alloc_retries);
+<span class="lineNum">     594 </span><span class="lineCov">       1898 :                         goto restart;</span>
+<span class="lineNum">     595 </span>            :                 }
+<span class="lineNum">     596 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     597 </span>            :                 add_alloc_record (p, frag_size, RANGE_ALLOC);
+<span class="lineNum">     598 </span>            : #endif
+<span class="lineNum">     599 </span><span class="lineCov">     296556 :                 return p;</span>
+<span class="lineNum">     600 </span>            :         }
+<span class="lineNum">     601 </span>            : 
+<span class="lineNum">     602 </span><span class="lineCov">      28112 :         return NULL;</span>
+<span class="lineNum">     603 </span><span class="lineCov">   15233380 : }</span>
+<a name="604"><span class="lineNum">     604 </span>            : </a>
+<span class="lineNum">     605 </span>            : void
+<span class="lineNum">     606 </span>            : sgen_clear_allocator_fragments (SgenFragmentAllocator *allocator)
+<span class="lineNum">     607 </span>            : {
+<span class="lineNum">     608 </span>            :         SgenFragment *frag;
+<span class="lineNum">     609 </span>            : 
+<span class="lineNum">     610 </span><span class="lineCov">    2930628 :         for (frag = (SgenFragment *)unmask (allocator-&gt;alloc_head); frag; frag = (SgenFragment *)unmask (frag-&gt;next)) {</span>
+<span class="lineNum">     611 </span><span class="lineCov">    2189598 :                 SGEN_LOG (4, &quot;Clear nursery frag %p-%p&quot;, frag-&gt;fragment_next, frag-&gt;fragment_end);</span>
+<span class="lineNum">     612 </span><span class="lineCov">    1094799 :                 sgen_clear_range (frag-&gt;fragment_next, frag-&gt;fragment_end);</span>
+<span class="lineNum">     613 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     614 </span>            :                 add_alloc_record (frag-&gt;fragment_next, frag-&gt;fragment_end - frag-&gt;fragment_next, CLEAR_NURSERY_FRAGS);
+<span class="lineNum">     615 </span>            : #endif
+<span class="lineNum">     616 </span><span class="lineCov">    1094799 :         }       </span>
+<span class="lineNum">     617 </span><span class="lineCov">     370515 : }</span>
+<span class="lineNum">     618 </span>            : 
+<a name="619"><span class="lineNum">     619 </span>            : /* Clear all remaining nursery fragments */</a>
+<span class="lineNum">     620 </span>            : void
+<span class="lineNum">     621 </span>            : sgen_clear_nursery_fragments (void)
+<span class="lineNum">     622 </span>            : {
+<span class="lineNum">     623 </span><span class="lineCov">     183516 :         if (sgen_get_nursery_clear_policy () == CLEAR_AT_TLAB_CREATION || sgen_get_nursery_clear_policy () == CLEAR_AT_TLAB_CREATION_DEBUG) {</span>
+<span class="lineNum">     624 </span><span class="lineCov">     183516 :                 sgen_clear_allocator_fragments (&amp;mutator_allocator);</span>
+<span class="lineNum">     625 </span><span class="lineCov">     183516 :                 sgen_minor_collector.clear_fragments ();</span>
+<span class="lineNum">     626 </span><span class="lineCov">     183516 :         }</span>
+<span class="lineNum">     627 </span><span class="lineCov">     183516 : }</span>
+<span class="lineNum">     628 </span>            : 
+<span class="lineNum">     629 </span>            : /*
+<span class="lineNum">     630 </span>            :  * Mark a given range of memory as invalid.
+<span class="lineNum">     631 </span>            :  *
+<span class="lineNum">     632 </span>            :  * This can be done either by zeroing memory or by placing
+<span class="lineNum">     633 </span>            :  * a phony byte[] array. This keeps the heap forward walkable.
+<span class="lineNum">     634 </span>            :  *
+<span class="lineNum">     635 </span>            :  * This function ignores calls with a zero range, even if
+<span class="lineNum">     636 </span>            :  * both start and end are NULL.
+<a name="637"><span class="lineNum">     637 </span>            :  */</a>
+<span class="lineNum">     638 </span>            : void
+<span class="lineNum">     639 </span>            : sgen_clear_range (char *start, char *end)
+<span class="lineNum">     640 </span>            : {
+<span class="lineNum">     641 </span><span class="lineCov">    2057745 :         size_t size = end - start;</span>
+<span class="lineNum">     642 </span>            : 
+<span class="lineNum">     643 </span><span class="lineCov">    6173233 :         if ((start &amp;&amp; !end) || (start &gt; end))</span>
+<span class="lineNum">     644 </span><span class="lineNoCov">          0 :                 g_error (&quot;Invalid range [%p %p]&quot;, start, end);</span>
+<span class="lineNum">     645 </span>            : 
+<span class="lineNum">     646 </span><span class="lineCov">    2057744 :         if (sgen_client_array_fill_range (start, size)) {</span>
+<span class="lineNum">     647 </span><span class="lineCov">    1956059 :                 sgen_set_nursery_scan_start (start);</span>
+<span class="lineNum">     648 </span><span class="lineCov">    5868170 :                 SGEN_ASSERT (0, start + sgen_safe_object_get_size ((GCObject*)start) == end, &quot;Array fill produced wrong size&quot;);</span>
+<span class="lineNum">     649 </span><span class="lineCov">    1956056 :         }</span>
+<span class="lineNum">     650 </span><span class="lineCov">    2057741 : }</span>
+<a name="651"><span class="lineNum">     651 </span>            : </a>
+<span class="lineNum">     652 </span>            : void
+<span class="lineNum">     653 </span>            : sgen_nursery_allocator_prepare_for_pinning (void)
+<span class="lineNum">     654 </span>            : {
+<span class="lineNum">     655 </span><span class="lineCov">     186999 :         sgen_clear_allocator_fragments (&amp;mutator_allocator);</span>
+<span class="lineNum">     656 </span><span class="lineCov">     186999 :         sgen_minor_collector.clear_fragments ();</span>
+<span class="lineNum">     657 </span><span class="lineCov">     186999 : }</span>
+<span class="lineNum">     658 </span>            : 
+<span class="lineNum">     659 </span>            : static mword fragment_total = 0;
+<span class="lineNum">     660 </span>            : /*
+<span class="lineNum">     661 </span>            :  * We found a fragment of free memory in the nursery: memzero it and if
+<span class="lineNum">     662 </span>            :  * it is big enough, add it to the list of fragments that can be used for
+<span class="lineNum">     663 </span>            :  * allocation.
+<a name="664"><span class="lineNum">     664 </span>            :  */</a>
+<span class="lineNum">     665 </span>            : static void
+<span class="lineNum">     666 </span>            : add_nursery_frag (SgenFragmentAllocator *allocator, size_t frag_size, char* frag_start, char* frag_end)
+<span class="lineNum">     667 </span>            : {
+<span class="lineNum">     668 </span><span class="lineCov">    3643446 :         SGEN_LOG (4, &quot;Found empty fragment: %p-%p, size: %zd&quot;, frag_start, frag_end, frag_size);</span>
+<span class="lineNum">     669 </span><span class="lineCov">    1821723 :         binary_protocol_empty (frag_start, frag_size);</span>
+<span class="lineNum">     670 </span>            :         /* Not worth dealing with smaller fragments: need to tune */
+<span class="lineNum">     671 </span><span class="lineCov">    1821723 :         if (frag_size &gt;= SGEN_MAX_NURSERY_WASTE) {</span>
+<span class="lineNum">     672 </span>            :                 /* memsetting just the first chunk start is bound to provide better cache locality */
+<span class="lineNum">     673 </span><span class="lineCov">     926239 :                 if (sgen_get_nursery_clear_policy () == CLEAR_AT_GC)</span>
+<span class="lineNum">     674 </span><span class="lineNoCov">          0 :                         memset (frag_start, 0, frag_size);</span>
+<span class="lineNum">     675 </span><span class="lineCov">     926239 :                 else if (sgen_get_nursery_clear_policy () == CLEAR_AT_TLAB_CREATION_DEBUG)</span>
+<span class="lineNum">     676 </span><span class="lineNoCov">          0 :                         memset (frag_start, 0xff, frag_size);</span>
+<span class="lineNum">     677 </span>            : 
+<span class="lineNum">     678 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     679 </span>            :                 /* XXX convert this into a flight record entry
+<span class="lineNum">     680 </span>            :                 printf (&quot;\tfragment [%p %p] size %zd\n&quot;, frag_start, frag_end, frag_size);
+<span class="lineNum">     681 </span>            :                 */
+<span class="lineNum">     682 </span>            : #endif
+<span class="lineNum">     683 </span><span class="lineCov">     926239 :                 sgen_fragment_allocator_add (allocator, frag_start, frag_end);</span>
+<span class="lineNum">     684 </span><span class="lineCov">     926239 :                 fragment_total += frag_size;</span>
+<span class="lineNum">     685 </span><span class="lineCov">     926239 :         } else {</span>
+<span class="lineNum">     686 </span>            :                 /* Clear unused fragments, pinning depends on this */
+<span class="lineNum">     687 </span><span class="lineCov">     895484 :                 sgen_clear_range (frag_start, frag_end);</span>
+<span class="lineNum">     688 </span>            :                 HEAVY_STAT (stat_wasted_bytes_small_areas += frag_size);
+<span class="lineNum">     689 </span>            :         }
+<span class="lineNum">     690 </span><span class="lineCov">    1821723 : }</span>
+<a name="691"><span class="lineNum">     691 </span>            : </a>
+<span class="lineNum">     692 </span>            : static void
+<span class="lineNum">     693 </span>            : fragment_list_reverse (SgenFragmentAllocator *allocator)
+<span class="lineNum">     694 </span>            : {
+<span class="lineNum">     695 </span><span class="lineCov">     189716 :         SgenFragment *prev = NULL, *list = allocator-&gt;region_head;</span>
+<span class="lineNum">     696 </span><span class="lineCov">    2231910 :         while (list) {</span>
+<span class="lineNum">     697 </span><span class="lineCov">     926239 :                 SgenFragment *next = list-&gt;next;</span>
+<span class="lineNum">     698 </span><span class="lineCov">     926239 :                 list-&gt;next = prev;</span>
+<span class="lineNum">     699 </span><span class="lineCov">     926239 :                 list-&gt;next_in_order = prev;</span>
+<span class="lineNum">     700 </span><span class="lineCov">     926239 :                 prev = list;</span>
+<span class="lineNum">     701 </span><span class="lineCov">     926239 :                 list = next;</span>
+<span class="lineNum">     702 </span>            :         }
+<span class="lineNum">     703 </span>            : 
+<span class="lineNum">     704 </span><span class="lineCov">     189716 :         allocator-&gt;region_head = allocator-&gt;alloc_head = prev;</span>
+<span class="lineNum">     705 </span><span class="lineCov">     189716 : }</span>
+<a name="706"><span class="lineNum">     706 </span>            : </a>
+<span class="lineNum">     707 </span>            : mword
+<span class="lineNum">     708 </span>            : sgen_build_nursery_fragments (GCMemSection *nursery_section, SgenGrayQueue *unpin_queue)
+<span class="lineNum">     709 </span>            : {
+<span class="lineNum">     710 </span>            :         char *frag_start, *frag_end;
+<span class="lineNum">     711 </span>            :         size_t frag_size;
+<span class="lineNum">     712 </span>            :         SgenFragment *frags_ranges;
+<span class="lineNum">     713 </span>            :         void **pin_start, **pin_entry, **pin_end;
+<span class="lineNum">     714 </span>            : 
+<span class="lineNum">     715 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     716 </span>            :         reset_alloc_records ();
+<span class="lineNum">     717 </span>            : #endif
+<span class="lineNum">     718 </span>            :         /*The mutator fragments are done. We no longer need them. */
+<span class="lineNum">     719 </span><span class="lineCov">     189716 :         sgen_fragment_allocator_release (&amp;mutator_allocator);</span>
+<span class="lineNum">     720 </span>            : 
+<span class="lineNum">     721 </span><span class="lineCov">     189716 :         frag_start = sgen_nursery_start;</span>
+<span class="lineNum">     722 </span><span class="lineCov">     189716 :         fragment_total = 0;</span>
+<span class="lineNum">     723 </span>            : 
+<span class="lineNum">     724 </span>            :         /* The current nursery might give us a fragment list to exclude [start, next[*/
+<span class="lineNum">     725 </span><span class="lineCov">     189716 :         frags_ranges = sgen_minor_collector.build_fragments_get_exclude_head ();</span>
+<span class="lineNum">     726 </span>            : 
+<span class="lineNum">     727 </span>            :         /* clear scan starts */
+<span class="lineNum">     728 </span><span class="lineCov">     189716 :         memset (nursery_section-&gt;scan_starts, 0, nursery_section-&gt;num_scan_start * sizeof (gpointer));</span>
+<span class="lineNum">     729 </span>            : 
+<span class="lineNum">     730 </span><span class="lineCov">     189716 :         pin_start = pin_entry = sgen_pinning_get_entry (nursery_section-&gt;pin_queue_first_entry);</span>
+<span class="lineNum">     731 </span><span class="lineCov">     189716 :         pin_end = sgen_pinning_get_entry (nursery_section-&gt;pin_queue_last_entry);</span>
+<span class="lineNum">     732 </span>            : 
+<span class="lineNum">     733 </span><span class="lineCov">   10458485 :         while (pin_entry &lt; pin_end || frags_ranges) {</span>
+<span class="lineNum">     734 </span>            :                 char *addr0, *addr1;
+<span class="lineNum">     735 </span>            :                 size_t size;
+<span class="lineNum">     736 </span>            : 
+<span class="lineNum">     737 </span><span class="lineCov">    3233207 :                 addr0 = addr1 = sgen_nursery_end;</span>
+<span class="lineNum">     738 </span><span class="lineCov">    3233207 :                 if (pin_entry &lt; pin_end)</span>
+<span class="lineNum">     739 </span><span class="lineCov">    3233207 :                         addr0 = (char *)*pin_entry;</span>
+<span class="lineNum">     740 </span><span class="lineCov">    3233207 :                 if (frags_ranges)</span>
+<span class="lineNum">     741 </span><span class="lineNoCov">          0 :                         addr1 = frags_ranges-&gt;fragment_start;</span>
+<span class="lineNum">     742 </span>            : 
+<span class="lineNum">     743 </span><span class="lineCov">    3233207 :                 if (addr0 &lt; addr1) {</span>
+<span class="lineNum">     744 </span><span class="lineCov">    3233207 :                         if (unpin_queue)</span>
+<span class="lineNum">     745 </span><span class="lineNoCov">          0 :                                 GRAY_OBJECT_ENQUEUE (unpin_queue, (GCObject*)addr0, sgen_obj_get_descriptor_safe ((GCObject*)addr0));</span>
+<span class="lineNum">     746 </span>            :                         else
+<span class="lineNum">     747 </span><span class="lineCov">    6466414 :                                 SGEN_UNPIN_OBJECT (addr0);</span>
+<span class="lineNum">     748 </span><span class="lineCov">    3233207 :                         size = SGEN_ALIGN_UP (sgen_safe_object_get_size ((GCObject*)addr0));</span>
+<span class="lineNum">     749 </span><span class="lineCov">    3233207 :                         CANARIFY_SIZE (size);</span>
+<span class="lineNum">     750 </span><span class="lineCov">    3233207 :                         sgen_set_nursery_scan_start (addr0);</span>
+<span class="lineNum">     751 </span><span class="lineCov">    3233207 :                         frag_end = addr0;</span>
+<span class="lineNum">     752 </span><span class="lineCov">    3233207 :                         ++pin_entry;</span>
+<span class="lineNum">     753 </span><span class="lineCov">    3233207 :                 } else {</span>
+<span class="lineNum">     754 </span><span class="lineNoCov">          0 :                         frag_end = addr1;</span>
+<span class="lineNum">     755 </span><span class="lineNoCov">          0 :                         size = frags_ranges-&gt;fragment_next - addr1;</span>
+<span class="lineNum">     756 </span><span class="lineNoCov">          0 :                         frags_ranges = frags_ranges-&gt;next_in_order;</span>
+<span class="lineNum">     757 </span>            :                 }
+<span class="lineNum">     758 </span>            : 
+<span class="lineNum">     759 </span><span class="lineCov">    3233207 :                 frag_size = frag_end - frag_start;</span>
+<span class="lineNum">     760 </span>            : 
+<span class="lineNum">     761 </span><span class="lineCov">    3233207 :                 if (size == 0)</span>
+<span class="lineNum">     762 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     763 </span>            : 
+<span class="lineNum">     764 </span><span class="lineCov">    9699621 :                 g_assert (frag_size &gt;= 0);</span>
+<span class="lineNum">     765 </span><span class="lineCov">    9699621 :                 g_assert (size &gt; 0);</span>
+<span class="lineNum">     766 </span><span class="lineCov">    4865215 :                 if (frag_size &amp;&amp; size)</span>
+<span class="lineNum">     767 </span><span class="lineCov">    1632008 :                         add_nursery_frag (&amp;mutator_allocator, frag_size, frag_start, frag_end);     </span>
+<span class="lineNum">     768 </span>            : 
+<span class="lineNum">     769 </span><span class="lineCov">    3233207 :                 frag_size = size;</span>
+<span class="lineNum">     770 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     771 </span>            :                 add_alloc_record (*pin_entry, frag_size, PINNING);
+<span class="lineNum">     772 </span>            : #endif
+<span class="lineNum">     773 </span><span class="lineCov">    3233207 :                 frag_start = frag_end + frag_size;</span>
+<span class="lineNum">     774 </span>            :         }
+<span class="lineNum">     775 </span>            : 
+<span class="lineNum">     776 </span><span class="lineCov">     189716 :         nursery_last_pinned_end = frag_start;</span>
+<span class="lineNum">     777 </span><span class="lineCov">     189716 :         frag_end = sgen_nursery_end;</span>
+<span class="lineNum">     778 </span><span class="lineCov">     189716 :         frag_size = frag_end - frag_start;</span>
+<span class="lineNum">     779 </span><span class="lineCov">     189716 :         if (frag_size)</span>
+<span class="lineNum">     780 </span><span class="lineCov">     189715 :                 add_nursery_frag (&amp;mutator_allocator, frag_size, frag_start, frag_end);</span>
+<span class="lineNum">     781 </span>            : 
+<span class="lineNum">     782 </span>            :         /* Now it's safe to release the fragments exclude list. */
+<span class="lineNum">     783 </span><span class="lineCov">     189716 :         sgen_minor_collector.build_fragments_release_exclude_head ();</span>
+<span class="lineNum">     784 </span>            : 
+<span class="lineNum">     785 </span>            :         /* First we reorder the fragment list to be in ascending address order. This makes H/W prefetchers happier. */
+<span class="lineNum">     786 </span><span class="lineCov">     189716 :         fragment_list_reverse (&amp;mutator_allocator);</span>
+<span class="lineNum">     787 </span>            : 
+<span class="lineNum">     788 </span>            :         /*The collector might want to do something with the final nursery fragment list.*/
+<span class="lineNum">     789 </span><span class="lineCov">     189716 :         sgen_minor_collector.build_fragments_finish (&amp;mutator_allocator);</span>
+<span class="lineNum">     790 </span>            : 
+<span class="lineNum">     791 </span><span class="lineCov">     189716 :         if (!unmask (mutator_allocator.alloc_head)) {</span>
+<span class="lineNum">     792 </span><span class="lineNoCov">          0 :                 SGEN_LOG (1, &quot;Nursery fully pinned&quot;);</span>
+<span class="lineNum">     793 </span><span class="lineNoCov">          0 :                 for (pin_entry = pin_start; pin_entry &lt; pin_end; ++pin_entry) {</span>
+<span class="lineNum">     794 </span><span class="lineNoCov">          0 :                         GCObject *p = (GCObject *)*pin_entry;</span>
+<span class="lineNum">     795 </span><span class="lineNoCov">          0 :                         SGEN_LOG (3, &quot;Bastard pinning obj %p (%s), size: %zd&quot;, p, sgen_client_vtable_get_name (SGEN_LOAD_VTABLE (p)), sgen_safe_object_get_size (p));</span>
+<span class="lineNum">     796 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     797 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     798 </span><span class="lineCov">     189716 :         return fragment_total;</span>
+<span class="lineNum">     799 </span>            : }
+<a name="800"><span class="lineNum">     800 </span>            : </a>
+<span class="lineNum">     801 </span>            : char *
+<span class="lineNum">     802 </span>            : sgen_nursery_alloc_get_upper_alloc_bound (void)
+<span class="lineNum">     803 </span>            : {
+<span class="lineNum">     804 </span>            :         /*FIXME we need to calculate the collector upper bound as well, but this must be done in the previous GC. */
+<span class="lineNum">     805 </span><span class="lineCov">       9946 :         return sgen_nursery_end;</span>
+<span class="lineNum">     806 </span>            : }
+<span class="lineNum">     807 </span>            : 
+<a name="808"><span class="lineNum">     808 </span>            : /*** Nursery memory allocation ***/</a>
+<span class="lineNum">     809 </span>            : void
+<span class="lineNum">     810 </span>            : sgen_nursery_retire_region (void *address, ptrdiff_t size)
+<span class="lineNum">     811 </span>            : {
+<span class="lineNum">     812 </span>            :         HEAVY_STAT (stat_wasted_bytes_discarded_fragments += size);
+<span class="lineNum">     813 </span><span class="lineCov">   15217501 : }</span>
+<a name="814"><span class="lineNum">     814 </span>            : </a>
+<span class="lineNum">     815 </span>            : gboolean
+<span class="lineNum">     816 </span>            : sgen_can_alloc_size (size_t size)
+<span class="lineNum">     817 </span>            : {
+<span class="lineNum">     818 </span>            :         SgenFragment *frag;
+<span class="lineNum">     819 </span>            : 
+<span class="lineNum">     820 </span><span class="lineCov">       9715 :         if (!SGEN_CAN_ALIGN_UP (size))</span>
+<span class="lineNum">     821 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     822 </span>            : 
+<span class="lineNum">     823 </span><span class="lineCov">       9715 :         size = SGEN_ALIGN_UP (size);</span>
+<span class="lineNum">     824 </span>            : 
+<span class="lineNum">     825 </span><span class="lineCov">      54732 :         for (frag = (SgenFragment *)unmask (mutator_allocator.alloc_head); frag; frag = (SgenFragment *)unmask (frag-&gt;next)) {</span>
+<span class="lineNum">     826 </span><span class="lineCov">      27366 :                 if ((size_t)(frag-&gt;fragment_end - frag-&gt;fragment_next) &gt;= size)</span>
+<span class="lineNum">     827 </span><span class="lineCov">       9715 :                         return TRUE;</span>
+<span class="lineNum">     828 </span><span class="lineCov">      17651 :         }</span>
+<span class="lineNum">     829 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     830 </span><span class="lineCov">       9715 : }</span>
+<a name="831"><span class="lineNum">     831 </span>            : </a>
+<span class="lineNum">     832 </span>            : void*
+<span class="lineNum">     833 </span>            : sgen_nursery_alloc (size_t size)
+<span class="lineNum">     834 </span>            : {
+<span class="lineNum">     835 </span><span class="lineCov">    1954405 :         SGEN_ASSERT (1, size &gt;= (SGEN_CLIENT_MINIMUM_OBJECT_SIZE + CANARY_SIZE) &amp;&amp; size &lt;= (SGEN_MAX_SMALL_OBJ_SIZE + CANARY_SIZE), &quot;Invalid nursery object size&quot;);</span>
+<span class="lineNum">     836 </span>            : 
+<span class="lineNum">     837 </span><span class="lineCov">     781782 :         SGEN_LOG (4, &quot;Searching nursery for size: %zd&quot;, size);</span>
+<span class="lineNum">     838 </span><span class="lineCov">     390888 :         size = SGEN_ALIGN_UP (size);</span>
+<span class="lineNum">     839 </span>            : 
+<span class="lineNum">     840 </span>            :         HEAVY_STAT (++stat_nursery_alloc_requests);
+<span class="lineNum">     841 </span>            : 
+<span class="lineNum">     842 </span><span class="lineCov">     390888 :         return sgen_fragment_allocator_par_alloc (&amp;mutator_allocator, size);</span>
+<span class="lineNum">     843 </span>            : }
+<a name="844"><span class="lineNum">     844 </span>            : </a>
+<span class="lineNum">     845 </span>            : void*
+<span class="lineNum">     846 </span>            : sgen_nursery_alloc_range (size_t desired_size, size_t minimum_size, size_t *out_alloc_size)
+<span class="lineNum">     847 </span>            : {
+<span class="lineNum">     848 </span><span class="lineCov">   30452719 :         SGEN_LOG (4, &quot;Searching for byte range desired size: %zd minimum size %zd&quot;, desired_size, minimum_size);</span>
+<span class="lineNum">     849 </span>            : 
+<span class="lineNum">     850 </span>            :         HEAVY_STAT (++stat_nursery_alloc_range_requests);
+<span class="lineNum">     851 </span>            : 
+<span class="lineNum">     852 </span><span class="lineCov">   15226299 :         return sgen_fragment_allocator_par_range_alloc (&amp;mutator_allocator, desired_size, minimum_size, out_alloc_size);</span>
+<span class="lineNum">     853 </span>            : }
+<span class="lineNum">     854 </span>            : 
+<span class="lineNum">     855 </span>            : /*** Initialization ***/
+<span class="lineNum">     856 </span>            : 
+<span class="lineNum">     857 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     858 </span>            : 
+<span class="lineNum">     859 </span>            : void
+<span class="lineNum">     860 </span>            : sgen_nursery_allocator_init_heavy_stats (void)
+<span class="lineNum">     861 </span>            : {
+<span class="lineNum">     862 </span>            :         mono_counters_register (&quot;bytes wasted trailer fragments&quot;, MONO_COUNTER_GC | MONO_COUNTER_WORD | MONO_COUNTER_BYTES, &amp;stat_wasted_bytes_trailer);
+<span class="lineNum">     863 </span>            :         mono_counters_register (&quot;bytes wasted small areas&quot;, MONO_COUNTER_GC | MONO_COUNTER_WORD | MONO_COUNTER_BYTES, &amp;stat_wasted_bytes_small_areas);
+<span class="lineNum">     864 </span>            :         mono_counters_register (&quot;bytes wasted discarded fragments&quot;, MONO_COUNTER_GC | MONO_COUNTER_WORD | MONO_COUNTER_BYTES, &amp;stat_wasted_bytes_discarded_fragments);
+<span class="lineNum">     865 </span>            : 
+<span class="lineNum">     866 </span>            :         mono_counters_register (&quot;# nursery alloc requests&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_nursery_alloc_requests);
+<span class="lineNum">     867 </span>            :         mono_counters_register (&quot;# nursery alloc iterations&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_alloc_iterations);
+<span class="lineNum">     868 </span>            :         mono_counters_register (&quot;# nursery alloc retries&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_alloc_retries);
+<span class="lineNum">     869 </span>            : 
+<span class="lineNum">     870 </span>            :         mono_counters_register (&quot;# nursery alloc range requests&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_nursery_alloc_range_requests);
+<span class="lineNum">     871 </span>            :         mono_counters_register (&quot;# nursery alloc range iterations&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_alloc_range_iterations);
+<span class="lineNum">     872 </span>            :         mono_counters_register (&quot;# nursery alloc range restries&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_alloc_range_retries);
+<span class="lineNum">     873 </span>            : }
+<span class="lineNum">     874 </span>            : 
+<span class="lineNum">     875 </span>            : #endif
+<a name="876"><span class="lineNum">     876 </span>            : </a>
+<span class="lineNum">     877 </span>            : void
+<span class="lineNum">     878 </span>            : sgen_init_nursery_allocator (void)
+<span class="lineNum">     879 </span>            : {
+<span class="lineNum">     880 </span><span class="lineCov">       3285 :         sgen_register_fixed_internal_mem_type (INTERNAL_MEM_FRAGMENT, sizeof (SgenFragment));</span>
+<span class="lineNum">     881 </span>            : #ifdef NALLOC_DEBUG
+<span class="lineNum">     882 </span>            :         alloc_records = sgen_alloc_os_memory (sizeof (AllocRecord) * ALLOC_RECORD_COUNT, SGEN_ALLOC_INTERNAL | SGEN_ALLOC_ACTIVATE, &quot;debugging memory&quot;);
+<span class="lineNum">     883 </span>            : #endif
+<span class="lineNum">     884 </span><span class="lineCov">       3285 : }</span>
+<a name="885"><span class="lineNum">     885 </span>            : </a>
+<span class="lineNum">     886 </span>            : void
+<span class="lineNum">     887 </span>            : sgen_nursery_alloc_prepare_for_minor (void)
+<span class="lineNum">     888 </span>            : {
+<span class="lineNum">     889 </span><span class="lineCov">       9946 :         sgen_minor_collector.prepare_to_space (sgen_space_bitmap, sgen_space_bitmap_size);</span>
+<span class="lineNum">     890 </span><span class="lineCov">       9946 : }</span>
+<a name="891"><span class="lineNum">     891 </span>            : </a>
+<span class="lineNum">     892 </span>            : void
+<span class="lineNum">     893 </span>            : sgen_nursery_alloc_prepare_for_major (void)
+<span class="lineNum">     894 </span>            : {
+<span class="lineNum">     895 </span><span class="lineCov">     179770 :         sgen_minor_collector.prepare_to_space (sgen_space_bitmap, sgen_space_bitmap_size);</span>
+<span class="lineNum">     896 </span><span class="lineCov">     179770 : }</span>
+<a name="897"><span class="lineNum">     897 </span>            : </a>
+<span class="lineNum">     898 </span>            : void
+<span class="lineNum">     899 </span>            : sgen_nursery_allocator_set_nursery_bounds (char *start, char *end)
+<span class="lineNum">     900 </span>            : {
+<span class="lineNum">     901 </span><span class="lineCov">       3285 :         sgen_nursery_start = start;</span>
+<span class="lineNum">     902 </span><span class="lineCov">       3285 :         sgen_nursery_end = end;</span>
+<span class="lineNum">     903 </span>            : 
+<span class="lineNum">     904 </span>            :         /*
+<span class="lineNum">     905 </span>            :          * This will not divide evenly for tiny nurseries (&lt;4kb), so we make sure to be on
+<span class="lineNum">     906 </span>            :          * the right side of things and round up.  We could just do a MIN(1,x) instead,
+<span class="lineNum">     907 </span>            :          * since the nursery size must be a power of 2.
+<span class="lineNum">     908 </span>            :          */
+<span class="lineNum">     909 </span><span class="lineCov">       3285 :         sgen_space_bitmap_size = (end - start + SGEN_TO_SPACE_GRANULE_IN_BYTES * 8 - 1) / (SGEN_TO_SPACE_GRANULE_IN_BYTES * 8);</span>
+<span class="lineNum">     910 </span><span class="lineCov">       3285 :         sgen_space_bitmap = (char *)g_malloc0 (sgen_space_bitmap_size);</span>
+<span class="lineNum">     911 </span>            : 
+<span class="lineNum">     912 </span>            :         /* Setup the single first large fragment */
+<span class="lineNum">     913 </span><span class="lineCov">       3285 :         sgen_minor_collector.init_nursery (&amp;mutator_allocator, start, end);</span>
+<span class="lineNum">     914 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     915 </span>            : 
+<span class="lineNum">     916 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,281 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/lock-free-array-queue.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - lock-free-array-queue.c<span style="font-size: 80%;"> (source / <a href="lock-free-array-queue.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">50</td>
+            <td class="headerCovTableEntry">81</td>
+            <td class="headerCovTableEntryLo">61.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">5</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntryLo">62.5 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * lock-free-array-queue.c: A lock-free somewhat-queue that doesn't
+<span class="lineNum">       3 </span>            :  * require hazard pointers.
+<span class="lineNum">       4 </span>            :  *
+<span class="lineNum">       5 </span>            :  * (C) Copyright 2011 Xamarin Inc.
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : /*
+<span class="lineNum">      10 </span>            :  * The queue is a linked list of arrays (chunks).  Chunks are never
+<span class="lineNum">      11 </span>            :  * removed from the list, only added to the end, in a lock-free manner.
+<span class="lineNum">      12 </span>            :  *
+<span class="lineNum">      13 </span>            :  * Adding or removing an entry in the queue is only possible at the
+<span class="lineNum">      14 </span>            :  * end.  To do so, the thread first has to increment or decrement
+<span class="lineNum">      15 </span>            :  * q-&gt;num_used_entries.  The entry thus added or removed now &quot;belongs&quot;
+<span class="lineNum">      16 </span>            :  * to that thread.  It first CASes the state to BUSY, writes/reads the
+<span class="lineNum">      17 </span>            :  * entry data, and then sets the state to USED or FREE.
+<span class="lineNum">      18 </span>            :  */
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/utils/mono-membar.h&gt;
+<span class="lineNum">      24 </span>            : #ifdef SGEN_WITHOUT_MONO
+<span class="lineNum">      25 </span>            : #include &lt;mono/sgen/sgen-gc.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/sgen/sgen-client.h&gt;
+<span class="lineNum">      27 </span>            : #else
+<span class="lineNum">      28 </span>            : #include &lt;mono/utils/mono-mmap.h&gt;
+<span class="lineNum">      29 </span>            : #endif
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : #include &lt;mono/utils/lock-free-array-queue.h&gt;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : struct _MonoLockFreeArrayChunk {
+<span class="lineNum">      34 </span>            :         MonoLockFreeArrayChunk *next;
+<span class="lineNum">      35 </span>            :         gint32 num_entries;
+<span class="lineNum">      36 </span>            :         char entries [MONO_ZERO_LEN_ARRAY];
+<span class="lineNum">      37 </span>            : };
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : typedef MonoLockFreeArrayChunk Chunk;
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span>            : #define CHUNK_NTH(arr,chunk,index)      ((chunk)-&gt;entries + (index) * (arr)-&gt;entry_size)
+<a name="42"><span class="lineNum">      42 </span>            : </a>
+<span class="lineNum">      43 </span>            : static Chunk*
+<span class="lineNum">      44 </span>            : alloc_chunk (MonoLockFreeArray *arr)
+<span class="lineNum">      45 </span>            : {
+<span class="lineNum">      46 </span><span class="lineCov">         37 :         int size = mono_pagesize ();</span>
+<span class="lineNum">      47 </span><span class="lineCov">         37 :         int num_entries = (size - (sizeof (Chunk) - arr-&gt;entry_size * MONO_ZERO_LEN_ARRAY)) / arr-&gt;entry_size;</span>
+<span class="lineNum">      48 </span><span class="lineCov">         37 :         Chunk *chunk = (Chunk *) mono_valloc (NULL, size, MONO_MMAP_READ | MONO_MMAP_WRITE, arr-&gt;account_type);</span>
+<span class="lineNum">      49 </span><span class="lineCov">        111 :         g_assert (chunk);</span>
+<span class="lineNum">      50 </span><span class="lineCov">         37 :         chunk-&gt;num_entries = num_entries;</span>
+<span class="lineNum">      51 </span><span class="lineCov">         37 :         return chunk;</span>
+<span class="lineNum">      52 </span>            : }
+<a name="53"><span class="lineNum">      53 </span>            : </a>
+<span class="lineNum">      54 </span>            : static void
+<span class="lineNum">      55 </span>            : free_chunk (Chunk *chunk, MonoMemAccountType type)
+<span class="lineNum">      56 </span>            : {
+<span class="lineNum">      57 </span><span class="lineCov">          4 :         mono_vfree (chunk, mono_pagesize (), type);</span>
+<span class="lineNum">      58 </span><span class="lineCov">          4 : }</span>
+<a name="59"><span class="lineNum">      59 </span>            : </a>
+<span class="lineNum">      60 </span>            : gpointer
+<span class="lineNum">      61 </span>            : mono_lock_free_array_nth (MonoLockFreeArray *arr, int index)
+<span class="lineNum">      62 </span>            : {
+<span class="lineNum">      63 </span>            :         Chunk *chunk;
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span><span class="lineCov">   34969690 :         g_assert (index &gt;= 0);</span>
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span><span class="lineCov">   11647069 :         if (!arr-&gt;chunk_list) {</span>
+<span class="lineNum">      68 </span><span class="lineCov">         37 :                 chunk = alloc_chunk (arr);</span>
+<span class="lineNum">      69 </span><span class="lineCov">         37 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">      70 </span><span class="lineCov">         37 :                 if (InterlockedCompareExchangePointer ((volatile gpointer *)&amp;arr-&gt;chunk_list, chunk, NULL) != NULL)</span>
+<span class="lineNum">      71 </span><span class="lineCov">          4 :                         free_chunk (chunk, arr-&gt;account_type);</span>
+<span class="lineNum">      72 </span><span class="lineCov">         37 :         }</span>
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span><span class="lineCov">   11648560 :         chunk = arr-&gt;chunk_list;</span>
+<span class="lineNum">      75 </span><span class="lineCov">   34932437 :         g_assert (chunk);</span>
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span><span class="lineCov">   23288265 :         while (index &gt;= chunk-&gt;num_entries) {</span>
+<span class="lineNum">      78 </span><span class="lineNoCov">          0 :                 Chunk *next = chunk-&gt;next;</span>
+<span class="lineNum">      79 </span><span class="lineNoCov">          0 :                 if (!next) {</span>
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :                         next = alloc_chunk (arr);</span>
+<span class="lineNum">      81 </span><span class="lineNoCov">          0 :                         mono_memory_write_barrier ();</span>
+<span class="lineNum">      82 </span><span class="lineNoCov">          0 :                         if (InterlockedCompareExchangePointer ((volatile gpointer *) &amp;chunk-&gt;next, next, NULL) != NULL) {</span>
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 :                                 free_chunk (next, arr-&gt;account_type);</span>
+<span class="lineNum">      84 </span><span class="lineNoCov">          0 :                                 next = chunk-&gt;next;</span>
+<span class="lineNum">      85 </span><span class="lineNoCov">          0 :                                 g_assert (next);</span>
+<span class="lineNum">      86 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 :                 index -= chunk-&gt;num_entries;</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :                 chunk = next;</span>
+<span class="lineNum">      90 </span>            :         }
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span><span class="lineCov">   11645138 :         return CHUNK_NTH (arr, chunk, index);</span>
+<span class="lineNum">      93 </span>            : }
+<a name="94"><span class="lineNum">      94 </span>            : </a>
+<span class="lineNum">      95 </span>            : gpointer
+<span class="lineNum">      96 </span>            : mono_lock_free_array_iterate (MonoLockFreeArray *arr, MonoLockFreeArrayIterateFunc func, gpointer user_data)
+<span class="lineNum">      97 </span>            : {
+<span class="lineNum">      98 </span>            :         Chunk *chunk;
+<span class="lineNum">      99 </span><span class="lineNoCov">          0 :         for (chunk = arr-&gt;chunk_list; chunk; chunk = chunk-&gt;next) {</span>
+<span class="lineNum">     100 </span>            :                 int i;
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; chunk-&gt;num_entries; ++i) {</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :                         gpointer result = func (i, CHUNK_NTH (arr, chunk, i), user_data);</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :                         if (result)</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :                                 return result;</span>
+<span class="lineNum">     105 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     107 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 : }</span>
+<a name="109"><span class="lineNum">     109 </span>            : </a>
+<span class="lineNum">     110 </span>            : void
+<span class="lineNum">     111 </span>            : mono_lock_free_array_cleanup (MonoLockFreeArray *arr)
+<span class="lineNum">     112 </span>            : {
+<span class="lineNum">     113 </span>            :         Chunk *chunk;
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :         chunk = arr-&gt;chunk_list;</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :         arr-&gt;chunk_list = NULL;</span>
+<span class="lineNum">     117 </span><span class="lineNoCov">          0 :         while (chunk) {</span>
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :                 Chunk *next = chunk-&gt;next;</span>
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :                 free_chunk (chunk, arr-&gt;account_type);</span>
+<span class="lineNum">     120 </span><span class="lineNoCov">          0 :                 chunk = next;</span>
+<span class="lineNum">     121 </span>            :         }
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span>            : enum {
+<span class="lineNum">     125 </span>            :         STATE_FREE,
+<span class="lineNum">     126 </span>            :         STATE_USED,
+<span class="lineNum">     127 </span>            :         STATE_BUSY
+<span class="lineNum">     128 </span>            : };
+<span class="lineNum">     129 </span>            : 
+<span class="lineNum">     130 </span>            : typedef struct {
+<span class="lineNum">     131 </span>            :         gint32 state;
+<span class="lineNum">     132 </span>            :         gpointer data [MONO_ZERO_LEN_ARRAY];
+<span class="lineNum">     133 </span>            : } Entry;
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span>            : typedef MonoLockFreeArrayQueue Queue;
+<span class="lineNum">     136 </span>            : 
+<span class="lineNum">     137 </span>            : /* The queue's entry size, calculated from the array's. */
+<span class="lineNum">     138 </span>            : #define ENTRY_SIZE(q)   ((q)-&gt;array.entry_size - sizeof (gpointer))
+<a name="139"><span class="lineNum">     139 </span>            : </a>
+<span class="lineNum">     140 </span>            : void
+<span class="lineNum">     141 </span>            : mono_lock_free_array_queue_push (MonoLockFreeArrayQueue *q, gpointer entry_data_ptr)
+<span class="lineNum">     142 </span>            : {
+<span class="lineNum">     143 </span>            :         int index, num_used;
+<span class="lineNum">     144 </span>            :         Entry *entry;
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span><span class="lineCov">    5612079 :         do {</span>
+<span class="lineNum">     147 </span><span class="lineCov">    5682438 :                 index = InterlockedIncrement (&amp;q-&gt;num_used_entries) - 1;</span>
+<span class="lineNum">     148 </span><span class="lineCov">    5682438 :                 entry = (Entry *) mono_lock_free_array_nth (&amp;q-&gt;array, index);</span>
+<span class="lineNum">     149 </span><span class="lineCov">   11361840 :         } while (InterlockedCompareExchange (&amp;entry-&gt;state, STATE_BUSY, STATE_FREE) != STATE_FREE);</span>
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span><span class="lineCov">    5609617 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span><span class="lineCov">    5609617 :         memcpy (entry-&gt;data, entry_data_ptr, ENTRY_SIZE (q));</span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span><span class="lineCov">    5609617 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span><span class="lineCov">    5609617 :         entry-&gt;state = STATE_USED;</span>
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span><span class="lineCov">    5609617 :         mono_memory_barrier ();</span>
+<span class="lineNum">     160 </span>            : 
+<span class="lineNum">     161 </span><span class="lineCov">    5609617 :         do {</span>
+<span class="lineNum">     162 </span><span class="lineCov">    5629184 :                 num_used = q-&gt;num_used_entries;</span>
+<span class="lineNum">     163 </span><span class="lineCov">    5629184 :                 if (num_used &gt; index)</span>
+<span class="lineNum">     164 </span><span class="lineCov">    5401531 :                         break;</span>
+<span class="lineNum">     165 </span><span class="lineCov">     455290 :         } while (InterlockedCompareExchange (&amp;q-&gt;num_used_entries, index + 1, num_used) != num_used);</span>
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span><span class="lineCov">    5604832 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     168 </span><span class="lineCov">    5604832 : }</span>
+<a name="169"><span class="lineNum">     169 </span>            : </a>
+<span class="lineNum">     170 </span>            : gboolean
+<span class="lineNum">     171 </span>            : mono_lock_free_array_queue_pop (MonoLockFreeArrayQueue *q, gpointer entry_data_ptr)
+<span class="lineNum">     172 </span>            : {
+<span class="lineNum">     173 </span>            :         int index;
+<span class="lineNum">     174 </span>            :         Entry *entry;
+<span class="lineNum">     175 </span>            : 
+<span class="lineNum">     176 </span><span class="lineCov">   10722882 :         do {</span>
+<span class="lineNum">     177 </span><span class="lineCov">   11086427 :                 do {</span>
+<span class="lineNum">     178 </span><span class="lineCov">   11263872 :                         index = q-&gt;num_used_entries;</span>
+<span class="lineNum">     179 </span><span class="lineCov">   11263872 :                         if (index == 0)</span>
+<span class="lineNum">     180 </span><span class="lineCov">    5182935 :                                 return FALSE;</span>
+<span class="lineNum">     181 </span><span class="lineCov">   12218928 :                 } while (InterlockedCompareExchange (&amp;q-&gt;num_used_entries, index - 1, index) != index);</span>
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span><span class="lineCov">    5975780 :                 entry = (Entry *) mono_lock_free_array_nth (&amp;q-&gt;array, index - 1);</span>
+<span class="lineNum">     184 </span><span class="lineCov">   11949332 :         } while (InterlockedCompareExchange (&amp;entry-&gt;state, STATE_BUSY, STATE_USED) != STATE_USED);</span>
+<span class="lineNum">     185 </span>            : 
+<span class="lineNum">     186 </span>            :         /* Reading the item must happen before CASing the state. */
+<span class="lineNum">     187 </span><span class="lineCov">    5612029 :         mono_memory_barrier ();</span>
+<span class="lineNum">     188 </span>            : 
+<span class="lineNum">     189 </span><span class="lineCov">    5612029 :         memcpy (entry_data_ptr, entry-&gt;data, ENTRY_SIZE (q));</span>
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span><span class="lineCov">    5612029 :         mono_memory_barrier ();</span>
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span><span class="lineCov">    5612029 :         entry-&gt;state = STATE_FREE;</span>
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span><span class="lineCov">    5612029 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span><span class="lineCov">    5612029 :         return TRUE;</span>
+<span class="lineNum">     198 </span><span class="lineCov">   10769141 : }</span>
+<a name="199"><span class="lineNum">     199 </span>            : </a>
+<span class="lineNum">     200 </span>            : void
+<span class="lineNum">     201 </span>            : mono_lock_free_array_queue_cleanup (MonoLockFreeArrayQueue *q)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :         mono_lock_free_array_cleanup (&amp;q-&gt;array);</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :         q-&gt;num_used_entries = 0;</span>
+<span class="lineNum">     205 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

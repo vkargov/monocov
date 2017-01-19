@@ -1,0 +1,1464 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/abcremoval.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - abcremoval.c<span style="font-size: 80%;"> (source / <a href="abcremoval.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">669</td>
+            <td class="headerCovTableEntry">708</td>
+            <td class="headerCovTableEntryHi">94.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">22</td>
+            <td class="headerCovTableEntry">22</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * abcremoval.c: Array bounds check removal
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Massimiliano Mantione (massi@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2004 Ximian, Inc.  http://www.ximian.com
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      10 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;mono/metadata/mempool.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;mono/metadata/opcodes.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;mono/metadata/mempool-internals.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : #include &quot;abcremoval.h&quot;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #if SIZEOF_VOID_P == 8
+<span class="lineNum">      25 </span>            : #define OP_PCONST OP_I8CONST
+<span class="lineNum">      26 </span>            : #else
+<span class="lineNum">      27 </span>            : #define OP_PCONST OP_ICONST
+<span class="lineNum">      28 </span>            : #endif
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : #define TRACE_ABC_REMOVAL (verbose_level &gt; 2)
+<span class="lineNum">      32 </span>            : #define REPORT_ABC_REMOVAL (verbose_level &gt; 1)
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : /*
+<span class="lineNum">      35 </span>            :  * A little hack for the verbosity level.
+<span class="lineNum">      36 </span>            :  * The verbosity level is stored in the cfg, but not all functions that must
+<span class="lineNum">      37 </span>            :  * print something see the cfg, so we store the verbosity level here at the
+<span class="lineNum">      38 </span>            :  * beginning of the algorithm.
+<span class="lineNum">      39 </span>            :  * This is not thread safe (does not handle correctly different verbosity
+<span class="lineNum">      40 </span>            :  * levels in different threads), and is not exact in case of dynamic changes
+<span class="lineNum">      41 </span>            :  * of the verbosity level...
+<span class="lineNum">      42 </span>            :  * Anyway, this is not needed, all that can happen is that something more
+<span class="lineNum">      43 </span>            :  * (or less) is logged, the result is in any case correct.
+<span class="lineNum">      44 </span>            :  */
+<span class="lineNum">      45 </span>            : static int verbose_level;
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : 
+<span class="lineNum">      48 </span>            : #define RELATION_BETWEEN_VALUES(value,related_value) (\
+<span class="lineNum">      49 </span>            :         ((value) &gt; (related_value))? MONO_GT_RELATION :\
+<span class="lineNum">      50 </span>            :         (((value) &lt; (related_value))? MONO_LT_RELATION : MONO_EQ_RELATION))
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span>            : #define MAKE_VALUE_ANY(v) do{\
+<span class="lineNum">      53 </span>            :                 (v).type = MONO_ANY_SUMMARIZED_VALUE;\
+<span class="lineNum">      54 </span>            :         } while (0)
+<span class="lineNum">      55 </span>            : 
+<span class="lineNum">      56 </span>            : #define MAKE_VALUE_RELATION_ANY(r) do{\
+<span class="lineNum">      57 </span>            :                 (r)-&gt;relation = MONO_ANY_RELATION;\
+<span class="lineNum">      58 </span>            :                 MAKE_VALUE_ANY((r)-&gt;related_value);\
+<span class="lineNum">      59 </span>            :         } while (0)
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span>            : #define INITIALIZE_VALUE_RELATION(r) do{\
+<span class="lineNum">      62 </span>            :                 MAKE_VALUE_RELATION_ANY((r));\
+<span class="lineNum">      63 </span>            :                 (r)-&gt;next = NULL;\
+<span class="lineNum">      64 </span>            :         } while (0)
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span>            : #define MONO_NEGATED_RELATION(r) ((MonoValueRelation)((~(r))&amp;MONO_ANY_RELATION))
+<span class="lineNum">      67 </span>            : #define MONO_SYMMETRIC_RELATION(r) ((MonoValueRelation)(((r)&amp;MONO_EQ_RELATION)|(((r)&amp;MONO_LT_RELATION)&lt;&lt;1)|((r&amp;MONO_GT_RELATION)&gt;&gt;1)))
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span>            : 
+<a name="70"><span class="lineNum">      70 </span>            : </a>
+<span class="lineNum">      71 </span>            : static void
+<span class="lineNum">      72 </span>            : print_relation (int relation) {
+<span class="lineNum">      73 </span><span class="lineCov">   12856806 :         int print_or = 0;</span>
+<span class="lineNum">      74 </span><span class="lineCov">   12856806 :         printf (&quot;(&quot;);</span>
+<span class="lineNum">      75 </span><span class="lineCov">   12856806 :         if (relation &amp; MONO_LT_RELATION) {</span>
+<span class="lineNum">      76 </span><span class="lineCov">     234433 :                 printf (&quot;LT&quot;);</span>
+<span class="lineNum">      77 </span><span class="lineCov">     234433 :                 print_or = 1;</span>
+<span class="lineNum">      78 </span><span class="lineCov">     234433 :         }</span>
+<span class="lineNum">      79 </span><span class="lineCov">   12856805 :         if (relation &amp; MONO_EQ_RELATION) {</span>
+<span class="lineNum">      80 </span><span class="lineCov">   12063870 :                 if (print_or) {</span>
+<span class="lineNum">      81 </span><span class="lineCov">      22216 :                         printf (&quot;|&quot;);</span>
+<span class="lineNum">      82 </span><span class="lineCov">      22216 :                 }</span>
+<span class="lineNum">      83 </span><span class="lineCov">   12063870 :                 printf (&quot;EQ&quot;);</span>
+<span class="lineNum">      84 </span><span class="lineCov">   12063870 :                 print_or = 1;</span>
+<span class="lineNum">      85 </span><span class="lineCov">   12063870 :         }</span>
+<span class="lineNum">      86 </span><span class="lineCov">   12856806 :         if (relation &amp; MONO_GT_RELATION) {</span>
+<span class="lineNum">      87 </span><span class="lineCov">     801066 :                 if (print_or) {</span>
+<span class="lineNum">      88 </span><span class="lineCov">     220347 :                         printf (&quot;|&quot;);</span>
+<span class="lineNum">      89 </span><span class="lineCov">     220347 :                 }</span>
+<span class="lineNum">      90 </span><span class="lineCov">     801066 :                 printf (&quot;GT&quot;);</span>
+<span class="lineNum">      91 </span><span class="lineCov">     801066 :                 print_or = 1;</span>
+<span class="lineNum">      92 </span><span class="lineCov">     801066 :         }</span>
+<span class="lineNum">      93 </span><span class="lineCov">   12856806 :         printf (&quot;)&quot;);</span>
+<span class="lineNum">      94 </span><span class="lineCov">   12856806 : }</span>
+<a name="95"><span class="lineNum">      95 </span>            : </a>
+<span class="lineNum">      96 </span>            : static void
+<span class="lineNum">      97 </span>            : print_summarized_value (MonoSummarizedValue *value) {
+<span class="lineNum">      98 </span><span class="lineCov">   17189741 :         switch (value-&gt;type) {</span>
+<span class="lineNum">      99 </span>            :         case MONO_ANY_SUMMARIZED_VALUE:
+<span class="lineNum">     100 </span><span class="lineCov">    2025792 :                 printf (&quot;ANY&quot;);</span>
+<span class="lineNum">     101 </span><span class="lineCov">    2025792 :                 break;</span>
+<span class="lineNum">     102 </span>            :         case MONO_CONSTANT_SUMMARIZED_VALUE:
+<span class="lineNum">     103 </span><span class="lineCov">    1240634 :                 printf (&quot;CONSTANT %d&quot;, value-&gt;value.constant.value);</span>
+<span class="lineNum">     104 </span><span class="lineCov">    1240634 :                 break;</span>
+<span class="lineNum">     105 </span>            :         case MONO_VARIABLE_SUMMARIZED_VALUE:
+<span class="lineNum">     106 </span><span class="lineCov">   13662170 :                 printf (&quot;VARIABLE %d, delta %d&quot;, value-&gt;value.variable.variable, value-&gt;value.variable.delta);</span>
+<span class="lineNum">     107 </span><span class="lineCov">   13662170 :                 break;</span>
+<span class="lineNum">     108 </span>            :         case MONO_PHI_SUMMARIZED_VALUE: {
+<span class="lineNum">     109 </span>            :                 int phi;
+<span class="lineNum">     110 </span><span class="lineCov">     261145 :                 printf (&quot;PHI (&quot;);</span>
+<span class="lineNum">     111 </span><span class="lineCov">    2474826 :                 for (phi = 0; phi &lt; value-&gt;value.phi.number_of_alternatives; phi++) {</span>
+<span class="lineNum">     112 </span><span class="lineCov">    1691391 :                         if (phi) printf (&quot;,&quot;);</span>
+<span class="lineNum">     113 </span><span class="lineCov">     976268 :                         printf (&quot;%d&quot;, value-&gt;value.phi.phi_alternatives [phi]);</span>
+<span class="lineNum">     114 </span><span class="lineCov">     976268 :                 }</span>
+<span class="lineNum">     115 </span><span class="lineCov">     261145 :                 printf (&quot;)&quot;);</span>
+<span class="lineNum">     116 </span><span class="lineCov">     261145 :                 break;</span>
+<span class="lineNum">     117 </span>            :         }
+<span class="lineNum">     118 </span>            :         default:
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">     120 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     121 </span><span class="lineCov">   17189742 : }</span>
+<a name="122"><span class="lineNum">     122 </span>            : </a>
+<span class="lineNum">     123 </span>            : static void
+<span class="lineNum">     124 </span>            : print_summarized_value_relation (MonoSummarizedValueRelation *relation) {
+<span class="lineNum">     125 </span><span class="lineCov">   12856805 :         printf (&quot;Relation &quot;);</span>
+<span class="lineNum">     126 </span><span class="lineCov">   12856805 :         print_relation (relation-&gt;relation);</span>
+<span class="lineNum">     127 </span><span class="lineCov">   12856805 :         printf (&quot; with value &quot;);</span>
+<span class="lineNum">     128 </span><span class="lineCov">   12856805 :         print_summarized_value (&amp;(relation-&gt;related_value));</span>
+<span class="lineNum">     129 </span><span class="lineCov">   12856805 : }</span>
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span>            : #if 0
+<span class="lineNum">     132 </span>            : static void
+<span class="lineNum">     133 </span>            : print_summarized_value_relation_chain (MonoSummarizedValueRelation *relation) {
+<span class="lineNum">     134 </span>            :         printf (&quot;Relations:\n&quot;);
+<span class="lineNum">     135 </span>            :         while (relation) {
+<span class="lineNum">     136 </span>            :                 print_summarized_value_relation (relation);
+<span class="lineNum">     137 </span>            :                 printf (&quot;\n&quot;);
+<span class="lineNum">     138 </span>            :                 relation = relation-&gt;next;
+<span class="lineNum">     139 </span>            :         }
+<span class="lineNum">     140 </span>            : }
+<span class="lineNum">     141 </span>            : #endif
+<a name="142"><span class="lineNum">     142 </span>            : </a>
+<span class="lineNum">     143 </span>            : static void
+<span class="lineNum">     144 </span>            : print_evaluation_context_status (MonoRelationsEvaluationStatus status) {
+<span class="lineNum">     145 </span><span class="lineCov">     219867 :         if (status == MONO_RELATIONS_EVALUATION_NOT_STARTED) {</span>
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :                 printf (&quot;EVALUATION_NOT_STARTED&quot;);</span>
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     148 </span><span class="lineCov">     219867 :                 gboolean print_or = FALSE;</span>
+<span class="lineNum">     149 </span>            :                 
+<span class="lineNum">     150 </span><span class="lineCov">     219867 :                 printf (&quot;(&quot;);</span>
+<span class="lineNum">     151 </span><span class="lineCov">     219867 :                 if (status &amp; MONO_RELATIONS_EVALUATION_IN_PROGRESS) {</span>
+<span class="lineNum">     152 </span><span class="lineCov">     157458 :                         if (print_or) printf (&quot;|&quot;);</span>
+<span class="lineNum">     153 </span><span class="lineCov">     157458 :                         printf (&quot;EVALUATION_IN_PROGRESS&quot;);</span>
+<span class="lineNum">     154 </span><span class="lineCov">     157458 :                         print_or = TRUE;</span>
+<span class="lineNum">     155 </span><span class="lineCov">     157458 :                 }</span>
+<span class="lineNum">     156 </span><span class="lineCov">     219867 :                 if (status &amp; MONO_RELATIONS_EVALUATION_COMPLETED) {</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :                         if (print_or) printf (&quot;|&quot;);</span>
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :                         printf (&quot;EVALUATION_COMPLETED&quot;);</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :                         print_or = TRUE;</span>
+<span class="lineNum">     160 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     161 </span><span class="lineCov">     219867 :                 if (status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_ASCENDING) {</span>
+<span class="lineNum">     162 </span><span class="lineCov">     141504 :                         if (print_or) printf (&quot;|&quot;);</span>
+<span class="lineNum">     163 </span><span class="lineCov">      85819 :                         printf (&quot;RECURSIVELY_ASCENDING&quot;);</span>
+<span class="lineNum">     164 </span><span class="lineCov">      85819 :                         print_or = TRUE;</span>
+<span class="lineNum">     165 </span><span class="lineCov">      85819 :                 }</span>
+<span class="lineNum">     166 </span><span class="lineCov">     219867 :                 if (status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_DESCENDING) {</span>
+<span class="lineNum">     167 </span><span class="lineCov">      29574 :                         if (print_or) printf (&quot;|&quot;);</span>
+<span class="lineNum">     168 </span><span class="lineCov">      18402 :                         printf (&quot;RECURSIVELY_DESCENDING&quot;);</span>
+<span class="lineNum">     169 </span><span class="lineCov">      18402 :                         print_or = TRUE;</span>
+<span class="lineNum">     170 </span><span class="lineCov">      18402 :                 }</span>
+<span class="lineNum">     171 </span><span class="lineCov">     219867 :                 if (status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_INDEFINITE) {</span>
+<span class="lineNum">     172 </span><span class="lineCov">      75603 :                         if (print_or) printf (&quot;|&quot;);</span>
+<span class="lineNum">     173 </span><span class="lineCov">      50324 :                         printf (&quot;RECURSIVELY_INDEFINITE&quot;);</span>
+<span class="lineNum">     174 </span><span class="lineCov">      50324 :                         print_or = TRUE;</span>
+<span class="lineNum">     175 </span><span class="lineCov">      50324 :                 }</span>
+<span class="lineNum">     176 </span><span class="lineCov">     219867 :                 printf (&quot;)&quot;);</span>
+<span class="lineNum">     177 </span>            :         }
+<span class="lineNum">     178 </span><span class="lineCov">     219867 : }</span>
+<span class="lineNum">     179 </span>            : 
+<a name="180"><span class="lineNum">     180 </span>            : </a>
+<span class="lineNum">     181 </span>            : static void
+<span class="lineNum">     182 </span>            : print_evaluation_context_ranges (MonoRelationsEvaluationRanges *ranges) {
+<span class="lineNum">     183 </span><span class="lineCov">    4092225 :         printf (&quot;(ranges: zero [%d,%d], variable [%d,%d])&quot;, ranges-&gt;zero.lower, ranges-&gt;zero.upper, ranges-&gt;variable.lower, ranges-&gt;variable.upper);</span>
+<span class="lineNum">     184 </span><span class="lineCov">    4092225 : }</span>
+<a name="185"><span class="lineNum">     185 </span>            : </a>
+<span class="lineNum">     186 </span>            : static void
+<span class="lineNum">     187 </span>            : print_evaluation_context (MonoRelationsEvaluationContext *context, MonoRelationsEvaluationStatus status) {
+<span class="lineNum">     188 </span><span class="lineCov">      65322 :         print_evaluation_context_status (status);</span>
+<span class="lineNum">     189 </span><span class="lineCov">      65322 :         if (status &amp; (MONO_RELATIONS_EVALUATION_IN_PROGRESS|MONO_RELATIONS_EVALUATION_COMPLETED)) {</span>
+<span class="lineNum">     190 </span><span class="lineCov">      65322 :                 print_evaluation_context_ranges (&amp;(context-&gt;ranges));</span>
+<span class="lineNum">     191 </span><span class="lineCov">      65322 :         }</span>
+<span class="lineNum">     192 </span><span class="lineCov">      65322 :         printf (&quot;\n&quot;);</span>
+<span class="lineNum">     193 </span><span class="lineCov">      65322 : }</span>
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span>            : #if 0
+<span class="lineNum">     196 </span>            : static void
+<span class="lineNum">     197 </span>            : print_evaluation_area (MonoVariableRelationsEvaluationArea *area) {
+<span class="lineNum">     198 </span>            :         int i;
+<span class="lineNum">     199 </span>            :         printf (&quot;Dump of evaluation area (%d variables):\n&quot;, area-&gt;cfg-&gt;num_varinfo);
+<span class="lineNum">     200 </span>            :         for (i = 0; i &lt; area-&gt;cfg-&gt;num_varinfo; i++) {
+<span class="lineNum">     201 </span>            :                 printf (&quot;Variable %d: &quot;, i);
+<span class="lineNum">     202 </span>            :                 print_evaluation_context (&amp;(area-&gt;contexts [i]));
+<span class="lineNum">     203 </span>            :                 print_summarized_value_relation_chain (&amp;(area-&gt;relations [i]));
+<span class="lineNum">     204 </span>            :         }
+<span class="lineNum">     205 </span>            : }
+<span class="lineNum">     206 </span>            : 
+<span class="lineNum">     207 </span>            : static void
+<span class="lineNum">     208 </span>            : print_evaluation_area_contexts (MonoVariableRelationsEvaluationArea *area) {
+<span class="lineNum">     209 </span>            :         int i;
+<span class="lineNum">     210 </span>            :         printf (&quot;Dump of evaluation area contexts (%d variables):\n&quot;, area-&gt;cfg-&gt;num_varinfo);
+<span class="lineNum">     211 </span>            :         for (i = 0; i &lt; area-&gt;cfg-&gt;num_varinfo; i++) {
+<span class="lineNum">     212 </span>            :                 printf (&quot;Variable %d: &quot;, i);
+<span class="lineNum">     213 </span>            :                 print_evaluation_context (&amp;(area-&gt;contexts [i]));
+<span class="lineNum">     214 </span>            :         }
+<span class="lineNum">     215 </span>            : }
+<span class="lineNum">     216 </span>            : #endif
+<span class="lineNum">     217 </span>            : 
+<span class="lineNum">     218 </span>            : /*
+<span class="lineNum">     219 </span>            :  * Check if the delta of an integer variable value is safe with respect
+<span class="lineNum">     220 </span>            :  * to the variable size in bytes and its kind (signed or unsigned).
+<span class="lineNum">     221 </span>            :  * If the delta is not safe, make the value an &quot;any&quot;.
+<span class="lineNum">     222 </span>            :  */
+<span class="lineNum">     223 </span>            : static G_GNUC_UNUSED void
+<span class="lineNum">     224 </span>            : check_delta_safety (MonoVariableRelationsEvaluationArea *area, MonoSummarizedValue *value) {
+<span class="lineNum">     225 </span>            :         if (value-&gt;type == MONO_VARIABLE_SUMMARIZED_VALUE) {
+<span class="lineNum">     226 </span>            :                 int variable = value-&gt;value.variable.variable;
+<span class="lineNum">     227 </span>            :                 int delta = value-&gt;value.variable.delta;
+<span class="lineNum">     228 </span>            :                 if ((area-&gt;variable_value_kind [variable]) &amp; MONO_UNSIGNED_VALUE_FLAG) {
+<span class="lineNum">     229 </span>            :                         if (delta &lt; 0) {
+<span class="lineNum">     230 </span>            :                                 MAKE_VALUE_ANY (*value);
+<span class="lineNum">     231 </span>            :                         }
+<span class="lineNum">     232 </span>            :                 } else {
+<span class="lineNum">     233 </span>            :                         if (((area-&gt;variable_value_kind [variable]) &amp; MONO_INTEGER_VALUE_SIZE_BITMASK) &lt; 4) {
+<span class="lineNum">     234 </span>            :                                 MAKE_VALUE_ANY (*value);
+<span class="lineNum">     235 </span>            :                         } else if (delta &gt; 16) {
+<span class="lineNum">     236 </span>            :                                 MAKE_VALUE_ANY (*value);
+<span class="lineNum">     237 </span>            :                         }
+<span class="lineNum">     238 </span>            :                 }
+<span class="lineNum">     239 </span>            :         }
+<span class="lineNum">     240 </span>            : }
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span>            : /*
+<span class="lineNum">     243 </span>            :  * get_relation_from_ins:
+<span class="lineNum">     244 </span>            :  *
+<span class="lineNum">     245 </span>            :  *   Obtain relations from a MonoInst.
+<span class="lineNum">     246 </span>            :  *
+<span class="lineNum">     247 </span>            :  * result_value_kind: the &quot;expected&quot; kind of result;
+<span class="lineNum">     248 </span>            :  * result: the &quot;summarized&quot; value
+<span class="lineNum">     249 </span>            :  * returns the &quot;actual&quot; kind of result, if guessable (otherwise MONO_UNKNOWN_INTEGER_VALUE)
+<a name="250"><span class="lineNum">     250 </span>            :  */</a>
+<span class="lineNum">     251 </span>            : static MonoIntegerValueKind
+<span class="lineNum">     252 </span>            : get_relation_from_ins (MonoVariableRelationsEvaluationArea *area, MonoInst *ins, MonoSummarizedValueRelation *result, MonoIntegerValueKind result_value_kind)
+<span class="lineNum">     253 </span>            : {
+<span class="lineNum">     254 </span>            :         MonoIntegerValueKind value_kind;
+<span class="lineNum">     255 </span><span class="lineCov">  270166786 :         MonoSummarizedValue *value = &amp;result-&gt;related_value;</span>
+<span class="lineNum">     256 </span>            :         
+<span class="lineNum">     257 </span><span class="lineCov">  270166786 :         if (ins-&gt;type == STACK_I8) {</span>
+<span class="lineNum">     258 </span><span class="lineCov">     706917 :                 value_kind = MONO_INTEGER_VALUE_SIZE_8;</span>
+<span class="lineNum">     259 </span><span class="lineCov">  270484692 :         } else if (ins-&gt;type == STACK_I4) {</span>
+<span class="lineNum">     260 </span><span class="lineCov">   60047562 :                 value_kind = MONO_INTEGER_VALUE_SIZE_4;</span>
+<span class="lineNum">     261 </span><span class="lineCov">   60047562 :         } else {</span>
+<span class="lineNum">     262 </span><span class="lineCov">  209769645 :                 value_kind = MONO_UNKNOWN_INTEGER_VALUE;</span>
+<span class="lineNum">     263 </span>            :         }
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineCov">  270291929 :         result-&gt;relation = MONO_EQ_RELATION;</span>
+<span class="lineNum">     266 </span><span class="lineCov">  540487366 :         MAKE_VALUE_ANY (*value);</span>
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span><span class="lineCov">  270572153 :         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     269 </span>            :         case OP_ICONST:
+<span class="lineNum">     270 </span><span class="lineCov">   20706883 :                 value-&gt;type = MONO_CONSTANT_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     271 </span><span class="lineCov">   20706883 :                 value-&gt;value.constant.value = ins-&gt;inst_c0;</span>
+<span class="lineNum">     272 </span><span class="lineCov">   20706883 :                 break;</span>
+<span class="lineNum">     273 </span>            :         case OP_MOVE:
+<span class="lineNum">     274 </span><span class="lineCov">   94479152 :                 value-&gt;type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     275 </span><span class="lineCov">   94479152 :                 value-&gt;value.variable.variable = ins-&gt;sreg1;</span>
+<span class="lineNum">     276 </span><span class="lineCov">   94479152 :                 value-&gt;value.variable.delta = 0;</span>
+<span class="lineNum">     277 </span><span class="lineCov">   94479152 :                 break;</span>
+<span class="lineNum">     278 </span>            :         case OP_SEXT_I4:
+<span class="lineNum">     279 </span><span class="lineCov">    5366247 :                 value-&gt;type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     280 </span><span class="lineCov">    5366247 :                 value-&gt;value.variable.variable = ins-&gt;sreg1;</span>
+<span class="lineNum">     281 </span><span class="lineCov">    5366247 :                 value-&gt;value.variable.delta = 0;</span>
+<span class="lineNum">     282 </span><span class="lineCov">    5366247 :                 value_kind = MONO_INTEGER_VALUE_SIZE_8;</span>
+<span class="lineNum">     283 </span><span class="lineCov">    5366247 :                 break;</span>
+<span class="lineNum">     284 </span>            :         case OP_PHI:
+<span class="lineNum">     285 </span><span class="lineCov">    6418339 :                 value-&gt;type = MONO_PHI_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     286 </span><span class="lineCov">    6418339 :                 value-&gt;value.phi.number_of_alternatives = *(ins-&gt;inst_phi_args);</span>
+<span class="lineNum">     287 </span><span class="lineCov">    6418339 :                 value-&gt;value.phi.phi_alternatives = ins-&gt;inst_phi_args + 1;</span>
+<span class="lineNum">     288 </span><span class="lineCov">    6418339 :                 break;</span>
+<span class="lineNum">     289 </span>            :         case OP_IADD_IMM:
+<span class="lineNum">     290 </span><span class="lineCov">    2836533 :                 value-&gt;type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     291 </span><span class="lineCov">    2836533 :                 value-&gt;value.variable.variable = ins-&gt;sreg1;</span>
+<span class="lineNum">     292 </span><span class="lineCov">    2836533 :                 value-&gt;value.variable.delta = ins-&gt;inst_imm;</span>
+<span class="lineNum">     293 </span>            :                 /* FIXME: */
+<span class="lineNum">     294 </span>            :                 //check_delta_safety (area, result);
+<span class="lineNum">     295 </span><span class="lineCov">    2836533 :                 break;</span>
+<span class="lineNum">     296 </span>            :         case OP_ISUB_IMM:
+<span class="lineNum">     297 </span><span class="lineCov">     977945 :                 value-&gt;type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     298 </span><span class="lineCov">     977945 :                 value-&gt;value.variable.variable = ins-&gt;sreg1;</span>
+<span class="lineNum">     299 </span><span class="lineCov">     977945 :                 value-&gt;value.variable.delta = -ins-&gt;inst_imm;</span>
+<span class="lineNum">     300 </span>            :                 /* FIXME: */
+<span class="lineNum">     301 </span>            :                 //check_delta_safety (area, result);
+<span class="lineNum">     302 </span><span class="lineCov">     977945 :                 break;</span>
+<span class="lineNum">     303 </span>            :         case OP_IREM_UN:
+<span class="lineNum">     304 </span>            :                 /* The result of an unsigned remainder is 0 &lt; x &lt; the divisor */
+<span class="lineNum">     305 </span><span class="lineCov">       6252 :                 result-&gt;relation = MONO_LT_RELATION;</span>
+<span class="lineNum">     306 </span><span class="lineCov">       6252 :                 value-&gt;type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     307 </span><span class="lineCov">       6252 :                 value-&gt;value.variable.variable = ins-&gt;sreg2;</span>
+<span class="lineNum">     308 </span><span class="lineCov">       6252 :                 value-&gt;value.variable.delta = 0;</span>
+<span class="lineNum">     309 </span><span class="lineCov">       6252 :                 value_kind = MONO_UNSIGNED_INTEGER_VALUE_SIZE_4;</span>
+<span class="lineNum">     310 </span><span class="lineCov">       6252 :                 break;</span>
+<span class="lineNum">     311 </span>            :         case OP_LDLEN:
+<span class="lineNum">     312 </span>            :                 /*
+<span class="lineNum">     313 </span>            :                  * We represent arrays by their length, so r1&lt;-ldlen r2 is stored
+<span class="lineNum">     314 </span>            :                  * as r1 == r2 in the evaluation graph.
+<span class="lineNum">     315 </span>            :                  */
+<span class="lineNum">     316 </span><span class="lineCov">    1904480 :                 value-&gt;type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     317 </span><span class="lineCov">    1904480 :                 value-&gt;value.variable.variable = ins-&gt;sreg1;</span>
+<span class="lineNum">     318 </span><span class="lineCov">    1904480 :                 value-&gt;value.variable.delta = 0;</span>
+<span class="lineNum">     319 </span><span class="lineCov">    1904480 :                 value_kind = MONO_UNSIGNED_INTEGER_VALUE_SIZE_4;</span>
+<span class="lineNum">     320 </span><span class="lineCov">    1904480 :                 break;</span>
+<span class="lineNum">     321 </span>            :         case OP_NEWARR:
+<span class="lineNum">     322 </span><span class="lineCov">    1636158 :                 value-&gt;type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     323 </span><span class="lineCov">    1636158 :                 value-&gt;value.variable.variable = ins-&gt;sreg1;</span>
+<span class="lineNum">     324 </span><span class="lineCov">    1636158 :                 value-&gt;value.variable.delta = 0;</span>
+<span class="lineNum">     325 </span><span class="lineCov">    1636158 :                 area-&gt;defs [ins-&gt;dreg] = ins;</span>
+<span class="lineNum">     326 </span><span class="lineCov">    1636158 :                 break;</span>
+<span class="lineNum">     327 </span>            :         case OP_LDADDR:
+<span class="lineNum">     328 </span>            :                 /* The result is non-null */
+<span class="lineNum">     329 </span><span class="lineCov">    8323703 :                 result-&gt;relation = MONO_GT_RELATION;</span>
+<span class="lineNum">     330 </span><span class="lineCov">    8323703 :                 value-&gt;type = MONO_CONSTANT_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     331 </span><span class="lineCov">    8323703 :                 value-&gt;value.constant.value = 0;</span>
+<span class="lineNum">     332 </span><span class="lineCov">    8323703 :                 break;</span>
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span>            :                 /* FIXME: Add more opcodes */
+<span class="lineNum">     335 </span>            :         default:
+<span class="lineNum">     336 </span>            :                 /* These opcodes are not currently handled while running SciMark, first
+<span class="lineNum">     337 </span>            :                  * column is the number of times the warning was shown:
+<span class="lineNum">     338 </span>            :                  *
+<span class="lineNum">     339 </span>            :                  *       1 add_imm
+<span class="lineNum">     340 </span>            :                  *       1 float_conv_to_i8
+<span class="lineNum">     341 </span>            :                  *       1 int_mul_ovf_un
+<span class="lineNum">     342 </span>            :                  *       1 int_neg
+<span class="lineNum">     343 </span>            :                  *       1 int_or
+<span class="lineNum">     344 </span>            :                  *       1 int_shr_un
+<span class="lineNum">     345 </span>            :                  *       1 localloc
+<span class="lineNum">     346 </span>            :                  *       1 long_ceq
+<span class="lineNum">     347 </span>            :                  *       1 long_rem
+<span class="lineNum">     348 </span>            :                  *       1 long_sub
+<span class="lineNum">     349 </span>            :                  *       2 int_ceq
+<span class="lineNum">     350 </span>            :                  *       2 int_conv_to_i2
+<span class="lineNum">     351 </span>            :                  *       2 int_min
+<span class="lineNum">     352 </span>            :                  *       2 lcall
+<span class="lineNum">     353 </span>            :                  *       2 long_div
+<span class="lineNum">     354 </span>            :                  *       3 int_conv_to_u2
+<span class="lineNum">     355 </span>            :                  *       3 long_shr_imm
+<span class="lineNum">     356 </span>            :                  *       4 int_rem
+<span class="lineNum">     357 </span>            :                  *       4 int_rem_imm
+<span class="lineNum">     358 </span>            :                  *       4 loadi1_membase
+<span class="lineNum">     359 </span>            :                  *       4 loadu4_membase
+<span class="lineNum">     360 </span>            :                  *       5 int_div
+<span class="lineNum">     361 </span>            :                  *       5 shl_imm
+<span class="lineNum">     362 </span>            :                  *       6 int_div_imm
+<span class="lineNum">     363 </span>            :                  *       6 int_mul
+<span class="lineNum">     364 </span>            :                  *       9 int_mul_imm
+<span class="lineNum">     365 </span>            :                  *       9 zext_i4
+<span class="lineNum">     366 </span>            :                  *      10 int_shr_imm
+<span class="lineNum">     367 </span>            :                  *      12 int_shr_un_imm
+<span class="lineNum">     368 </span>            :                  *      12 long_add_imm
+<span class="lineNum">     369 </span>            :                  *      12 outarg_vtretaddr
+<span class="lineNum">     370 </span>            :                  *      12 strlen
+<span class="lineNum">     371 </span>            :                  *      13 int_or_imm
+<span class="lineNum">     372 </span>            :                  *      23 call_membase
+<span class="lineNum">     373 </span>            :                  *      23 int_conv_to_u1
+<span class="lineNum">     374 </span>            :                  *      23 long_add
+<span class="lineNum">     375 </span>            :                  *      24 int_and_imm
+<span class="lineNum">     376 </span>            :                  *      24 int_shl_imm
+<span class="lineNum">     377 </span>            :                  *      24 loadu2_membase
+<span class="lineNum">     378 </span>            :                  *      29 loadi8_membase
+<span class="lineNum">     379 </span>            :                  *      31 llvm_outarg_vt
+<span class="lineNum">     380 </span>            :                  *      34 int_sub
+<span class="lineNum">     381 </span>            :                  *      34 loadu1_membase
+<span class="lineNum">     382 </span>            :                  *      42 int_add
+<span class="lineNum">     383 </span>            :                  *      85 ldaddr
+<span class="lineNum">     384 </span>            :                  *     116 loadi4_membase
+<span class="lineNum">     385 </span>            :                  *     159 x86_lea
+<span class="lineNum">     386 </span>            :                  *     179 sext_i4
+<span class="lineNum">     387 </span>            :                  *     291 load_membase
+<span class="lineNum">     388 </span>            :                  *     462 i8const
+<span class="lineNum">     389 </span>            :                  *     472 call
+<span class="lineNum">     390 </span>            :                  */
+<span class="lineNum">     391 </span>            :                 
+<span class="lineNum">     392 </span><span class="lineCov">  127964946 :                 break;</span>
+<span class="lineNum">     393 </span>            :         }
+<span class="lineNum">     394 </span><span class="lineCov">  270026645 :         return value_kind;</span>
+<span class="lineNum">     395 </span>            : }
+<a name="396"><span class="lineNum">     396 </span>            : </a>
+<span class="lineNum">     397 </span>            : static MonoValueRelation
+<span class="lineNum">     398 </span>            : get_relation_from_branch_instruction (MonoInst *ins)
+<span class="lineNum">     399 </span>            : {
+<span class="lineNum">     400 </span><span class="lineCov">  135739050 :         if (MONO_IS_COND_BRANCH_OP (ins)) {</span>
+<span class="lineNum">     401 </span><span class="lineCov">   28972979 :                 CompRelation rel = mono_opcode_to_cond (ins-&gt;opcode);</span>
+<span class="lineNum">     402 </span>            : 
+<span class="lineNum">     403 </span><span class="lineCov">   28972979 :                 switch (rel) {</span>
+<span class="lineNum">     404 </span>            :                 case CMP_EQ:
+<span class="lineNum">     405 </span><span class="lineCov">   13966697 :                         return MONO_EQ_RELATION;</span>
+<span class="lineNum">     406 </span>            :                 case CMP_NE:
+<span class="lineNum">     407 </span><span class="lineCov">    9636797 :                         return MONO_NE_RELATION;</span>
+<span class="lineNum">     408 </span>            :                 case CMP_LE:
+<span class="lineNum">     409 </span>            :                 case CMP_LE_UN:
+<span class="lineNum">     410 </span><span class="lineCov">     795768 :                         return MONO_LE_RELATION;</span>
+<span class="lineNum">     411 </span>            :                 case CMP_GE:
+<span class="lineNum">     412 </span>            :                 case CMP_GE_UN:
+<span class="lineNum">     413 </span><span class="lineCov">    1309810 :                         return MONO_GE_RELATION;</span>
+<span class="lineNum">     414 </span>            :                 case CMP_LT:
+<span class="lineNum">     415 </span>            :                 case CMP_LT_UN:
+<span class="lineNum">     416 </span><span class="lineCov">    2414340 :                         return MONO_LT_RELATION;</span>
+<span class="lineNum">     417 </span>            :                 case CMP_GT:
+<span class="lineNum">     418 </span>            :                 case CMP_GT_UN:
+<span class="lineNum">     419 </span><span class="lineCov">     851905 :                         return MONO_GT_RELATION;</span>
+<span class="lineNum">     420 </span>            :                 default:
+<span class="lineNum">     421 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">     422 </span><span class="lineNoCov">          0 :                         return MONO_ANY_RELATION;</span>
+<span class="lineNum">     423 </span>            :                 }
+<span class="lineNum">     424 </span>            :         } else {
+<span class="lineNum">     425 </span><span class="lineCov">    3615855 :                 return MONO_ANY_RELATION;</span>
+<span class="lineNum">     426 </span>            :         }
+<span class="lineNum">     427 </span><span class="lineCov">   32582205 : }</span>
+<span class="lineNum">     428 </span>            : 
+<span class="lineNum">     429 </span>            : /*
+<span class="lineNum">     430 </span>            :  * Given a BB, find its entry condition and put its relations in a
+<span class="lineNum">     431 </span>            :  * &quot;MonoAdditionalVariableRelationsForBB&quot; structure.
+<span class="lineNum">     432 </span>            :  * bb: the BB
+<span class="lineNum">     433 </span>            :  * relations: the resulting relations (entry condition of the given BB)
+<a name="434"><span class="lineNum">     434 </span>            :  */</a>
+<span class="lineNum">     435 </span>            : static void
+<span class="lineNum">     436 </span>            : get_relations_from_previous_bb (MonoVariableRelationsEvaluationArea *area, MonoBasicBlock *bb, MonoAdditionalVariableRelationsForBB *relations)
+<span class="lineNum">     437 </span>            : {
+<span class="lineNum">     438 </span>            :         MonoBasicBlock *in_bb;
+<span class="lineNum">     439 </span>            :         MonoInst *ins, *compare, *branch;
+<span class="lineNum">     440 </span>            :         MonoValueRelation branch_relation;
+<span class="lineNum">     441 </span>            :         MonoValueRelation symmetric_relation;
+<span class="lineNum">     442 </span>            :         gboolean code_path;
+<span class="lineNum">     443 </span>            :         
+<span class="lineNum">     444 </span><span class="lineCov">  346948571 :         INITIALIZE_VALUE_RELATION (&amp;(relations-&gt;relation1.relation));</span>
+<span class="lineNum">     445 </span><span class="lineCov">   57831603 :         relations-&gt;relation1.relation.relation_is_static_definition = FALSE;</span>
+<span class="lineNum">     446 </span><span class="lineCov">   57831603 :         relations-&gt;relation1.relation.next = NULL;</span>
+<span class="lineNum">     447 </span><span class="lineCov">   57831603 :         relations-&gt;relation1.insertion_point = NULL;</span>
+<span class="lineNum">     448 </span><span class="lineCov">   57831603 :         relations-&gt;relation1.variable = -1;</span>
+<span class="lineNum">     449 </span><span class="lineCov">  347051574 :         INITIALIZE_VALUE_RELATION (&amp;(relations-&gt;relation2.relation));</span>
+<span class="lineNum">     450 </span><span class="lineCov">   57861173 :         relations-&gt;relation2.relation.relation_is_static_definition = FALSE;</span>
+<span class="lineNum">     451 </span><span class="lineCov">   57861173 :         relations-&gt;relation2.relation.next = NULL;   </span>
+<span class="lineNum">     452 </span><span class="lineCov">   57861173 :         relations-&gt;relation2.insertion_point = NULL;</span>
+<span class="lineNum">     453 </span><span class="lineCov">   57861173 :         relations-&gt;relation2.variable = -1;</span>
+<span class="lineNum">     454 </span>            :         
+<span class="lineNum">     455 </span><span class="lineCov">   57861173 :         if (bb-&gt;in_count == 1) { /* Should write the code to &quot;sum&quot; conditions... */</span>
+<span class="lineNum">     456 </span><span class="lineCov">   37840584 :                 in_bb = bb-&gt;in_bb [0];</span>
+<span class="lineNum">     457 </span>            : 
+<span class="lineNum">     458 </span><span class="lineCov">   70491741 :                 if ((in_bb-&gt;last_ins == NULL) || (in_bb-&gt;code == in_bb-&gt;last_ins))</span>
+<span class="lineNum">     459 </span><span class="lineCov">    5219150 :                         return;</span>
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span><span class="lineCov">  861664238 :                 for (ins = in_bb-&gt;code; ins-&gt;next != in_bb-&gt;last_ins; ins = ins-&gt;next)</span>
+<span class="lineNum">     462 </span>            :                         ;
+<span class="lineNum">     463 </span>            : 
+<span class="lineNum">     464 </span><span class="lineCov">   32588433 :                 compare = ins;</span>
+<span class="lineNum">     465 </span><span class="lineCov">   32588433 :                 branch = ins-&gt;next;</span>
+<span class="lineNum">     466 </span><span class="lineCov">   32588433 :                 branch_relation = get_relation_from_branch_instruction (branch);</span>
+<span class="lineNum">     467 </span>            : 
+<span class="lineNum">     468 </span><span class="lineCov">   32588433 :                 if (branch_relation != MONO_ANY_RELATION) {</span>
+<span class="lineNum">     469 </span><span class="lineCov">   28980768 :                         if (branch-&gt;inst_true_bb == bb) {</span>
+<span class="lineNum">     470 </span><span class="lineCov">    8778846 :                                 code_path = TRUE;</span>
+<span class="lineNum">     471 </span><span class="lineCov">   28982537 :                         } else if (branch-&gt;inst_false_bb == bb) {</span>
+<span class="lineNum">     472 </span><span class="lineCov">   20203691 :                                 code_path = FALSE;</span>
+<span class="lineNum">     473 </span><span class="lineCov">   20203691 :                         } else {</span>
+<span class="lineNum">     474 </span><span class="lineNoCov">          0 :                                 code_path = TRUE;</span>
+<span class="lineNum">     475 </span><span class="lineNoCov">          0 :                                 g_assert_not_reached ();</span>
+<span class="lineNum">     476 </span>            :                         }
+<span class="lineNum">     477 </span><span class="lineCov">   28985617 :                         if (!code_path)</span>
+<span class="lineNum">     478 </span><span class="lineCov">   20207214 :                                 branch_relation = MONO_NEGATED_RELATION (branch_relation);</span>
+<span class="lineNum">     479 </span><span class="lineCov">   28982839 :                         symmetric_relation = MONO_SYMMETRIC_RELATION (branch_relation);</span>
+<span class="lineNum">     480 </span>            : 
+<span class="lineNum">     481 </span>            :                         /* FIXME: Other compare opcodes */
+<span class="lineNum">     482 </span><span class="lineCov">   28982839 :                         if (compare-&gt;opcode == OP_ICOMPARE) {</span>
+<span class="lineNum">     483 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation1.variable = compare-&gt;sreg1;</span>
+<span class="lineNum">     484 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation1.relation.relation = branch_relation;</span>
+<span class="lineNum">     485 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation1.relation.related_value.type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     486 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation1.relation.related_value.value.variable.variable = compare-&gt;sreg2;</span>
+<span class="lineNum">     487 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation1.relation.related_value.value.variable.delta = 0;</span>
+<span class="lineNum">     488 </span>            : 
+<span class="lineNum">     489 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation2.variable = compare-&gt;sreg2;</span>
+<span class="lineNum">     490 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation2.relation.relation = symmetric_relation;</span>
+<span class="lineNum">     491 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation2.relation.related_value.type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     492 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation2.relation.related_value.value.variable.variable = compare-&gt;sreg1;</span>
+<span class="lineNum">     493 </span><span class="lineCov">    3052758 :                                 relations-&gt;relation2.relation.related_value.value.variable.delta = 0;</span>
+<span class="lineNum">     494 </span><span class="lineCov">   28987219 :                         } else if (compare-&gt;opcode == OP_ICOMPARE_IMM) {</span>
+<span class="lineNum">     495 </span><span class="lineCov">   17330331 :                                 relations-&gt;relation1.variable = compare-&gt;sreg1;</span>
+<span class="lineNum">     496 </span><span class="lineCov">   17330331 :                                 relations-&gt;relation1.relation.relation = branch_relation;</span>
+<span class="lineNum">     497 </span><span class="lineCov">   17330331 :                                 relations-&gt;relation1.relation.related_value.type = MONO_CONSTANT_SUMMARIZED_VALUE;</span>
+<span class="lineNum">     498 </span><span class="lineCov">   17330331 :                                 relations-&gt;relation1.relation.related_value.value.constant.value = compare-&gt;inst_imm;</span>
+<span class="lineNum">     499 </span><span class="lineCov">   17330331 :                         }</span>
+<span class="lineNum">     500 </span><span class="lineCov">   28988121 :                 }</span>
+<span class="lineNum">     501 </span><span class="lineCov">   32603327 :         }</span>
+<span class="lineNum">     502 </span><span class="lineCov">   57812396 : }</span>
+<span class="lineNum">     503 </span>            : 
+<span class="lineNum">     504 </span>            : /*
+<span class="lineNum">     505 </span>            :  * Add the given relations to the evaluation area.
+<span class="lineNum">     506 </span>            :  * area: the evaluation area
+<span class="lineNum">     507 </span>            :  * change: the relations that must be added
+<a name="508"><span class="lineNum">     508 </span>            :  */</a>
+<span class="lineNum">     509 </span>            : static void
+<span class="lineNum">     510 </span>            : apply_change_to_evaluation_area (MonoVariableRelationsEvaluationArea *area, MonoAdditionalVariableRelation *change)
+<span class="lineNum">     511 </span>            : {
+<span class="lineNum">     512 </span>            :         MonoSummarizedValueRelation *base_relation;
+<span class="lineNum">     513 </span>            :         
+<span class="lineNum">     514 </span><span class="lineCov">  138067320 :         if (change-&gt;relation.relation != MONO_ANY_RELATION) {</span>
+<span class="lineNum">     515 </span><span class="lineCov">   45875561 :                 base_relation = &amp;(area-&gt;relations [change-&gt;variable]);</span>
+<span class="lineNum">     516 </span><span class="lineCov">  390494286 :                 while ((base_relation-&gt;next != NULL) &amp;&amp; (base_relation-&gt;next-&gt;relation_is_static_definition)) {</span>
+<span class="lineNum">     517 </span><span class="lineCov">   61067952 :                         base_relation = base_relation-&gt;next;</span>
+<span class="lineNum">     518 </span>            :                 }
+<span class="lineNum">     519 </span><span class="lineCov">   45883906 :                 change-&gt;insertion_point = base_relation;</span>
+<span class="lineNum">     520 </span><span class="lineCov">   45883906 :                 change-&gt;relation.next = base_relation-&gt;next;</span>
+<span class="lineNum">     521 </span><span class="lineCov">   45883906 :                 base_relation-&gt;next = &amp;(change-&gt;relation);</span>
+<span class="lineNum">     522 </span><span class="lineCov">   45883906 :         }</span>
+<span class="lineNum">     523 </span><span class="lineCov">  138020432 : }</span>
+<span class="lineNum">     524 </span>            : 
+<span class="lineNum">     525 </span>            : /*
+<span class="lineNum">     526 </span>            :  * Remove the given relation from the evaluation area.
+<span class="lineNum">     527 </span>            :  * change: the relation that must be removed
+<a name="528"><span class="lineNum">     528 </span>            :  */</a>
+<span class="lineNum">     529 </span>            : static void
+<span class="lineNum">     530 </span>            : remove_change_from_evaluation_area (MonoAdditionalVariableRelation *change)
+<span class="lineNum">     531 </span>            : {
+<span class="lineNum">     532 </span><span class="lineCov">  138035885 :         if (change-&gt;insertion_point != NULL) {</span>
+<span class="lineNum">     533 </span><span class="lineCov">   45876131 :                 change-&gt;insertion_point-&gt;next = change-&gt;relation.next;</span>
+<span class="lineNum">     534 </span><span class="lineCov">   45876131 :                 change-&gt;relation.next = NULL;</span>
+<span class="lineNum">     535 </span><span class="lineCov">   45876131 :         }</span>
+<span class="lineNum">     536 </span><span class="lineCov">  137976195 : }</span>
+<span class="lineNum">     537 </span>            : 
+<a name="538"><span class="lineNum">     538 </span>            : </a>
+<span class="lineNum">     539 </span>            : static void
+<span class="lineNum">     540 </span>            : clean_contexts (MonoVariableRelationsEvaluationArea *area, int number)
+<span class="lineNum">     541 </span>            : {
+<span class="lineNum">     542 </span><span class="lineCov">   17587866 :         memset(area-&gt;statuses, MONO_RELATIONS_EVALUATION_NOT_STARTED, number * sizeof(MonoRelationsEvaluationStatus));</span>
+<span class="lineNum">     543 </span><span class="lineCov">   17587866 : }</span>
+<span class="lineNum">     544 </span>            : 
+<span class="lineNum">     545 </span>            : 
+<span class="lineNum">     546 </span>            : /*
+<span class="lineNum">     547 </span>            :  * Perform the intersection of a range and a constant value (taking into
+<span class="lineNum">     548 </span>            :  * account the relation that the value has with the range).
+<span class="lineNum">     549 </span>            :  * range: the range that will be intersected with the value
+<span class="lineNum">     550 </span>            :  * value: the value that will be intersected with the range
+<span class="lineNum">     551 </span>            :  * relation: the relation between the range and the value
+<a name="552"><span class="lineNum">     552 </span>            :  */</a>
+<span class="lineNum">     553 </span>            : static void
+<span class="lineNum">     554 </span>            : intersect_value( MonoRelationsEvaluationRange *range, int value, MonoValueRelation relation )
+<span class="lineNum">     555 </span>            : {
+<span class="lineNum">     556 </span><span class="lineCov">   57816313 :         switch (relation) {</span>
+<span class="lineNum">     557 </span>            :         case MONO_NO_RELATION:
+<span class="lineNum">     558 </span><span class="lineNoCov">          0 :                 MONO_MAKE_RELATIONS_EVALUATION_RANGE_IMPOSSIBLE (*range);</span>
+<span class="lineNum">     559 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     560 </span>            :         case MONO_ANY_RELATION:
+<span class="lineNum">     561 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     562 </span>            :         case MONO_EQ_RELATION:
+<span class="lineNum">     563 </span><span class="lineCov">    9797256 :                 MONO_UPPER_EVALUATION_RANGE_INTERSECTION (range-&gt;upper, value);</span>
+<span class="lineNum">     564 </span><span class="lineCov">    9798444 :                 MONO_LOWER_EVALUATION_RANGE_INTERSECTION (range-&gt;lower, value);</span>
+<span class="lineNum">     565 </span><span class="lineCov">    3266373 :                 break;</span>
+<span class="lineNum">     566 </span>            :         case MONO_NE_RELATION: {
+<span class="lineNum">     567 </span>            :                 /* IMPROVEMENT Figure this out! (ignoring it is safe anyway) */
+<span class="lineNum">     568 </span><span class="lineCov">     366233 :                 break;</span>
+<span class="lineNum">     569 </span>            :         }
+<span class="lineNum">     570 </span>            :         case MONO_LT_RELATION:
+<span class="lineNum">     571 </span><span class="lineCov">    1641121 :                 MONO_UPPER_EVALUATION_RANGE_INTERSECTION (range-&gt;upper, MONO_UPPER_EVALUATION_RANGE_NOT_EQUAL (value));</span>
+<span class="lineNum">     572 </span><span class="lineCov">     182390 :                 break;</span>
+<span class="lineNum">     573 </span>            :         case MONO_LE_RELATION:
+<span class="lineNum">     574 </span><span class="lineCov">     123806 :                 MONO_UPPER_EVALUATION_RANGE_INTERSECTION (range-&gt;upper, value);</span>
+<span class="lineNum">     575 </span><span class="lineCov">      41278 :                 break;</span>
+<span class="lineNum">     576 </span>            :         case MONO_GT_RELATION:
+<span class="lineNum">     577 </span><span class="lineCov">  349831398 :                 MONO_LOWER_EVALUATION_RANGE_INTERSECTION (range-&gt;lower, MONO_LOWER_EVALUATION_RANGE_NOT_EQUAL (value));</span>
+<span class="lineNum">     578 </span><span class="lineCov">   38875131 :                 break;</span>
+<span class="lineNum">     579 </span>            :         case MONO_GE_RELATION:
+<span class="lineNum">     580 </span><span class="lineCov">   45390772 :                 MONO_LOWER_EVALUATION_RANGE_INTERSECTION (range-&gt;lower, value);</span>
+<span class="lineNum">     581 </span><span class="lineCov">   15139727 :                 break;</span>
+<span class="lineNum">     582 </span>            :         default:
+<span class="lineNum">     583 </span><span class="lineNoCov">          0 :                 g_assert_not_reached();</span>
+<span class="lineNum">     584 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     585 </span><span class="lineCov">   57819059 : }</span>
+<span class="lineNum">     586 </span>            : 
+<span class="lineNum">     587 </span>            : 
+<span class="lineNum">     588 </span>            : /*
+<span class="lineNum">     589 </span>            :  * Perform the intersection of two pairs of ranges (taking into account the
+<span class="lineNum">     590 </span>            :  * relation between the ranges and a given delta).
+<span class="lineNum">     591 </span>            :  * ranges: the ranges that will be intersected
+<span class="lineNum">     592 </span>            :  * other_ranges the other ranges that will be intersected
+<span class="lineNum">     593 </span>            :  * delta: the delta between the pairs of ranges
+<span class="lineNum">     594 </span>            :  * relation: the relation between the pairs of ranges
+<a name="595"><span class="lineNum">     595 </span>            :  */</a>
+<span class="lineNum">     596 </span>            : static void
+<span class="lineNum">     597 </span>            : intersect_ranges( MonoRelationsEvaluationRanges *ranges, MonoRelationsEvaluationRanges *other_ranges, int delta, MonoValueRelation relation )
+<span class="lineNum">     598 </span>            : {
+<span class="lineNum">     599 </span><span class="lineCov">  342498575 :         if (delta == 0) {</span>
+<span class="lineNum">     600 </span><span class="lineCov">  318746636 :                 switch (relation) {</span>
+<span class="lineNum">     601 </span>            :                 case MONO_NO_RELATION:
+<span class="lineNum">     602 </span><span class="lineNoCov">          0 :                         MONO_MAKE_RELATIONS_EVALUATION_RANGES_IMPOSSIBLE (*ranges);</span>
+<span class="lineNum">     603 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     604 </span>            :                 case MONO_ANY_RELATION:
+<span class="lineNum">     605 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     606 </span>            :                 case MONO_EQ_RELATION:
+<span class="lineNum">     607 </span><span class="lineCov"> 4285114788 :                         MONO_RELATIONS_EVALUATION_RANGES_INTERSECTION (*ranges, *other_ranges);</span>
+<span class="lineNum">     608 </span><span class="lineCov">  306808994 :                         break;</span>
+<span class="lineNum">     609 </span>            :                 case MONO_NE_RELATION: {
+<span class="lineNum">     610 </span>            :                         /* FIXME Figure this out! (ignoring it is safe anyway) */
+<span class="lineNum">     611 </span><span class="lineCov">      99759 :                         break;</span>
+<span class="lineNum">     612 </span>            :                 }
+<span class="lineNum">     613 </span>            :                 case MONO_LT_RELATION:
+<span class="lineNum">     614 </span><span class="lineCov">  119511510 :                         MONO_UPPER_EVALUATION_RANGE_INTERSECTION (ranges-&gt;zero.upper, MONO_UPPER_EVALUATION_RANGE_NOT_EQUAL (other_ranges-&gt;zero.upper));</span>
+<span class="lineNum">     615 </span><span class="lineCov">  119770912 :                         MONO_UPPER_EVALUATION_RANGE_INTERSECTION (ranges-&gt;variable.upper, MONO_UPPER_EVALUATION_RANGE_NOT_EQUAL (other_ranges-&gt;variable.upper));</span>
+<span class="lineNum">     616 </span><span class="lineCov">   13405899 :                         break;</span>
+<span class="lineNum">     617 </span>            :                 case MONO_LE_RELATION:
+<span class="lineNum">     618 </span><span class="lineCov">    2011623 :                         MONO_UPPER_EVALUATION_RANGE_INTERSECTION (ranges-&gt;zero.upper, other_ranges-&gt;zero.upper);</span>
+<span class="lineNum">     619 </span><span class="lineCov">    2011855 :                         MONO_UPPER_EVALUATION_RANGE_INTERSECTION (ranges-&gt;variable.upper, other_ranges-&gt;variable.upper);</span>
+<span class="lineNum">     620 </span><span class="lineCov">     670634 :                         break;</span>
+<span class="lineNum">     621 </span>            :                 case MONO_GT_RELATION:
+<span class="lineNum">     622 </span><span class="lineCov">    1994344 :                         MONO_LOWER_EVALUATION_RANGE_INTERSECTION (ranges-&gt;zero.lower, MONO_LOWER_EVALUATION_RANGE_NOT_EQUAL (other_ranges-&gt;zero.lower));</span>
+<span class="lineNum">     623 </span><span class="lineCov">    2151649 :                         MONO_LOWER_EVALUATION_RANGE_INTERSECTION (ranges-&gt;variable.lower, MONO_LOWER_EVALUATION_RANGE_NOT_EQUAL (other_ranges-&gt;variable.lower));</span>
+<span class="lineNum">     624 </span><span class="lineCov">     308237 :                         break;</span>
+<span class="lineNum">     625 </span>            :                 case MONO_GE_RELATION:
+<span class="lineNum">     626 </span><span class="lineCov">     496174 :                         MONO_LOWER_EVALUATION_RANGE_INTERSECTION (ranges-&gt;zero.lower, other_ranges-&gt;zero.lower);</span>
+<span class="lineNum">     627 </span><span class="lineCov">     496208 :                         MONO_LOWER_EVALUATION_RANGE_INTERSECTION (ranges-&gt;variable.lower, other_ranges-&gt;variable.lower);</span>
+<span class="lineNum">     628 </span><span class="lineCov">     165406 :                         break;</span>
+<span class="lineNum">     629 </span>            :                 default:
+<span class="lineNum">     630 </span><span class="lineNoCov">          0 :                         g_assert_not_reached();</span>
+<span class="lineNum">     631 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     632 </span><span class="lineCov">  319154396 :         } else {</span>
+<span class="lineNum">     633 </span><span class="lineCov">   24794989 :                 MonoRelationsEvaluationRanges translated_ranges = *other_ranges;</span>
+<span class="lineNum">     634 </span><span class="lineCov">  829060039 :                 MONO_ADD_DELTA_SAFELY_TO_RANGES (translated_ranges, delta);</span>
+<span class="lineNum">     635 </span><span class="lineCov">   25574892 :                 intersect_ranges( ranges, &amp;translated_ranges, FALSE, relation );</span>
+<span class="lineNum">     636 </span>            :         }
+<span class="lineNum">     637 </span><span class="lineCov">  342874583 : }</span>
+<span class="lineNum">     638 </span>            : 
+<span class="lineNum">     639 </span>            : /*
+<span class="lineNum">     640 </span>            :  * Recursive method that traverses the relation graph to evaluate the
+<span class="lineNum">     641 </span>            :  * relation between two variables.
+<span class="lineNum">     642 </span>            :  * At the end of the execution, the resulting ranges are in the context of
+<span class="lineNum">     643 </span>            :  * the &quot;starting&quot; variable.
+<span class="lineNum">     644 </span>            :  * area: the current evaluation area (it contains the relation graph and
+<span class="lineNum">     645 </span>            :  *       memory for all the evaluation contexts is already allocated)
+<span class="lineNum">     646 </span>            :  * variable: starting variable (the value ranges in its context are the result
+<span class="lineNum">     647 </span>            :  *           of the execution of this procedure)
+<span class="lineNum">     648 </span>            :  * target_variable: the variable with respect to which the starting variable
+<span class="lineNum">     649 </span>            :  *                  is evaluated (tipically the starting variable is the index
+<span class="lineNum">     650 </span>            :  *                  and the target one is the array (which means its length))
+<span class="lineNum">     651 </span>            :  * father_context: the previous evaluation context in recursive invocations
+<span class="lineNum">     652 </span>            :  *                 (or NULL for the first invocation)
+<a name="653"><span class="lineNum">     653 </span>            :  */</a>
+<span class="lineNum">     654 </span>            : static void
+<span class="lineNum">     655 </span>            : evaluate_relation_with_target_variable (MonoVariableRelationsEvaluationArea *area, const int variable, const int target_variable, MonoRelationsEvaluationContext *father_context)
+<span class="lineNum">     656 </span>            : {
+<span class="lineNum">     657 </span><span class="lineCov">  362009927 :         MonoRelationsEvaluationContext * const context = &amp;(area-&gt;contexts [variable]);</span>
+<span class="lineNum">     658 </span><span class="lineCov">  362009927 :         MonoRelationsEvaluationStatus * const status = &amp;(area-&gt;statuses [variable]);</span>
+<span class="lineNum">     659 </span>            :         
+<span class="lineNum">     660 </span>            :         // First of all, we check the evaluation status
+<span class="lineNum">     661 </span>            :         // (what must be done is *very* different in each case)
+<span class="lineNum">     662 </span><span class="lineCov">  362009927 :         switch (*status) {</span>
+<span class="lineNum">     663 </span>            :         case MONO_RELATIONS_EVALUATION_NOT_STARTED: {
+<span class="lineNum">     664 </span><span class="lineCov">  342861865 :                 MonoSummarizedValueRelation *relation = &amp;(area-&gt;relations [variable]);</span>
+<span class="lineNum">     665 </span>            :                 
+<span class="lineNum">     666 </span><span class="lineCov">  342861865 :                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     667 </span><span class="lineCov">    4055946 :                         printf (&quot;Evaluating variable %d (target variable %d)\n&quot;, variable, target_variable);</span>
+<span class="lineNum">     668 </span><span class="lineCov">    4055946 :                         print_summarized_value_relation (relation);</span>
+<span class="lineNum">     669 </span><span class="lineCov">    4055946 :                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">     670 </span><span class="lineCov">    4055946 :                 }</span>
+<span class="lineNum">     671 </span>            :                 
+<span class="lineNum">     672 </span>            :                 // We properly inizialize the context
+<span class="lineNum">     673 </span><span class="lineCov">  343072920 :                 *status = MONO_RELATIONS_EVALUATION_IN_PROGRESS;</span>
+<span class="lineNum">     674 </span><span class="lineCov">  343072920 :                 context-&gt;father = father_context;</span>
+<span class="lineNum">     675 </span><span class="lineCov"> 2063753585 :                 MONO_MAKE_RELATIONS_EVALUATION_RANGES_WEAK (context-&gt;ranges);</span>
+<span class="lineNum">     676 </span>            :                 
+<span class="lineNum">     677 </span>            :                 // If we have found the target variable, we can set the range
+<span class="lineNum">     678 </span>            :                 // related to it in the context to &quot;equal&quot; (which is [0,0])
+<span class="lineNum">     679 </span><span class="lineCov">  344762464 :                 if (variable == target_variable) {</span>
+<span class="lineNum">     680 </span><span class="lineCov">   17590952 :                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     681 </span><span class="lineCov">     193559 :                                 printf (&quot;Target variable reached (%d), continuing to evaluate relations with constants\n&quot;, variable);</span>
+<span class="lineNum">     682 </span><span class="lineCov">     193559 :                         }</span>
+<span class="lineNum">     683 </span><span class="lineCov">   17591363 :                         context-&gt;ranges.variable.lower = 0;</span>
+<span class="lineNum">     684 </span><span class="lineCov">   17591363 :                         context-&gt;ranges.variable.upper = 0;</span>
+<span class="lineNum">     685 </span><span class="lineCov">   17591363 :                 }</span>
+<span class="lineNum">     686 </span>            :                 
+<span class="lineNum">     687 </span>            :                 // Examine all relations for this variable (scan the list)
+<span class="lineNum">     688 </span>            :                 // The contribute of each relation will be intersected (logical and)
+<span class="lineNum">     689 </span><span class="lineCov"> 2100281431 :                 while (relation != NULL) {</span>
+<span class="lineNum">     690 </span><span class="lineCov">  706660708 :                         context-&gt;current_relation = relation;</span>
+<span class="lineNum">     691 </span>            :                         
+<span class="lineNum">     692 </span><span class="lineCov">  706660708 :                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     693 </span><span class="lineCov">    8471425 :                                 printf (&quot;Processing (%d): &quot;, variable);</span>
+<span class="lineNum">     694 </span><span class="lineCov">    8471425 :                                 print_summarized_value_relation (relation);</span>
+<span class="lineNum">     695 </span><span class="lineCov">    8471425 :                                 printf (&quot;\n&quot;);</span>
+<span class="lineNum">     696 </span><span class="lineCov">    8471425 :                         }</span>
+<span class="lineNum">     697 </span>            :                         
+<span class="lineNum">     698 </span>            :                         // We decie what to do according the the type of the related value
+<span class="lineNum">     699 </span><span class="lineCov">  705254538 :                         switch (relation-&gt;related_value.type) {</span>
+<span class="lineNum">     700 </span>            :                         case MONO_ANY_SUMMARIZED_VALUE:
+<span class="lineNum">     701 </span>            :                                 // No added information, skip it
+<span class="lineNum">     702 </span><span class="lineCov">   25970251 :                                 break;</span>
+<span class="lineNum">     703 </span>            :                         case MONO_CONSTANT_SUMMARIZED_VALUE:
+<span class="lineNum">     704 </span>            :                                 // Intersect range with constant (taking into account the relation)
+<span class="lineNum">     705 </span><span class="lineCov">   57764114 :                                 intersect_value (&amp;(context-&gt;ranges.zero), relation-&gt;related_value.value.constant.value, relation-&gt;relation);</span>
+<span class="lineNum">     706 </span><span class="lineCov">   57764114 :                                 break;</span>
+<span class="lineNum">     707 </span>            :                         case MONO_VARIABLE_SUMMARIZED_VALUE:
+<span class="lineNum">     708 </span>            :                                 // Generally, evaluate related variable and intersect ranges.
+<span class="lineNum">     709 </span>            :                                 // However, some check is necessary...
+<span class="lineNum">     710 </span>            :                                 
+<span class="lineNum">     711 </span>            :                                 // If the relation is &quot;ANY&quot;, nothing to do (no added information)
+<span class="lineNum">     712 </span><span class="lineCov">  616652894 :                                 if (relation-&gt;relation != MONO_ANY_RELATION) {</span>
+<span class="lineNum">     713 </span><span class="lineCov">  626160849 :                                         int related_variable = relation-&gt;related_value.value.variable.variable;</span>
+<span class="lineNum">     714 </span><span class="lineCov">  626160849 :                                         MonoRelationsEvaluationContext *related_context = &amp;(area-&gt;contexts [related_variable]);</span>
+<span class="lineNum">     715 </span><span class="lineCov">  626160849 :                                         MonoRelationsEvaluationStatus related_status = area-&gt;statuses [related_variable];</span>
+<span class="lineNum">     716 </span>            :                                         
+<span class="lineNum">     717 </span>            :                                         // The second condition in the &quot;or&quot; avoids messing with &quot;back edges&quot; in the graph traversal
+<span class="lineNum">     718 </span>            :                                         // (they are simply ignored instead of triggering the handling of recursion)
+<span class="lineNum">     719 </span><span class="lineCov">  934276076 :                                         if ( (related_status == MONO_RELATIONS_EVALUATION_NOT_STARTED) || !</span>
+<span class="lineNum">     720 </span><span class="lineCov">  319023627 :                                                         ((related_context-&gt;current_relation-&gt;related_value.type == MONO_VARIABLE_SUMMARIZED_VALUE) &amp;&amp;</span>
+<span class="lineNum">     721 </span><span class="lineCov">  308115227 :                                                         (related_context-&gt;current_relation-&gt;related_value.value.variable.variable == variable))) {</span>
+<span class="lineNum">     722 </span>            :                                                 // Evaluate the related variable
+<span class="lineNum">     723 </span><span class="lineCov">  321489442 :                                                 evaluate_relation_with_target_variable (area, related_variable, target_variable, context);</span>
+<span class="lineNum">     724 </span>            :                                                 
+<span class="lineNum">     725 </span>            :                                                 // Check if we are part of a recursive loop
+<span class="lineNum">     726 </span><span class="lineCov">  321489442 :                                                 if (*status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVE) {</span>
+<span class="lineNum">     727 </span><span class="lineCov">    3368472 :                                                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     728 </span><span class="lineCov">      29749 :                                                                 printf (&quot;Recursivity detected for variable %d (target variable %d), status &quot;, variable, target_variable);</span>
+<span class="lineNum">     729 </span><span class="lineCov">      29749 :                                                                 print_evaluation_context_status (*status);</span>
+<span class="lineNum">     730 </span><span class="lineCov">      29749 :                                                         }</span>
+<span class="lineNum">     731 </span>            :                                                         
+<span class="lineNum">     732 </span>            :                                                         // If we are, check if the evaluation of the related variable is complete
+<span class="lineNum">     733 </span><span class="lineCov">    3368784 :                                                         if (related_status == MONO_RELATIONS_EVALUATION_COMPLETED) {</span>
+<span class="lineNum">     734 </span>            :                                                                 // If it is complete, we are part of a recursive definition.
+<span class="lineNum">     735 </span>            :                                                                 // Since it is a *definition* (and definitions are evaluated *before*
+<span class="lineNum">     736 </span>            :                                                                 // conditions because they are first in the list), intersection is not
+<span class="lineNum">     737 </span>            :                                                                 // strictly necessary, we simply copy the ranges and apply the delta
+<span class="lineNum">     738 </span><span class="lineCov">       1527 :                                                                 context-&gt;ranges = related_context-&gt;ranges;</span>
+<span class="lineNum">     739 </span>            :                                                                 /* Delta has already been checked for over/under-flow when evaluating values */
+<span class="lineNum">     740 </span><span class="lineCov">      45290 :                                                                 MONO_ADD_DELTA_SAFELY_TO_RANGES (context-&gt;ranges, relation-&gt;related_value.value.variable.delta);</span>
+<span class="lineNum">     741 </span><span class="lineCov">       1527 :                                                                 *status = MONO_RELATIONS_EVALUATION_COMPLETED;</span>
+<span class="lineNum">     742 </span><span class="lineCov">       1527 :                                                                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     743 </span><span class="lineCov">         22 :                                                                         printf (&quot;, ranges already computed, result: \n&quot;);</span>
+<span class="lineNum">     744 </span><span class="lineCov">         22 :                                                                         print_evaluation_context_ranges (&amp;(context-&gt;ranges));</span>
+<span class="lineNum">     745 </span><span class="lineCov">         22 :                                                                         printf (&quot; (delta is %d)\n&quot;, relation-&gt;related_value.value.variable.delta);</span>
+<span class="lineNum">     746 </span><span class="lineCov">         22 :                                                                 }</span>
+<span class="lineNum">     747 </span><span class="lineCov">       1527 :                                                         } else {</span>
+<span class="lineNum">     748 </span>            :                                                                 // If it is not complete, do nothing (we do not have enough information)
+<span class="lineNum">     749 </span><span class="lineCov">    3365234 :                                                                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     750 </span><span class="lineCov">      29727 :                                                                         printf (&quot;, ranges not computed\n&quot;);</span>
+<span class="lineNum">     751 </span><span class="lineCov">      29727 :                                                                 }</span>
+<span class="lineNum">     752 </span>            :                                                         }
+<span class="lineNum">     753 </span><span class="lineCov">    3368255 :                                                 } else {</span>
+<span class="lineNum">     754 </span>            :                                                         // If we are not (the common case) intersect the result
+<span class="lineNum">     755 </span><span class="lineCov">  318413028 :                                                         intersect_ranges( &amp;(context-&gt;ranges), &amp;(related_context-&gt;ranges), relation-&gt;related_value.value.variable.delta, relation-&gt;relation );</span>
+<span class="lineNum">     756 </span>            :                                                 }
+<span class="lineNum">     757 </span><span class="lineCov">  323000007 :                                         } else {</span>
+<span class="lineNum">     758 </span><span class="lineCov">  307001274 :                                                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     759 </span><span class="lineCov">    3672443 :                                                         printf (&quot;Relation is a back-edge in this traversal, skipping\n&quot;);</span>
+<span class="lineNum">     760 </span><span class="lineCov">    3672443 :                                                 }</span>
+<span class="lineNum">     761 </span>            :                                         }
+<span class="lineNum">     762 </span><span class="lineCov">  621275457 :                                 }</span>
+<span class="lineNum">     763 </span><span class="lineCov">  621847493 :                                 break;</span>
+<span class="lineNum">     764 </span>            :                         case MONO_PHI_SUMMARIZED_VALUE: {
+<span class="lineNum">     765 </span>            :                                 // We must compute all PHI alternatives, combining the results (with a union, which is a logical &quot;or&quot;),
+<span class="lineNum">     766 </span>            :                                 // and intersect this result with the ranges in the context; we must also take into account recursions
+<span class="lineNum">     767 </span>            :                                 // (with loops that can be ascending, descending, or indefinite)
+<span class="lineNum">     768 </span>            :                                 MonoRelationsEvaluationRanges phi_ranges;
+<span class="lineNum">     769 </span>            :                                 int phi;
+<span class="lineNum">     770 </span><span class="lineCov">    6337379 :                                 gboolean is_ascending = FALSE;</span>
+<span class="lineNum">     771 </span><span class="lineCov">    6337379 :                                 gboolean is_descending = FALSE;</span>
+<span class="lineNum">     772 </span>            :                                 
+<span class="lineNum">     773 </span><span class="lineCov">   38026504 :                                 MONO_MAKE_RELATIONS_EVALUATION_RANGES_IMPOSSIBLE (phi_ranges);</span>
+<span class="lineNum">     774 </span><span class="lineCov">   48007197 :                                 for (phi = 0; phi &lt; relation-&gt;related_value.value.phi.number_of_alternatives; phi++) {</span>
+<span class="lineNum">     775 </span><span class="lineCov">   17665496 :                                         int phi_alternative = relation-&gt;related_value.value.phi.phi_alternatives [phi];</span>
+<span class="lineNum">     776 </span><span class="lineCov">   17665496 :                                         evaluate_relation_with_target_variable (area, phi_alternative, target_variable, context);</span>
+<span class="lineNum">     777 </span>            :                                         
+<span class="lineNum">     778 </span>            :                                         // This means we are part of a recursive loop
+<span class="lineNum">     779 </span><span class="lineCov">   17665496 :                                         if (*status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVE) {</span>
+<span class="lineNum">     780 </span><span class="lineCov">    3425525 :                                                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     781 </span><span class="lineCov">      33322 :                                                         printf (&quot;Recursivity detected for variable %d (target variable %d), status &quot;, variable, target_variable);</span>
+<span class="lineNum">     782 </span><span class="lineCov">      33322 :                                                         print_evaluation_context_status (*status);</span>
+<span class="lineNum">     783 </span><span class="lineCov">      33322 :                                                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">     784 </span><span class="lineCov">      33322 :                                                 }</span>
+<span class="lineNum">     785 </span><span class="lineCov">    3425525 :                                                 if (*status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_ASCENDING) {</span>
+<span class="lineNum">     786 </span><span class="lineCov">     463583 :                                                         is_ascending = TRUE;</span>
+<span class="lineNum">     787 </span><span class="lineCov">     463583 :                                                 }</span>
+<span class="lineNum">     788 </span><span class="lineCov">    3425480 :                                                 if (*status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_DESCENDING) {</span>
+<span class="lineNum">     789 </span><span class="lineCov">     292070 :                                                         is_descending = TRUE;</span>
+<span class="lineNum">     790 </span><span class="lineCov">     292070 :                                                 }</span>
+<span class="lineNum">     791 </span><span class="lineCov">    3425541 :                                                 if (*status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_INDEFINITE) {</span>
+<span class="lineNum">     792 </span><span class="lineCov">    2669907 :                                                         is_ascending = TRUE;</span>
+<span class="lineNum">     793 </span><span class="lineCov">    2669907 :                                                         is_descending = TRUE;</span>
+<span class="lineNum">     794 </span><span class="lineCov">    2669907 :                                                 }</span>
+<span class="lineNum">     795 </span>            :                                                 
+<span class="lineNum">     796 </span>            :                                                 // Clear &quot;recursivity&quot; bits in the status (recursion has been handled)
+<span class="lineNum">     797 </span><span class="lineCov">    3425608 :                                                 *status = MONO_RELATIONS_EVALUATION_IN_PROGRESS;</span>
+<span class="lineNum">     798 </span><span class="lineCov">    3425608 :                                         } else {</span>
+<span class="lineNum">     799 </span><span class="lineCov">  199410751 :                                                 MONO_RELATIONS_EVALUATION_RANGES_UNION (phi_ranges, area-&gt;contexts [phi_alternative].ranges);</span>
+<span class="lineNum">     800 </span>            :                                         }
+<span class="lineNum">     801 </span><span class="lineCov">   17664343 :                                 }</span>
+<span class="lineNum">     802 </span>            :                                 
+<span class="lineNum">     803 </span>            :                                 // Apply the effects of all recursive loops
+<span class="lineNum">     804 </span><span class="lineCov">    6343343 :                                 if (is_ascending) {</span>
+<span class="lineNum">     805 </span><span class="lineCov">     876666 :                                         phi_ranges.zero.upper = INT_MAX;</span>
+<span class="lineNum">     806 </span><span class="lineCov">     876666 :                                         phi_ranges.variable.upper = INT_MAX;</span>
+<span class="lineNum">     807 </span><span class="lineCov">     876666 :                                 }</span>
+<span class="lineNum">     808 </span><span class="lineCov">    6343527 :                                 if (is_descending) {</span>
+<span class="lineNum">     809 </span><span class="lineCov">     784329 :                                         phi_ranges.zero.lower = INT_MIN;</span>
+<span class="lineNum">     810 </span><span class="lineCov">     784329 :                                         phi_ranges.variable.lower = INT_MIN;</span>
+<span class="lineNum">     811 </span><span class="lineCov">     784329 :                                 }</span>
+<span class="lineNum">     812 </span>            :                                 
+<span class="lineNum">     813 </span>            :                                 // Intersect final result
+<span class="lineNum">     814 </span><span class="lineCov">   88804299 :                                 MONO_RELATIONS_EVALUATION_RANGES_INTERSECTION (context-&gt;ranges, phi_ranges);</span>
+<span class="lineNum">     815 </span><span class="lineCov">    6343322 :                                 break;</span>
+<span class="lineNum">     816 </span>            :                         }
+<span class="lineNum">     817 </span>            :                         default:
+<span class="lineNum">     818 </span><span class="lineNoCov">          0 :                                 g_assert_not_reached();</span>
+<span class="lineNum">     819 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     820 </span>            :                         
+<span class="lineNum">     821 </span>            :                         // Pass to next relation
+<span class="lineNum">     822 </span><span class="lineCov">  707590398 :                         relation = relation-&gt;next;</span>
+<span class="lineNum">     823 </span>            :                 }
+<span class="lineNum">     824 </span>            :                 
+<span class="lineNum">     825 </span>            :                 // Check if any recursivity bits are still in the status, and in any case clear them
+<span class="lineNum">     826 </span><span class="lineCov">  343982041 :                 if (*status &amp; MONO_RELATIONS_EVALUATION_IS_RECURSIVE) {</span>
+<span class="lineNum">     827 </span><span class="lineCov">    3297942 :                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     828 </span><span class="lineCov">      29065 :                                 printf (&quot;Recursivity for variable %d (target variable %d) discards computation, status &quot;, variable, target_variable);</span>
+<span class="lineNum">     829 </span><span class="lineCov">      29065 :                                 print_evaluation_context_status (*status);</span>
+<span class="lineNum">     830 </span><span class="lineCov">      29065 :                                 printf (&quot;\n&quot;);</span>
+<span class="lineNum">     831 </span><span class="lineCov">      29065 :                         }</span>
+<span class="lineNum">     832 </span>            :                         // If yes, we did not have enough information (most likely we were evaluated inside a PHI, but we also
+<span class="lineNum">     833 </span>            :                         // depended on the same PHI, which was still in evaluation...), so clear the status to &quot;NOT_STARTED&quot;
+<span class="lineNum">     834 </span>            :                         // (if we will be evaluated again, the PHI will be already done, so our evaluation will succeed)
+<span class="lineNum">     835 </span><span class="lineCov">    3298000 :                         *status = MONO_RELATIONS_EVALUATION_NOT_STARTED;</span>
+<span class="lineNum">     836 </span><span class="lineCov">    3298000 :                 } else {</span>
+<span class="lineNum">     837 </span><span class="lineCov">  340986321 :                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     838 </span><span class="lineCov">    4026881 :                                 printf (&quot;Ranges for variable %d (target variable %d) computed: &quot;, variable, target_variable);</span>
+<span class="lineNum">     839 </span><span class="lineCov">    4026881 :                                 print_evaluation_context_ranges (&amp;(context-&gt;ranges));</span>
+<span class="lineNum">     840 </span><span class="lineCov">    4026881 :                                 printf (&quot;\n&quot;);</span>
+<span class="lineNum">     841 </span><span class="lineCov">    4026881 :                         }</span>
+<span class="lineNum">     842 </span>            :                         // If not (the common case) the evaluation is complete, and the result is in the context
+<span class="lineNum">     843 </span><span class="lineCov">  341082979 :                         *status = MONO_RELATIONS_EVALUATION_COMPLETED;</span>
+<span class="lineNum">     844 </span>            :                 }
+<span class="lineNum">     845 </span><span class="lineCov">  344329827 :                 break;</span>
+<span class="lineNum">     846 </span>            :         }
+<span class="lineNum">     847 </span>            :         case MONO_RELATIONS_EVALUATION_IN_PROGRESS: {
+<span class="lineNum">     848 </span>            :                 // This means we are in a recursive loop
+<span class="lineNum">     849 </span><span class="lineCov">    7079213 :                 MonoRelationsEvaluationContext *current_context = father_context;</span>
+<span class="lineNum">     850 </span><span class="lineCov">    7079213 :                 MonoRelationsEvaluationContext *last_context = context-&gt;father;</span>
+<span class="lineNum">     851 </span><span class="lineCov">    7079213 :                 gboolean evaluation_can_be_recursive = TRUE;</span>
+<span class="lineNum">     852 </span><span class="lineCov">    7079213 :                 gboolean evaluation_is_definition = TRUE;</span>
+<span class="lineNum">     853 </span><span class="lineCov">    7079213 :                 int path_value = 0;</span>
+<span class="lineNum">     854 </span>            :                 
+<span class="lineNum">     855 </span><span class="lineCov">    7079213 :                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     856 </span><span class="lineCov">      65322 :                         printf (&quot;Evaluation of variable %d (target variable %d) already in progress\n&quot;, variable, target_variable);</span>
+<span class="lineNum">     857 </span><span class="lineCov">      65322 :                         print_evaluation_context (context, *status);</span>
+<span class="lineNum">     858 </span><span class="lineCov">      65322 :                         print_summarized_value_relation (context-&gt;current_relation);</span>
+<span class="lineNum">     859 </span><span class="lineCov">      65322 :                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">     860 </span><span class="lineCov">      65322 :                 }</span>
+<span class="lineNum">     861 </span>            :                 
+<span class="lineNum">     862 </span>            :                 // We must check if the loop can be a recursive definition (we scan the whole loop)
+<span class="lineNum">     863 </span><span class="lineCov">   48241044 :                 while (current_context != last_context) {</span>
+<span class="lineNum">     864 </span><span class="lineCov">   17035050 :                         if (current_context == NULL) {</span>
+<span class="lineNum">     865 </span><span class="lineNoCov">          0 :                                 printf (&quot;Broken recursive ring in ABC removal\n&quot;);</span>
+<span class="lineNum">     866 </span><span class="lineNoCov">          0 :                                 g_assert_not_reached ();</span>
+<span class="lineNum">     867 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     868 </span>            :                         
+<span class="lineNum">     869 </span><span class="lineCov">   17038395 :                         if (current_context-&gt;current_relation-&gt;relation_is_static_definition) {</span>
+<span class="lineNum">     870 </span><span class="lineCov">   16430369 :                                 if (current_context-&gt;current_relation-&gt;related_value.type == MONO_VARIABLE_SUMMARIZED_VALUE) {</span>
+<span class="lineNum">     871 </span>            :                                         /* No need to check path_value for over/under-flow, since delta should be safe */
+<span class="lineNum">     872 </span><span class="lineCov">    5786201 :                                         path_value += current_context-&gt;current_relation-&gt;related_value.value.variable.delta;</span>
+<span class="lineNum">     873 </span><span class="lineCov">   16431161 :                                 } else if (current_context-&gt;current_relation-&gt;related_value.type != MONO_PHI_SUMMARIZED_VALUE) {</span>
+<span class="lineNum">     874 </span><span class="lineNoCov">          0 :                                         evaluation_can_be_recursive = FALSE;</span>
+<span class="lineNum">     875 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     876 </span><span class="lineCov">   16424467 :                         } else {</span>
+<span class="lineNum">     877 </span><span class="lineCov">     617532 :                                 evaluation_is_definition = FALSE;</span>
+<span class="lineNum">     878 </span><span class="lineCov">     617532 :                                 evaluation_can_be_recursive = FALSE;</span>
+<span class="lineNum">     879 </span>            :                         }
+<span class="lineNum">     880 </span>            :                         
+<span class="lineNum">     881 </span><span class="lineCov">   17040940 :                         current_context = current_context-&gt;father;</span>
+<span class="lineNum">     882 </span>            :                 }
+<span class="lineNum">     883 </span>            :                 
+<span class="lineNum">     884 </span>            :                 // If this is a recursive definition, we properly flag the status in all the involved contexts
+<span class="lineNum">     885 </span><span class="lineCov">    7087651 :                 if (evaluation_is_definition) {</span>
+<span class="lineNum">     886 </span>            :                         MonoRelationsEvaluationStatus recursive_status;
+<span class="lineNum">     887 </span><span class="lineCov">    6722247 :                         if (evaluation_can_be_recursive) {</span>
+<span class="lineNum">     888 </span><span class="lineCov">    6724610 :                                 if (path_value &gt; 0) {</span>
+<span class="lineNum">     889 </span><span class="lineCov">    3362074 :                                         recursive_status = MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_ASCENDING;</span>
+<span class="lineNum">     890 </span><span class="lineCov">    6724263 :                                 } else if (path_value &lt; 0) {</span>
+<span class="lineNum">     891 </span><span class="lineCov">     676815 :                                         recursive_status = MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_DESCENDING;</span>
+<span class="lineNum">     892 </span><span class="lineCov">     676815 :                                 } else {</span>
+<span class="lineNum">     893 </span><span class="lineCov">    2685434 :                                         recursive_status = MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_INDEFINITE;</span>
+<span class="lineNum">     894 </span>            :                                 }
+<span class="lineNum">     895 </span><span class="lineCov">    6722320 :                         } else {</span>
+<span class="lineNum">     896 </span><span class="lineNoCov">          0 :                                 recursive_status = MONO_RELATIONS_EVALUATION_IS_RECURSIVELY_INDEFINITE;</span>
+<span class="lineNum">     897 </span>            :                         }
+<span class="lineNum">     898 </span>            :                         
+<span class="lineNum">     899 </span><span class="lineCov">    6722105 :                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     900 </span><span class="lineCov">      62409 :                                 printf (&quot;Recursivity accepted (&quot;);</span>
+<span class="lineNum">     901 </span><span class="lineCov">      62409 :                                 print_evaluation_context_status (recursive_status);</span>
+<span class="lineNum">     902 </span><span class="lineCov">      62409 :                                 printf (&quot;)\n&quot;);</span>
+<span class="lineNum">     903 </span><span class="lineCov">      62409 :                         }</span>
+<span class="lineNum">     904 </span>            :                         
+<span class="lineNum">     905 </span><span class="lineCov">    6722352 :                         current_context = father_context;</span>
+<span class="lineNum">     906 </span><span class="lineCov">   44039425 :                         while (current_context != last_context) {</span>
+<span class="lineNum">     907 </span><span class="lineCov">   15296876 :                                 int index = father_context - area-&gt;contexts;</span>
+<span class="lineNum">     908 </span><span class="lineCov">   15296876 :                                 MonoRelationsEvaluationStatus *current_status = &amp;(area-&gt;statuses [index]);</span>
+<span class="lineNum">     909 </span><span class="lineCov">   15296876 :                                 *current_status = (MonoRelationsEvaluationStatus)(*current_status | recursive_status);</span>
+<span class="lineNum">     910 </span><span class="lineCov">   15296876 :                                 current_context = current_context-&gt;father;</span>
+<span class="lineNum">     911 </span>            :                         }
+<span class="lineNum">     912 </span><span class="lineCov">    6723979 :                 } else {</span>
+<span class="lineNum">     913 </span><span class="lineCov">     365651 :                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     914 </span><span class="lineCov">       2913 :                                 printf (&quot;Recursivity rejected (some relation in the cycle is not a defintion)\n&quot;);</span>
+<span class="lineNum">     915 </span><span class="lineCov">       2913 :                         }</span>
+<span class="lineNum">     916 </span>            :                 }
+<span class="lineNum">     917 </span><span class="lineCov">    7088529 :                 break;</span>
+<span class="lineNum">     918 </span>            :         }
+<span class="lineNum">     919 </span>            :         case MONO_RELATIONS_EVALUATION_COMPLETED: {
+<span class="lineNum">     920 </span><span class="lineCov">   12285717 :                 return;</span>
+<span class="lineNum">     921 </span>            :         }
+<span class="lineNum">     922 </span>            :         default:
+<span class="lineNum">     923 </span><span class="lineNoCov">          0 :                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">     924 </span><span class="lineNoCov">          0 :                         printf (&quot;Variable %d (target variable %d) already in a recursive ring, skipping\n&quot;, variable, target_variable);</span>
+<span class="lineNum">     925 </span><span class="lineNoCov">          0 :                         print_evaluation_context (context, *status);</span>
+<span class="lineNum">     926 </span><span class="lineNoCov">          0 :                         print_summarized_value_relation (context-&gt;current_relation);</span>
+<span class="lineNum">     927 </span><span class="lineNoCov">          0 :                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">     928 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     929 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     930 </span>            :         }
+<span class="lineNum">     931 </span>            :         
+<span class="lineNum">     932 </span><span class="lineCov">  361132764 : }</span>
+<span class="lineNum">     933 </span>            : 
+<span class="lineNum">     934 </span>            : /*
+<span class="lineNum">     935 </span>            :  * Apply the given value kind to the given range
+<a name="936"><span class="lineNum">     936 </span>            :  */</a>
+<span class="lineNum">     937 </span>            : static void
+<span class="lineNum">     938 </span>            : apply_value_kind_to_range (MonoRelationsEvaluationRange *range, MonoIntegerValueKind value_kind)
+<span class="lineNum">     939 </span>            : {
+<span class="lineNum">     940 </span><span class="lineCov">  539797234 :         if (value_kind != MONO_UNKNOWN_INTEGER_VALUE) {</span>
+<span class="lineNum">     941 </span><span class="lineCov">   86520158 :                 if (value_kind &amp; MONO_UNSIGNED_VALUE_FLAG) {</span>
+<span class="lineNum">     942 </span><span class="lineCov">    8557492 :                         if (range-&gt;lower &lt; 0) {</span>
+<span class="lineNum">     943 </span><span class="lineCov">    8557599 :                                 range-&gt;lower = 0;</span>
+<span class="lineNum">     944 </span><span class="lineCov">    8557599 :                         }</span>
+<span class="lineNum">     945 </span><span class="lineCov">    8558221 :                         if ((value_kind &amp; MONO_INTEGER_VALUE_SIZE_BITMASK) == 1) {</span>
+<span class="lineNum">     946 </span><span class="lineCov">    5596800 :                                 if (range-&gt;upper &gt; 0xff) {</span>
+<span class="lineNum">     947 </span><span class="lineCov">    5596197 :                                         range-&gt;upper = 0xff;</span>
+<span class="lineNum">     948 </span><span class="lineCov">    5596197 :                                 }</span>
+<span class="lineNum">     949 </span><span class="lineCov">    8556950 :                         } else if ((value_kind &amp; MONO_INTEGER_VALUE_SIZE_BITMASK) == 2) {</span>
+<span class="lineNum">     950 </span><span class="lineCov">     479836 :                                 if (range-&gt;upper &gt; 0xffff) {</span>
+<span class="lineNum">     951 </span><span class="lineCov">     479837 :                                         range-&gt;upper = 0xffff;</span>
+<span class="lineNum">     952 </span><span class="lineCov">     479837 :                                 }</span>
+<span class="lineNum">     953 </span><span class="lineCov">     479903 :                         }</span>
+<span class="lineNum">     954 </span><span class="lineCov">    8556851 :                 } else {</span>
+<span class="lineNum">     955 </span><span class="lineCov">   77959103 :                         if ((value_kind &amp; MONO_INTEGER_VALUE_SIZE_BITMASK) == 1) {</span>
+<span class="lineNum">     956 </span><span class="lineCov">      49683 :                                 if (range-&gt;lower &lt; -0x80) {</span>
+<span class="lineNum">     957 </span><span class="lineCov">      49684 :                                         range-&gt;lower = -0x80;</span>
+<span class="lineNum">     958 </span><span class="lineCov">      49684 :                                 }</span>
+<span class="lineNum">     959 </span><span class="lineCov">      49686 :                                 if (range-&gt;upper &gt; 0x7f) {</span>
+<span class="lineNum">     960 </span><span class="lineCov">      49684 :                                         range-&gt;upper = 0x7f;</span>
+<span class="lineNum">     961 </span><span class="lineCov">      49684 :                                 }</span>
+<span class="lineNum">     962 </span><span class="lineCov">   77958792 :                         } else if ((value_kind &amp; MONO_INTEGER_VALUE_SIZE_BITMASK) == 2) {</span>
+<span class="lineNum">     963 </span><span class="lineCov">      19659 :                                 if (range-&gt;lower &lt; -0x8000) {</span>
+<span class="lineNum">     964 </span><span class="lineCov">      19660 :                                         range-&gt;lower = -0x8000;</span>
+<span class="lineNum">     965 </span><span class="lineCov">      19660 :                                 }</span>
+<span class="lineNum">     966 </span><span class="lineCov">      19660 :                                 if (range-&gt;upper &gt; 0x7fff) {</span>
+<span class="lineNum">     967 </span><span class="lineCov">      19660 :                                         range-&gt;upper = 0x7fff;</span>
+<span class="lineNum">     968 </span><span class="lineCov">      19660 :                                 }</span>
+<span class="lineNum">     969 </span><span class="lineCov">      19660 :                         }</span>
+<span class="lineNum">     970 </span>            :                 }
+<span class="lineNum">     971 </span><span class="lineCov">   86502859 :         }</span>
+<span class="lineNum">     972 </span><span class="lineCov">  539292569 : }</span>
+<span class="lineNum">     973 </span>            : 
+<span class="lineNum">     974 </span>            : /*
+<span class="lineNum">     975 </span>            :  * Attempt the removal of bounds checks from a MonoInst.
+<span class="lineNum">     976 </span>            :  * inst: the MonoInst
+<span class="lineNum">     977 </span>            :  * area: the current evaluation area (it contains the relation graph and
+<span class="lineNum">     978 </span>            :  *       memory for all the evaluation contexts is already allocated)
+<a name="979"><span class="lineNum">     979 </span>            :  */</a>
+<span class="lineNum">     980 </span>            : static void
+<span class="lineNum">     981 </span>            : remove_abc_from_inst (MonoInst *ins, MonoVariableRelationsEvaluationArea *area)
+<span class="lineNum">     982 </span>            : {
+<span class="lineNum">     983 </span>            :         /* FIXME: Add support for 'constant' arrays and constant indexes */
+<span class="lineNum">     984 </span>            : 
+<span class="lineNum">     985 </span><span class="lineCov">    5135777 :         int array_variable = ins-&gt;sreg1;</span>
+<span class="lineNum">     986 </span><span class="lineCov">    5135777 :         int index_variable = ins-&gt;sreg2;</span>
+<span class="lineNum">     987 </span><span class="lineCov">    5135777 :         MonoRelationsEvaluationContext *array_context = &amp;(area-&gt;contexts [array_variable]);</span>
+<span class="lineNum">     988 </span><span class="lineCov">    5135777 :         MonoRelationsEvaluationContext *index_context = &amp;(area-&gt;contexts [index_variable]);</span>
+<span class="lineNum">     989 </span>            :                                 
+<span class="lineNum">     990 </span><span class="lineCov">    5135777 :         clean_contexts (area, area-&gt;cfg-&gt;next_vreg);</span>
+<span class="lineNum">     991 </span>            :                                 
+<span class="lineNum">     992 </span><span class="lineCov">    5135777 :         evaluate_relation_with_target_variable (area, index_variable, array_variable, NULL);</span>
+<span class="lineNum">     993 </span><span class="lineCov">    5135777 :         evaluate_relation_with_target_variable (area, array_variable, array_variable, NULL);</span>
+<span class="lineNum">     994 </span>            : 
+<span class="lineNum">     995 </span><span class="lineCov">   10368379 :         if ((index_context-&gt;ranges.zero.lower &gt;=0) &amp;&amp; ((index_context-&gt;ranges.variable.upper &lt; 0)||(index_context-&gt;ranges.zero.upper &lt; array_context-&gt;ranges.zero.lower))) {</span>
+<span class="lineNum">     996 </span><span class="lineCov">     856123 :                 if (REPORT_ABC_REMOVAL) {</span>
+<span class="lineNum">     997 </span><span class="lineCov">       7725 :                         printf (&quot;ARRAY-ACCESS: removed bounds check on array %d with index %d\n&quot;,</span>
+<span class="lineNum">     998 </span><span class="lineCov">       7725 :                                         array_variable, index_variable);</span>
+<span class="lineNum">     999 </span><span class="lineCov">       7725 :                 }</span>
+<span class="lineNum">    1000 </span><span class="lineCov">    3424525 :                 NULLIFY_INS (ins);</span>
+<span class="lineNum">    1001 </span><span class="lineCov">     856146 :         } else {</span>
+<span class="lineNum">    1002 </span><span class="lineCov">    4277846 :                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1003 </span><span class="lineCov">      44023 :                         if (index_context-&gt;ranges.zero.lower &gt;= 0) {</span>
+<span class="lineNum">    1004 </span><span class="lineCov">      19903 :                                 printf (&quot;ARRAY-ACCESS: Removed lower bound check on array %d with index %d\n&quot;, array_variable, index_variable);</span>
+<span class="lineNum">    1005 </span><span class="lineCov">      19903 :                         }</span>
+<span class="lineNum">    1006 </span><span class="lineCov">      44023 :                         if (index_context-&gt;ranges.variable.upper &lt; 0) {</span>
+<span class="lineNum">    1007 </span><span class="lineCov">       2139 :                                 printf (&quot;ARRAY-ACCESS: Removed upper bound check (through variable) on array %d with index %d\n&quot;, array_variable, index_variable);</span>
+<span class="lineNum">    1008 </span><span class="lineCov">       2139 :                         }</span>
+<span class="lineNum">    1009 </span><span class="lineCov">      44023 :                         if (index_context-&gt;ranges.zero.upper &lt; array_context-&gt;ranges.zero.lower) {</span>
+<span class="lineNum">    1010 </span><span class="lineCov">         44 :                                 printf (&quot;ARRAY-ACCESS: Removed upper bound check (through constant) on array %d with index %d\n&quot;, array_variable, index_variable);</span>
+<span class="lineNum">    1011 </span><span class="lineCov">         44 :                         }</span>
+<span class="lineNum">    1012 </span><span class="lineCov">      44023 :                 }</span>
+<span class="lineNum">    1013 </span>            :         }
+<span class="lineNum">    1014 </span><span class="lineCov">    5133690 : }</span>
+<a name="1015"><span class="lineNum">    1015 </span>            : </a>
+<span class="lineNum">    1016 </span>            : static gboolean
+<span class="lineNum">    1017 </span>            : eval_non_null (MonoVariableRelationsEvaluationArea *area, int reg)
+<span class="lineNum">    1018 </span>            : {
+<span class="lineNum">    1019 </span><span class="lineCov">   12451890 :         MonoRelationsEvaluationContext *context = &amp;(area-&gt;contexts [reg]);</span>
+<span class="lineNum">    1020 </span>            : 
+<span class="lineNum">    1021 </span><span class="lineCov">   12451890 :         clean_contexts (area, area-&gt;cfg-&gt;next_vreg);</span>
+<span class="lineNum">    1022 </span><span class="lineCov">   12451890 :         evaluate_relation_with_target_variable (area, reg, reg, NULL);</span>
+<span class="lineNum">    1023 </span>            :                                 
+<span class="lineNum">    1024 </span><span class="lineCov">   12451890 :         return context-&gt;ranges.zero.lower &gt; 0;</span>
+<span class="lineNum">    1025 </span>            : }
+<a name="1026"><span class="lineNum">    1026 </span>            : </a>
+<span class="lineNum">    1027 </span>            : static void
+<span class="lineNum">    1028 </span>            : add_non_null (MonoVariableRelationsEvaluationArea *area, MonoCompile *cfg, int reg,
+<span class="lineNum">    1029 </span>            :                           GSList **check_relations)
+<span class="lineNum">    1030 </span>            : {
+<span class="lineNum">    1031 </span>            :         MonoAdditionalVariableRelation *rel;
+<span class="lineNum">    1032 </span>            : 
+<span class="lineNum">    1033 </span><span class="lineCov">   13890885 :         rel = (MonoAdditionalVariableRelation *)mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (MonoAdditionalVariableRelation));</span>
+<span class="lineNum">    1034 </span><span class="lineCov">   13890885 :         rel-&gt;variable = reg;</span>
+<span class="lineNum">    1035 </span><span class="lineCov">   13890885 :         rel-&gt;relation.relation = MONO_GT_RELATION;</span>
+<span class="lineNum">    1036 </span><span class="lineCov">   13890885 :         rel-&gt;relation.related_value.type = MONO_CONSTANT_SUMMARIZED_VALUE;</span>
+<span class="lineNum">    1037 </span><span class="lineCov">   13890885 :         rel-&gt;relation.related_value.value.constant.value = 0;</span>
+<span class="lineNum">    1038 </span>            : 
+<span class="lineNum">    1039 </span><span class="lineCov">   13890885 :         apply_change_to_evaluation_area (area, rel);</span>
+<span class="lineNum">    1040 </span>            : 
+<span class="lineNum">    1041 </span><span class="lineCov">   13890885 :         *check_relations = g_slist_append_mempool (cfg-&gt;mempool, *check_relations, rel);</span>
+<span class="lineNum">    1042 </span><span class="lineCov">   13890885 : }</span>
+<span class="lineNum">    1043 </span>            : 
+<span class="lineNum">    1044 </span>            : /*
+<span class="lineNum">    1045 </span>            :  * Process a BB removing bounds checks from array accesses.
+<span class="lineNum">    1046 </span>            :  * It does the following (in sequence):
+<span class="lineNum">    1047 </span>            :  * - Get the BB entry condition
+<span class="lineNum">    1048 </span>            :  * - Add its relations to the relation graph in the evaluation area
+<span class="lineNum">    1049 </span>            :  * - Process all the MonoInst trees in the BB
+<span class="lineNum">    1050 </span>            :  * - Recursively process all the children BBs in the dominator tree
+<span class="lineNum">    1051 </span>            :  * - Remove the relations previously added to the relation graph
+<span class="lineNum">    1052 </span>            :  *
+<span class="lineNum">    1053 </span>            :  * bb: the BB that must be processed
+<span class="lineNum">    1054 </span>            :  * area: the current evaluation area (it contains the relation graph and
+<span class="lineNum">    1055 </span>            :  *       memory for all the evaluation contexts is already allocated)
+<a name="1056"><span class="lineNum">    1056 </span>            :  */</a>
+<span class="lineNum">    1057 </span>            : static void
+<span class="lineNum">    1058 </span>            : process_block (MonoCompile *cfg, MonoBasicBlock *bb, MonoVariableRelationsEvaluationArea *area) {
+<span class="lineNum">    1059 </span>            :         int inst_index;
+<span class="lineNum">    1060 </span>            :         MonoInst *ins;
+<span class="lineNum">    1061 </span>            :         MonoAdditionalVariableRelationsForBB additional_relations;
+<span class="lineNum">    1062 </span>            :         GSList *dominated_bb, *l;
+<span class="lineNum">    1063 </span><span class="lineCov">   58419694 :         GSList *check_relations = NULL;</span>
+<span class="lineNum">    1064 </span>            :         
+<span class="lineNum">    1065 </span><span class="lineCov">   58419694 :         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1066 </span><span class="lineCov">     663283 :                 printf (&quot;\nProcessing block %d [dfn %d]...\n&quot;, bb-&gt;block_num, bb-&gt;dfn);</span>
+<span class="lineNum">    1067 </span><span class="lineCov">     663283 :         }</span>
+<span class="lineNum">    1068 </span>            : 
+<span class="lineNum">    1069 </span><span class="lineCov">   58426114 :         if (bb-&gt;region != -1)</span>
+<span class="lineNum">    1070 </span><span class="lineCov">     610214 :                 return;</span>
+<span class="lineNum">    1071 </span>            : 
+<span class="lineNum">    1072 </span><span class="lineCov">   57812015 :         get_relations_from_previous_bb (area, bb, &amp;additional_relations);</span>
+<span class="lineNum">    1073 </span><span class="lineCov">   57812015 :         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1074 </span><span class="lineCov">     655809 :                 if (additional_relations.relation1.relation.relation != MONO_ANY_RELATION) {</span>
+<span class="lineNum">    1075 </span><span class="lineCov">     230087 :                         printf (&quot;Adding relation 1 on variable %d: &quot;, additional_relations.relation1.variable);</span>
+<span class="lineNum">    1076 </span><span class="lineCov">     230087 :                         print_summarized_value_relation (&amp;(additional_relations.relation1.relation));</span>
+<span class="lineNum">    1077 </span><span class="lineCov">     230087 :                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">    1078 </span><span class="lineCov">     230087 :                 }</span>
+<span class="lineNum">    1079 </span><span class="lineCov">     655809 :                 if (additional_relations.relation2.relation.relation != MONO_ANY_RELATION) {</span>
+<span class="lineNum">    1080 </span><span class="lineCov">      34026 :                         printf (&quot;Adding relation 2 on variable %d: &quot;, additional_relations.relation2.variable);</span>
+<span class="lineNum">    1081 </span><span class="lineCov">      34026 :                         print_summarized_value_relation (&amp;(additional_relations.relation2.relation));</span>
+<span class="lineNum">    1082 </span><span class="lineCov">      34026 :                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">    1083 </span><span class="lineCov">      34026 :                 }</span>
+<span class="lineNum">    1084 </span><span class="lineCov">     655809 :         }</span>
+<span class="lineNum">    1085 </span><span class="lineCov">   57814272 :         apply_change_to_evaluation_area (area, &amp;(additional_relations.relation1));</span>
+<span class="lineNum">    1086 </span><span class="lineCov">   57814272 :         apply_change_to_evaluation_area (area, &amp;(additional_relations.relation2));</span>
+<span class="lineNum">    1087 </span>            : 
+<span class="lineNum">    1088 </span><span class="lineCov">   57814272 :         inst_index = 0;</span>
+<span class="lineNum">    1089 </span><span class="lineCov"> 1089064757 :         for (ins = bb-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">    1090 </span>            :                 MonoAdditionalVariableRelation *rel;
+<span class="lineNum">    1091 </span>            :                 int array_var, index_var;
+<span class="lineNum">    1092 </span>            : 
+<span class="lineNum">    1093 </span><span class="lineCov">  486634555 :                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1094 </span><span class="lineCov">    5528143 :                         printf (&quot;Processing instruction %d\n&quot;, inst_index);</span>
+<span class="lineNum">    1095 </span><span class="lineCov">    5528143 :                         inst_index++;</span>
+<span class="lineNum">    1096 </span><span class="lineCov">    5528143 :                 }</span>
+<span class="lineNum">    1097 </span>            : 
+<span class="lineNum">    1098 </span><span class="lineCov">  486690612 :                 if (ins-&gt;opcode == OP_BOUNDS_CHECK) { /* Handle OP_LDELEMA2D, too */</span>
+<span class="lineNum">    1099 </span><span class="lineCov">    5136514 :                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1100 </span><span class="lineCov">      51748 :                                 printf (&quot;Attempting check removal...\n&quot;);</span>
+<span class="lineNum">    1101 </span><span class="lineCov">      51748 :                         }</span>
+<span class="lineNum">    1102 </span>            : 
+<span class="lineNum">    1103 </span><span class="lineCov">    5134059 :                         array_var = ins-&gt;sreg1;</span>
+<span class="lineNum">    1104 </span><span class="lineCov">    5134059 :                         index_var = ins-&gt;sreg2;</span>
+<span class="lineNum">    1105 </span>            :                 
+<span class="lineNum">    1106 </span><span class="lineCov">    5134059 :                         remove_abc_from_inst (ins, area);</span>
+<span class="lineNum">    1107 </span>            : 
+<span class="lineNum">    1108 </span>            :                         /* We can derive additional relations from the bounds check */
+<span class="lineNum">    1109 </span><span class="lineCov">    5134059 :                         if (ins-&gt;opcode != OP_NOP) {</span>
+<span class="lineNum">    1110 </span><span class="lineCov">    4278182 :                                 rel = (MonoAdditionalVariableRelation *)mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (MonoAdditionalVariableRelation));</span>
+<span class="lineNum">    1111 </span><span class="lineCov">    4278182 :                                 rel-&gt;variable = index_var;</span>
+<span class="lineNum">    1112 </span><span class="lineCov">    4278182 :                                 rel-&gt;relation.relation = MONO_LT_RELATION;</span>
+<span class="lineNum">    1113 </span><span class="lineCov">    4278182 :                                 rel-&gt;relation.related_value.type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">    1114 </span><span class="lineCov">    4278182 :                                 rel-&gt;relation.related_value.value.variable.variable = array_var;</span>
+<span class="lineNum">    1115 </span><span class="lineCov">    4278182 :                                 rel-&gt;relation.related_value.value.variable.delta = 0;</span>
+<span class="lineNum">    1116 </span>            : 
+<span class="lineNum">    1117 </span><span class="lineCov">    4278182 :                                 apply_change_to_evaluation_area (area, rel);</span>
+<span class="lineNum">    1118 </span>            : 
+<span class="lineNum">    1119 </span><span class="lineCov">    4278182 :                                 check_relations = g_slist_append_mempool (cfg-&gt;mempool, check_relations, rel);</span>
+<span class="lineNum">    1120 </span>            : 
+<span class="lineNum">    1121 </span><span class="lineCov">    4278182 :                                 rel = (MonoAdditionalVariableRelation *)mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (MonoAdditionalVariableRelation));</span>
+<span class="lineNum">    1122 </span><span class="lineCov">    4278182 :                                 rel-&gt;variable = index_var;</span>
+<span class="lineNum">    1123 </span><span class="lineCov">    4278182 :                                 rel-&gt;relation.relation = MONO_GE_RELATION;</span>
+<span class="lineNum">    1124 </span><span class="lineCov">    4278182 :                                 rel-&gt;relation.related_value.type = MONO_CONSTANT_SUMMARIZED_VALUE;</span>
+<span class="lineNum">    1125 </span><span class="lineCov">    4278182 :                                 rel-&gt;relation.related_value.value.constant.value = 0;</span>
+<span class="lineNum">    1126 </span>            : 
+<span class="lineNum">    1127 </span><span class="lineCov">    4278182 :                                 apply_change_to_evaluation_area (area, rel);</span>
+<span class="lineNum">    1128 </span>            : 
+<span class="lineNum">    1129 </span><span class="lineCov">    4278182 :                                 check_relations = g_slist_append_mempool (cfg-&gt;mempool, check_relations, rel);</span>
+<span class="lineNum">    1130 </span><span class="lineCov">    4278182 :                         }</span>
+<span class="lineNum">    1131 </span><span class="lineCov">    5136562 :                 }</span>
+<span class="lineNum">    1132 </span>            : 
+<span class="lineNum">    1133 </span><span class="lineCov">  486762503 :                 if (ins-&gt;opcode == OP_CHECK_THIS) {</span>
+<span class="lineNum">    1134 </span><span class="lineCov">   12458335 :                         if (eval_non_null (area, ins-&gt;sreg1)) {</span>
+<span class="lineNum">    1135 </span><span class="lineCov">    4041620 :                                 if (REPORT_ABC_REMOVAL)</span>
+<span class="lineNum">    1136 </span><span class="lineCov">      46508 :                                         printf (&quot;ARRAY-ACCESS: removed check_this instruction.\n&quot;);</span>
+<span class="lineNum">    1137 </span><span class="lineCov">   16167540 :                                 NULLIFY_INS (ins);</span>
+<span class="lineNum">    1138 </span><span class="lineCov">    4041961 :                         }</span>
+<span class="lineNum">    1139 </span><span class="lineCov">   12458347 :                 }</span>
+<span class="lineNum">    1140 </span>            : 
+<span class="lineNum">    1141 </span><span class="lineCov">  486764724 :                 if (ins-&gt;opcode == OP_NOT_NULL)</span>
+<span class="lineNum">    1142 </span><span class="lineCov">   13892919 :                         add_non_null (area, cfg, ins-&gt;sreg1, &amp;check_relations);</span>
+<span class="lineNum">    1143 </span>            : 
+<span class="lineNum">    1144 </span>            :                 /* 
+<span class="lineNum">    1145 </span>            :                  * FIXME: abcrem equates an array with its length,
+<span class="lineNum">    1146 </span>            :                  * so a = new int [100] implies a != null, but a = new int [0] doesn't.
+<span class="lineNum">    1147 </span>            :                  */
+<span class="lineNum">    1148 </span>            :                 /*
+<span class="lineNum">    1149 </span>            :                  * Eliminate MONO_INST_FAULT flags if possible.
+<span class="lineNum">    1150 </span>            :                  */
+<span class="lineNum">    1151 </span><span class="lineCov">  493445431 :                 if (COMPILE_LLVM (cfg) &amp;&amp; (ins-&gt;opcode == OP_LDLEN ||</span>
+<span class="lineNum">    1152 </span><span class="lineCov">    6455710 :                                                                    ins-&gt;opcode == OP_BOUNDS_CHECK ||</span>
+<span class="lineNum">    1153 </span><span class="lineCov">    6404998 :                                                                    ins-&gt;opcode == OP_STRLEN ||</span>
+<span class="lineNum">    1154 </span><span class="lineCov">   15666291 :                                                                    (MONO_IS_LOAD_MEMBASE (ins) &amp;&amp; (ins-&gt;flags &amp; MONO_INST_FAULT)) ||</span>
+<span class="lineNum">    1155 </span><span class="lineCov">   15011080 :                                                                    (MONO_IS_STORE_MEMBASE (ins) &amp;&amp; (ins-&gt;flags &amp; MONO_INST_FAULT)))) {</span>
+<span class="lineNum">    1156 </span>            :                         int reg;
+<span class="lineNum">    1157 </span>            : 
+<span class="lineNum">    1158 </span><span class="lineCov">    1360107 :                         if (MONO_IS_STORE_MEMBASE (ins))</span>
+<span class="lineNum">    1159 </span><span class="lineCov">     106565 :                                 reg = ins-&gt;inst_destbasereg;</span>
+<span class="lineNum">    1160 </span><span class="lineCov">     851641 :                         else if (MONO_IS_LOAD_MEMBASE (ins))</span>
+<span class="lineNum">    1161 </span><span class="lineCov">     295331 :                                 reg = ins-&gt;inst_basereg;</span>
+<span class="lineNum">    1162 </span>            :                         else
+<span class="lineNum">    1163 </span><span class="lineCov">      86993 :                                 reg = ins-&gt;sreg1;</span>
+<span class="lineNum">    1164 </span>            : 
+<span class="lineNum">    1165 </span>            :                         /*
+<span class="lineNum">    1166 </span>            :                          * This doesn't work because LLVM can move the non-faulting loads before the faulting
+<span class="lineNum">    1167 </span>            :                          * ones (test_0_llvm_moving_faulting_loads ()).
+<span class="lineNum">    1168 </span>            :                          * So only do it if we know the load cannot be moved before the instruction which ensures it is not
+<span class="lineNum">    1169 </span>            :                          * null (i.e. the def of its sreg).
+<span class="lineNum">    1170 </span>            :                          */
+<span class="lineNum">    1171 </span><span class="lineCov">     503493 :                         if (area-&gt;defs [reg] &amp;&amp; area-&gt;defs [reg]-&gt;opcode == OP_NEWARR) {</span>
+<span class="lineNum">    1172 </span><span class="lineCov">      14607 :                                 if (REPORT_ABC_REMOVAL)</span>
+<span class="lineNum">    1173 </span><span class="lineNoCov">          0 :                                         printf (&quot;ARRAY-ACCESS: removed MONO_INST_FAULT flag.\n&quot;);</span>
+<span class="lineNum">    1174 </span><span class="lineCov">      14607 :                                 ins-&gt;flags &amp;= ~MONO_INST_FAULT;</span>
+<span class="lineNum">    1175 </span><span class="lineCov">      14607 :                         }</span>
+<span class="lineNum">    1176 </span>            :                         /*
+<span class="lineNum">    1177 </span>            :                         if (eval_non_null (area, reg)) {
+<span class="lineNum">    1178 </span>            :                                 if (REPORT_ABC_REMOVAL)
+<span class="lineNum">    1179 </span>            :                                         printf (&quot;ARRAY-ACCESS: removed MONO_INST_FAULT flag.\n&quot;);
+<span class="lineNum">    1180 </span>            :                                 ins-&gt;flags &amp;= ~MONO_INST_FAULT;
+<span class="lineNum">    1181 </span>            :                         } else {
+<span class="lineNum">    1182 </span>            :                                 add_non_null (area, cfg, reg, &amp;check_relations);
+<span class="lineNum">    1183 </span>            :                         }
+<span class="lineNum">    1184 </span>            :                         */
+<span class="lineNum">    1185 </span><span class="lineCov">     488888 :                 }</span>
+<span class="lineNum">    1186 </span><span class="lineCov">  486719116 :         }       </span>
+<span class="lineNum">    1187 </span>            :         
+<span class="lineNum">    1188 </span><span class="lineCov">   57787481 :         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1189 </span><span class="lineCov">     655809 :                 printf (&quot;Processing block %d [dfn %d] done.\n&quot;, bb-&gt;block_num, bb-&gt;dfn);</span>
+<span class="lineNum">    1190 </span><span class="lineCov">     655809 :         }</span>
+<span class="lineNum">    1191 </span>            :         
+<span class="lineNum">    1192 </span><span class="lineCov">  222063385 :         for (dominated_bb = bb-&gt;dominated; dominated_bb != NULL; dominated_bb = dominated_bb-&gt;next) {</span>
+<span class="lineNum">    1193 </span><span class="lineCov">   53230493 :                 process_block (cfg, (MonoBasicBlock*) (dominated_bb-&gt;data), area);</span>
+<span class="lineNum">    1194 </span><span class="lineCov">   53230493 :         }</span>
+<span class="lineNum">    1195 </span>            : 
+<span class="lineNum">    1196 </span><span class="lineCov">  160513280 :         for (l = check_relations; l; l = l-&gt;next)</span>
+<span class="lineNum">    1197 </span><span class="lineCov">   22449004 :                 remove_change_from_evaluation_area ((MonoAdditionalVariableRelation *)l-&gt;data);</span>
+<span class="lineNum">    1198 </span>            :         
+<span class="lineNum">    1199 </span><span class="lineCov">   57812616 :         remove_change_from_evaluation_area (&amp;(additional_relations.relation1));</span>
+<span class="lineNum">    1200 </span><span class="lineCov">   57812616 :         remove_change_from_evaluation_area (&amp;(additional_relations.relation2));</span>
+<span class="lineNum">    1201 </span><span class="lineCov">  116225711 : }</span>
+<a name="1202"><span class="lineNum">    1202 </span>            : </a>
+<span class="lineNum">    1203 </span>            : static MonoIntegerValueKind
+<span class="lineNum">    1204 </span>            : type_to_value_kind (MonoType *type)
+<span class="lineNum">    1205 </span>            : {
+<span class="lineNum">    1206 </span><span class="lineCov">   39661010 :         if (type-&gt;byref)</span>
+<span class="lineNum">    1207 </span><span class="lineNoCov">          0 :                 return MONO_UNKNOWN_INTEGER_VALUE;</span>
+<span class="lineNum">    1208 </span><span class="lineCov">   39652738 :         switch (type-&gt;type) {</span>
+<span class="lineNum">    1209 </span>            :         case MONO_TYPE_I1:
+<span class="lineNum">    1210 </span><span class="lineCov">      49660 :                 return MONO_INTEGER_VALUE_SIZE_1;</span>
+<span class="lineNum">    1211 </span>            :                 break;
+<span class="lineNum">    1212 </span>            :         case MONO_TYPE_U1:
+<span class="lineNum">    1213 </span><span class="lineCov">    5594501 :                 return MONO_UNSIGNED_INTEGER_VALUE_SIZE_1;</span>
+<span class="lineNum">    1214 </span>            :                 break;
+<span class="lineNum">    1215 </span>            :         case MONO_TYPE_I2:
+<span class="lineNum">    1216 </span><span class="lineCov">      19651 :                 return MONO_INTEGER_VALUE_SIZE_2;</span>
+<span class="lineNum">    1217 </span>            :                 break;
+<span class="lineNum">    1218 </span>            :         case MONO_TYPE_U2:
+<span class="lineNum">    1219 </span><span class="lineCov">     479660 :                 return MONO_UNSIGNED_INTEGER_VALUE_SIZE_2;</span>
+<span class="lineNum">    1220 </span>            :                 break;
+<span class="lineNum">    1221 </span>            :         case MONO_TYPE_I4:
+<span class="lineNum">    1222 </span><span class="lineCov">   10776265 :                 return MONO_INTEGER_VALUE_SIZE_4;</span>
+<span class="lineNum">    1223 </span>            :                 break;
+<span class="lineNum">    1224 </span>            :         case MONO_TYPE_U4:
+<span class="lineNum">    1225 </span><span class="lineCov">     500866 :                 return MONO_UNSIGNED_INTEGER_VALUE_SIZE_4;</span>
+<span class="lineNum">    1226 </span>            :                 break;
+<span class="lineNum">    1227 </span>            :         case MONO_TYPE_I:
+<span class="lineNum">    1228 </span><span class="lineCov">    2984106 :                 return (MonoIntegerValueKind)SIZEOF_VOID_P;</span>
+<span class="lineNum">    1229 </span>            :                 break;
+<span class="lineNum">    1230 </span>            :         case MONO_TYPE_U:
+<span class="lineNum">    1231 </span><span class="lineCov">          1 :                 return (MonoIntegerValueKind)(MONO_UNSIGNED_VALUE_FLAG | SIZEOF_VOID_P);</span>
+<span class="lineNum">    1232 </span>            :                 break;
+<span class="lineNum">    1233 </span>            :         case MONO_TYPE_I8:
+<span class="lineNum">    1234 </span><span class="lineCov">     121652 :                 return MONO_INTEGER_VALUE_SIZE_8;</span>
+<span class="lineNum">    1235 </span>            :                 break;
+<span class="lineNum">    1236 </span>            :         case MONO_TYPE_U8:
+<span class="lineNum">    1237 </span><span class="lineCov">      68895 :                 return MONO_UNSIGNED_INTEGER_VALUE_SIZE_8;</span>
+<span class="lineNum">    1238 </span>            :         default:
+<span class="lineNum">    1239 </span><span class="lineCov">   19062042 :                 return MONO_UNKNOWN_INTEGER_VALUE;</span>
+<span class="lineNum">    1240 </span>            :         }
+<span class="lineNum">    1241 </span><span class="lineCov">   39646550 : }</span>
+<span class="lineNum">    1242 </span>            : 
+<span class="lineNum">    1243 </span>            : /**
+<span class="lineNum">    1244 </span>            :  * mono_perform_abc_removal:
+<span class="lineNum">    1245 </span>            :  * @cfg: Control Flow Graph
+<span class="lineNum">    1246 </span>            :  *
+<span class="lineNum">    1247 </span>            :  * Performs the ABC removal from a cfg in SSA form.
+<span class="lineNum">    1248 </span>            :  * It does the following:
+<span class="lineNum">    1249 </span>            :  * - Prepare the evaluation area
+<span class="lineNum">    1250 </span>            :  * - Allocate memory for the relation graph in the evaluation area
+<span class="lineNum">    1251 </span>            :  *   (of course, only for variable definitions) and summarize there all
+<span class="lineNum">    1252 </span>            :  *   variable definitions
+<span class="lineNum">    1253 </span>            :  * - Allocate memory for the evaluation contexts in the evaluation area
+<span class="lineNum">    1254 </span>            :  * - Recursively process all the BBs in the dominator tree (it is enough
+<span class="lineNum">    1255 </span>            :  *   to invoke the processing on the entry BB)
+<span class="lineNum">    1256 </span>            :  * 
+<span class="lineNum">    1257 </span>            :  * cfg: the method code
+<a name="1258"><span class="lineNum">    1258 </span>            :  */</a>
+<span class="lineNum">    1259 </span>            : void
+<span class="lineNum">    1260 </span>            : mono_perform_abc_removal (MonoCompile *cfg)
+<span class="lineNum">    1261 </span>            : {
+<span class="lineNum">    1262 </span>            :         MonoVariableRelationsEvaluationArea area;
+<span class="lineNum">    1263 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">    1264 </span>            :         int i;
+<span class="lineNum">    1265 </span>            :         
+<span class="lineNum">    1266 </span><span class="lineCov">    5182633 :         verbose_level = cfg-&gt;verbose_level;</span>
+<span class="lineNum">    1267 </span>            :         
+<span class="lineNum">    1268 </span><span class="lineCov">    5182633 :         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1269 </span><span class="lineCov">      60105 :                 printf (&quot;\nRemoving array bound checks in %s\n&quot;, mono_method_full_name (cfg-&gt;method, TRUE));</span>
+<span class="lineNum">    1270 </span><span class="lineCov">      60105 :         }</span>
+<span class="lineNum">    1271 </span>            : 
+<span class="lineNum">    1272 </span><span class="lineCov">    5184648 :         area.cfg = cfg;</span>
+<span class="lineNum">    1273 </span><span class="lineCov">    5184648 :         area.relations = (MonoSummarizedValueRelation *)</span>
+<span class="lineNum">    1274 </span><span class="lineCov">    5184648 :                 mono_mempool_alloc (cfg-&gt;mempool, sizeof (MonoSummarizedValueRelation) * (cfg-&gt;next_vreg) * 2);</span>
+<span class="lineNum">    1275 </span>            : 
+<span class="lineNum">    1276 </span><span class="lineCov">    5184648 :         area.contexts = (MonoRelationsEvaluationContext *)</span>
+<span class="lineNum">    1277 </span><span class="lineCov">    5184648 :                 mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (MonoRelationsEvaluationContext) * (cfg-&gt;next_vreg));</span>
+<span class="lineNum">    1278 </span>            : 
+<span class="lineNum">    1279 </span><span class="lineCov">    5184648 :         area.statuses = (MonoRelationsEvaluationStatus *)</span>
+<span class="lineNum">    1280 </span><span class="lineCov">    5184648 :                 mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (MonoRelationsEvaluationStatus) * (cfg-&gt;next_vreg));</span>
+<span class="lineNum">    1281 </span>            : 
+<span class="lineNum">    1282 </span><span class="lineCov">    5184648 :         area.variable_value_kind = (MonoIntegerValueKind *)</span>
+<span class="lineNum">    1283 </span><span class="lineCov">    5184648 :                 mono_mempool_alloc (cfg-&gt;mempool, sizeof (MonoIntegerValueKind) * (cfg-&gt;next_vreg));</span>
+<span class="lineNum">    1284 </span><span class="lineCov">    5184648 :         area.defs = (MonoInst **)mono_mempool_alloc (cfg-&gt;mempool, sizeof (MonoInst*) * cfg-&gt;next_vreg);</span>
+<span class="lineNum">    1285 </span><span class="lineCov"> 1366031414 :         for (i = 0; i &lt; cfg-&gt;next_vreg; i++) {</span>
+<span class="lineNum">    1286 </span><span class="lineCov">  677947188 :                 area.variable_value_kind [i] = MONO_UNKNOWN_INTEGER_VALUE;</span>
+<span class="lineNum">    1287 </span><span class="lineCov">  677947188 :                 area.relations [i].relation = MONO_EQ_RELATION;</span>
+<span class="lineNum">    1288 </span><span class="lineCov">  677947188 :                 area.relations [i].relation_is_static_definition = TRUE;</span>
+<span class="lineNum">    1289 </span><span class="lineCov"> 1355589906 :                 MAKE_VALUE_ANY (area.relations [i].related_value);</span>
+<span class="lineNum">    1290 </span><span class="lineCov">  677913761 :                 area.relations [i].next = NULL;</span>
+<span class="lineNum">    1291 </span><span class="lineCov">  677913761 :                 area.defs [i] = NULL;</span>
+<span class="lineNum">    1292 </span><span class="lineCov">  677913761 :         }</span>
+<span class="lineNum">    1293 </span>            : 
+<span class="lineNum">    1294 </span><span class="lineCov">  148878846 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">    1295 </span>            :                 MonoInst *ins;
+<span class="lineNum">    1296 </span>            : 
+<span class="lineNum">    1297 </span><span class="lineCov">   69253066 :                 if (TRACE_ABC_REMOVAL)</span>
+<span class="lineNum">    1298 </span><span class="lineCov">     799604 :                         printf (&quot;\nABCREM BLOCK %d:\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">    1299 </span>            : 
+<span class="lineNum">    1300 </span><span class="lineCov"> 1299176270 :                 for (ins = bb-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">    1301 </span><span class="lineCov">  581196632 :                         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">    1302 </span>            :                         
+<span class="lineNum">    1303 </span><span class="lineCov"> 1374381287 :                         if (spec [MONO_INST_DEST] == ' ' || MONO_IS_STORE_MEMBASE (ins))</span>
+<span class="lineNum">    1304 </span><span class="lineCov">  296853844 :                                 continue;</span>
+<span class="lineNum">    1305 </span>            : 
+<span class="lineNum">    1306 </span><span class="lineCov">  284590869 :                         if (spec [MONO_INST_DEST] == 'i') {</span>
+<span class="lineNum">    1307 </span>            :                                 MonoIntegerValueKind effective_value_kind;
+<span class="lineNum">    1308 </span>            :                                 MonoRelationsEvaluationRange range;
+<span class="lineNum">    1309 </span>            :                                 MonoSummarizedValueRelation *type_relation;
+<span class="lineNum">    1310 </span>            :                                 MonoInst *var;
+<span class="lineNum">    1311 </span>            : 
+<span class="lineNum">    1312 </span><span class="lineCov">  270136327 :                                 if (TRACE_ABC_REMOVAL)</span>
+<span class="lineNum">    1313 </span><span class="lineCov">    3109883 :                                         mono_print_ins (ins);</span>
+<span class="lineNum">    1314 </span>            : 
+<span class="lineNum">    1315 </span><span class="lineCov">  810759226 :                                 var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">    1316 </span><span class="lineCov">  270399587 :                                 if (var)</span>
+<span class="lineNum">    1317 </span><span class="lineCov">   39666100 :                                         area.variable_value_kind [ins-&gt;dreg] = type_to_value_kind (var-&gt;inst_vtype);</span>
+<span class="lineNum">    1318 </span>            : 
+<span class="lineNum">    1319 </span><span class="lineCov">  270000784 :                                 effective_value_kind = get_relation_from_ins (&amp;area, ins, &amp;area.relations [ins-&gt;dreg], area.variable_value_kind [ins-&gt;dreg]);</span>
+<span class="lineNum">    1320 </span>            : 
+<span class="lineNum">    1321 </span><span class="lineCov">  539990908 :                                 MONO_MAKE_RELATIONS_EVALUATION_RANGE_WEAK (range);</span>
+<span class="lineNum">    1322 </span><span class="lineCov">  270033747 :                                 apply_value_kind_to_range (&amp;range, area.variable_value_kind [ins-&gt;dreg]);</span>
+<span class="lineNum">    1323 </span><span class="lineCov">  270033747 :                                 apply_value_kind_to_range (&amp;range, effective_value_kind);</span>
+<span class="lineNum">    1324 </span>            :                                         
+<span class="lineNum">    1325 </span><span class="lineCov">  270033747 :                                 if (range.upper &lt; INT_MAX) {</span>
+<span class="lineNum">    1326 </span><span class="lineCov">    6140961 :                                         type_relation = (MonoSummarizedValueRelation *) mono_mempool_alloc (cfg-&gt;mempool, sizeof (MonoSummarizedValueRelation));</span>
+<span class="lineNum">    1327 </span><span class="lineCov">    6140961 :                                         type_relation-&gt;relation = MONO_LE_RELATION;</span>
+<span class="lineNum">    1328 </span><span class="lineCov">    6140961 :                                         type_relation-&gt;related_value.type = MONO_CONSTANT_SUMMARIZED_VALUE;</span>
+<span class="lineNum">    1329 </span><span class="lineCov">    6140961 :                                         type_relation-&gt;related_value.value.constant.value = range.upper;</span>
+<span class="lineNum">    1330 </span><span class="lineCov">    6140961 :                                         type_relation-&gt;relation_is_static_definition = TRUE;</span>
+<span class="lineNum">    1331 </span><span class="lineCov">    6140961 :                                         type_relation-&gt;next = area.relations [ins-&gt;dreg].next;</span>
+<span class="lineNum">    1332 </span><span class="lineCov">    6140961 :                                         area.relations [ins-&gt;dreg].next = type_relation;</span>
+<span class="lineNum">    1333 </span><span class="lineCov">    6140961 :                                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1334 </span><span class="lineCov">      74365 :                                                 printf (&quot;[var%d &lt;= %d]&quot;, ins-&gt;dreg, range.upper);</span>
+<span class="lineNum">    1335 </span><span class="lineCov">      74365 :                                         }</span>
+<span class="lineNum">    1336 </span><span class="lineCov">    6141075 :                                 }</span>
+<span class="lineNum">    1337 </span><span class="lineCov">  270088224 :                                 if (range.lower &gt; INT_MIN) {</span>
+<span class="lineNum">    1338 </span><span class="lineCov">    8623938 :                                         type_relation = (MonoSummarizedValueRelation *) mono_mempool_alloc (cfg-&gt;mempool, sizeof (MonoSummarizedValueRelation));</span>
+<span class="lineNum">    1339 </span><span class="lineCov">    8623938 :                                         type_relation-&gt;relation = MONO_GE_RELATION;</span>
+<span class="lineNum">    1340 </span><span class="lineCov">    8623938 :                                         type_relation-&gt;related_value.type = MONO_CONSTANT_SUMMARIZED_VALUE;</span>
+<span class="lineNum">    1341 </span><span class="lineCov">    8623938 :                                         type_relation-&gt;related_value.value.constant.value = range.lower;</span>
+<span class="lineNum">    1342 </span><span class="lineCov">    8623938 :                                         type_relation-&gt;relation_is_static_definition = TRUE;</span>
+<span class="lineNum">    1343 </span><span class="lineCov">    8623938 :                                         type_relation-&gt;next = area.relations [ins-&gt;dreg].next;</span>
+<span class="lineNum">    1344 </span><span class="lineCov">    8623938 :                                         area.relations [ins-&gt;dreg].next = type_relation;</span>
+<span class="lineNum">    1345 </span><span class="lineCov">    8623938 :                                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1346 </span><span class="lineCov">      98409 :                                                 printf (&quot;[var%d &gt;= %d]&quot;, ins-&gt;dreg, range.lower);</span>
+<span class="lineNum">    1347 </span><span class="lineCov">      98409 :                                         }</span>
+<span class="lineNum">    1348 </span><span class="lineCov">    8624258 :                                 }</span>
+<span class="lineNum">    1349 </span><span class="lineCov">  270046503 :                                 if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1350 </span><span class="lineCov">    3109872 :                                         printf (&quot;Summarized variable %d: &quot;, ins-&gt;dreg);</span>
+<span class="lineNum">    1351 </span><span class="lineCov">    3109872 :                                         print_summarized_value (&amp;(area.relations [ins-&gt;dreg].related_value));</span>
+<span class="lineNum">    1352 </span><span class="lineCov">    3109872 :                                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">    1353 </span><span class="lineCov">    3109872 :                                 }</span>
+<span class="lineNum">    1354 </span><span class="lineCov">  270079656 :                         }</span>
+<span class="lineNum">    1355 </span><span class="lineCov">  284459077 :                 }</span>
+<span class="lineNum">    1356 </span><span class="lineCov">   69238573 :         }</span>
+<span class="lineNum">    1357 </span>            : 
+<span class="lineNum">    1358 </span>            :         /* Add symmetric relations */
+<span class="lineNum">    1359 </span><span class="lineCov"> 1366323214 :         for (i = 0; i &lt; cfg-&gt;next_vreg; i++) {</span>
+<span class="lineNum">    1360 </span><span class="lineCov">  678525964 :                 if (area.relations [i].related_value.type == MONO_VARIABLE_SUMMARIZED_VALUE) {</span>
+<span class="lineNum">    1361 </span><span class="lineCov">  105873364 :                         int related_index = cfg-&gt;next_vreg + i;</span>
+<span class="lineNum">    1362 </span><span class="lineCov">  105873364 :                         int related_variable = area.relations [i].related_value.value.variable.variable;</span>
+<span class="lineNum">    1363 </span>            :                         
+<span class="lineNum">    1364 </span><span class="lineCov">  105873364 :                         area.relations [related_index].relation = MONO_EQ_RELATION;</span>
+<span class="lineNum">    1365 </span><span class="lineCov">  105873364 :                         area.relations [related_index].relation_is_static_definition = TRUE;</span>
+<span class="lineNum">    1366 </span><span class="lineCov">  105873364 :                         area.relations [related_index].related_value.type = MONO_VARIABLE_SUMMARIZED_VALUE;</span>
+<span class="lineNum">    1367 </span><span class="lineCov">  105873364 :                         area.relations [related_index].related_value.value.variable.variable = i;</span>
+<span class="lineNum">    1368 </span><span class="lineCov">  105873364 :                         area.relations [related_index].related_value.value.variable.delta = - area.relations [i].related_value.value.variable.delta;</span>
+<span class="lineNum">    1369 </span>            :                         
+<span class="lineNum">    1370 </span><span class="lineCov">  105873364 :                         area.relations [related_index].next = area.relations [related_variable].next;</span>
+<span class="lineNum">    1371 </span><span class="lineCov">  105873364 :                         area.relations [related_variable].next = &amp;(area.relations [related_index]);</span>
+<span class="lineNum">    1372 </span>            :                         
+<span class="lineNum">    1373 </span><span class="lineCov">  105873364 :                         if (TRACE_ABC_REMOVAL) {</span>
+<span class="lineNum">    1374 </span><span class="lineCov">    1223054 :                                 printf (&quot;Added symmetric summarized value for variable variable %d (to %d): &quot;, i, related_variable);</span>
+<span class="lineNum">    1375 </span><span class="lineCov">    1223054 :                                 print_summarized_value (&amp;(area.relations [related_index].related_value));</span>
+<span class="lineNum">    1376 </span><span class="lineCov">    1223054 :                                 printf (&quot;\n&quot;);</span>
+<span class="lineNum">    1377 </span><span class="lineCov">    1223054 :                         }</span>
+<span class="lineNum">    1378 </span><span class="lineCov">  105860819 :                 }</span>
+<span class="lineNum">    1379 </span><span class="lineCov">  677557734 :         }</span>
+<span class="lineNum">    1380 </span>            : 
+<span class="lineNum">    1381 </span><span class="lineCov">    5190950 :         process_block (cfg, cfg-&gt;bblocks [0], &amp;area);</span>
+<span class="lineNum">    1382 </span><span class="lineCov">    5190950 : }</span>
+<span class="lineNum">    1383 </span>            : 
+<span class="lineNum">    1384 </span>            : #else /* !DISABLE_JIT */
+<span class="lineNum">    1385 </span>            : 
+<span class="lineNum">    1386 </span>            : MONO_EMPTY_SOURCE_FILE (abcremoval);
+<span class="lineNum">    1387 </span>            : 
+<span class="lineNum">    1388 </span>            : #endif /* !DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,483 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/cfold.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - cfold.c<span style="font-size: 80%;"> (source / <a href="cfold.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">178</td>
+            <td class="headerCovTableEntry">212</td>
+            <td class="headerCovTableEntryMed">84.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * cfold.c: Constant folding support
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *   Dietmar Maurer (dietmar@ximian.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * (C) 2003 Ximian, Inc.  http://www.ximian.com
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      13 </span>            : #include &quot;ir-emit.h&quot;
+<span class="lineNum">      14 </span>            : 
+<a name="15"><span class="lineNum">      15 </span>            : /* WTF is this doing here?!?!? */</a>
+<span class="lineNum">      16 </span>            : int
+<span class="lineNum">      17 </span>            : mono_is_power_of_two (guint32 val)
+<span class="lineNum">      18 </span>            : {
+<span class="lineNum">      19 </span>            :         int i, j, k;
+<span class="lineNum">      20 </span>            : 
+<span class="lineNum">      21 </span><span class="lineCov">   30004220 :         for (i = 0, j = 1, k = 0xfffffffe; i &lt; 32; ++i, j = j &lt;&lt; 1, k = k &lt;&lt; 1) {</span>
+<span class="lineNum">      22 </span><span class="lineCov">   15002676 :                 if (val &amp; j)</span>
+<span class="lineNum">      23 </span><span class="lineCov">    3939760 :                         break;</span>
+<span class="lineNum">      24 </span><span class="lineCov">   11063362 :         }</span>
+<span class="lineNum">      25 </span><span class="lineCov">    7879981 :         if (i == 32 || val &amp; k)</span>
+<span class="lineNum">      26 </span><span class="lineCov">    2965801 :                 return -1;</span>
+<span class="lineNum">      27 </span><span class="lineCov">     974347 :         return i;</span>
+<span class="lineNum">      28 </span><span class="lineCov">    3940147 : }</span>
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : #ifndef G_MININT32
+<span class="lineNum">      31 </span>            : #define MYGINT32_MAX 2147483647
+<span class="lineNum">      32 </span>            : #define G_MININT32 (-MYGINT32_MAX -1)
+<span class="lineNum">      33 </span>            : #endif
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span>            : #define FOLD_UNOP(name,op)      \
+<span class="lineNum">      36 </span>            :         case name:      \
+<span class="lineNum">      37 </span>            :             dest-&gt;inst_c0 = op arg1-&gt;inst_c0; \
+<span class="lineNum">      38 </span>            :         break;
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : #define FOLD_BINOP(name, op) \
+<span class="lineNum">      41 </span>            :         case name:      \
+<span class="lineNum">      42 </span>            :             dest-&gt;inst_c0 = arg1-&gt;inst_c0 op arg2-&gt;inst_c0;    \
+<span class="lineNum">      43 </span>            :         break;
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            : #define FOLD_BINOPC(name,op,cast)       \
+<span class="lineNum">      46 </span>            :         case name:      \
+<span class="lineNum">      47 </span>            :             dest-&gt;inst_c0 = (cast)arg1-&gt;inst_c0 op (cast)arg2-&gt;inst_c0;        \
+<span class="lineNum">      48 </span>            :         break;
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span>            : #define FOLD_BINOP2_IMM(name, op) \
+<span class="lineNum">      51 </span>            :         case name:      \
+<span class="lineNum">      52 </span>            :             dest-&gt;inst_c0 = arg1-&gt;inst_c0 op ins-&gt;inst_imm;    \
+<span class="lineNum">      53 </span>            :         break;
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : #define FOLD_BINOPC2_IMM(name, op, cast) \
+<span class="lineNum">      56 </span>            :         case name:      \
+<span class="lineNum">      57 </span>            :             dest-&gt;inst_c0 = (cast)arg1-&gt;inst_c0 op (cast)ins-&gt;inst_imm;        \
+<span class="lineNum">      58 </span>            :         break;
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : #define FOLD_BINOPCXX(name,op,cast)     \
+<span class="lineNum">      61 </span>            :         case name:      \
+<span class="lineNum">      62 </span>            :             res = (cast)arg1-&gt;inst_c0 op (cast)arg2-&gt;inst_c0;     \
+<span class="lineNum">      63 </span>            :         break; \
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : #define ALLOC_DEST(cfg, dest, ins) do { \
+<span class="lineNum">      66 </span>            :     if (!(dest)) { \
+<span class="lineNum">      67 </span>            :         MONO_INST_NEW ((cfg), (dest), -1); \
+<span class="lineNum">      68 </span>            :         (dest)-&gt;dreg = (ins)-&gt;dreg; \
+<span class="lineNum">      69 </span>            :     } \
+<span class="lineNum">      70 </span>            : } while (0)
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span>            : /**
+<span class="lineNum">      75 </span>            :  * mono_constant_fold_ins:
+<span class="lineNum">      76 </span>            :  *
+<span class="lineNum">      77 </span>            :  * Perform constant folding on INS, using ARG1 and ARG2 as the arguments. If OVERWRITE is
+<span class="lineNum">      78 </span>            :  * true, then store the result back into INS and return INS. Otherwise allocate a new ins,
+<span class="lineNum">      79 </span>            :  * store the result into it and return it. If constant folding cannot be performed, return
+<span class="lineNum">      80 </span>            :  * NULL.
+<a name="81"><span class="lineNum">      81 </span>            :  */</a>
+<span class="lineNum">      82 </span>            : MonoInst*
+<span class="lineNum">      83 </span>            : mono_constant_fold_ins (MonoCompile *cfg, MonoInst *ins, MonoInst *arg1, MonoInst *arg2, gboolean overwrite)
+<span class="lineNum">      84 </span>            : {
+<span class="lineNum">      85 </span><span class="lineCov">   99338351 :         MonoInst *dest = NULL;</span>
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span><span class="lineCov">   99338351 :         if (overwrite)</span>
+<span class="lineNum">      88 </span><span class="lineCov">   91470858 :                 dest = ins;</span>
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span><span class="lineCov">   99319431 :         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">      91 </span>            :         case OP_IMUL:
+<span class="lineNum">      92 </span>            :         case OP_IADD:
+<span class="lineNum">      93 </span>            :         case OP_IAND:
+<span class="lineNum">      94 </span>            :         case OP_IOR:
+<span class="lineNum">      95 </span>            :         case OP_IXOR:
+<span class="lineNum">      96 </span><span class="lineCov">     206278 :                 if (arg2-&gt;opcode == OP_ICONST) {</span>
+<span class="lineNum">      97 </span><span class="lineCov">      11149 :                         if (arg1-&gt;opcode == OP_ICONST) {</span>
+<span class="lineNum">      98 </span><span class="lineCov">      73057 :                                 ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">      99 </span><span class="lineCov">      22266 :                                 switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     100 </span><span class="lineCov">        204 :                                         FOLD_BINOP (OP_IMUL, *);</span>
+<span class="lineNum">     101 </span><span class="lineCov">       3188 :                                         FOLD_BINOP (OP_IADD, +);</span>
+<span class="lineNum">     102 </span><span class="lineCov">       1371 :                                         FOLD_BINOP (OP_IAND, &amp;);</span>
+<span class="lineNum">     103 </span><span class="lineCov">       6281 :                                         FOLD_BINOP (OP_IOR, |);</span>
+<span class="lineNum">     104 </span><span class="lineCov">         99 :                                         FOLD_BINOP (OP_IXOR, ^);</span>
+<span class="lineNum">     105 </span>            :                                 }
+<span class="lineNum">     106 </span><span class="lineCov">      11146 :                                 dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     107 </span><span class="lineCov">      22296 :                                 MONO_INST_NULLIFY_SREGS (dest);</span>
+<span class="lineNum">     108 </span><span class="lineCov">      11152 :                         }</span>
+<span class="lineNum">     109 </span><span class="lineCov">     206284 :                 } else if (arg1-&gt;opcode == OP_ICONST) {</span>
+<span class="lineNum">     110 </span>            :                         /* 
+<span class="lineNum">     111 </span>            :                          * This is commutative so swap the arguments, allowing the _imm variant
+<span class="lineNum">     112 </span>            :                          * to be used later.
+<span class="lineNum">     113 </span>            :                          */
+<span class="lineNum">     114 </span><span class="lineCov">     195140 :                         if (mono_op_to_op_imm (ins-&gt;opcode) != -1) {</span>
+<span class="lineNum">     115 </span><span class="lineCov">     585428 :                                 ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     116 </span><span class="lineCov">     195144 :                                 dest-&gt;opcode = mono_op_to_op_imm (ins-&gt;opcode);</span>
+<span class="lineNum">     117 </span><span class="lineCov">     195144 :                                 dest-&gt;sreg1 = ins-&gt;sreg2;</span>
+<span class="lineNum">     118 </span><span class="lineCov">     195144 :                                 dest-&gt;sreg2 = -1;</span>
+<span class="lineNum">     119 </span><span class="lineCov">     195144 :                                 dest-&gt;inst_imm = arg1-&gt;inst_c0;</span>
+<span class="lineNum">     120 </span><span class="lineCov">     195144 :                         }</span>
+<span class="lineNum">     121 </span><span class="lineCov">     195154 :                 }</span>
+<span class="lineNum">     122 </span><span class="lineCov">     206306 :                 break;</span>
+<span class="lineNum">     123 </span>            :         case OP_IMUL_IMM:
+<span class="lineNum">     124 </span>            :         case OP_IADD_IMM:
+<span class="lineNum">     125 </span>            :         case OP_IAND_IMM:
+<span class="lineNum">     126 </span>            :         case OP_IOR_IMM:
+<span class="lineNum">     127 </span>            :         case OP_IXOR_IMM:
+<span class="lineNum">     128 </span>            :         case OP_ISUB_IMM:
+<span class="lineNum">     129 </span>            :         case OP_ISHL_IMM:
+<span class="lineNum">     130 </span>            :         case OP_ISHR_IMM:
+<span class="lineNum">     131 </span>            :         case OP_ISHR_UN_IMM:
+<span class="lineNum">     132 </span>            :         case OP_SHL_IMM:
+<span class="lineNum">     133 </span><span class="lineCov">    1405774 :                 if (arg1-&gt;opcode == OP_ICONST) {</span>
+<span class="lineNum">     134 </span><span class="lineCov">   11133151 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     135 </span><span class="lineCov">    2810721 :                         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     136 </span><span class="lineCov">      15725 :                                 FOLD_BINOP2_IMM (OP_IMUL_IMM, *);</span>
+<span class="lineNum">     137 </span><span class="lineCov">    1151905 :                                 FOLD_BINOP2_IMM (OP_IADD_IMM, +);</span>
+<span class="lineNum">     138 </span><span class="lineCov">      41117 :                                 FOLD_BINOP2_IMM (OP_IAND_IMM, &amp;);</span>
+<span class="lineNum">     139 </span><span class="lineCov">      37500 :                                 FOLD_BINOP2_IMM (OP_IOR_IMM, |);</span>
+<span class="lineNum">     140 </span><span class="lineCov">         96 :                                 FOLD_BINOP2_IMM (OP_IXOR_IMM, ^);</span>
+<span class="lineNum">     141 </span><span class="lineCov">     103729 :                                 FOLD_BINOP2_IMM (OP_ISUB_IMM, -);</span>
+<span class="lineNum">     142 </span><span class="lineCov">      20421 :                                 FOLD_BINOPC2_IMM (OP_ISHL_IMM, &lt;&lt;, gint32);</span>
+<span class="lineNum">     143 </span><span class="lineCov">      26768 :                                 FOLD_BINOPC2_IMM (OP_ISHR_IMM, &gt;&gt;, gint32);</span>
+<span class="lineNum">     144 </span><span class="lineCov">       3577 :                                 FOLD_BINOPC2_IMM (OP_ISHR_UN_IMM, &gt;&gt;, guint32);</span>
+<span class="lineNum">     145 </span><span class="lineCov">       4914 :                                 FOLD_BINOP2_IMM (OP_SHL_IMM, &lt;&lt;);</span>
+<span class="lineNum">     146 </span>            :                         }
+<span class="lineNum">     147 </span><span class="lineCov">    1406134 :                         dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     148 </span><span class="lineCov">    2812787 :                         MONO_INST_NULLIFY_SREGS (dest);</span>
+<span class="lineNum">     149 </span><span class="lineCov">    1406807 :                 }</span>
+<span class="lineNum">     150 </span><span class="lineCov">    1406954 :                 break;</span>
+<span class="lineNum">     151 </span>            :         case OP_ISUB:
+<span class="lineNum">     152 </span>            :         case OP_ISHL:
+<span class="lineNum">     153 </span>            :         case OP_ISHR:
+<span class="lineNum">     154 </span>            :         case OP_ISHR_UN:
+<span class="lineNum">     155 </span><span class="lineCov">     215899 :                 if ((arg1-&gt;opcode == OP_ICONST) &amp;&amp; (arg2-&gt;opcode == OP_ICONST)) {</span>
+<span class="lineNum">     156 </span><span class="lineCov">     137971 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     157 </span><span class="lineCov">      69343 :                         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     158 </span><span class="lineCov">      33928 :                                 FOLD_BINOP (OP_ISUB, -);</span>
+<span class="lineNum">     159 </span><span class="lineCov">        563 :                                 FOLD_BINOP (OP_ISHL, &lt;&lt;);</span>
+<span class="lineNum">     160 </span><span class="lineCov">         97 :                                 FOLD_BINOP (OP_ISHR, &gt;&gt;);</span>
+<span class="lineNum">     161 </span><span class="lineCov">         96 :                                 FOLD_BINOPC (OP_ISHR_UN, &gt;&gt;, guint32);</span>
+<span class="lineNum">     162 </span>            :                         }
+<span class="lineNum">     163 </span><span class="lineCov">      34685 :                         dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     164 </span><span class="lineCov">      69373 :                         MONO_INST_NULLIFY_SREGS (dest);</span>
+<span class="lineNum">     165 </span><span class="lineCov">      34689 :                 }</span>
+<span class="lineNum">     166 </span><span class="lineCov">     107966 :                 break;</span>
+<span class="lineNum">     167 </span>            :         case OP_IDIV:
+<span class="lineNum">     168 </span>            :         case OP_IDIV_UN:
+<span class="lineNum">     169 </span>            :         case OP_IREM:
+<span class="lineNum">     170 </span>            :         case OP_IREM_UN:
+<span class="lineNum">     171 </span><span class="lineCov">       5508 :                 if ((arg1-&gt;opcode == OP_ICONST) &amp;&amp; (arg2-&gt;opcode == OP_ICONST)) {</span>
+<span class="lineNum">     172 </span><span class="lineCov">       4589 :                         if ((arg2-&gt;inst_c0 == 0) || ((arg1-&gt;inst_c0 == G_MININT32) &amp;&amp; (arg2-&gt;inst_c0 == -1)))</span>
+<span class="lineNum">     173 </span><span class="lineCov">        385 :                                 return NULL;</span>
+<span class="lineNum">     174 </span><span class="lineCov">      14300 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     175 </span><span class="lineCov">       3818 :                         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     176 </span><span class="lineCov">         54 :                                 FOLD_BINOPC (OP_IDIV, /, gint32);</span>
+<span class="lineNum">     177 </span><span class="lineCov">         48 :                                 FOLD_BINOPC (OP_IDIV_UN, /, guint32);</span>
+<span class="lineNum">     178 </span><span class="lineCov">       1760 :                                 FOLD_BINOPC (OP_IREM, %, gint32);</span>
+<span class="lineNum">     179 </span><span class="lineCov">         48 :                                 FOLD_BINOPC (OP_IREM_UN, %, guint32);</span>
+<span class="lineNum">     180 </span>            :                         }
+<span class="lineNum">     181 </span><span class="lineCov">       1910 :                         dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     182 </span><span class="lineCov">       3820 :                         MONO_INST_NULLIFY_SREGS (dest);</span>
+<span class="lineNum">     183 </span><span class="lineCov">       1910 :                 }</span>
+<span class="lineNum">     184 </span><span class="lineCov">       2369 :                 break;</span>
+<span class="lineNum">     185 </span>            :         case OP_IDIV_IMM:
+<span class="lineNum">     186 </span>            :         case OP_IDIV_UN_IMM:
+<span class="lineNum">     187 </span>            :         case OP_IREM_IMM:
+<span class="lineNum">     188 </span>            :         case OP_IREM_UN_IMM:
+<span class="lineNum">     189 </span><span class="lineCov">       2379 :                 if (arg1-&gt;opcode == OP_ICONST) {</span>
+<span class="lineNum">     190 </span><span class="lineCov">       4759 :                         if ((ins-&gt;inst_imm == 0) || ((arg1-&gt;inst_c0 == G_MININT32) &amp;&amp; (ins-&gt;inst_imm == -1)))</span>
+<span class="lineNum">     191 </span><span class="lineCov">        321 :                                 return NULL;</span>
+<span class="lineNum">     192 </span><span class="lineCov">      12861 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     193 </span><span class="lineCov">       2054 :                         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     194 </span><span class="lineCov">        240 :                                 FOLD_BINOPC2_IMM (OP_IDIV_IMM, /, gint32);</span>
+<span class="lineNum">     195 </span><span class="lineCov">         96 :                                 FOLD_BINOPC2_IMM (OP_IDIV_UN_IMM, /, guint32);</span>
+<span class="lineNum">     196 </span><span class="lineCov">       1623 :                                 FOLD_BINOPC2_IMM (OP_IREM_IMM, %, gint32);</span>
+<span class="lineNum">     197 </span><span class="lineCov">         96 :                                 FOLD_BINOPC2_IMM (OP_IREM_UN_IMM, %, guint32);</span>
+<span class="lineNum">     198 </span>            :                         default:
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :                                 g_assert_not_reached ();</span>
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     201 </span><span class="lineCov">       2055 :                         dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     202 </span><span class="lineCov">       4110 :                         MONO_INST_NULLIFY_SREGS (dest);</span>
+<span class="lineNum">     203 </span><span class="lineCov">       2058 :                 }</span>
+<span class="lineNum">     204 </span><span class="lineCov">       2058 :                 break;</span>
+<span class="lineNum">     205 </span>            :                 /* case OP_INEG: */
+<span class="lineNum">     206 </span>            :         case OP_INOT:
+<span class="lineNum">     207 </span>            :         case OP_INEG:
+<span class="lineNum">     208 </span><span class="lineCov">       3216 :                 if (arg1-&gt;opcode == OP_ICONST) {</span>
+<span class="lineNum">     209 </span>            :                         /* INEG sets cflags on x86, and the LNEG decomposition depends on that */
+<span class="lineNum">     210 </span>            : #if SIZEOF_REGISTER == 4
+<span class="lineNum">     211 </span>            :                         if (ins-&gt;opcode == OP_INEG)
+<span class="lineNum">     212 </span>            :                                 return NULL;
+<span class="lineNum">     213 </span>            : #endif
+<span class="lineNum">     214 </span><span class="lineCov">      20053 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     215 </span><span class="lineCov">       6432 :                         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     216 </span><span class="lineCov">       1676 :                                 FOLD_UNOP (OP_INEG,-);</span>
+<span class="lineNum">     217 </span><span class="lineCov">       1540 :                                 FOLD_UNOP (OP_INOT,~);</span>
+<span class="lineNum">     218 </span>            :                         }
+<span class="lineNum">     219 </span><span class="lineCov">       3216 :                         dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     220 </span><span class="lineCov">       6432 :                         MONO_INST_NULLIFY_SREGS (dest);</span>
+<span class="lineNum">     221 </span><span class="lineCov">       3216 :                 }</span>
+<span class="lineNum">     222 </span><span class="lineCov">       3216 :                 break;</span>
+<span class="lineNum">     223 </span>            :         case OP_MOVE:
+<span class="lineNum">     224 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     225 </span><span class="lineCov">   68709764 :                 if ((arg1-&gt;opcode == OP_ICONST) || (arg1-&gt;opcode == OP_I8CONST)) {</span>
+<span class="lineNum">     226 </span>            : #else
+<span class="lineNum">     227 </span>            :                 if (arg1-&gt;opcode == OP_ICONST) {
+<span class="lineNum">     228 </span>            : #endif
+<span class="lineNum">     229 </span><span class="lineCov">  160876916 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     230 </span><span class="lineCov">   51164223 :                         dest-&gt;opcode = arg1-&gt;opcode;</span>
+<span class="lineNum">     231 </span><span class="lineCov">  102330005 :                         MONO_INST_NULLIFY_SREGS (dest);</span>
+<span class="lineNum">     232 </span><span class="lineCov">   51166410 :                         dest-&gt;inst_c0 = arg1-&gt;inst_c0;</span>
+<span class="lineNum">     233 </span><span class="lineCov">   51166410 :                 }</span>
+<span class="lineNum">     234 </span><span class="lineCov">   51167499 :                 break;</span>
+<span class="lineNum">     235 </span>            :         case OP_VMOVE:
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 :                 if (arg1-&gt;opcode == OP_VZERO) {</span>
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :                         dest-&gt;opcode = OP_VZERO;</span>
+<span class="lineNum">     239 </span><span class="lineNoCov">          0 :                         dest-&gt;sreg1 = -1;</span>
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     242 </span>            :         case OP_XMOVE:
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :                 if (arg1-&gt;opcode == OP_XZERO) {</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :                         dest-&gt;opcode = OP_XZERO;</span>
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :                         dest-&gt;sreg1 = -1;</span>
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     249 </span>            :         case OP_COMPARE:
+<span class="lineNum">     250 </span>            :         case OP_ICOMPARE:
+<span class="lineNum">     251 </span>            :         case OP_COMPARE_IMM:
+<span class="lineNum">     252 </span>            :         case OP_ICOMPARE_IMM: {
+<span class="lineNum">     253 </span>            :                 MonoInst dummy_arg2;
+<span class="lineNum">     254 </span><span class="lineCov">    1721827 :                 if (ins-&gt;sreg2 == -1) {</span>
+<span class="lineNum">     255 </span><span class="lineCov">    1464425 :                         arg2 = &amp;dummy_arg2;</span>
+<span class="lineNum">     256 </span><span class="lineCov">    1464425 :                         arg2-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     257 </span><span class="lineCov">    1464425 :                         arg2-&gt;inst_c0 = ins-&gt;inst_imm;</span>
+<span class="lineNum">     258 </span><span class="lineCov">    1464425 :                 }</span>
+<span class="lineNum">     259 </span>            : 
+<span class="lineNum">     260 </span><span class="lineCov">    4737215 :                 if ((arg1-&gt;opcode == OP_ICONST) &amp;&amp; (arg2-&gt;opcode == OP_ICONST) &amp;&amp; ins-&gt;next) {</span>
+<span class="lineNum">     261 </span><span class="lineCov">    1474037 :                         MonoInst *next = ins-&gt;next;</span>
+<span class="lineNum">     262 </span><span class="lineCov">    1474037 :                         gboolean res = FALSE;</span>
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span><span class="lineCov">    1474037 :                         switch (next-&gt;opcode) {</span>
+<span class="lineNum">     265 </span>            :                         case OP_CEQ:
+<span class="lineNum">     266 </span>            :                         case OP_ICEQ:
+<span class="lineNum">     267 </span>            :                         case OP_CGT:
+<span class="lineNum">     268 </span>            :                         case OP_ICGT:
+<span class="lineNum">     269 </span>            :                         case OP_CGT_UN:
+<span class="lineNum">     270 </span>            :                         case OP_ICGT_UN:
+<span class="lineNum">     271 </span>            :                         case OP_CLT:
+<span class="lineNum">     272 </span>            :                         case OP_ICLT:
+<span class="lineNum">     273 </span>            :                         case OP_CLT_UN:
+<span class="lineNum">     274 </span>            :                         case OP_ICLT_UN:
+<span class="lineNum">     275 </span><span class="lineCov">      71406 :                                 switch (next-&gt;opcode) {</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                                         FOLD_BINOPCXX (OP_CEQ,==,gint32);</span>
+<span class="lineNum">     277 </span><span class="lineCov">      26631 :                                         FOLD_BINOPCXX (OP_ICEQ,==,gint32);</span>
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :                                         FOLD_BINOPCXX (OP_CGT,&gt;,gint32);</span>
+<span class="lineNum">     279 </span><span class="lineCov">       5610 :                                         FOLD_BINOPCXX (OP_ICGT,&gt;,gint32);</span>
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :                                         FOLD_BINOPCXX (OP_CGT_UN,&gt;,guint32);</span>
+<span class="lineNum">     281 </span><span class="lineCov">        419 :                                         FOLD_BINOPCXX (OP_ICGT_UN,&gt;,guint32);</span>
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :                                         FOLD_BINOPCXX (OP_CLT,&lt;,gint32);</span>
+<span class="lineNum">     283 </span><span class="lineCov">       2907 :                                         FOLD_BINOPCXX (OP_ICLT,&lt;,gint32);</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                                         FOLD_BINOPCXX (OP_CLT_UN,&lt;,guint32);</span>
+<span class="lineNum">     285 </span><span class="lineCov">        148 :                                         FOLD_BINOPCXX (OP_ICLT_UN,&lt;,guint32);</span>
+<span class="lineNum">     286 </span>            :                                 }
+<span class="lineNum">     287 </span>            : 
+<span class="lineNum">     288 </span><span class="lineCov">      35715 :                                 if (overwrite) {</span>
+<span class="lineNum">     289 </span><span class="lineCov">      42692 :                                         NULLIFY_INS (ins);</span>
+<span class="lineNum">     290 </span><span class="lineCov">      10673 :                                         next-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     291 </span><span class="lineCov">      10673 :                                         next-&gt;inst_c0 = res;</span>
+<span class="lineNum">     292 </span><span class="lineCov">      21346 :                                         MONO_INST_NULLIFY_SREGS (next);</span>
+<span class="lineNum">     293 </span><span class="lineCov">      10673 :                                 } else {</span>
+<span class="lineNum">     294 </span><span class="lineCov">     200406 :                                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     295 </span><span class="lineCov">      25046 :                                         dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     296 </span><span class="lineCov">      25046 :                                         dest-&gt;inst_c0 = res;</span>
+<span class="lineNum">     297 </span>            :                                 }
+<span class="lineNum">     298 </span><span class="lineCov">      35729 :                                 break;</span>
+<span class="lineNum">     299 </span>            :                         case OP_IBEQ:
+<span class="lineNum">     300 </span>            :                         case OP_IBNE_UN:
+<span class="lineNum">     301 </span>            :                         case OP_IBGT:
+<span class="lineNum">     302 </span>            :                         case OP_IBGT_UN:
+<span class="lineNum">     303 </span>            :                         case OP_IBGE:
+<span class="lineNum">     304 </span>            :                         case OP_IBGE_UN:
+<span class="lineNum">     305 </span>            :                         case OP_IBLT:
+<span class="lineNum">     306 </span>            :                         case OP_IBLT_UN:
+<span class="lineNum">     307 </span>            :                         case OP_IBLE:
+<span class="lineNum">     308 </span>            :                         case OP_IBLE_UN:
+<span class="lineNum">     309 </span><span class="lineCov">    2611811 :                                 switch (next-&gt;opcode) {</span>
+<span class="lineNum">     310 </span><span class="lineCov">     671413 :                                         FOLD_BINOPCXX (OP_IBEQ,==,gint32);</span>
+<span class="lineNum">     311 </span><span class="lineCov">     472654 :                                         FOLD_BINOPCXX (OP_IBNE_UN,!=,guint32);</span>
+<span class="lineNum">     312 </span><span class="lineCov">      15692 :                                         FOLD_BINOPCXX (OP_IBGT,&gt;,gint32);</span>
+<span class="lineNum">     313 </span><span class="lineCov">       1025 :                                         FOLD_BINOPCXX (OP_IBGT_UN,&gt;,guint32);</span>
+<span class="lineNum">     314 </span><span class="lineCov">      10711 :                                         FOLD_BINOPCXX (OP_IBGE,&gt;=,gint32);</span>
+<span class="lineNum">     315 </span><span class="lineCov">       5239 :                                         FOLD_BINOPCXX (OP_IBGE_UN,&gt;=,guint32);</span>
+<span class="lineNum">     316 </span><span class="lineCov">      60636 :                                         FOLD_BINOPCXX (OP_IBLT,&lt;,gint32);</span>
+<span class="lineNum">     317 </span><span class="lineCov">          1 :                                         FOLD_BINOPCXX (OP_IBLT_UN,&lt;,guint32);</span>
+<span class="lineNum">     318 </span><span class="lineCov">      48440 :                                         FOLD_BINOPCXX (OP_IBLE,&lt;=,gint32);</span>
+<span class="lineNum">     319 </span><span class="lineCov">      20582 :                                         FOLD_BINOPCXX (OP_IBLE_UN,&lt;=,guint32);</span>
+<span class="lineNum">     320 </span>            :                                 }
+<span class="lineNum">     321 </span>            : 
+<span class="lineNum">     322 </span><span class="lineCov">    1306457 :                                 if (overwrite) {</span>
+<span class="lineNum">     323 </span>            :                                         /* 
+<span class="lineNum">     324 </span>            :                                          * Can't nullify OP_COMPARE here since the decompose long branch 
+<span class="lineNum">     325 </span>            :                                          * opcodes depend on it being executed. Also, the branch might not
+<span class="lineNum">     326 </span>            :                                          * be eliminated after all if loop opts is disabled, for example.
+<span class="lineNum">     327 </span>            :                                          */
+<span class="lineNum">     328 </span><span class="lineCov">     309808 :                                         if (res)</span>
+<span class="lineNum">     329 </span><span class="lineCov">     215460 :                                                 next-&gt;flags |= MONO_INST_CFOLD_TAKEN;</span>
+<span class="lineNum">     330 </span>            :                                         else
+<span class="lineNum">     331 </span><span class="lineCov">      94353 :                                                 next-&gt;flags |= MONO_INST_CFOLD_NOT_TAKEN;</span>
+<span class="lineNum">     332 </span><span class="lineCov">     309815 :                                 } else {</span>
+<span class="lineNum">     333 </span><span class="lineCov">    7972871 :                                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     334 </span><span class="lineCov">     996156 :                                         dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     335 </span><span class="lineCov">     996156 :                                         dest-&gt;inst_c0 = res;</span>
+<span class="lineNum">     336 </span>            :                                 }
+<span class="lineNum">     337 </span><span class="lineCov">    1306123 :                                 break;</span>
+<span class="lineNum">     338 </span>            :                         case OP_COND_EXC_EQ:
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                                 res = arg1-&gt;inst_c0 == arg2-&gt;inst_c0;</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 :                                 if (!res) {</span>
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :                                         if (overwrite) {</span>
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :                                                 NULLIFY_INS (ins);</span>
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :                                                 NULLIFY_INS (next);</span>
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 :                                         } else {</span>
+<span class="lineNum">     345 </span><span class="lineNoCov">          0 :                                                 ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     346 </span><span class="lineNoCov">          0 :                                                 dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :                                                 dest-&gt;inst_c0 = res;</span>
+<span class="lineNum">     348 </span>            :                                         }
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     350 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     351 </span>            :                         case OP_NOP:
+<span class="lineNum">     352 </span>            :                         case OP_BR:
+<span class="lineNum">     353 </span>            :                                 /* This happens when a conditional branch is eliminated */
+<span class="lineNum">     354 </span><span class="lineCov">      61853 :                                 if (next-&gt;next == NULL) {</span>
+<span class="lineNum">     355 </span>            :                                         /* Last ins */
+<span class="lineNum">     356 </span><span class="lineCov">      61858 :                                         if (overwrite)</span>
+<span class="lineNum">     357 </span><span class="lineCov">     262284 :                                                 NULLIFY_INS (ins);</span>
+<span class="lineNum">     358 </span><span class="lineCov">      61921 :                                 }</span>
+<span class="lineNum">     359 </span><span class="lineCov">      61929 :                                 break;</span>
+<span class="lineNum">     360 </span>            :                         default:
+<span class="lineNum">     361 </span><span class="lineCov">      71517 :                                 return NULL;</span>
+<span class="lineNum">     362 </span>            :                         }
+<span class="lineNum">     363 </span><span class="lineCov">    1403750 :                 }</span>
+<span class="lineNum">     364 </span><span class="lineCov">    1989820 :                 if ((arg1-&gt;opcode == OP_PCONST) &amp;&amp; (arg2-&gt;opcode == OP_PCONST) &amp;&amp; ins-&gt;next) {</span>
+<span class="lineNum">     365 </span><span class="lineCov">     139511 :                         MonoInst *next = ins-&gt;next;</span>
+<span class="lineNum">     366 </span>            : 
+<span class="lineNum">     367 </span><span class="lineCov">     139511 :                         if (next-&gt;opcode == OP_LCEQ) {</span>
+<span class="lineNum">     368 </span><span class="lineCov">     139511 :                                 gboolean res = arg1-&gt;inst_p0 == arg2-&gt;inst_p0;</span>
+<span class="lineNum">     369 </span><span class="lineCov">     139511 :                                 if (overwrite) {</span>
+<span class="lineNum">     370 </span><span class="lineCov">     558044 :                                         NULLIFY_INS (ins);</span>
+<span class="lineNum">     371 </span><span class="lineCov">     139511 :                                         next-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     372 </span><span class="lineCov">     139511 :                                         next-&gt;inst_c0 = res;</span>
+<span class="lineNum">     373 </span><span class="lineCov">     279022 :                                         MONO_INST_NULLIFY_SREGS (next);</span>
+<span class="lineNum">     374 </span><span class="lineCov">     139511 :                                 } else {</span>
+<span class="lineNum">     375 </span><span class="lineNoCov">          0 :                                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     376 </span><span class="lineNoCov">          0 :                                         dest-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :                                         dest-&gt;inst_c0 = res;</span>
+<span class="lineNum">     378 </span>            :                                 }
+<span class="lineNum">     379 </span><span class="lineCov">     139511 :                                 break;</span>
+<span class="lineNum">     380 </span>            :                         }
+<span class="lineNum">     381 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     382 </span><span class="lineCov">    1510648 :                 break;</span>
+<span class="lineNum">     383 </span>            :         }
+<span class="lineNum">     384 </span>            :         case OP_FMOVE:
+<span class="lineNum">     385 </span><span class="lineCov">      36376 :                 if (arg1-&gt;opcode == OP_R8CONST) {</span>
+<span class="lineNum">     386 </span><span class="lineCov">     109128 :                         ALLOC_DEST (cfg, dest, ins);</span>
+<span class="lineNum">     387 </span><span class="lineCov">      36376 :                         dest-&gt;opcode = OP_R8CONST;</span>
+<span class="lineNum">     388 </span><span class="lineCov">      36376 :                         dest-&gt;sreg1 = -1;</span>
+<span class="lineNum">     389 </span><span class="lineCov">      36376 :                         dest-&gt;inst_p0 = arg1-&gt;inst_p0;</span>
+<span class="lineNum">     390 </span><span class="lineCov">      36376 :                 }</span>
+<span class="lineNum">     391 </span><span class="lineCov">      36376 :                 break;</span>
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span>            :                 /*
+<span class="lineNum">     394 </span>            :                  * TODO: 
+<span class="lineNum">     395 </span>            :                  *      conv.* opcodes.
+<span class="lineNum">     396 </span>            :                  *      *ovf* opcodes? It's slow and hard to do in C.
+<span class="lineNum">     397 </span>            :                  *      switch can be replaced by a simple jump 
+<span class="lineNum">     398 </span>            :                  */
+<span class="lineNum">     399 </span>            :         default:
+<span class="lineNum">     400 </span><span class="lineCov">   44688233 :                 return NULL;</span>
+<span class="lineNum">     401 </span>            :         }
+<span class="lineNum">     402 </span>            :                 
+<span class="lineNum">     403 </span><span class="lineCov">   54577955 :     return dest;</span>
+<span class="lineNum">     404 </span><span class="lineCov">   99325216 : }       </span>
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span>            : 
+<span class="lineNum">     407 </span>            : #endif /* DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

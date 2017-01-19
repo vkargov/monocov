@@ -1,0 +1,445 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-os-mutex.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-os-mutex.h<span style="font-size: 80%;"> (source / <a href="mono-os-mutex.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">56</td>
+            <td class="headerCovTableEntry">72</td>
+            <td class="headerCovTableEntryMed">77.8 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">12</td>
+            <td class="headerCovTableEntry">12</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /* -*- Mode: C; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */</a>
+<span class="lineNum">       2 </span>            : /*
+<span class="lineNum">       3 </span>            :  * mono-os-mutex.h: Portability wrappers around POSIX Mutexes
+<span class="lineNum">       4 </span>            :  *
+<span class="lineNum">       5 </span>            :  * Authors: Jeffrey Stedfast &lt;fejj@ximian.com&gt;
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2002 Ximian, Inc. (www.ximian.com)
+<span class="lineNum">       8 </span>            :  *
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #ifndef __MONO_OS_MUTEX_H__
+<span class="lineNum">      13 </span>            : #define __MONO_OS_MUTEX_H__
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;time.h&gt;
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : #if !defined(HOST_WIN32)
+<span class="lineNum">      23 </span>            : #include &lt;pthread.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      25 </span>            : #else
+<span class="lineNum">      26 </span>            : #include &lt;winsock2.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;windows.h&gt;
+<span class="lineNum">      28 </span>            : #endif
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : #ifdef HAVE_SYS_TIME_H
+<span class="lineNum">      31 </span>            : #include &lt;sys/time.h&gt;
+<span class="lineNum">      32 </span>            : #endif
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : G_BEGIN_DECLS
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : #ifndef MONO_INFINITE_WAIT
+<span class="lineNum">      37 </span>            : #define MONO_INFINITE_WAIT ((guint32) 0xFFFFFFFF)
+<span class="lineNum">      38 </span>            : #endif
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span>            : #if !defined(HOST_WIN32)
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : typedef pthread_mutex_t mono_mutex_t;
+<span class="lineNum">      44 </span>            : typedef pthread_cond_t mono_cond_t;
+<a name="45"><span class="lineNum">      45 </span>            : </a>
+<span class="lineNum">      46 </span>            : static inline void
+<span class="lineNum">      47 </span>            : mono_os_mutex_init (mono_mutex_t *mutex)
+<span class="lineNum">      48 </span>            : {
+<span class="lineNum">      49 </span>            :         int res;
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span><span class="lineCov">     208116 :         res = pthread_mutex_init (mutex, NULL);</span>
+<span class="lineNum">      52 </span><span class="lineCov">     208116 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">      53 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutex_init failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">      54 </span><span class="lineCov">     208116 : }</span>
+<a name="55"><span class="lineNum">      55 </span>            : </a>
+<span class="lineNum">      56 </span>            : static inline void
+<span class="lineNum">      57 </span>            : mono_os_mutex_init_recursive (mono_mutex_t *mutex)
+<span class="lineNum">      58 </span>            : {
+<span class="lineNum">      59 </span>            :         int res;
+<span class="lineNum">      60 </span>            :         pthread_mutexattr_t attr;
+<span class="lineNum">      61 </span>            : 
+<span class="lineNum">      62 </span><span class="lineCov">    1267167 :         res = pthread_mutexattr_init (&amp;attr);</span>
+<span class="lineNum">      63 </span><span class="lineCov">    1267167 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">      64 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutexattr_init failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span><span class="lineCov">    1267172 :         res = pthread_mutexattr_settype (&amp;attr, PTHREAD_MUTEX_RECURSIVE);</span>
+<span class="lineNum">      67 </span><span class="lineCov">    1267172 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">      68 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutexattr_settype failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span><span class="lineCov">    1267170 :         res = pthread_mutex_init (mutex, &amp;attr);</span>
+<span class="lineNum">      71 </span><span class="lineCov">    1267170 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutex_init failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span><span class="lineCov">    1267170 :         res = pthread_mutexattr_destroy (&amp;attr);</span>
+<span class="lineNum">      75 </span><span class="lineCov">    1267170 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">      76 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutexattr_destroy failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">      77 </span><span class="lineCov">    1267173 : }</span>
+<a name="78"><span class="lineNum">      78 </span>            : </a>
+<span class="lineNum">      79 </span>            : static inline void
+<span class="lineNum">      80 </span>            : mono_os_mutex_destroy (mono_mutex_t *mutex)
+<span class="lineNum">      81 </span>            : {
+<span class="lineNum">      82 </span>            :         int res;
+<span class="lineNum">      83 </span>            : 
+<span class="lineNum">      84 </span><span class="lineCov">    1361912 :         res = pthread_mutex_destroy (mutex);</span>
+<span class="lineNum">      85 </span><span class="lineCov">    1361912 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">      86 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutex_destroy failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">      87 </span><span class="lineCov">    1361912 : }</span>
+<a name="88"><span class="lineNum">      88 </span>            : </a>
+<span class="lineNum">      89 </span>            : static inline void
+<span class="lineNum">      90 </span>            : mono_os_mutex_lock (mono_mutex_t *mutex)
+<span class="lineNum">      91 </span>            : {
+<span class="lineNum">      92 </span>            :         int res;
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineCov"> 1977341673 :         res = pthread_mutex_lock (mutex);</span>
+<span class="lineNum">      95 </span><span class="lineCov"> 1977341673 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">      96 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutex_lock failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">      97 </span><span class="lineCov"> 1977362972 : }</span>
+<a name="98"><span class="lineNum">      98 </span>            : </a>
+<span class="lineNum">      99 </span>            : static inline int
+<span class="lineNum">     100 </span>            : mono_os_mutex_trylock (mono_mutex_t *mutex)
+<span class="lineNum">     101 </span>            : {
+<span class="lineNum">     102 </span>            :         int res;
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineCov">  635415677 :         res = pthread_mutex_trylock (mutex);</span>
+<span class="lineNum">     105 </span><span class="lineCov"> 1319532209 :         if (G_UNLIKELY (res != 0 &amp;&amp; res != EBUSY))</span>
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutex_trylock failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span><span class="lineCov">  635396389 :         return res != 0 ? -1 : 0;</span>
+<span class="lineNum">     109 </span>            : }
+<a name="110"><span class="lineNum">     110 </span>            : </a>
+<span class="lineNum">     111 </span>            : static inline void
+<span class="lineNum">     112 </span>            : mono_os_mutex_unlock (mono_mutex_t *mutex)
+<span class="lineNum">     113 </span>            : {
+<span class="lineNum">     114 </span>            :         int res;
+<span class="lineNum">     115 </span>            : 
+<span class="lineNum">     116 </span><span class="lineCov"> 2564029583 :         res = pthread_mutex_unlock (mutex);</span>
+<span class="lineNum">     117 </span><span class="lineCov"> 2564029583 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_mutex_unlock failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">     119 </span><span class="lineCov"> 2564040400 : }</span>
+<a name="120"><span class="lineNum">     120 </span>            : </a>
+<span class="lineNum">     121 </span>            : static inline void
+<span class="lineNum">     122 </span>            : mono_os_cond_init (mono_cond_t *cond)
+<span class="lineNum">     123 </span>            : {
+<span class="lineNum">     124 </span>            :         int res;
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span><span class="lineCov">     519540 :         res = pthread_cond_init (cond, NULL);</span>
+<span class="lineNum">     127 </span><span class="lineCov">     519540 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_cond_init failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">     129 </span><span class="lineCov">     519540 : }</span>
+<a name="130"><span class="lineNum">     130 </span>            : </a>
+<span class="lineNum">     131 </span>            : static inline void
+<span class="lineNum">     132 </span>            : mono_os_cond_destroy (mono_cond_t *cond)
+<span class="lineNum">     133 </span>            : {
+<span class="lineNum">     134 </span>            :         int res;
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineCov">     501688 :         res = pthread_cond_destroy (cond);</span>
+<span class="lineNum">     137 </span><span class="lineCov">     501688 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_cond_destroy failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">     139 </span><span class="lineCov">     501688 : }</span>
+<a name="140"><span class="lineNum">     140 </span>            : </a>
+<span class="lineNum">     141 </span>            : static inline void
+<span class="lineNum">     142 </span>            : mono_os_cond_wait (mono_cond_t *cond, mono_mutex_t *mutex)
+<span class="lineNum">     143 </span>            : {
+<span class="lineNum">     144 </span>            :         int res;
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span><span class="lineCov">     535253 :         res = pthread_cond_wait (cond, mutex);</span>
+<span class="lineNum">     147 </span><span class="lineCov">     535253 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_cond_wait failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">     149 </span><span class="lineCov">     535253 : }</span>
+<a name="150"><span class="lineNum">     150 </span>            : </a>
+<span class="lineNum">     151 </span>            : static inline int
+<span class="lineNum">     152 </span>            : mono_os_cond_timedwait (mono_cond_t *cond, mono_mutex_t *mutex, guint32 timeout_ms)
+<span class="lineNum">     153 </span>            : {
+<span class="lineNum">     154 </span>            :         struct timeval tv;
+<span class="lineNum">     155 </span>            :         struct timespec ts;
+<span class="lineNum">     156 </span>            :         gint64 usecs;
+<span class="lineNum">     157 </span>            :         int res;
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span><span class="lineCov">    1088618 :         if (timeout_ms == MONO_INFINITE_WAIT) {</span>
+<span class="lineNum">     160 </span><span class="lineCov">       9772 :                 mono_os_cond_wait (cond, mutex);</span>
+<span class="lineNum">     161 </span><span class="lineCov">       9772 :                 return 0;</span>
+<span class="lineNum">     162 </span>            :         }
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span>            :         /* ms = 10^-3, us = 10^-6, ns = 10^-9 */
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span><span class="lineCov">    1078846 :         res = gettimeofday (&amp;tv, NULL);</span>
+<span class="lineNum">     167 </span><span class="lineCov">    1078846 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: gettimeofday failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);</span>
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span><span class="lineCov">    1078846 :         tv.tv_sec += timeout_ms / 1000;</span>
+<span class="lineNum">     171 </span><span class="lineCov">    1078846 :         usecs = tv.tv_usec + ((timeout_ms % 1000) * 1000);</span>
+<span class="lineNum">     172 </span><span class="lineCov">    1078846 :         if (usecs &gt;= 1000000) {</span>
+<span class="lineNum">     173 </span><span class="lineCov">     496979 :                 usecs -= 1000000;</span>
+<span class="lineNum">     174 </span><span class="lineCov">     496979 :                 tv.tv_sec ++;</span>
+<span class="lineNum">     175 </span><span class="lineCov">     496979 :         }</span>
+<span class="lineNum">     176 </span><span class="lineCov">    1078823 :         ts.tv_sec = tv.tv_sec;</span>
+<span class="lineNum">     177 </span><span class="lineCov">    1078823 :         ts.tv_nsec = usecs * 1000;</span>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineCov">    1078823 :         res = pthread_cond_timedwait (cond, mutex, &amp;ts);</span>
+<span class="lineNum">     180 </span><span class="lineCov">    2249311 :         if (G_UNLIKELY (res != 0 &amp;&amp; res != ETIMEDOUT))</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_cond_timedwait failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span><span class="lineCov">    1078823 :         return res != 0 ? -1 : 0;</span>
+<span class="lineNum">     184 </span><span class="lineCov">    1088593 : }</span>
+<a name="185"><span class="lineNum">     185 </span>            : </a>
+<span class="lineNum">     186 </span>            : static inline void
+<span class="lineNum">     187 </span>            : mono_os_cond_signal (mono_cond_t *cond)
+<span class="lineNum">     188 </span>            : {
+<span class="lineNum">     189 </span>            :         int res;
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span><span class="lineCov">    2933572 :         res = pthread_cond_signal (cond);</span>
+<span class="lineNum">     192 </span><span class="lineCov">    2933572 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">     193 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_cond_signal failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">     194 </span><span class="lineCov">    2933572 : }</span>
+<a name="195"><span class="lineNum">     195 </span>            : </a>
+<span class="lineNum">     196 </span>            : static inline void
+<span class="lineNum">     197 </span>            : mono_os_cond_broadcast (mono_cond_t *cond)
+<span class="lineNum">     198 </span>            : {
+<span class="lineNum">     199 </span>            :         int res;
+<span class="lineNum">     200 </span>            : 
+<span class="lineNum">     201 </span><span class="lineCov">      78472 :         res = pthread_cond_broadcast (cond);</span>
+<span class="lineNum">     202 </span><span class="lineCov">      78472 :         if (G_UNLIKELY (res != 0))</span>
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_cond_broadcast failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (res), res);</span>
+<span class="lineNum">     204 </span><span class="lineCov">      78472 : }</span>
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span>            : #else
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span>            : /* Vanilla MinGW is missing some defs, load them from MinGW-w64. */
+<span class="lineNum">     209 </span>            : #if defined __MINGW32__ &amp;&amp; !defined __MINGW64_VERSION_MAJOR &amp;&amp; (_WIN32_WINNT &gt;= 0x0600)
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span>            : /* Fixme: Opaque structs */
+<span class="lineNum">     212 </span>            : typedef PVOID RTL_CONDITION_VARIABLE;
+<span class="lineNum">     213 </span>            : typedef PVOID RTL_SRWLOCK;
+<span class="lineNum">     214 </span>            : 
+<span class="lineNum">     215 </span>            : #ifndef _RTL_RUN_ONCE_DEF
+<span class="lineNum">     216 </span>            : #define _RTL_RUN_ONCE_DEF 1
+<span class="lineNum">     217 </span>            : typedef PVOID RTL_RUN_ONCE, *PRTL_RUN_ONCE;
+<span class="lineNum">     218 </span>            : typedef DWORD (WINAPI *PRTL_RUN_ONCE_INIT_FN)(PRTL_RUN_ONCE, PVOID, PVOID *);
+<span class="lineNum">     219 </span>            : #define RTL_RUN_ONCE_INIT 0
+<span class="lineNum">     220 </span>            : #define RTL_RUN_ONCE_CHECK_ONLY 1UL
+<span class="lineNum">     221 </span>            : #define RTL_RUN_ONCE_ASYNC 2UL
+<span class="lineNum">     222 </span>            : #define RTL_RUN_ONCE_INIT_FAILED 4UL
+<span class="lineNum">     223 </span>            : #define RTL_RUN_ONCE_CTX_RESERVED_BITS 2
+<span class="lineNum">     224 </span>            : #endif /* _RTL_RUN_ONCE_DEF */
+<span class="lineNum">     225 </span>            : #define RTL_SRWLOCK_INIT 0
+<span class="lineNum">     226 </span>            : #define RTL_CONDITION_VARIABLE_INIT 0
+<span class="lineNum">     227 </span>            : #define RTL_CONDITION_VARIABLE_LOCKMODE_SHARED 1
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span>            : #define CONDITION_VARIABLE_INIT RTL_CONDITION_VARIABLE_INIT
+<span class="lineNum">     230 </span>            : #define CONDITION_VARIABLE_LOCKMODE_SHARED RTL_CONDITION_VARIABLE_LOCKMODE_SHARED
+<span class="lineNum">     231 </span>            : #define SRWLOCK_INIT RTL_SRWLOCK_INIT
+<span class="lineNum">     232 </span>            : 
+<span class="lineNum">     233 </span>            : /*Condition Variables http://msdn.microsoft.com/en-us/library/ms682052%28VS.85%29.aspx*/
+<span class="lineNum">     234 </span>            : typedef RTL_CONDITION_VARIABLE CONDITION_VARIABLE, *PCONDITION_VARIABLE;
+<span class="lineNum">     235 </span>            : typedef RTL_SRWLOCK SRWLOCK, *PSRWLOCK;
+<span class="lineNum">     236 </span>            : 
+<span class="lineNum">     237 </span>            : WINBASEAPI VOID WINAPI InitializeConditionVariable(PCONDITION_VARIABLE ConditionVariable);
+<span class="lineNum">     238 </span>            : WINBASEAPI WINBOOL WINAPI SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable, PCRITICAL_SECTION CriticalSection, DWORD dwMilliseconds);
+<span class="lineNum">     239 </span>            : WINBASEAPI WINBOOL WINAPI SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVariable, PSRWLOCK SRWLock, DWORD dwMilliseconds, ULONG Flags);
+<span class="lineNum">     240 </span>            : WINBASEAPI VOID WINAPI WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable);
+<span class="lineNum">     241 </span>            : WINBASEAPI VOID WINAPI WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable);
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span>            : /*Slim Reader/Writer (SRW) Locks http://msdn.microsoft.com/en-us/library/aa904937%28VS.85%29.aspx*/
+<span class="lineNum">     244 </span>            : WINBASEAPI VOID WINAPI AcquireSRWLockExclusive(PSRWLOCK SRWLock);
+<span class="lineNum">     245 </span>            : WINBASEAPI VOID WINAPI AcquireSRWLockShared(PSRWLOCK SRWLock);
+<span class="lineNum">     246 </span>            : WINBASEAPI VOID WINAPI InitializeSRWLock(PSRWLOCK SRWLock);
+<span class="lineNum">     247 </span>            : WINBASEAPI VOID WINAPI ReleaseSRWLockExclusive(PSRWLOCK SRWLock);
+<span class="lineNum">     248 </span>            : WINBASEAPI VOID WINAPI ReleaseSRWLockShared(PSRWLOCK SRWLock);
+<span class="lineNum">     249 </span>            : 
+<span class="lineNum">     250 </span>            : WINBASEAPI BOOLEAN TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
+<span class="lineNum">     251 </span>            : WINBASEAPI BOOLEAN TryAcquireSRWLockShared(PSRWLOCK SRWLock);
+<span class="lineNum">     252 </span>            : 
+<span class="lineNum">     253 </span>            : /*One-Time Initialization http://msdn.microsoft.com/en-us/library/aa363808(VS.85).aspx*/
+<span class="lineNum">     254 </span>            : #define INIT_ONCE_ASYNC 0x00000002UL
+<span class="lineNum">     255 </span>            : #define INIT_ONCE_INIT_FAILED 0x00000004UL
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span>            : typedef PRTL_RUN_ONCE PINIT_ONCE;
+<span class="lineNum">     258 </span>            : typedef PRTL_RUN_ONCE LPINIT_ONCE;
+<span class="lineNum">     259 </span>            : typedef WINBOOL CALLBACK (*PINIT_ONCE_FN) (PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context);
+<span class="lineNum">     260 </span>            : 
+<span class="lineNum">     261 </span>            : WINBASEAPI WINBOOL WINAPI InitOnceBeginInitialize(LPINIT_ONCE lpInitOnce, DWORD dwFlags, PBOOL fPending, LPVOID *lpContext);
+<span class="lineNum">     262 </span>            : WINBASEAPI WINBOOL WINAPI InitOnceComplete(LPINIT_ONCE lpInitOnce, DWORD dwFlags, LPVOID lpContext);
+<span class="lineNum">     263 </span>            : WINBASEAPI WINBOOL WINAPI InitOnceExecuteOnce(PINIT_ONCE InitOnce, PINIT_ONCE_FN InitFn, PVOID Parameter, LPVOID *Context);
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span>            : /* https://msdn.microsoft.com/en-us/library/windows/desktop/ms683477(v=vs.85).aspx */
+<span class="lineNum">     266 </span>            : WINBASEAPI BOOL WINAPI InitializeCriticalSectionEx(LPCRITICAL_SECTION lpCriticalSection, DWORD dwSpinCount, DWORD Flags);
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span>            : #define CRITICAL_SECTION_NO_DEBUG_INFO 0x01000000
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span>            : #endif /* defined __MINGW32__ &amp;&amp; !defined __MINGW64_VERSION_MAJOR &amp;&amp; (_WIN32_WINNT &gt;= 0x0600) */
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span>            : typedef CRITICAL_SECTION mono_mutex_t;
+<span class="lineNum">     273 </span>            : typedef CONDITION_VARIABLE mono_cond_t;
+<span class="lineNum">     274 </span>            : 
+<span class="lineNum">     275 </span>            : static inline void
+<span class="lineNum">     276 </span>            : mono_os_mutex_init (mono_mutex_t *mutex)
+<span class="lineNum">     277 </span>            : {
+<span class="lineNum">     278 </span>            :         BOOL res;
+<span class="lineNum">     279 </span>            : 
+<span class="lineNum">     280 </span>            :         res = InitializeCriticalSectionEx (mutex, 0, CRITICAL_SECTION_NO_DEBUG_INFO);
+<span class="lineNum">     281 </span>            :         if (G_UNLIKELY (res == 0))
+<span class="lineNum">     282 </span>            :                 g_error (&quot;%s: InitializeCriticalSectionEx failed with error %d&quot;, __func__, GetLastError ());
+<span class="lineNum">     283 </span>            : }
+<span class="lineNum">     284 </span>            : 
+<span class="lineNum">     285 </span>            : static inline void
+<span class="lineNum">     286 </span>            : mono_os_mutex_init_recursive (mono_mutex_t *mutex)
+<span class="lineNum">     287 </span>            : {
+<span class="lineNum">     288 </span>            :         BOOL res;
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span>            :         res = InitializeCriticalSectionEx (mutex, 0, CRITICAL_SECTION_NO_DEBUG_INFO);
+<span class="lineNum">     291 </span>            :         if (G_UNLIKELY (res == 0))
+<span class="lineNum">     292 </span>            :                 g_error (&quot;%s: InitializeCriticalSectionEx failed with error %d&quot;, __func__, GetLastError ());
+<span class="lineNum">     293 </span>            : }
+<span class="lineNum">     294 </span>            : 
+<span class="lineNum">     295 </span>            : static inline void
+<span class="lineNum">     296 </span>            : mono_os_mutex_destroy (mono_mutex_t *mutex)
+<span class="lineNum">     297 </span>            : {
+<span class="lineNum">     298 </span>            :         DeleteCriticalSection (mutex);
+<span class="lineNum">     299 </span>            : }
+<span class="lineNum">     300 </span>            : 
+<span class="lineNum">     301 </span>            : static inline void
+<span class="lineNum">     302 </span>            : mono_os_mutex_lock (mono_mutex_t *mutex)
+<span class="lineNum">     303 </span>            : {
+<span class="lineNum">     304 </span>            :         EnterCriticalSection (mutex);
+<span class="lineNum">     305 </span>            : }
+<span class="lineNum">     306 </span>            : 
+<span class="lineNum">     307 </span>            : static inline int
+<span class="lineNum">     308 </span>            : mono_os_mutex_trylock (mono_mutex_t *mutex)
+<span class="lineNum">     309 </span>            : {
+<span class="lineNum">     310 </span>            :         return TryEnterCriticalSection (mutex) == 0 ? -1 : 0;
+<span class="lineNum">     311 </span>            : }
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span>            : static inline void
+<span class="lineNum">     314 </span>            : mono_os_mutex_unlock (mono_mutex_t *mutex)
+<span class="lineNum">     315 </span>            : {
+<span class="lineNum">     316 </span>            :         LeaveCriticalSection (mutex);
+<span class="lineNum">     317 </span>            : }
+<span class="lineNum">     318 </span>            : 
+<span class="lineNum">     319 </span>            : static inline void
+<span class="lineNum">     320 </span>            : mono_os_cond_init (mono_cond_t *cond)
+<span class="lineNum">     321 </span>            : {
+<span class="lineNum">     322 </span>            :         InitializeConditionVariable (cond);
+<span class="lineNum">     323 </span>            : }
+<span class="lineNum">     324 </span>            : 
+<span class="lineNum">     325 </span>            : static inline void
+<span class="lineNum">     326 </span>            : mono_os_cond_destroy (mono_cond_t *cond)
+<span class="lineNum">     327 </span>            : {
+<span class="lineNum">     328 </span>            :         /* Beauty of win32 API: do not destroy it */
+<span class="lineNum">     329 </span>            : }
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span>            : static inline void
+<span class="lineNum">     332 </span>            : mono_os_cond_wait (mono_cond_t *cond, mono_mutex_t *mutex)
+<span class="lineNum">     333 </span>            : {
+<span class="lineNum">     334 </span>            :         BOOL res;
+<span class="lineNum">     335 </span>            : 
+<span class="lineNum">     336 </span>            :         res = SleepConditionVariableCS (cond, mutex, INFINITE);
+<span class="lineNum">     337 </span>            :         if (G_UNLIKELY (res == 0))
+<span class="lineNum">     338 </span>            :                 g_error (&quot;%s: SleepConditionVariableCS failed with error %d&quot;, __func__, GetLastError ());
+<span class="lineNum">     339 </span>            : }
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span>            : static inline int
+<span class="lineNum">     342 </span>            : mono_os_cond_timedwait (mono_cond_t *cond, mono_mutex_t *mutex, guint32 timeout_ms)
+<span class="lineNum">     343 </span>            : {
+<span class="lineNum">     344 </span>            :         BOOL res;
+<span class="lineNum">     345 </span>            : 
+<span class="lineNum">     346 </span>            :         res = SleepConditionVariableCS (cond, mutex, timeout_ms);
+<span class="lineNum">     347 </span>            :         if (G_UNLIKELY (res == 0 &amp;&amp; GetLastError () != ERROR_TIMEOUT))
+<span class="lineNum">     348 </span>            :                 g_error (&quot;%s: SleepConditionVariableCS failed with error %d&quot;, __func__, GetLastError ());
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span>            :         return res == 0 ? -1 : 0;
+<span class="lineNum">     351 </span>            : }
+<span class="lineNum">     352 </span>            : 
+<span class="lineNum">     353 </span>            : static inline void
+<span class="lineNum">     354 </span>            : mono_os_cond_signal (mono_cond_t *cond)
+<span class="lineNum">     355 </span>            : {
+<span class="lineNum">     356 </span>            :         WakeConditionVariable (cond);
+<span class="lineNum">     357 </span>            : }
+<span class="lineNum">     358 </span>            : 
+<span class="lineNum">     359 </span>            : static inline void
+<span class="lineNum">     360 </span>            : mono_os_cond_broadcast (mono_cond_t *cond)
+<span class="lineNum">     361 </span>            : {
+<span class="lineNum">     362 </span>            :         WakeAllConditionVariable (cond);
+<span class="lineNum">     363 </span>            : }
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span>            : #endif
+<span class="lineNum">     366 </span>            : 
+<span class="lineNum">     367 </span>            : G_END_DECLS
+<span class="lineNum">     368 </span>            : 
+<span class="lineNum">     369 </span>            : #endif /* __MONO_OS_MUTEX_H__ */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

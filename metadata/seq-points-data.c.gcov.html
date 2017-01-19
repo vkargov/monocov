@@ -1,0 +1,580 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/seq-points-data.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - seq-points-data.c<span style="font-size: 80%;"> (source / <a href="seq-points-data.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">140</td>
+            <td class="headerCovTableEntry">239</td>
+            <td class="headerCovTableEntryLo">58.6 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">19</td>
+            <td class="headerCovTableEntry">25</td>
+            <td class="headerCovTableEntryMed">76.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * seq-points-data.c: Sequence Points functions
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *   Marcos Henrich (marcos.henrich@xamarin.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2015 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &quot;seq-points-data.h&quot;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : typedef struct {
+<span class="lineNum">      13 </span>            :         guint8 *data;
+<span class="lineNum">      14 </span>            :         int len;
+<span class="lineNum">      15 </span>            :         /* When has_debug_data is set to false only il and native deltas are saved */
+<span class="lineNum">      16 </span>            :         gboolean has_debug_data;
+<span class="lineNum">      17 </span>            :         /* When alloc_data is set to true data allocation/deallocation is managed by this structure */
+<span class="lineNum">      18 </span>            :         gboolean alloc_data;
+<span class="lineNum">      19 </span>            : } SeqPointInfoInflated;
+<a name="20"><span class="lineNum">      20 </span>            : </a>
+<span class="lineNum">      21 </span>            : static int
+<span class="lineNum">      22 </span>            : encode_var_int (guint8 *buf, guint8 **out_buf, int val)
+<span class="lineNum">      23 </span>            : {
+<span class="lineNum">      24 </span><span class="lineCov">  346154907 :         guint8 size = 0;</span>
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span><span class="lineCov">  346154907 :         do {</span>
+<span class="lineNum">      27 </span><span class="lineCov">  361470570 :                 guint8 byte = val &amp; 0x7f;</span>
+<span class="lineNum">      28 </span><span class="lineCov"> 1445971809 :                 g_assert (size &lt; 4 &amp;&amp; &quot;value has more than 28 bits&quot;);</span>
+<span class="lineNum">      29 </span><span class="lineCov">  361559214 :                 val &gt;&gt;= 7;</span>
+<span class="lineNum">      30 </span><span class="lineCov">  376908917 :                 if(val) byte |= 0x80;</span>
+<span class="lineNum">      31 </span><span class="lineCov">  361555723 :                 *(buf++) = byte;</span>
+<span class="lineNum">      32 </span><span class="lineCov">  361555723 :                 size++;</span>
+<span class="lineNum">      33 </span><span class="lineCov">  723148667 :         } while (val);</span>
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span><span class="lineCov">  346251391 :         if (out_buf)</span>
+<span class="lineNum">      36 </span><span class="lineCov">      74401 :                 *out_buf = buf;</span>
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span><span class="lineCov">  346249840 :         return size;</span>
+<span class="lineNum">      39 </span>            : }
+<a name="40"><span class="lineNum">      40 </span>            : </a>
+<span class="lineNum">      41 </span>            : static int
+<span class="lineNum">      42 </span>            : decode_var_int (guint8* buf, guint8 **out_buf)
+<span class="lineNum">      43 </span>            : {
+<span class="lineNum">      44 </span><span class="lineCov">    7241099 :         guint8* p = buf;</span>
+<span class="lineNum">      45 </span>            : 
+<span class="lineNum">      46 </span>            :         int low;
+<span class="lineNum">      47 </span>            :         int b;
+<span class="lineNum">      48 </span><span class="lineCov">   13041252 :         b = *(p++); low   = (b &amp; 0x7f)      ; if(!(b &amp; 0x80)) goto done;</span>
+<span class="lineNum">      49 </span><span class="lineCov">    2881892 :         b = *(p++); low  |= (b &amp; 0x7f) &lt;&lt;  7; if(!(b &amp; 0x80)) goto done;</span>
+<span class="lineNum">      50 </span><span class="lineNoCov">          0 :         b = *(p++); low  |= (b &amp; 0x7f) &lt;&lt; 14; if(!(b &amp; 0x80)) goto done;</span>
+<span class="lineNum">      51 </span><span class="lineNoCov">          0 :         b = *(p++); low  |= (b &amp; 0x7f) &lt;&lt; 21; if(!(b &amp; 0x80)) goto done;</span>
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span><span class="lineNoCov">          0 :         g_assert (FALSE &amp;&amp; &quot;value has more than 28 bits&quot;);</span>
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : done:
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span><span class="lineCov">    7241096 :         if (out_buf)</span>
+<span class="lineNum">      58 </span><span class="lineCov">    7241095 :                 *out_buf = p;</span>
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span><span class="lineCov">    7241093 :         return low;</span>
+<span class="lineNum">      61 </span>            : }
+<a name="62"><span class="lineNum">      62 </span>            : </a>
+<span class="lineNum">      63 </span>            : static guint32
+<span class="lineNum">      64 </span>            : encode_zig_zag (int val)
+<span class="lineNum">      65 </span>            : {
+<span class="lineNum">      66 </span><span class="lineCov">  331161212 :         return (val &lt;&lt; 1) ^ (val &gt;&gt; 31);</span>
+<span class="lineNum">      67 </span>            : }
+<a name="68"><span class="lineNum">      68 </span>            : </a>
+<span class="lineNum">      69 </span>            : static int
+<span class="lineNum">      70 </span>            : decode_zig_zag (guint32 val)
+<span class="lineNum">      71 </span>            : {
+<span class="lineNum">      72 </span><span class="lineCov">    5450778 :         int n = val;</span>
+<span class="lineNum">      73 </span><span class="lineCov">    5450778 :         return (n &gt;&gt; 1) ^ (-(n &amp; 1));</span>
+<span class="lineNum">      74 </span>            : }
+<a name="75"><span class="lineNum">      75 </span>            : </a>
+<span class="lineNum">      76 </span>            : static SeqPointInfoInflated
+<span class="lineNum">      77 </span>            : seq_point_info_inflate (MonoSeqPointInfo *info)
+<span class="lineNum">      78 </span>            : {
+<span class="lineNum">      79 </span>            :         SeqPointInfoInflated info_inflated;
+<span class="lineNum">      80 </span><span class="lineCov">     692899 :         guint8 *ptr = (guint8*) info;</span>
+<span class="lineNum">      81 </span>            :         int value;
+<span class="lineNum">      82 </span>            : 
+<span class="lineNum">      83 </span><span class="lineCov">     692899 :         value = decode_var_int (ptr, &amp;ptr);</span>
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span><span class="lineCov">     692899 :         info_inflated.len = value &gt;&gt; 2;</span>
+<span class="lineNum">      86 </span><span class="lineCov">     692899 :         info_inflated.has_debug_data = (value &amp; 1) != 0;</span>
+<span class="lineNum">      87 </span><span class="lineCov">     692899 :         info_inflated.alloc_data = (value &amp; 2) != 0;</span>
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span><span class="lineCov">     692899 :         if (info_inflated.alloc_data)</span>
+<span class="lineNum">      90 </span><span class="lineCov">     489251 :                 info_inflated.data = ptr;</span>
+<span class="lineNum">      91 </span>            :         else
+<span class="lineNum">      92 </span><span class="lineCov">     203648 :                 memcpy (&amp;info_inflated.data, ptr, sizeof (guint8*));</span>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineCov">     692899 :         return info_inflated;</span>
+<span class="lineNum">      95 </span>            : }
+<a name="96"><span class="lineNum">      96 </span>            : </a>
+<span class="lineNum">      97 </span>            : MonoSeqPointInfo*
+<span class="lineNum">      98 </span>            : mono_seq_point_info_new (int len, gboolean alloc_data, guint8 *data, gboolean has_debug_data, int *out_size)
+<span class="lineNum">      99 </span>            : {
+<span class="lineNum">     100 </span>            :         MonoSeqPointInfo *info;
+<span class="lineNum">     101 </span>            :         guint8 *info_ptr;
+<span class="lineNum">     102 </span>            :         guint8 buffer[4];
+<span class="lineNum">     103 </span>            :         int buffer_len;
+<span class="lineNum">     104 </span>            :         int value;
+<span class="lineNum">     105 </span>            :         int data_size;
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span><span class="lineCov">   14938854 :         value = len &lt;&lt; 2;</span>
+<span class="lineNum">     108 </span><span class="lineCov">   14938854 :         if (has_debug_data)</span>
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :                 value |= 1;</span>
+<span class="lineNum">     110 </span><span class="lineCov">   14938866 :         if (alloc_data)</span>
+<span class="lineNum">     111 </span><span class="lineCov">   14390217 :                 value |= 2;</span>
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span><span class="lineCov">   14939023 :         buffer_len = encode_var_int (buffer, NULL, value);</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span><span class="lineCov">   44817023 :         *out_size = data_size = buffer_len + (alloc_data? len : sizeof (guint8*));</span>
+<span class="lineNum">     116 </span><span class="lineCov">   14938981 :         info_ptr = g_new0 (guint8, data_size);</span>
+<span class="lineNum">     117 </span><span class="lineCov">   14938981 :         info = (MonoSeqPointInfo*) info_ptr;</span>
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span><span class="lineCov">   14938981 :         memcpy (info_ptr, buffer, buffer_len);</span>
+<span class="lineNum">     120 </span><span class="lineCov">   14938981 :         info_ptr += buffer_len;</span>
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span><span class="lineCov">   14938981 :         if (alloc_data)</span>
+<span class="lineNum">     123 </span><span class="lineCov">   14390230 :                 memcpy (info_ptr, data, len);</span>
+<span class="lineNum">     124 </span>            :         else
+<span class="lineNum">     125 </span><span class="lineCov">     548716 :                 memcpy (info_ptr, &amp;data, sizeof (guint8*));</span>
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span><span class="lineCov">   14939003 :         return info;</span>
+<span class="lineNum">     128 </span>            : }
+<a name="129"><span class="lineNum">     129 </span>            : </a>
+<span class="lineNum">     130 </span>            : void
+<span class="lineNum">     131 </span>            : mono_seq_point_info_free (gpointer ptr)
+<span class="lineNum">     132 </span>            : {
+<span class="lineNum">     133 </span><span class="lineCov">   12358426 :         MonoSeqPointInfo* info = (MonoSeqPointInfo*) ptr;</span>
+<span class="lineNum">     134 </span><span class="lineCov">   12358426 :         g_free (info);</span>
+<span class="lineNum">     135 </span><span class="lineCov">   12358426 : }</span>
+<a name="136"><span class="lineNum">     136 </span>            : </a>
+<span class="lineNum">     137 </span>            : static int
+<span class="lineNum">     138 </span>            : seq_point_read (SeqPoint* seq_point, guint8* ptr, guint8* buffer_ptr, gboolean has_debug_data)
+<span class="lineNum">     139 </span>            : {
+<span class="lineNum">     140 </span>            :         int value, i;
+<span class="lineNum">     141 </span><span class="lineCov">    2725389 :         guint8* ptr0 = ptr;</span>
+<span class="lineNum">     142 </span>            : 
+<span class="lineNum">     143 </span><span class="lineCov">    2725389 :         value = decode_var_int (ptr, &amp;ptr);</span>
+<span class="lineNum">     144 </span><span class="lineCov">    2725389 :         seq_point-&gt;il_offset += decode_zig_zag (value);</span>
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span><span class="lineCov">    2725389 :         value = decode_var_int (ptr, &amp;ptr);</span>
+<span class="lineNum">     147 </span><span class="lineCov">    2725389 :         seq_point-&gt;native_offset += decode_zig_zag (value);</span>
+<span class="lineNum">     148 </span>            : 
+<span class="lineNum">     149 </span><span class="lineCov">    2725389 :         if (has_debug_data) {</span>
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :                 value = decode_var_int (ptr, &amp;ptr);</span>
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 :                 seq_point-&gt;flags = value;</span>
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                 if (seq_point-&gt;flags &amp; MONO_SEQ_POINT_FLAG_EXIT_IL)</span>
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :                         seq_point-&gt;il_offset = METHOD_EXIT_IL_OFFSET;</span>
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :                 value = decode_var_int (ptr, &amp;ptr);</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :                 seq_point-&gt;next_len = value;</span>
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :                 if (seq_point-&gt;next_len) {</span>
+<span class="lineNum">     160 </span>            :                         // store next offset and skip it
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :                         seq_point-&gt;next_offset = ptr - buffer_ptr;</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; seq_point-&gt;next_len; ++i)</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :                                 decode_var_int (ptr, &amp;ptr);</span>
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span><span class="lineCov">    2725389 :         return ptr - ptr0;</span>
+<span class="lineNum">     168 </span>            : }
+<a name="169"><span class="lineNum">     169 </span>            : </a>
+<span class="lineNum">     170 </span>            : gboolean
+<span class="lineNum">     171 </span>            : mono_seq_point_info_add_seq_point (GByteArray* array, SeqPoint *sp, SeqPoint *last_seq_point, GSList *next, gboolean has_debug_data)
+<span class="lineNum">     172 </span>            : {
+<span class="lineNum">     173 </span>            :         int il_delta, native_delta;
+<span class="lineNum">     174 </span>            :         GSList *l;
+<span class="lineNum">     175 </span>            :         guint8 buffer[4];
+<span class="lineNum">     176 </span>            :         guint8 len;
+<span class="lineNum">     177 </span>            :         int flags;
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineCov">  331323706 :         if (!has_debug_data &amp;&amp;</span>
+<span class="lineNum">     180 </span><span class="lineCov">  331332691 :                 (sp-&gt;il_offset == METHOD_ENTRY_IL_OFFSET || sp-&gt;il_offset == METHOD_EXIT_IL_OFFSET))</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span><span class="lineCov">  165652055 :         il_delta = sp-&gt;il_offset - last_seq_point-&gt;il_offset;</span>
+<span class="lineNum">     184 </span><span class="lineCov">  165652055 :         native_delta = sp-&gt;native_offset - last_seq_point-&gt;native_offset;</span>
+<span class="lineNum">     185 </span>            : 
+<span class="lineNum">     186 </span><span class="lineCov">  165652055 :         flags = sp-&gt;flags;</span>
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span><span class="lineCov">  165652055 :         if (has_debug_data &amp;&amp; sp-&gt;il_offset == METHOD_EXIT_IL_OFFSET) {</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                 il_delta = 0;</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 :                 flags |= MONO_SEQ_POINT_FLAG_EXIT_IL;</span>
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span><span class="lineCov">  165670308 :         len = encode_var_int (buffer, NULL, encode_zig_zag (il_delta));</span>
+<span class="lineNum">     194 </span><span class="lineCov">  165670308 :         g_byte_array_append (array, buffer, len);</span>
+<span class="lineNum">     195 </span>            : 
+<span class="lineNum">     196 </span><span class="lineCov">  165670308 :         len = encode_var_int (buffer, NULL, encode_zig_zag (native_delta));</span>
+<span class="lineNum">     197 </span><span class="lineCov">  165670308 :         g_byte_array_append (array, buffer, len);</span>
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span><span class="lineCov">  165670308 :         if (has_debug_data) {</span>
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :                 sp-&gt;next_offset = array-&gt;len;</span>
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :                 sp-&gt;next_len = g_slist_length (next);</span>
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :                 len = encode_var_int (buffer, NULL, flags);</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :                 g_byte_array_append (array, buffer, len);</span>
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :                 len = encode_var_int (buffer, NULL, sp-&gt;next_len);</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                 g_byte_array_append (array, buffer, len);</span>
+<span class="lineNum">     208 </span>            : 
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :                 for (l = next; l; l = l-&gt;next) {</span>
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :                         int next_index = GPOINTER_TO_UINT (l-&gt;data);</span>
+<span class="lineNum">     211 </span>            :                         guint8 buffer[4];
+<span class="lineNum">     212 </span><span class="lineNoCov">          0 :                         int len = encode_var_int (buffer, NULL, next_index);</span>
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :                         g_byte_array_append (array, buffer, len);</span>
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     216 </span>            : 
+<span class="lineNum">     217 </span><span class="lineCov">  165671340 :         return TRUE;</span>
+<span class="lineNum">     218 </span><span class="lineCov">  165666822 : }</span>
+<a name="219"><span class="lineNum">     219 </span>            : </a>
+<span class="lineNum">     220 </span>            : gboolean
+<span class="lineNum">     221 </span>            : mono_seq_point_find_next_by_native_offset (MonoSeqPointInfo* info, int native_offset, SeqPoint* seq_point)
+<span class="lineNum">     222 </span>            : {
+<span class="lineNum">     223 </span>            :         SeqPointIterator it;
+<span class="lineNum">     224 </span><span class="lineNoCov">          0 :         mono_seq_point_iterator_init (&amp;it, info);</span>
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :         while (mono_seq_point_iterator_next (&amp;it)) {</span>
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :                 if (it.seq_point.native_offset &gt;= native_offset) {</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :                         memcpy (seq_point, &amp;it.seq_point, sizeof (SeqPoint));</span>
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     229 </span>            :                 }
+<span class="lineNum">     230 </span>            :         }
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 : }</span>
+<a name="234"><span class="lineNum">     234 </span>            : </a>
+<span class="lineNum">     235 </span>            : gboolean
+<span class="lineNum">     236 </span>            : mono_seq_point_find_prev_by_native_offset (MonoSeqPointInfo* info, int native_offset, SeqPoint* seq_point)
+<span class="lineNum">     237 </span>            : {
+<span class="lineNum">     238 </span>            :         SeqPoint prev_seq_point;
+<span class="lineNum">     239 </span><span class="lineCov">     618599 :         gboolean  is_first = TRUE;</span>
+<span class="lineNum">     240 </span>            :         SeqPointIterator it;
+<span class="lineNum">     241 </span><span class="lineCov">     618599 :         mono_seq_point_iterator_init (&amp;it, info);</span>
+<span class="lineNum">     242 </span><span class="lineCov">   10915629 :         while (mono_seq_point_iterator_next (&amp;it) &amp;&amp; it.seq_point.native_offset &lt;= native_offset) {</span>
+<span class="lineNum">     243 </span><span class="lineCov">    2111481 :                 memcpy (&amp;prev_seq_point, &amp;it.seq_point, sizeof (SeqPoint));</span>
+<span class="lineNum">     244 </span><span class="lineCov">    2111481 :                 is_first = FALSE;</span>
+<span class="lineNum">     245 </span>            :         }
+<span class="lineNum">     246 </span>            : 
+<span class="lineNum">     247 </span><span class="lineCov">    1235092 :         if (!is_first &amp;&amp; prev_seq_point.native_offset &lt;= native_offset) {</span>
+<span class="lineNum">     248 </span><span class="lineCov">     616493 :                 memcpy (seq_point, &amp;prev_seq_point, sizeof (SeqPoint));</span>
+<span class="lineNum">     249 </span><span class="lineCov">     616493 :                 return TRUE;</span>
+<span class="lineNum">     250 </span>            :         }
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span><span class="lineCov">       2106 :         return FALSE;</span>
+<span class="lineNum">     253 </span><span class="lineCov">     618599 : }</span>
+<a name="254"><span class="lineNum">     254 </span>            : </a>
+<span class="lineNum">     255 </span>            : gboolean
+<span class="lineNum">     256 </span>            : mono_seq_point_find_by_il_offset (MonoSeqPointInfo* info, int il_offset, SeqPoint* seq_point)
+<span class="lineNum">     257 </span>            : {
+<span class="lineNum">     258 </span>            :         SeqPointIterator it;
+<span class="lineNum">     259 </span><span class="lineNoCov">          0 :         mono_seq_point_iterator_init (&amp;it, info);</span>
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :         while (mono_seq_point_iterator_next (&amp;it)) {</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :                 if (it.seq_point.il_offset == il_offset) {</span>
+<span class="lineNum">     262 </span><span class="lineNoCov">          0 :                         memcpy (seq_point, &amp;it.seq_point, sizeof (SeqPoint));</span>
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     264 </span>            :                 }
+<span class="lineNum">     265 </span>            :         }
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 : }</span>
+<a name="269"><span class="lineNum">     269 </span>            : </a>
+<span class="lineNum">     270 </span>            : void
+<span class="lineNum">     271 </span>            : mono_seq_point_init_next (MonoSeqPointInfo* info, SeqPoint sp, SeqPoint* next)
+<span class="lineNum">     272 </span>            : {
+<span class="lineNum">     273 </span>            :         int i;
+<span class="lineNum">     274 </span>            :         guint8* ptr;
+<span class="lineNum">     275 </span>            :         SeqPointIterator it;
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :         GArray* seq_points = g_array_new (FALSE, TRUE, sizeof (SeqPoint));</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :         SeqPointInfoInflated info_inflated = seq_point_info_inflate (info);</span>
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span><span class="lineNoCov">          0 :         g_assert (info_inflated.has_debug_data);</span>
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 :         mono_seq_point_iterator_init (&amp;it, info);</span>
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :         while (mono_seq_point_iterator_next (&amp;it))</span>
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :                 g_array_append_vals (seq_points, &amp;it.seq_point, 1);</span>
+<span class="lineNum">     284 </span>            : 
+<span class="lineNum">     285 </span><span class="lineNoCov">          0 :         ptr = info_inflated.data + sp.next_offset;</span>
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; sp.next_len; i++) {</span>
+<span class="lineNum">     287 </span>            :                 int next_index;
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :                 next_index = decode_var_int (ptr, &amp;ptr);</span>
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :                 g_assert (next_index &lt; seq_points-&gt;len);</span>
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :                 memcpy (&amp;next[i], seq_points-&gt;data + next_index * sizeof (SeqPoint), sizeof (SeqPoint));</span>
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     292 </span>            : 
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :         g_array_free (seq_points, TRUE);</span>
+<span class="lineNum">     294 </span><span class="lineNoCov">          0 : }</span>
+<a name="295"><span class="lineNum">     295 </span>            : </a>
+<span class="lineNum">     296 </span>            : gboolean
+<span class="lineNum">     297 </span>            : mono_seq_point_iterator_next (SeqPointIterator* it)
+<span class="lineNum">     298 </span>            : {
+<span class="lineNum">     299 </span><span class="lineCov">    2730080 :         if (it-&gt;ptr &gt;= it-&gt;end)</span>
+<span class="lineNum">     300 </span><span class="lineCov">       4691 :                 return FALSE;</span>
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span><span class="lineCov">    2725389 :         it-&gt;ptr += seq_point_read (&amp;it-&gt;seq_point, it-&gt;ptr, it-&gt;begin, it-&gt;has_debug_data);</span>
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span><span class="lineCov">    2725389 :         return TRUE;</span>
+<span class="lineNum">     305 </span><span class="lineCov">    2730080 : }</span>
+<a name="306"><span class="lineNum">     306 </span>            : </a>
+<span class="lineNum">     307 </span>            : void
+<span class="lineNum">     308 </span>            : mono_seq_point_iterator_init (SeqPointIterator* it, MonoSeqPointInfo* info)
+<span class="lineNum">     309 </span>            : {
+<span class="lineNum">     310 </span><span class="lineCov">     618599 :         SeqPointInfoInflated info_inflated = seq_point_info_inflate (info);</span>
+<span class="lineNum">     311 </span><span class="lineCov">     618599 :         it-&gt;ptr = info_inflated.data;</span>
+<span class="lineNum">     312 </span><span class="lineCov">     618599 :         it-&gt;begin = info_inflated.data;</span>
+<span class="lineNum">     313 </span><span class="lineCov">     618599 :         it-&gt;end = it-&gt;begin + info_inflated.len;</span>
+<span class="lineNum">     314 </span><span class="lineCov">     618599 :         it-&gt;has_debug_data = info_inflated.has_debug_data;</span>
+<span class="lineNum">     315 </span><span class="lineCov">     618599 :         memset(&amp;it-&gt;seq_point, 0, sizeof(SeqPoint));</span>
+<span class="lineNum">     316 </span><span class="lineCov">     618599 : }</span>
+<a name="317"><span class="lineNum">     317 </span>            : </a>
+<span class="lineNum">     318 </span>            : int
+<span class="lineNum">     319 </span>            : mono_seq_point_info_write (MonoSeqPointInfo* info, guint8* buffer)
+<span class="lineNum">     320 </span>            : {
+<span class="lineNum">     321 </span><span class="lineCov">      37150 :         guint8* buffer0 = buffer;</span>
+<span class="lineNum">     322 </span><span class="lineCov">      37150 :         SeqPointInfoInflated info_inflated = seq_point_info_inflate (info);</span>
+<span class="lineNum">     323 </span>            : 
+<span class="lineNum">     324 </span><span class="lineCov">      37150 :         encode_var_int (buffer, &amp;buffer, info_inflated.has_debug_data);</span>
+<span class="lineNum">     325 </span>            : 
+<span class="lineNum">     326 </span>            :         //Write sequence points
+<span class="lineNum">     327 </span><span class="lineCov">      37150 :         encode_var_int (buffer, &amp;buffer, info_inflated.len);</span>
+<span class="lineNum">     328 </span><span class="lineCov">      37150 :         memcpy (buffer, info_inflated.data, info_inflated.len);</span>
+<span class="lineNum">     329 </span><span class="lineCov">      37150 :         buffer += info_inflated.len;</span>
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span><span class="lineCov">      37150 :         return buffer - buffer0;</span>
+<span class="lineNum">     332 </span>            : }
+<a name="333"><span class="lineNum">     333 </span>            : </a>
+<span class="lineNum">     334 </span>            : int
+<span class="lineNum">     335 </span>            : mono_seq_point_info_read (MonoSeqPointInfo** info, guint8* buffer, gboolean copy)
+<span class="lineNum">     336 </span>            : {
+<span class="lineNum">     337 </span><span class="lineCov">     548716 :         guint8* buffer0 = buffer;</span>
+<span class="lineNum">     338 </span>            :         int size, info_size;
+<span class="lineNum">     339 </span>            :         gboolean has_debug_data;
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span><span class="lineCov">     548716 :         has_debug_data = decode_var_int (buffer, &amp;buffer);</span>
+<span class="lineNum">     342 </span>            : 
+<span class="lineNum">     343 </span><span class="lineCov">     548716 :         size = decode_var_int (buffer, &amp;buffer);</span>
+<span class="lineNum">     344 </span><span class="lineCov">     548716 :         (*info) = mono_seq_point_info_new (size, copy, buffer, has_debug_data, &amp;info_size);</span>
+<span class="lineNum">     345 </span><span class="lineCov">     548716 :         buffer += size;</span>
+<span class="lineNum">     346 </span>            : 
+<span class="lineNum">     347 </span><span class="lineCov">     548716 :         return buffer - buffer0;</span>
+<span class="lineNum">     348 </span>            : }
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span>            : /*
+<span class="lineNum">     351 </span>            :  * Returns the maximum size of mono_seq_point_info_write.
+<a name="352"><span class="lineNum">     352 </span>            :  */</a>
+<span class="lineNum">     353 </span>            : int
+<span class="lineNum">     354 </span>            : mono_seq_point_info_get_write_size (MonoSeqPointInfo* info)
+<span class="lineNum">     355 </span>            : {
+<span class="lineNum">     356 </span><span class="lineCov">      37150 :         SeqPointInfoInflated info_inflated = seq_point_info_inflate (info);</span>
+<span class="lineNum">     357 </span>            : 
+<span class="lineNum">     358 </span>            :         //4 is the maximum size required to store the size of the data.
+<span class="lineNum">     359 </span>            :         //1 is the byte used to store has_debug_data.
+<span class="lineNum">     360 </span><span class="lineCov">      37150 :         int size = 4 + 1 + info_inflated.len;</span>
+<span class="lineNum">     361 </span>            : 
+<span class="lineNum">     362 </span><span class="lineCov">      37150 :         return size;</span>
+<span class="lineNum">     363 </span>            : }
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span>            : /*
+<span class="lineNum">     366 </span>            :  * SeqPointData struct and functions
+<span class="lineNum">     367 </span>            :  * This is used to store/load/use sequence point from a file
+<span class="lineNum">     368 </span>            :  */
+<a name="369"><span class="lineNum">     369 </span>            : </a>
+<span class="lineNum">     370 </span>            : void
+<span class="lineNum">     371 </span>            : mono_seq_point_data_init (SeqPointData *data, int entry_capacity)
+<span class="lineNum">     372 </span>            : {
+<span class="lineNum">     373 </span><span class="lineCov">          1 :         data-&gt;entry_count = 0;</span>
+<span class="lineNum">     374 </span><span class="lineCov">          1 :         data-&gt;entry_capacity = entry_capacity;</span>
+<span class="lineNum">     375 </span><span class="lineCov">          1 :         data-&gt;entries = (SeqPointDataEntry *)g_malloc (sizeof (SeqPointDataEntry) * entry_capacity);</span>
+<span class="lineNum">     376 </span><span class="lineCov">          1 : }</span>
+<a name="377"><span class="lineNum">     377 </span>            : </a>
+<span class="lineNum">     378 </span>            : void
+<span class="lineNum">     379 </span>            : mono_seq_point_data_free (SeqPointData *data)
+<span class="lineNum">     380 </span>            : {
+<span class="lineNum">     381 </span>            :         int i;
+<span class="lineNum">     382 </span><span class="lineCov">        102 :         for (i=0; i&lt;data-&gt;entry_count; i++) {</span>
+<span class="lineNum">     383 </span><span class="lineCov">         50 :                 if (data-&gt;entries [i].free_seq_points)</span>
+<span class="lineNum">     384 </span><span class="lineNoCov">          0 :                         g_free (data-&gt;entries [i].seq_points);</span>
+<span class="lineNum">     385 </span><span class="lineCov">         50 :         }</span>
+<span class="lineNum">     386 </span><span class="lineCov">          1 :         g_free (data-&gt;entries);</span>
+<span class="lineNum">     387 </span><span class="lineCov">          1 : }</span>
+<a name="388"><span class="lineNum">     388 </span>            : </a>
+<span class="lineNum">     389 </span>            : gboolean
+<span class="lineNum">     390 </span>            : mono_seq_point_data_read (SeqPointData *data, char *path)
+<span class="lineNum">     391 </span>            : {
+<span class="lineNum">     392 </span>            :         guint8 *buffer, *buffer_orig;
+<span class="lineNum">     393 </span>            :         int entry_count, i;
+<span class="lineNum">     394 </span>            :         long fsize;
+<span class="lineNum">     395 </span>            :         FILE *f;
+<span class="lineNum">     396 </span>            : 
+<span class="lineNum">     397 </span><span class="lineNoCov">          0 :         f = fopen (path, &quot;r&quot;);</span>
+<span class="lineNum">     398 </span><span class="lineNoCov">          0 :         if (!f)</span>
+<span class="lineNum">     399 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     400 </span>            : 
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :         fseek(f, 0, SEEK_END);</span>
+<span class="lineNum">     402 </span><span class="lineNoCov">          0 :         fsize = ftell(f);</span>
+<span class="lineNum">     403 </span><span class="lineNoCov">          0 :         fseek(f, 0, SEEK_SET);</span>
+<span class="lineNum">     404 </span>            : 
+<span class="lineNum">     405 </span><span class="lineNoCov">          0 :         buffer_orig = buffer = (guint8 *)g_malloc (fsize + 1);</span>
+<span class="lineNum">     406 </span><span class="lineNoCov">          0 :         fread(buffer_orig, fsize, 1, f);</span>
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :         fclose(f);</span>
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :         entry_count = decode_var_int (buffer, &amp;buffer);</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :         mono_seq_point_data_init (data, entry_count);</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         data-&gt;entry_count = entry_count;</span>
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span><span class="lineNoCov">          0 :         for (i=0; i&lt;entry_count; i++) {</span>
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :                 data-&gt;entries [i].method_token = decode_var_int (buffer, &amp;buffer);</span>
+<span class="lineNum">     415 </span><span class="lineNoCov">          0 :                 data-&gt;entries [i].method_index = decode_var_int (buffer, &amp;buffer);</span>
+<span class="lineNum">     416 </span><span class="lineNoCov">          0 :                 buffer += mono_seq_point_info_read (&amp;data-&gt;entries [i].seq_points, buffer, TRUE);</span>
+<span class="lineNum">     417 </span><span class="lineNoCov">          0 :                 data-&gt;entries [i].free_seq_points = TRUE;</span>
+<span class="lineNum">     418 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     419 </span>            : 
+<span class="lineNum">     420 </span><span class="lineNoCov">          0 :         g_free (buffer_orig);</span>
+<span class="lineNum">     421 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     422 </span><span class="lineNoCov">          0 : }</span>
+<a name="423"><span class="lineNum">     423 </span>            : </a>
+<span class="lineNum">     424 </span>            : gboolean
+<span class="lineNum">     425 </span>            : mono_seq_point_data_write (SeqPointData *data, char *path)
+<span class="lineNum">     426 </span>            : {
+<span class="lineNum">     427 </span>            :         guint8 *buffer, *buffer_orig;
+<span class="lineNum">     428 </span>            :         FILE *f;
+<span class="lineNum">     429 </span><span class="lineCov">          1 :         int i, size = 0;</span>
+<span class="lineNum">     430 </span>            : 
+<span class="lineNum">     431 </span><span class="lineCov">          1 :         f = fopen (path, &quot;w+&quot;);</span>
+<span class="lineNum">     432 </span><span class="lineCov">          1 :         if (!f)</span>
+<span class="lineNum">     433 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span><span class="lineCov">        102 :         for (i=0; i&lt;data-&gt;entry_count; i++) {</span>
+<span class="lineNum">     436 </span><span class="lineCov">         50 :                 size += mono_seq_point_info_get_write_size (data-&gt;entries [i].seq_points);</span>
+<span class="lineNum">     437 </span><span class="lineCov">         50 :         }</span>
+<span class="lineNum">     438 </span>            :         // Add size of entry_count and native_base_offsets
+<span class="lineNum">     439 </span><span class="lineCov">          1 :         size += 4 + data-&gt;entry_count * 4;</span>
+<span class="lineNum">     440 </span>            : 
+<span class="lineNum">     441 </span><span class="lineCov">          1 :         buffer_orig = buffer = (guint8 *)g_malloc (size);</span>
+<span class="lineNum">     442 </span>            : 
+<span class="lineNum">     443 </span><span class="lineCov">          1 :         encode_var_int (buffer, &amp;buffer, data-&gt;entry_count);</span>
+<span class="lineNum">     444 </span>            : 
+<span class="lineNum">     445 </span><span class="lineCov">        102 :         for (i=0; i&lt;data-&gt;entry_count; i++) {</span>
+<span class="lineNum">     446 </span><span class="lineCov">         50 :                 encode_var_int (buffer, &amp;buffer, data-&gt;entries [i].method_token);</span>
+<span class="lineNum">     447 </span><span class="lineCov">         50 :                 encode_var_int (buffer, &amp;buffer, data-&gt;entries [i].method_index);</span>
+<span class="lineNum">     448 </span><span class="lineCov">         50 :                 buffer += mono_seq_point_info_write (data-&gt;entries [i].seq_points, buffer);</span>
+<span class="lineNum">     449 </span><span class="lineCov">         50 :         }</span>
+<span class="lineNum">     450 </span>            : 
+<span class="lineNum">     451 </span><span class="lineCov">          1 :         fwrite (buffer_orig, 1, buffer - buffer_orig, f);</span>
+<span class="lineNum">     452 </span><span class="lineCov">          1 :         g_free (buffer_orig);</span>
+<span class="lineNum">     453 </span><span class="lineCov">          1 :         fclose (f);</span>
+<span class="lineNum">     454 </span>            : 
+<span class="lineNum">     455 </span><span class="lineCov">          1 :         return TRUE;</span>
+<span class="lineNum">     456 </span><span class="lineCov">          1 : }</span>
+<a name="457"><span class="lineNum">     457 </span>            : </a>
+<span class="lineNum">     458 </span>            : void
+<span class="lineNum">     459 </span>            : mono_seq_point_data_add (SeqPointData *data, guint32 method_token, guint32 method_index, MonoSeqPointInfo* info)
+<span class="lineNum">     460 </span>            : {
+<span class="lineNum">     461 </span>            :         int i;
+<span class="lineNum">     462 </span>            : 
+<span class="lineNum">     463 </span><span class="lineCov">        150 :         g_assert (data-&gt;entry_count &lt; data-&gt;entry_capacity);</span>
+<span class="lineNum">     464 </span><span class="lineCov">         50 :         i = data-&gt;entry_count++;</span>
+<span class="lineNum">     465 </span><span class="lineCov">         50 :         data-&gt;entries [i].seq_points = info;</span>
+<span class="lineNum">     466 </span><span class="lineCov">         50 :         data-&gt;entries [i].method_token = method_token;</span>
+<span class="lineNum">     467 </span><span class="lineCov">         50 :         data-&gt;entries [i].method_index = method_index;</span>
+<span class="lineNum">     468 </span><span class="lineCov">         50 :         data-&gt;entries [i].free_seq_points = FALSE;</span>
+<span class="lineNum">     469 </span><span class="lineCov">         50 : }</span>
+<a name="470"><span class="lineNum">     470 </span>            : </a>
+<span class="lineNum">     471 </span>            : gboolean
+<span class="lineNum">     472 </span>            : mono_seq_point_data_get (SeqPointData *data, guint32 method_token, guint32 method_index, MonoSeqPointInfo** info)
+<span class="lineNum">     473 </span>            : {
+<span class="lineNum">     474 </span>            :         int i;
+<span class="lineNum">     475 </span>            : 
+<span class="lineNum">     476 </span><span class="lineNoCov">          0 :         for (i=0; i&lt;data-&gt;entry_count; i++) {</span>
+<span class="lineNum">     477 </span><span class="lineNoCov">          0 :                 if (data-&gt;entries [i].method_token == method_token &amp;&amp; (method_index == 0xffffff || data-&gt;entries [i].method_index == method_index)) {</span>
+<span class="lineNum">     478 </span><span class="lineNoCov">          0 :                         (*info) = data-&gt;entries [i].seq_points;</span>
+<span class="lineNum">     479 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     480 </span>            :                 }
+<span class="lineNum">     481 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     482 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     483 </span><span class="lineNoCov">          0 : }</span>
+<a name="484"><span class="lineNum">     484 </span>            : </a>
+<span class="lineNum">     485 </span>            : gboolean
+<span class="lineNum">     486 </span>            : mono_seq_point_data_get_il_offset (char *path, guint32 method_token, guint32 method_index, guint32 native_offset, guint32 *il_offset)
+<span class="lineNum">     487 </span>            : {
+<span class="lineNum">     488 </span>            :         SeqPointData sp_data;
+<span class="lineNum">     489 </span>            :         MonoSeqPointInfo *seq_points;
+<span class="lineNum">     490 </span>            :         SeqPoint sp;
+<span class="lineNum">     491 </span>            : 
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :         if (!mono_seq_point_data_read (&amp;sp_data, path))</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     494 </span>            : 
+<span class="lineNum">     495 </span><span class="lineNoCov">          0 :         if (!mono_seq_point_data_get (&amp;sp_data, method_token, method_index, &amp;seq_points))</span>
+<span class="lineNum">     496 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     497 </span>            : 
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :         if (!mono_seq_point_find_prev_by_native_offset (seq_points, native_offset, &amp;sp))</span>
+<span class="lineNum">     499 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     500 </span>            : 
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 :         *il_offset = sp.il_offset;</span>
+<span class="lineNum">     502 </span>            : 
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     504 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

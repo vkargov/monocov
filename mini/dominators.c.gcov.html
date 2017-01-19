@@ -1,0 +1,540 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/dominators.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - dominators.c<span style="font-size: 80%;"> (source / <a href="dominators.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">214</td>
+            <td class="headerCovTableEntry">214</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">9</td>
+            <td class="headerCovTableEntry">9</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * dominators.c: Dominator computation on the control flow graph
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Dietmar Maurer (dietmar@ximian.com)
+<span class="lineNum">       6 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * (C) 2003 Ximian, Inc.
+<span class="lineNum">       9 </span>            :  * Copyright 2011 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;mono/metadata/mempool.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;mono/metadata/mempool-internals.h&gt;
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      20 </span>            : 
+<span class="lineNum">      21 </span>            : /*
+<span class="lineNum">      22 </span>            :  * bb-&gt;dfn == 0 means either the bblock is ignored by the dfn calculation, or
+<span class="lineNum">      23 </span>            :  * it is the entry bblock.
+<span class="lineNum">      24 </span>            :  */
+<span class="lineNum">      25 </span>            : #define HAS_DFN(bb, entry) ((bb)-&gt;dfn || ((bb) == entry))
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : /*
+<span class="lineNum">      28 </span>            :  * Compute dominators and immediate dominators using the algorithm in the
+<span class="lineNum">      29 </span>            :  * paper &quot;A Simple, Fast Dominance Algorithm&quot; by Keith D. Cooper, 
+<span class="lineNum">      30 </span>            :  * Timothy J. Harvey, and Ken Kennedy:
+<span class="lineNum">      31 </span>            :  * http://citeseer.ist.psu.edu/cooper01simple.html
+<a name="32"><span class="lineNum">      32 </span>            :  */</a>
+<span class="lineNum">      33 </span>            : static void
+<span class="lineNum">      34 </span>            : compute_dominators (MonoCompile *cfg)
+<span class="lineNum">      35 </span>            : {
+<span class="lineNum">      36 </span>            :         int bindex, i, bitsize;
+<span class="lineNum">      37 </span>            :         MonoBasicBlock *entry;
+<span class="lineNum">      38 </span>            :         MonoBasicBlock **doms;
+<span class="lineNum">      39 </span>            :         gboolean changed;
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span><span class="lineCov">   42756757 :         g_assert (!(cfg-&gt;comp_done &amp; MONO_COMP_DOM));</span>
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span><span class="lineCov">   14255813 :         bitsize = mono_bitset_alloc_size (cfg-&gt;num_bblocks, 0);</span>
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span><span class="lineCov">   14255813 :         entry = cfg-&gt;bblocks [0];</span>
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span><span class="lineCov">   14255813 :         doms = g_new0 (MonoBasicBlock*, cfg-&gt;num_bblocks);</span>
+<span class="lineNum">      48 </span><span class="lineCov">   14255813 :         doms [entry-&gt;dfn] = entry;</span>
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span><span class="lineCov">   14255813 :         if (cfg-&gt;verbose_level &gt; 1) {</span>
+<span class="lineNum">      51 </span><span class="lineCov">    3247154 :                 for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">      52 </span>            :                         int j;
+<span class="lineNum">      53 </span><span class="lineCov">    1442561 :                         MonoBasicBlock *bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span><span class="lineCov">    1442561 :                         printf (&quot;BB%d IN: &quot;, bb-&gt;block_num);</span>
+<span class="lineNum">      56 </span><span class="lineCov">    6402588 :                         for (j = 0; j &lt; bb-&gt;in_count; ++j)</span>
+<span class="lineNum">      57 </span><span class="lineCov">    1758729 :                                 printf (&quot;%d &quot;, bb-&gt;in_bb [j]-&gt;block_num);</span>
+<span class="lineNum">      58 </span><span class="lineCov">    1442569 :                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">      59 </span><span class="lineCov">    1442569 :                 }</span>
+<span class="lineNum">      60 </span><span class="lineCov">     181015 :         }</span>
+<span class="lineNum">      61 </span>            : 
+<span class="lineNum">      62 </span><span class="lineCov">   14248341 :         changed = TRUE;</span>
+<span class="lineNum">      63 </span><span class="lineCov">   96689103 :         while (changed) {</span>
+<span class="lineNum">      64 </span><span class="lineCov">   34088522 :                 changed = FALSE;</span>
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span><span class="lineCov">  709539997 :                 for (bindex = 0; bindex &lt; cfg-&gt;num_bblocks; ++bindex) {</span>
+<span class="lineNum">      67 </span><span class="lineCov">  320670447 :                         MonoBasicBlock *bb = cfg-&gt;bblocks [bindex];</span>
+<span class="lineNum">      68 </span>            :                         MonoBasicBlock *idom;
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span><span class="lineCov">  320670447 :                         idom = NULL;</span>
+<span class="lineNum">      71 </span><span class="lineCov">  682862207 :                         for (i = 0; i &lt; bb-&gt;in_count; ++i) {</span>
+<span class="lineNum">      72 </span><span class="lineCov">  307388438 :                                 MonoBasicBlock *in_bb = bb-&gt;in_bb [i];</span>
+<span class="lineNum">      73 </span><span class="lineCov">  614862563 :                                 if ((in_bb != bb) &amp;&amp; doms [in_bb-&gt;dfn]) {</span>
+<span class="lineNum">      74 </span><span class="lineCov">  286741132 :                                         idom = in_bb;</span>
+<span class="lineNum">      75 </span><span class="lineCov">  286741132 :                                         break;</span>
+<span class="lineNum">      76 </span>            :                                 }
+<span class="lineNum">      77 </span><span class="lineCov">   20760231 :                         }</span>
+<span class="lineNum">      78 </span><span class="lineCov">  320829713 :                         if (bb != cfg-&gt;bblocks [0])</span>
+<span class="lineNum">      79 </span><span class="lineCov"> 1146602119 :                                 g_assert (idom);</span>
+<span class="lineNum">      80 </span>            : 
+<span class="lineNum">      81 </span><span class="lineCov"> 1417493572 :                         while (i &lt; bb-&gt;in_count) {</span>
+<span class="lineNum">      82 </span><span class="lineCov">  388131475 :                                 MonoBasicBlock *in_bb = bb-&gt;in_bb [i];</span>
+<span class="lineNum">      83 </span>            : 
+<span class="lineNum">      84 </span><span class="lineCov">  810496666 :                                 if (HAS_DFN (in_bb, entry) &amp;&amp; doms [in_bb-&gt;dfn]) {</span>
+<span class="lineNum">      85 </span>            :                                         /* Intersect */
+<span class="lineNum">      86 </span><span class="lineCov">  368097365 :                                         MonoBasicBlock *f1 = idom;</span>
+<span class="lineNum">      87 </span><span class="lineCov">  368097365 :                                         MonoBasicBlock *f2 = in_bb;</span>
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span><span class="lineCov"> 1265944529 :                                         while (f1 != f2) {</span>
+<span class="lineNum">      90 </span><span class="lineCov">  265064294 :                                                 if (f1-&gt;dfn &lt; f2-&gt;dfn)</span>
+<span class="lineNum">      91 </span><span class="lineCov">  212624072 :                                                         f2 = doms [f2-&gt;dfn];</span>
+<span class="lineNum">      92 </span>            :                                                 else
+<span class="lineNum">      93 </span><span class="lineCov">   52432331 :                                                         f1 = doms [f1-&gt;dfn];</span>
+<span class="lineNum">      94 </span>            :                                         }
+<span class="lineNum">      95 </span>            : 
+<span class="lineNum">      96 </span><span class="lineCov">  368039841 :                                         idom = f1;</span>
+<span class="lineNum">      97 </span><span class="lineCov">  368039841 :                                 }</span>
+<span class="lineNum">      98 </span><span class="lineCov">  388167818 :                                 i ++;</span>
+<span class="lineNum">      99 </span>            :                         }
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span><span class="lineCov">  321041822 :                         if (idom != doms [bb-&gt;dfn]) {</span>
+<span class="lineNum">     102 </span><span class="lineCov">  146741857 :                                 if (bb == cfg-&gt;bblocks [0])</span>
+<span class="lineNum">     103 </span><span class="lineCov">   34088580 :                                         doms [bb-&gt;dfn] = bb;</span>
+<span class="lineNum">     104 </span>            :                                 else {
+<span class="lineNum">     105 </span><span class="lineCov">  112656567 :                                         doms [bb-&gt;dfn] = idom;</span>
+<span class="lineNum">     106 </span><span class="lineCov">  112656567 :                                         changed = TRUE;</span>
+<span class="lineNum">     107 </span>            :                                 }
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span>            :                                 //printf (&quot;A: bb=%d dfn=%d dom:%d\n&quot;, bb-&gt;block_num, bb-&gt;dfn, doms [bb-&gt;dfn]-&gt;block_num);
+<span class="lineNum">     110 </span><span class="lineCov">  146713326 :                         }</span>
+<span class="lineNum">     111 </span><span class="lineCov">  320697441 :                 }</span>
+<span class="lineNum">     112 </span>            :         }
+<span class="lineNum">     113 </span>            : 
+<span class="lineNum">     114 </span>            :         /* Compute bb-&gt;dominators for each bblock */
+<span class="lineNum">     115 </span><span class="lineCov">  265146995 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     116 </span><span class="lineCov">  118319471 :                 MonoBasicBlock *bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     117 </span>            :                 MonoBasicBlock *cbb;
+<span class="lineNum">     118 </span>            :                 MonoBitSet *dominators;
+<span class="lineNum">     119 </span>            :                 char *mem;
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span><span class="lineCov">  118319471 :                 mem = (char *)mono_mempool_alloc0 (cfg-&gt;mempool, bitsize);</span>
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span><span class="lineCov">  118319471 :                 bb-&gt;dominators = dominators = mono_bitset_mem_new (mem, cfg-&gt;num_bblocks, 0);</span>
+<span class="lineNum">     124 </span><span class="lineCov">  118319471 :                 mem += bitsize;</span>
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span><span class="lineCov">  236657592 :                 mono_bitset_set_fast (dominators, bb-&gt;dfn);</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span><span class="lineCov">  118367512 :                 if (bb-&gt;dfn) {</span>
+<span class="lineNum">     129 </span><span class="lineCov"> 1035461547 :                         for (cbb = doms [bb-&gt;dfn]; cbb-&gt;dfn; cbb = doms [cbb-&gt;dfn])</span>
+<span class="lineNum">     130 </span><span class="lineCov"> 1241061271 :                                 mono_bitset_set_fast (dominators, cbb-&gt;dfn);</span>
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineCov">  104091294 :                         bb-&gt;idom = doms [bb-&gt;dfn];</span>
+<span class="lineNum">     133 </span><span class="lineCov">  104091294 :                         if (bb-&gt;idom)</span>
+<span class="lineNum">     134 </span><span class="lineCov">  104093587 :                                 bb-&gt;idom-&gt;dominated = g_slist_prepend_mempool (cfg-&gt;mempool, bb-&gt;idom-&gt;dominated, bb);</span>
+<span class="lineNum">     135 </span><span class="lineCov">  104074813 :                 }</span>
+<span class="lineNum">     136 </span>            : 
+<span class="lineNum">     137 </span>            :                 /* The entry bb */
+<span class="lineNum">     138 </span><span class="lineCov">  236617482 :                 mono_bitset_set_fast (dominators, 0);</span>
+<span class="lineNum">     139 </span><span class="lineCov">  118319544 :         }</span>
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span><span class="lineCov">   14256294 :         g_free (doms);</span>
+<span class="lineNum">     142 </span>            : 
+<span class="lineNum">     143 </span><span class="lineCov">   14256294 :         cfg-&gt;comp_done |= MONO_COMP_DOM | MONO_COMP_IDOM;</span>
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span><span class="lineCov">   14256294 :         if (cfg-&gt;verbose_level &gt; 1) {</span>
+<span class="lineNum">     146 </span><span class="lineCov">     362030 :                 printf (&quot;DTREE %s %d\n&quot;, mono_method_full_name (cfg-&gt;method, TRUE),</span>
+<span class="lineNum">     147 </span><span class="lineCov">     181015 :                         cfg-&gt;header-&gt;num_clauses);</span>
+<span class="lineNum">     148 </span><span class="lineCov">    3247168 :                 for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     149 </span><span class="lineCov">    1442569 :                         MonoBasicBlock *bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     150 </span><span class="lineCov">    4327707 :                         printf (&quot;BB%d(dfn=%d) (IDOM=BB%d): &quot;, bb-&gt;block_num, bb-&gt;dfn, bb-&gt;idom ? bb-&gt;idom-&gt;block_num : -1);</span>
+<span class="lineNum">     151 </span><span class="lineCov">    1442569 :                         mono_blockset_print (cfg, bb-&gt;dominators, NULL, -1);</span>
+<span class="lineNum">     152 </span><span class="lineCov">    1442569 :                 }</span>
+<span class="lineNum">     153 </span><span class="lineCov">     181015 :         }</span>
+<span class="lineNum">     154 </span><span class="lineCov">   14254169 : }</span>
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span>            : #if 0
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span>            : static void
+<span class="lineNum">     159 </span>            : check_dominance_frontier (MonoBasicBlock *x, MonoBasicBlock *t)
+<span class="lineNum">     160 </span>            : {
+<span class="lineNum">     161 </span>            :         int i, j;
+<span class="lineNum">     162 </span>            : 
+<span class="lineNum">     163 </span>            :         t-&gt;flags |= BB_VISITED;
+<span class="lineNum">     164 </span>            : 
+<span class="lineNum">     165 </span>            :         if (mono_bitset_test_fast (t-&gt;dominators, x-&gt;dfn)) {
+<span class="lineNum">     166 </span>            :                 for (i = 0; i &lt; t-&gt;out_count; ++i) {
+<span class="lineNum">     167 </span>            :                         if (!(t-&gt;flags &amp; BB_VISITED)) {
+<span class="lineNum">     168 </span>            :                                 int found = FALSE;
+<span class="lineNum">     169 </span>            :                                 check_dominance_frontier (x, t-&gt;out_bb [i]);
+<span class="lineNum">     170 </span>            :                                 
+<span class="lineNum">     171 </span>            :                                 for (j = 0; j &lt; t-&gt;out_bb [i]-&gt;in_count; j++) {
+<span class="lineNum">     172 </span>            :                                         if (t-&gt;out_bb [i]-&gt;in_bb [j] == t)
+<span class="lineNum">     173 </span>            :                                                 found = TRUE;
+<span class="lineNum">     174 </span>            :                                 }
+<span class="lineNum">     175 </span>            :                                 g_assert (found);
+<span class="lineNum">     176 </span>            :                         }
+<span class="lineNum">     177 </span>            :                 }
+<span class="lineNum">     178 </span>            :         } else {
+<span class="lineNum">     179 </span>            :                 if (!mono_bitset_test_fast (x-&gt;dfrontier, t-&gt;dfn)) {
+<span class="lineNum">     180 </span>            :                         printf (&quot;BB%d not in frontier of BB%d\n&quot;, t-&gt;block_num, x-&gt;block_num);
+<span class="lineNum">     181 </span>            :                         g_assert_not_reached ();
+<span class="lineNum">     182 </span>            :                 }
+<span class="lineNum">     183 </span>            :         }
+<span class="lineNum">     184 </span>            : } 
+<span class="lineNum">     185 </span>            : 
+<span class="lineNum">     186 </span>            : #endif
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span>            : /**
+<span class="lineNum">     189 </span>            :  * Compute dominance frontiers using the algorithm from the same paper.
+<a name="190"><span class="lineNum">     190 </span>            :  */</a>
+<span class="lineNum">     191 </span>            : static void
+<span class="lineNum">     192 </span>            : compute_dominance_frontier (MonoCompile *cfg)
+<span class="lineNum">     193 </span>            : {
+<span class="lineNum">     194 </span>            :         char *mem;
+<span class="lineNum">     195 </span>            :         int i, j, bitsize;
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span><span class="lineCov">   40793933 :         g_assert (!(cfg-&gt;comp_done &amp; MONO_COMP_DFRONTIER));</span>
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span><span class="lineCov">  253399408 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i)</span>
+<span class="lineNum">     200 </span><span class="lineCov">  113103758 :                 cfg-&gt;bblocks [i]-&gt;flags &amp;= ~BB_VISITED;</span>
+<span class="lineNum">     201 </span>            : 
+<span class="lineNum">     202 </span><span class="lineCov">   13600739 :         bitsize = mono_bitset_alloc_size (cfg-&gt;num_bblocks, 0);</span>
+<span class="lineNum">     203 </span><span class="lineCov">   13600739 :         mem = (char *)mono_mempool_alloc0 (cfg-&gt;mempool, bitsize * cfg-&gt;num_bblocks);</span>
+<span class="lineNum">     204 </span>            :  
+<span class="lineNum">     205 </span><span class="lineCov">  253321985 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     206 </span><span class="lineCov">  113071932 :                 MonoBasicBlock *bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     207 </span><span class="lineCov">  113071932 :                 bb-&gt;dfrontier = mono_bitset_mem_new (mem, cfg-&gt;num_bblocks, 0);</span>
+<span class="lineNum">     208 </span><span class="lineCov">  113071932 :                 mem += bitsize;</span>
+<span class="lineNum">     209 </span><span class="lineCov">  113071932 :         }</span>
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineCov">  253381226 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     212 </span><span class="lineCov">  113120251 :                 MonoBasicBlock *bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span><span class="lineCov">  113120251 :                 if (bb-&gt;in_count &gt; 1) {</span>
+<span class="lineNum">     215 </span><span class="lineCov">  178874962 :                         for (j = 0; j &lt; bb-&gt;in_count; ++j) {</span>
+<span class="lineNum">     216 </span><span class="lineCov">   64968247 :                                 MonoBasicBlock *p = bb-&gt;in_bb [j];</span>
+<span class="lineNum">     217 </span>            : 
+<span class="lineNum">     218 </span><span class="lineCov">   65345798 :                                 if (p-&gt;dfn || (p == cfg-&gt;bblocks [0])) {</span>
+<span class="lineNum">     219 </span><span class="lineCov">  385444054 :                                         while (p != bb-&gt;idom) {</span>
+<span class="lineNum">     220 </span><span class="lineCov">  256233583 :                                                 mono_bitset_set_fast (p-&gt;dfrontier, bb-&gt;dfn);</span>
+<span class="lineNum">     221 </span><span class="lineCov">  128116226 :                                                 p = p-&gt;idom;</span>
+<span class="lineNum">     222 </span>            :                                         }
+<span class="lineNum">     223 </span><span class="lineCov">   64617609 :                                 }</span>
+<span class="lineNum">     224 </span><span class="lineCov">   64971801 :                         }</span>
+<span class="lineNum">     225 </span><span class="lineCov">   24468312 :                 }</span>
+<span class="lineNum">     226 </span><span class="lineCov">  113072484 :         }</span>
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span>            : #if 0
+<span class="lineNum">     229 </span>            :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {
+<span class="lineNum">     230 </span>            :                 MonoBasicBlock *bb = cfg-&gt;bblocks [i];
+<span class="lineNum">     231 </span>            :                 
+<span class="lineNum">     232 </span>            :                 printf (&quot;DFRONT %s BB%d: &quot;, mono_method_full_name (cfg-&gt;method, TRUE), bb-&gt;block_num);
+<span class="lineNum">     233 </span>            :                 mono_blockset_print (cfg, bb-&gt;dfrontier, NULL, -1);
+<span class="lineNum">     234 </span>            :         }
+<span class="lineNum">     235 </span>            : #endif
+<span class="lineNum">     236 </span>            : 
+<span class="lineNum">     237 </span>            : #if 0
+<span class="lineNum">     238 </span>            :         /* this is a check for the dominator frontier */
+<span class="lineNum">     239 </span>            :         for (i = 0; i &lt; m-&gt;num_bblocks; ++i) {
+<span class="lineNum">     240 </span>            :                 MonoBasicBlock *x = m-&gt;bblocks [i];
+<span class="lineNum">     241 </span>            :                 
+<span class="lineNum">     242 </span>            :                 mono_bitset_foreach_bit ((x-&gt;dfrontier), j, (m-&gt;num_bblocks)) {
+<span class="lineNum">     243 </span>            :                         MonoBasicBlock *w = m-&gt;bblocks [j];
+<span class="lineNum">     244 </span>            :                         int k;
+<span class="lineNum">     245 </span>            :                         /* x must not strictly dominates w */
+<span class="lineNum">     246 </span>            :                         if (mono_bitset_test_fast (w-&gt;dominators, x-&gt;dfn) &amp;&amp; w != x)
+<span class="lineNum">     247 </span>            :                                 g_assert_not_reached ();
+<span class="lineNum">     248 </span>            :                         
+<span class="lineNum">     249 </span>            :                         for (k = 0; k &lt; m-&gt;num_bblocks; ++k)
+<span class="lineNum">     250 </span>            :                                 m-&gt;bblocks [k]-&gt;flags &amp;= ~BB_VISITED;
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span>            :                         check_dominance_frontier (x, x);
+<span class="lineNum">     253 </span>            :                 }
+<span class="lineNum">     254 </span>            :         }
+<span class="lineNum">     255 </span>            : #endif
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span><span class="lineCov">   13599775 :         cfg-&gt;comp_done |= MONO_COMP_DFRONTIER;</span>
+<span class="lineNum">     258 </span><span class="lineCov">   13599775 : }</span>
+<a name="259"><span class="lineNum">     259 </span>            : </a>
+<span class="lineNum">     260 </span>            : static inline void
+<span class="lineNum">     261 </span>            : df_set (MonoCompile *m, MonoBitSet* dest, MonoBitSet *set) 
+<span class="lineNum">     262 </span>            : {
+<span class="lineNum">     263 </span>            :         int i;
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineCov">  227602634 :         mono_bitset_foreach_bit (set, i, m-&gt;num_bblocks) {</span>
+<span class="lineNum">     266 </span><span class="lineCov">  336147923 :                 mono_bitset_union_fast (dest, m-&gt;bblocks [i]-&gt;dfrontier);</span>
+<span class="lineNum">     267 </span><span class="lineCov">   43141853 :         }</span>
+<span class="lineNum">     268 </span><span class="lineCov">   18366186 : }</span>
+<a name="269"><span class="lineNum">     269 </span>            : </a>
+<span class="lineNum">     270 </span>            : MonoBitSet*
+<span class="lineNum">     271 </span>            : mono_compile_iterated_dfrontier (MonoCompile *m, MonoBitSet *set)
+<span class="lineNum">     272 </span>            : {
+<span class="lineNum">     273 </span>            :         MonoBitSet *result;
+<span class="lineNum">     274 </span>            :         int bitsize, count1, count2;
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span><span class="lineCov">    7617521 :         bitsize = mono_bitset_alloc_size (m-&gt;num_bblocks, 0);</span>
+<span class="lineNum">     277 </span><span class="lineCov">    7617521 :         result = mono_bitset_mem_new (mono_mempool_alloc0 (m-&gt;mempool, bitsize), m-&gt;num_bblocks, 0);</span>
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span><span class="lineCov">    7617521 :         df_set (m, result, set);</span>
+<span class="lineNum">     280 </span><span class="lineCov">    7617521 :         count2 = mono_bitset_count (result);</span>
+<span class="lineNum">     281 </span><span class="lineCov">    7617521 :         do {</span>
+<span class="lineNum">     282 </span><span class="lineCov">   10747647 :                 count1 = count2;</span>
+<span class="lineNum">     283 </span><span class="lineCov">   10747647 :                 df_set (m, result, result);</span>
+<span class="lineNum">     284 </span><span class="lineCov">   10747647 :                 count2 = mono_bitset_count (result);</span>
+<span class="lineNum">     285 </span><span class="lineCov">   21495941 :         } while (count2 &gt; count1);</span>
+<span class="lineNum">     286 </span>            :         
+<span class="lineNum">     287 </span><span class="lineCov">    7620081 :         return result;</span>
+<span class="lineNum">     288 </span>            : }
+<a name="289"><span class="lineNum">     289 </span>            : </a>
+<span class="lineNum">     290 </span>            : void    
+<span class="lineNum">     291 </span>            : mono_compile_dominator_info (MonoCompile *cfg, int dom_flags)
+<span class="lineNum">     292 </span>            : {
+<span class="lineNum">     293 </span><span class="lineCov">   55692534 :         if ((dom_flags &amp; MONO_COMP_DOM) &amp;&amp; !(cfg-&gt;comp_done &amp; MONO_COMP_DOM))</span>
+<span class="lineNum">     294 </span><span class="lineCov">   14253495 :                 compute_dominators (cfg);</span>
+<span class="lineNum">     295 </span><span class="lineCov">   41448578 :         if ((dom_flags &amp; MONO_COMP_DFRONTIER) &amp;&amp; !(cfg-&gt;comp_done &amp; MONO_COMP_DFRONTIER))</span>
+<span class="lineNum">     296 </span><span class="lineCov">   13597436 :                 compute_dominance_frontier (cfg);</span>
+<span class="lineNum">     297 </span><span class="lineCov">   27849922 : }</span>
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span>            : /*
+<span class="lineNum">     300 </span>            :  * code to detect loops and loop nesting level
+<a name="301"><span class="lineNum">     301 </span>            :  */</a>
+<span class="lineNum">     302 </span>            : void 
+<span class="lineNum">     303 </span>            : mono_compute_natural_loops (MonoCompile *cfg)
+<span class="lineNum">     304 </span>            : {
+<span class="lineNum">     305 </span>            :         int i, j, k;
+<span class="lineNum">     306 </span>            :         MonoBitSet *in_loop_blocks;
+<span class="lineNum">     307 </span>            :         int *bb_indexes;
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span><span class="lineCov">   42763313 :         g_assert (!(cfg-&gt;comp_done &amp; MONO_COMP_LOOPS));</span>
+<span class="lineNum">     310 </span>            : 
+<span class="lineNum">     311 </span><span class="lineCov">   14254602 :         in_loop_blocks = mono_bitset_new (cfg-&gt;num_bblocks + 1, 0);</span>
+<span class="lineNum">     312 </span><span class="lineCov">  265052616 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     313 </span><span class="lineCov">  118266298 :                 MonoBasicBlock *n = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span><span class="lineCov">  528382412 :                 for (j = 0; j &lt; n-&gt;out_count; j++) {</span>
+<span class="lineNum">     316 </span><span class="lineCov">  145926279 :                         MonoBasicBlock *h = n-&gt;out_bb [j];</span>
+<span class="lineNum">     317 </span>            :                         /* check for single block loops */
+<span class="lineNum">     318 </span><span class="lineCov">  145926279 :                         if (n == h) {</span>
+<span class="lineNum">     319 </span><span class="lineCov">      33915 :                                 h-&gt;loop_blocks = g_list_prepend_mempool (cfg-&gt;mempool, h-&gt;loop_blocks, h);</span>
+<span class="lineNum">     320 </span><span class="lineCov">      33915 :                                 h-&gt;nesting++;</span>
+<span class="lineNum">     321 </span><span class="lineCov">      33915 :                         }</span>
+<span class="lineNum">     322 </span>            :                         /* check for back-edge from n to h */
+<span class="lineNum">     323 </span><span class="lineCov">  291796108 :                         else if (n != h &amp;&amp; mono_bitset_test_fast (n-&gt;dominators, h-&gt;dfn)) {</span>
+<span class="lineNum">     324 </span>            :                                 GSList *todo;
+<span class="lineNum">     325 </span>            : 
+<span class="lineNum">     326 </span>            :                                 /* already in loop_blocks? */
+<span class="lineNum">     327 </span><span class="lineCov">    5319707 :                                 if (h-&gt;loop_blocks &amp;&amp; g_list_find (h-&gt;loop_blocks, n)) {</span>
+<span class="lineNum">     328 </span><span class="lineCov">      94446 :                                         continue;</span>
+<span class="lineNum">     329 </span>            :                                 }
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span><span class="lineCov">    3963931 :                                 mono_bitset_clear_all (in_loop_blocks);</span>
+<span class="lineNum">     332 </span><span class="lineCov">    3963931 :                                 if (h-&gt;loop_blocks) {</span>
+<span class="lineNum">     333 </span>            :                                         GList *l;
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span><span class="lineCov">  222553877 :                                         for (l = h-&gt;loop_blocks; l; l = l-&gt;next) {</span>
+<span class="lineNum">     336 </span><span class="lineCov">  110110257 :                                                 MonoBasicBlock *b = (MonoBasicBlock *)l-&gt;data;</span>
+<span class="lineNum">     337 </span><span class="lineCov">  110110257 :                                                 if (b-&gt;dfn)</span>
+<span class="lineNum">     338 </span><span class="lineCov">  329966705 :                                                         mono_bitset_set_fast (in_loop_blocks, b-&gt;dfn);</span>
+<span class="lineNum">     339 </span><span class="lineCov">  110110280 :                                         }</span>
+<span class="lineNum">     340 </span><span class="lineCov">    1165510 :                                 }</span>
+<span class="lineNum">     341 </span><span class="lineCov">    3962103 :                                 todo = g_slist_prepend (NULL, n);       </span>
+<span class="lineNum">     342 </span>            :                         
+<span class="lineNum">     343 </span><span class="lineCov">   43641499 :                                 while (todo) {</span>
+<span class="lineNum">     344 </span><span class="lineCov">   19234589 :                                         MonoBasicBlock *cb = (MonoBasicBlock *)todo-&gt;data;</span>
+<span class="lineNum">     345 </span><span class="lineCov">   19234589 :                                         todo = g_slist_delete_link (todo, todo);</span>
+<span class="lineNum">     346 </span>            : 
+<span class="lineNum">     347 </span><span class="lineCov">   54979916 :                                         if ((cb-&gt;dfn &amp;&amp; mono_bitset_test_fast (in_loop_blocks, cb-&gt;dfn)) || (!cb-&gt;dfn &amp;&amp; g_list_find (h-&gt;loop_blocks, cb)))</span>
+<span class="lineNum">     348 </span><span class="lineCov">    2741953 :                                                 continue;</span>
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span><span class="lineCov">   16489853 :                                         h-&gt;loop_blocks = g_list_prepend_mempool (cfg-&gt;mempool, h-&gt;loop_blocks, cb);</span>
+<span class="lineNum">     351 </span><span class="lineCov">   16489853 :                                         cb-&gt;nesting++;</span>
+<span class="lineNum">     352 </span><span class="lineCov">   16489853 :                                         if (cb-&gt;dfn)</span>
+<span class="lineNum">     353 </span><span class="lineCov">   49389099 :                                                 mono_bitset_set_fast (in_loop_blocks, cb-&gt;dfn);</span>
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span><span class="lineCov">   78019378 :                                         for (k = 0; k &lt; cb-&gt;in_count; k++) {</span>
+<span class="lineNum">     356 </span><span class="lineCov">   22521493 :                                                 MonoBasicBlock *prev = cb-&gt;in_bb [k];</span>
+<span class="lineNum">     357 </span>            :                                                 /* add all previous blocks */
+<span class="lineNum">     358 </span><span class="lineCov">   76949715 :                                                 if (prev != h &amp;&amp; !((prev-&gt;dfn &amp;&amp; mono_bitset_test_fast (in_loop_blocks, prev-&gt;dfn)) || (!prev-&gt;dfn &amp;&amp; g_list_find (h-&gt;loop_blocks, prev)))) {</span>
+<span class="lineNum">     359 </span><span class="lineCov">   15266582 :                                                         todo = g_slist_prepend (todo, prev);</span>
+<span class="lineNum">     360 </span><span class="lineCov">   15266582 :                                                 }</span>
+<span class="lineNum">     361 </span><span class="lineCov">   22521020 :                                         }</span>
+<span class="lineNum">     362 </span>            :                                 }
+<span class="lineNum">     363 </span>            : 
+<span class="lineNum">     364 </span>            :                                 /* add the header if not already there */
+<span class="lineNum">     365 </span><span class="lineCov">   10729141 :                                 if (!((h-&gt;dfn &amp;&amp; mono_bitset_test_fast (in_loop_blocks, h-&gt;dfn)) || (!h-&gt;dfn &amp;&amp; g_list_find (h-&gt;loop_blocks, h)))) {</span>
+<span class="lineNum">     366 </span><span class="lineCov">    2798684 :                                         h-&gt;loop_blocks = g_list_prepend_mempool (cfg-&gt;mempool, h-&gt;loop_blocks, h);</span>
+<span class="lineNum">     367 </span><span class="lineCov">    2798684 :                                         h-&gt;nesting++;</span>
+<span class="lineNum">     368 </span><span class="lineCov">    2798684 :                                 }</span>
+<span class="lineNum">     369 </span><span class="lineCov">    3964496 :                         }</span>
+<span class="lineNum">     370 </span><span class="lineCov">  145811659 :                 }</span>
+<span class="lineNum">     371 </span><span class="lineCov">  118261143 :         }</span>
+<span class="lineNum">     372 </span><span class="lineCov">   14255325 :         mono_bitset_free (in_loop_blocks);</span>
+<span class="lineNum">     373 </span>            : 
+<span class="lineNum">     374 </span><span class="lineCov">   14255325 :         cfg-&gt;comp_done |= MONO_COMP_LOOPS;</span>
+<span class="lineNum">     375 </span>            : 
+<span class="lineNum">     376 </span>            :         /* Compute loop_body_start for each loop */
+<span class="lineNum">     377 </span><span class="lineCov">   14255325 :         bb_indexes = g_new0 (int, cfg-&gt;num_bblocks);</span>
+<span class="lineNum">     378 </span>            :         {
+<span class="lineNum">     379 </span>            :                 MonoBasicBlock *bb;
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span><span class="lineCov">  268018260 :                 for (i = 0, bb = cfg-&gt;bb_entry; bb; i ++, bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     382 </span><span class="lineCov">  119761207 :                         if (bb-&gt;dfn)</span>
+<span class="lineNum">     383 </span><span class="lineCov">  104118576 :                                 bb_indexes [bb-&gt;dfn] = i;</span>
+<span class="lineNum">     384 </span><span class="lineCov">  119735080 :                 }</span>
+<span class="lineNum">     385 </span>            :         }
+<span class="lineNum">     386 </span><span class="lineCov">  265216399 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     387 </span><span class="lineCov">  118368316 :                 if (cfg-&gt;bblocks [i]-&gt;loop_blocks) {</span>
+<span class="lineNum">     388 </span>            :                         /* The loop body start is the first bblock in the order they will be emitted */
+<span class="lineNum">     389 </span><span class="lineCov">    2833429 :                         MonoBasicBlock *h = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     390 </span><span class="lineCov">    2833429 :                         MonoBasicBlock *body_start = h;</span>
+<span class="lineNum">     391 </span>            :                         GList *l;
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span><span class="lineCov">   44306320 :                         for (l = h-&gt;loop_blocks; l; l = l-&gt;next) {</span>
+<span class="lineNum">     394 </span><span class="lineCov">   19320060 :                                 MonoBasicBlock *cb = (MonoBasicBlock *)l-&gt;data;</span>
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineCov">   38614358 :                                 if (cb-&gt;dfn &amp;&amp; bb_indexes [cb-&gt;dfn] &lt; bb_indexes [body_start-&gt;dfn]) {</span>
+<span class="lineNum">     397 </span><span class="lineCov">    4035016 :                                         body_start = cb;</span>
+<span class="lineNum">     398 </span><span class="lineCov">    4035016 :                                 }</span>
+<span class="lineNum">     399 </span><span class="lineCov">   19318194 :                         }</span>
+<span class="lineNum">     400 </span>            : 
+<span class="lineNum">     401 </span><span class="lineCov">    2833350 :                         body_start-&gt;loop_body_start = 1;</span>
+<span class="lineNum">     402 </span><span class="lineCov">    2833350 :                 }</span>
+<span class="lineNum">     403 </span><span class="lineCov">  118327727 :         }</span>
+<span class="lineNum">     404 </span><span class="lineCov">   14255498 :         g_free (bb_indexes);</span>
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span><span class="lineCov">   14255498 :         if (cfg-&gt;verbose_level &gt; 1) {</span>
+<span class="lineNum">     407 </span><span class="lineCov">    3247168 :                 for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     408 </span><span class="lineCov">    1442569 :                         if (cfg-&gt;bblocks [i]-&gt;loop_blocks) {</span>
+<span class="lineNum">     409 </span><span class="lineCov">      33054 :                                 MonoBasicBlock *h = (MonoBasicBlock *)cfg-&gt;bblocks [i]-&gt;loop_blocks-&gt;data;</span>
+<span class="lineNum">     410 </span>            :                                 GList *l;
+<span class="lineNum">     411 </span><span class="lineCov">      33054 :                                 printf (&quot;LOOP START %d\n&quot;, h-&gt;block_num);</span>
+<span class="lineNum">     412 </span><span class="lineCov">     347898 :                                 for (l = h-&gt;loop_blocks; l; l = l-&gt;next) {</span>
+<span class="lineNum">     413 </span><span class="lineCov">     140895 :                                         MonoBasicBlock *cb = (MonoBasicBlock *)l-&gt;data;</span>
+<span class="lineNum">     414 </span><span class="lineCov">     140895 :                                         printf (&quot;\tBB%d %d %p\n&quot;, cb-&gt;block_num, cb-&gt;nesting, cb-&gt;loop_blocks);</span>
+<span class="lineNum">     415 </span><span class="lineCov">     140895 :                                 }</span>
+<span class="lineNum">     416 </span><span class="lineCov">      33054 :                         }</span>
+<span class="lineNum">     417 </span><span class="lineCov">    1442569 :                 }</span>
+<span class="lineNum">     418 </span><span class="lineCov">     181015 :         }</span>
+<span class="lineNum">     419 </span><span class="lineCov">   14249675 : }</span>
+<a name="420"><span class="lineNum">     420 </span>            : </a>
+<span class="lineNum">     421 </span>            : static void
+<span class="lineNum">     422 </span>            : clear_idominators (MonoCompile *cfg)
+<span class="lineNum">     423 </span>            : {
+<span class="lineNum">     424 </span>            :         guint i;
+<span class="lineNum">     425 </span>            :     
+<span class="lineNum">     426 </span><span class="lineCov">  265423686 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     427 </span><span class="lineCov">  118454110 :                 if (cfg-&gt;bblocks[i]-&gt;dominated) {</span>
+<span class="lineNum">     428 </span><span class="lineCov">   65097154 :                         cfg-&gt;bblocks[i]-&gt;dominated = NULL;</span>
+<span class="lineNum">     429 </span><span class="lineCov">   65097154 :                 }</span>
+<span class="lineNum">     430 </span><span class="lineCov">  118453982 :         }</span>
+<span class="lineNum">     431 </span>            : 
+<span class="lineNum">     432 </span><span class="lineCov">   14257827 :         cfg-&gt;comp_done &amp;= ~MONO_COMP_IDOM;   </span>
+<span class="lineNum">     433 </span><span class="lineCov">   14257827 : }</span>
+<a name="434"><span class="lineNum">     434 </span>            : </a>
+<span class="lineNum">     435 </span>            : static void
+<span class="lineNum">     436 </span>            : clear_loops (MonoCompile *cfg)
+<span class="lineNum">     437 </span>            : {
+<span class="lineNum">     438 </span>            :         guint i;
+<span class="lineNum">     439 </span>            :     
+<span class="lineNum">     440 </span><span class="lineCov">  265423598 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     441 </span><span class="lineCov">  118453973 :                 cfg-&gt;bblocks[i]-&gt;nesting = 0;</span>
+<span class="lineNum">     442 </span><span class="lineCov">  118453973 :                 cfg-&gt;bblocks[i]-&gt;loop_blocks = NULL;</span>
+<span class="lineNum">     443 </span><span class="lineCov">  118453973 :         }</span>
+<span class="lineNum">     444 </span>            : 
+<span class="lineNum">     445 </span><span class="lineCov">   14257830 :         cfg-&gt;comp_done &amp;= ~MONO_COMP_LOOPS;   </span>
+<span class="lineNum">     446 </span><span class="lineCov">   14257830 : }</span>
+<a name="447"><span class="lineNum">     447 </span>            : </a>
+<span class="lineNum">     448 </span>            : void
+<span class="lineNum">     449 </span>            : mono_free_loop_info (MonoCompile *cfg)
+<span class="lineNum">     450 </span>            : {
+<span class="lineNum">     451 </span><span class="lineCov">   14480495 :     if (cfg-&gt;comp_done &amp; MONO_COMP_IDOM)</span>
+<span class="lineNum">     452 </span><span class="lineCov">   14257826 :         clear_idominators (cfg);</span>
+<span class="lineNum">     453 </span><span class="lineCov">   14480512 :     if (cfg-&gt;comp_done &amp; MONO_COMP_LOOPS)</span>
+<span class="lineNum">     454 </span><span class="lineCov">   14257830 :         clear_loops (cfg);</span>
+<span class="lineNum">     455 </span><span class="lineCov">   14480514 : }</span>
+<span class="lineNum">     456 </span>            : 
+<span class="lineNum">     457 </span>            : #else /* DISABLE_JIT */
+<span class="lineNum">     458 </span>            : 
+<span class="lineNum">     459 </span>            : void
+<span class="lineNum">     460 </span>            : mono_free_loop_info (MonoCompile *cfg)
+<span class="lineNum">     461 </span>            : {
+<span class="lineNum">     462 </span>            : }
+<span class="lineNum">     463 </span>            : 
+<span class="lineNum">     464 </span>            : #endif /* DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

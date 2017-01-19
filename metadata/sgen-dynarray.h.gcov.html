@@ -1,0 +1,422 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/sgen-dynarray.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - sgen-dynarray.h<span style="font-size: 80%;"> (source / <a href="sgen-dynarray.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">112</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">26</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * Copyright 2016 Xamarin, Inc.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       5 </span>            :  */
+<span class="lineNum">       6 </span>            : 
+<span class="lineNum">       7 </span>            :  // Growable array implementation used by sgen-new-bridge and sgen-tarjan-bridge.
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : typedef struct {
+<span class="lineNum">      10 </span>            :         int size;
+<span class="lineNum">      11 </span>            :         int capacity;           /* if negative, data points to another DynArray's data */
+<span class="lineNum">      12 </span>            :         char *data;
+<span class="lineNum">      13 </span>            : } DynArray;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : /*Specializations*/
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : // IntArray supports an optimization (in sgen-new-bridge.c): If capacity is less than 0 it is a &quot;copy&quot; and does not own its buffer.
+<span class="lineNum">      18 </span>            : typedef struct {
+<span class="lineNum">      19 </span>            :         DynArray array;
+<span class="lineNum">      20 </span>            : } DynIntArray;
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : // PtrArray supports an optimization: If size is equal to 1 it is a &quot;singleton&quot; and data points to the single held item, not to a buffer.
+<span class="lineNum">      23 </span>            : typedef struct {
+<span class="lineNum">      24 </span>            :         DynArray array;
+<span class="lineNum">      25 </span>            : } DynPtrArray;
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : typedef struct {
+<span class="lineNum">      28 </span>            :         DynArray array;
+<span class="lineNum">      29 </span>            : } DynSCCArray;
+<a name="30"><span class="lineNum">      30 </span>            : </a>
+<span class="lineNum">      31 </span>            : static void
+<span class="lineNum">      32 </span>            : dyn_array_init (DynArray *da)
+<span class="lineNum">      33 </span>            : {
+<span class="lineNum">      34 </span><span class="lineNoCov">          0 :         da-&gt;size = 0;</span>
+<span class="lineNum">      35 </span><span class="lineNoCov">          0 :         da-&gt;capacity = 0;</span>
+<span class="lineNum">      36 </span><span class="lineNoCov">          0 :         da-&gt;data = NULL;</span>
+<span class="lineNum">      37 </span><span class="lineNoCov">          0 : }</span>
+<a name="38"><span class="lineNum">      38 </span>            : </a>
+<span class="lineNum">      39 </span>            : static void
+<span class="lineNum">      40 </span>            : dyn_array_uninit (DynArray *da, int elem_size)
+<span class="lineNum">      41 </span>            : {
+<span class="lineNum">      42 </span><span class="lineNoCov">          0 :         if (da-&gt;capacity &lt; 0) {</span>
+<span class="lineNum">      43 </span><span class="lineNoCov">          0 :                 dyn_array_init (da);</span>
+<span class="lineNum">      44 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      45 </span>            :         }
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span><span class="lineNoCov">          0 :         if (da-&gt;capacity == 0)</span>
+<span class="lineNum">      48 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (da-&gt;data, elem_size * da-&gt;capacity, INTERNAL_MEM_BRIDGE_DATA);</span>
+<span class="lineNum">      51 </span><span class="lineNoCov">          0 :         da-&gt;data = NULL;</span>
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 : }</span>
+<a name="53"><span class="lineNum">      53 </span>            : </a>
+<span class="lineNum">      54 </span>            : static void
+<span class="lineNum">      55 </span>            : dyn_array_empty (DynArray *da)
+<span class="lineNum">      56 </span>            : {
+<span class="lineNum">      57 </span><span class="lineNoCov">          0 :         if (da-&gt;capacity &lt; 0)</span>
+<span class="lineNum">      58 </span><span class="lineNoCov">          0 :                 dyn_array_init (da);</span>
+<span class="lineNum">      59 </span>            :         else
+<span class="lineNum">      60 </span><span class="lineNoCov">          0 :                 da-&gt;size = 0;</span>
+<span class="lineNum">      61 </span><span class="lineNoCov">          0 : }</span>
+<a name="62"><span class="lineNum">      62 </span>            : </a>
+<span class="lineNum">      63 </span>            : static char *
+<span class="lineNum">      64 </span>            : dyn_array_ensure_capacity_internal (DynArray *da, int capacity, int elem_size)
+<span class="lineNum">      65 </span>            : {
+<span class="lineNum">      66 </span><span class="lineNoCov">          0 :         if (da-&gt;capacity &lt;= 0)</span>
+<span class="lineNum">      67 </span><span class="lineNoCov">          0 :                 da-&gt;capacity = 2;</span>
+<span class="lineNum">      68 </span><span class="lineNoCov">          0 :         while (capacity &gt; da-&gt;capacity)</span>
+<span class="lineNum">      69 </span><span class="lineNoCov">          0 :                 da-&gt;capacity *= 2;</span>
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :         return (char *)sgen_alloc_internal_dynamic (elem_size * da-&gt;capacity, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">      72 </span>            : }
+<a name="73"><span class="lineNum">      73 </span>            : </a>
+<span class="lineNum">      74 </span>            : static void
+<span class="lineNum">      75 </span>            : dyn_array_ensure_capacity (DynArray *da, int capacity, int elem_size)
+<span class="lineNum">      76 </span>            : {
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :         int old_capacity = da-&gt;capacity;</span>
+<span class="lineNum">      78 </span>            :         char *new_data;
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :         g_assert (capacity &gt; 0);</span>
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span><span class="lineNoCov">          0 :         if (capacity &lt;= old_capacity)</span>
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span><span class="lineNoCov">          0 :         new_data = dyn_array_ensure_capacity_internal (da, capacity, elem_size);</span>
+<span class="lineNum">      86 </span><span class="lineNoCov">          0 :         memcpy (new_data, da-&gt;data, elem_size * da-&gt;size);</span>
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 :         if (old_capacity &gt; 0)</span>
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 :                 sgen_free_internal_dynamic (da-&gt;data, elem_size * old_capacity, INTERNAL_MEM_BRIDGE_DATA);</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :         da-&gt;data = new_data;</span>
+<span class="lineNum">      90 </span><span class="lineNoCov">          0 : }</span>
+<a name="91"><span class="lineNum">      91 </span>            : </a>
+<span class="lineNum">      92 </span>            : static gboolean
+<span class="lineNum">      93 </span>            : dyn_array_is_copy (DynArray *da)
+<span class="lineNum">      94 </span>            : {
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :         return da-&gt;capacity &lt; 0;</span>
+<span class="lineNum">      96 </span>            : }
+<a name="97"><span class="lineNum">      97 </span>            : </a>
+<span class="lineNum">      98 </span>            : static void
+<span class="lineNum">      99 </span>            : dyn_array_ensure_independent (DynArray *da, int elem_size)
+<span class="lineNum">     100 </span>            : {
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :         if (!dyn_array_is_copy (da))</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :         dyn_array_ensure_capacity (da, da-&gt;size, elem_size);</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         g_assert (da-&gt;capacity &gt; 0);</span>
+<span class="lineNum">     105 </span><span class="lineNoCov">          0 : }</span>
+<a name="106"><span class="lineNum">     106 </span>            : </a>
+<span class="lineNum">     107 </span>            : static void*
+<span class="lineNum">     108 </span>            : dyn_array_add (DynArray *da, int elem_size)
+<span class="lineNum">     109 </span>            : {
+<span class="lineNum">     110 </span>            :         void *p;
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :         dyn_array_ensure_capacity (da, da-&gt;size + 1, elem_size);</span>
+<span class="lineNum">     113 </span>            : 
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :         p = da-&gt;data + da-&gt;size * elem_size;</span>
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :         ++da-&gt;size;</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :         return p;</span>
+<span class="lineNum">     117 </span>            : }
+<a name="118"><span class="lineNum">     118 </span>            : </a>
+<span class="lineNum">     119 </span>            : static void
+<span class="lineNum">     120 </span>            : dyn_array_copy (DynArray *dst, DynArray *src, int elem_size)
+<span class="lineNum">     121 </span>            : {
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 :         dyn_array_uninit (dst, elem_size);</span>
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :         if (src-&gt;size == 0)</span>
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :         dst-&gt;size = src-&gt;size;</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 :         dst-&gt;capacity = -1;</span>
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :         dst-&gt;data = src-&gt;data;</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     131 </span>            : 
+<a name="132"><span class="lineNum">     132 </span>            : /* int */</a>
+<span class="lineNum">     133 </span>            : static void
+<span class="lineNum">     134 </span>            : dyn_array_int_init (DynIntArray *da)
+<span class="lineNum">     135 </span>            : {
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         dyn_array_init (&amp;da-&gt;array);</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 : }</span>
+<a name="138"><span class="lineNum">     138 </span>            : </a>
+<span class="lineNum">     139 </span>            : static void
+<span class="lineNum">     140 </span>            : dyn_array_int_uninit (DynIntArray *da)
+<span class="lineNum">     141 </span>            : {
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :         dyn_array_uninit (&amp;da-&gt;array, sizeof (int));</span>
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 : }</span>
+<a name="144"><span class="lineNum">     144 </span>            : </a>
+<span class="lineNum">     145 </span>            : static int
+<span class="lineNum">     146 </span>            : dyn_array_int_size (DynIntArray *da)
+<span class="lineNum">     147 </span>            : {
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :         return da-&gt;array.size;</span>
+<span class="lineNum">     149 </span>            : }
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span>            : #ifdef NEW_XREFS
+<span class="lineNum">     152 </span>            : static void
+<span class="lineNum">     153 </span>            : dyn_array_int_empty (DynIntArray *da)
+<span class="lineNum">     154 </span>            : {
+<span class="lineNum">     155 </span>            :         dyn_array_empty (&amp;da-&gt;array);
+<span class="lineNum">     156 </span>            : }
+<span class="lineNum">     157 </span>            : #endif
+<a name="158"><span class="lineNum">     158 </span>            : </a>
+<span class="lineNum">     159 </span>            : static void
+<span class="lineNum">     160 </span>            : dyn_array_int_add (DynIntArray *da, int x)
+<span class="lineNum">     161 </span>            : {
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         int *p = (int *)dyn_array_add (&amp;da-&gt;array, sizeof (int));</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :         *p = x;</span>
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 : }</span>
+<a name="165"><span class="lineNum">     165 </span>            : </a>
+<span class="lineNum">     166 </span>            : static int
+<span class="lineNum">     167 </span>            : dyn_array_int_get (DynIntArray *da, int x)
+<span class="lineNum">     168 </span>            : {
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :         return ((int*)da-&gt;array.data)[x];</span>
+<span class="lineNum">     170 </span>            : }
+<span class="lineNum">     171 </span>            : 
+<span class="lineNum">     172 </span>            : #ifdef NEW_XREFS
+<span class="lineNum">     173 </span>            : static void
+<span class="lineNum">     174 </span>            : dyn_array_int_set (DynIntArray *da, int idx, int val)
+<span class="lineNum">     175 </span>            : {
+<span class="lineNum">     176 </span>            :         ((int*)da-&gt;array.data)[idx] = val;
+<span class="lineNum">     177 </span>            : }
+<span class="lineNum">     178 </span>            : #endif
+<a name="179"><span class="lineNum">     179 </span>            : </a>
+<span class="lineNum">     180 </span>            : static void
+<span class="lineNum">     181 </span>            : dyn_array_int_ensure_independent (DynIntArray *da)
+<span class="lineNum">     182 </span>            : {
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :         dyn_array_ensure_independent (&amp;da-&gt;array, sizeof (int));</span>
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 : }</span>
+<a name="185"><span class="lineNum">     185 </span>            : </a>
+<span class="lineNum">     186 </span>            : static void
+<span class="lineNum">     187 </span>            : dyn_array_int_copy (DynIntArray *dst, DynIntArray *src)
+<span class="lineNum">     188 </span>            : {
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :         dyn_array_copy (&amp;dst-&gt;array, &amp;src-&gt;array, sizeof (int));</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 : }</span>
+<a name="191"><span class="lineNum">     191 </span>            : </a>
+<span class="lineNum">     192 </span>            : static gboolean
+<span class="lineNum">     193 </span>            : dyn_array_int_is_copy (DynIntArray *da)
+<span class="lineNum">     194 </span>            : {
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :         return dyn_array_is_copy (&amp;da-&gt;array);</span>
+<span class="lineNum">     196 </span>            : }
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span>            : /* ptr */
+<a name="199"><span class="lineNum">     199 </span>            : </a>
+<span class="lineNum">     200 </span>            : static void
+<span class="lineNum">     201 </span>            : dyn_array_ptr_init (DynPtrArray *da)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :         dyn_array_init (&amp;da-&gt;array);</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 : }</span>
+<a name="205"><span class="lineNum">     205 </span>            : </a>
+<span class="lineNum">     206 </span>            : static void
+<span class="lineNum">     207 </span>            : dyn_array_ptr_uninit (DynPtrArray *da)
+<span class="lineNum">     208 </span>            : {
+<span class="lineNum">     209 </span>            : #ifdef OPTIMIZATION_SINGLETON_DYN_ARRAY
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :         if (da-&gt;array.capacity == 1)</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :                 dyn_array_ptr_init (da);</span>
+<span class="lineNum">     212 </span>            :         else
+<span class="lineNum">     213 </span>            : #endif
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                 dyn_array_uninit (&amp;da-&gt;array, sizeof (void*));</span>
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 : }</span>
+<a name="216"><span class="lineNum">     216 </span>            : </a>
+<span class="lineNum">     217 </span>            : static int
+<span class="lineNum">     218 </span>            : dyn_array_ptr_size (DynPtrArray *da)
+<span class="lineNum">     219 </span>            : {
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :         return da-&gt;array.size;</span>
+<span class="lineNum">     221 </span>            : }
+<a name="222"><span class="lineNum">     222 </span>            : </a>
+<span class="lineNum">     223 </span>            : static void
+<span class="lineNum">     224 </span>            : dyn_array_ptr_empty (DynPtrArray *da)
+<span class="lineNum">     225 </span>            : {
+<span class="lineNum">     226 </span>            : #ifdef OPTIMIZATION_SINGLETON_DYN_ARRAY
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :         if (da-&gt;array.capacity == 1)</span>
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :                 dyn_array_ptr_init (da);</span>
+<span class="lineNum">     229 </span>            :         else
+<span class="lineNum">     230 </span>            : #endif
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :                 dyn_array_empty (&amp;da-&gt;array);</span>
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 : }</span>
+<a name="233"><span class="lineNum">     233 </span>            : </a>
+<span class="lineNum">     234 </span>            : static void*
+<span class="lineNum">     235 </span>            : dyn_array_ptr_get (DynPtrArray *da, int x)
+<span class="lineNum">     236 </span>            : {
+<span class="lineNum">     237 </span>            : #ifdef OPTIMIZATION_SINGLETON_DYN_ARRAY
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :         if (da-&gt;array.capacity == 1) {</span>
+<span class="lineNum">     239 </span><span class="lineNoCov">          0 :                 g_assert (x == 0);</span>
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :                 return da-&gt;array.data;</span>
+<span class="lineNum">     241 </span>            :         }
+<span class="lineNum">     242 </span>            : #endif
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :         return ((void**)da-&gt;array.data)[x];</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span>            : static void
+<span class="lineNum">     247 </span>            : dyn_array_ptr_set (DynPtrArray *da, int x, void *ptr)
+<span class="lineNum">     248 </span>            : {
+<span class="lineNum">     249 </span>            : #ifdef OPTIMIZATION_SINGLETON_DYN_ARRAY
+<span class="lineNum">     250 </span>            :         if (da-&gt;array.capacity == 1) {
+<span class="lineNum">     251 </span>            :                 g_assert (x == 0);
+<span class="lineNum">     252 </span>            :                 da-&gt;array.data = ptr;
+<span class="lineNum">     253 </span>            :         } else
+<span class="lineNum">     254 </span>            : #endif
+<span class="lineNum">     255 </span>            :         {
+<span class="lineNum">     256 </span>            :                 ((void**)da-&gt;array.data)[x] = ptr;
+<span class="lineNum">     257 </span>            :         }
+<span class="lineNum">     258 </span>            : }
+<a name="259"><span class="lineNum">     259 </span>            : </a>
+<span class="lineNum">     260 </span>            : static void
+<span class="lineNum">     261 </span>            : dyn_array_ptr_add (DynPtrArray *da, void *ptr)
+<span class="lineNum">     262 </span>            : {
+<span class="lineNum">     263 </span>            :         void **p;
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span>            : #ifdef OPTIMIZATION_SINGLETON_DYN_ARRAY
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :         if (da-&gt;array.capacity == 0) {</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :                 da-&gt;array.capacity = 1;</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :                 da-&gt;array.size = 1;</span>
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :                 p = (void**)&amp;da-&gt;array.data;</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :         } else if (da-&gt;array.capacity == 1) {</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                 void *ptr0 = da-&gt;array.data;</span>
+<span class="lineNum">     272 </span>            :                 void **p0;
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :                 dyn_array_init (&amp;da-&gt;array);</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                 p0 = (void **)dyn_array_add (&amp;da-&gt;array, sizeof (void*));</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                 *p0 = ptr0;</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                 p = (void **)dyn_array_add (&amp;da-&gt;array, sizeof (void*));</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :         } else</span>
+<span class="lineNum">     278 </span>            : #endif
+<span class="lineNum">     279 </span>            :         {
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :                 p = (void **)dyn_array_add (&amp;da-&gt;array, sizeof (void*));</span>
+<span class="lineNum">     281 </span>            :         }
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :         *p = ptr;</span>
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     284 </span>            : 
+<span class="lineNum">     285 </span>            : #define dyn_array_ptr_push dyn_array_ptr_add
+<a name="286"><span class="lineNum">     286 </span>            : </a>
+<span class="lineNum">     287 </span>            : static void*
+<span class="lineNum">     288 </span>            : dyn_array_ptr_pop (DynPtrArray *da)
+<span class="lineNum">     289 </span>            : {
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :         int size = da-&gt;array.size;</span>
+<span class="lineNum">     291 </span>            :         void *p;
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :         g_assert (size &gt; 0);</span>
+<span class="lineNum">     293 </span>            : #ifdef OPTIMIZATION_SINGLETON_DYN_ARRAY
+<span class="lineNum">     294 </span><span class="lineNoCov">          0 :         if (da-&gt;array.capacity == 1) {</span>
+<span class="lineNum">     295 </span><span class="lineNoCov">          0 :                 p = dyn_array_ptr_get (da, 0);</span>
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :                 dyn_array_init (&amp;da-&gt;array);</span>
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :         } else</span>
+<span class="lineNum">     298 </span>            : #endif
+<span class="lineNum">     299 </span>            :         {
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :                 g_assert (da-&gt;array.capacity &gt; 1);</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :                 dyn_array_ensure_independent (&amp;da-&gt;array, sizeof (void*));</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :                 p = dyn_array_ptr_get (da, size - 1);</span>
+<span class="lineNum">     303 </span><span class="lineNoCov">          0 :                 --da-&gt;array.size;</span>
+<span class="lineNum">     304 </span>            :         }
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :         return p;</span>
+<span class="lineNum">     306 </span>            : }
+<a name="307"><span class="lineNum">     307 </span>            : </a>
+<span class="lineNum">     308 </span>            : static void
+<span class="lineNum">     309 </span>            : dyn_array_ptr_ensure_capacity (DynPtrArray *da, int capacity)
+<span class="lineNum">     310 </span>            : {
+<span class="lineNum">     311 </span>            : #ifdef OPTIMIZATION_SINGLETON_DYN_ARRAY
+<span class="lineNum">     312 </span>            :         if (capacity == 1 &amp;&amp; da-&gt;array.capacity &lt; 1) {
+<span class="lineNum">     313 </span>            :                 da-&gt;array.capacity = 1;
+<span class="lineNum">     314 </span>            :         } else if (da-&gt;array.capacity == 1) // TODO size==1
+<span class="lineNum">     315 </span>            :         {
+<span class="lineNum">     316 </span>            :                 if (capacity &gt; 1)
+<span class="lineNum">     317 </span>            :                 {
+<span class="lineNum">     318 </span>            :                         void *ptr = dyn_array_ptr_get (da, 0);
+<span class="lineNum">     319 </span>            :                         da-&gt;array.data = dyn_array_ensure_capacity_internal(&amp;da-&gt;array, capacity, sizeof (void*));
+<span class="lineNum">     320 </span>            :                         dyn_array_ptr_set (da, 0, ptr);
+<span class="lineNum">     321 </span>            :                 }
+<span class="lineNum">     322 </span>            :         }
+<span class="lineNum">     323 </span>            : #endif
+<span class="lineNum">     324 </span>            :         {
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :                 dyn_array_ensure_capacity (&amp;da-&gt;array, capacity, sizeof (void*));</span>
+<span class="lineNum">     326 </span>            :         }
+<span class="lineNum">     327 </span><span class="lineNoCov">          0 : }</span>
+<a name="328"><span class="lineNum">     328 </span>            : </a>
+<span class="lineNum">     329 </span>            : static void
+<span class="lineNum">     330 </span>            : dyn_array_ptr_set_all (DynPtrArray *dst, DynPtrArray *src)
+<span class="lineNum">     331 </span>            : {
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :         const int copysize = src-&gt;array.size;</span>
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :         if (copysize &gt; 0) {</span>
+<span class="lineNum">     334 </span><span class="lineNoCov">          0 :                 dyn_array_ptr_ensure_capacity (dst, copysize);</span>
+<span class="lineNum">     335 </span>            : 
+<span class="lineNum">     336 </span>            : #ifdef OPTIMIZATION_SINGLETON_DYN_ARRAY
+<span class="lineNum">     337 </span>            :                 if (copysize == 1) {
+<span class="lineNum">     338 </span>            :                         dyn_array_ptr_set (dst, 0, dyn_array_ptr_get (src, 0));
+<span class="lineNum">     339 </span>            :                 } else
+<span class="lineNum">     340 </span>            : #endif
+<span class="lineNum">     341 </span>            :                 {
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :                         memcpy (dst-&gt;array.data, src-&gt;array.data, copysize * sizeof (void*));</span>
+<span class="lineNum">     343 </span>            :                 }
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     345 </span><span class="lineNoCov">          0 :         dst-&gt;array.size = src-&gt;array.size;</span>
+<span class="lineNum">     346 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

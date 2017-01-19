@@ -1,0 +1,164 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-workers.c - functions</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-workers.c<span style="font-size: 80%;"> (<a href="sgen-workers.c.gcov.html">source</a> / functions)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">139</td>
+            <td class="headerCovTableEntry">152</td>
+            <td class="headerCovTableEntryHi">91.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">20</td>
+            <td class="headerCovTableEntry">23</td>
+            <td class="headerCovTableEntryMed">87.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <center>
+  <table width="60%" cellpadding=1 cellspacing=1 border=0>
+    <tr><td><br></td></tr>
+    <tr>
+      <td width="80%" class="tableHead">Function Name <span class="tableHeadSort"><a href="sgen-workers.c.func.html"><img src="../updown.png" width=10 height=14 alt="Sort by function name" title="Sort by function name" border=0></a></span></td>
+      <td width="20%" class="tableHead">Hit count <span class="tableHeadSort"><img src="../glass.png" width=10 height=14 alt="Sort by hit count" title="Sort by hit count" border=0></span></td>
+    </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#169">concurrent_enqueue_check</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#353">sgen_workers_are_working</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#133">sgen_workers_wait_for_jobs_finished</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#308">sgen_workers_join</a></td>
+              <td class="coverFnHi">32</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#328">sgen_workers_have_idle_work</a></td>
+              <td class="coverFnHi">249</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#249">sgen_workers_init_distribute_gray_queue</a></td>
+              <td class="coverFnHi">249</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#285">sgen_workers_stop_all_workers</a></td>
+              <td class="coverFnHi">249</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#365">sgen_workers_take_from_queue_and_awake</a></td>
+              <td class="coverFnHi">249</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#297">sgen_workers_start_all_workers</a></td>
+              <td class="coverFnHi">281</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#98">worker_try_finish</a></td>
+              <td class="coverFnHi">281</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#79">sgen_workers_ensure_awake</a></td>
+              <td class="coverFnHi">530</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#59">set_state</a></td>
+              <td class="coverFnHi">875</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#177">init_private_gray_queue</a></td>
+              <td class="coverFnHi">3285</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#257">sgen_workers_init</a></td>
+              <td class="coverFnHi">3285</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#185">thread_pool_init_func</a></td>
+              <td class="coverFnHi">3285</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#235">init_distribute_gray_queue</a></td>
+              <td class="coverFnHi">3534</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#147">workers_get_work</a></td>
+              <td class="coverFnHi">4876</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#359">sgen_workers_assert_gray_queue_is_empty</a></td>
+              <td class="coverFnHi">539310</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#346">sgen_workers_all_done</a></td>
+              <td class="coverFnHi">556472</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#121">sgen_workers_enqueue_job</a></td>
+              <td class="coverFnHi">960269</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#205">marker_idle_func</a></td>
+              <td class="coverFnHi">3379049</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#199">continue_idle_func</a></td>
+              <td class="coverFnHi">7306566</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-workers.c.gcov.html#73">state_is_working_or_enqueued</a></td>
+              <td class="coverFnHi">7307094</td>
+            </tr>
+  </table>
+  <br>
+  </center>
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

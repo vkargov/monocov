@@ -1,0 +1,398 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-marksweep-drain-gray-stack.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-marksweep-drain-gray-stack.h<span style="font-size: 80%;"> (source / <a href="sgen-marksweep-drain-gray-stack.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">71</td>
+            <td class="headerCovTableEntry">79</td>
+            <td class="headerCovTableEntryMed">89.9 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">16</td>
+            <td class="headerCovTableEntry">16</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-marksweep-drain-gray-stack.h: The copy/mark and gray stack
+<span class="lineNum">       3 </span>            :  *     draining functions of the M&amp;S major collector.
+<span class="lineNum">       4 </span>            :  *
+<span class="lineNum">       5 </span>            :  * Copyright (C) 2014 Xamarin Inc
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : /*
+<span class="lineNum">      11 </span>            :  * COPY_OR_MARK_FUNCTION_NAME must be defined to be the function name of the copy/mark
+<span class="lineNum">      12 </span>            :  * function.
+<span class="lineNum">      13 </span>            :  *
+<span class="lineNum">      14 </span>            :  * SCAN_OBJECT_FUNCTION_NAME must be defined to be the function name of the object scanning
+<span class="lineNum">      15 </span>            :  * function.
+<span class="lineNum">      16 </span>            :  *
+<span class="lineNum">      17 </span>            :  * DRAIN_GRAY_STACK_FUNCTION_NAME must be defined to be the function name of the gray stack
+<span class="lineNum">      18 </span>            :  * draining function.
+<span class="lineNum">      19 </span>            :  *
+<span class="lineNum">      20 </span>            :  * Define COPY_OR_MARK_WITH_EVACUATION to support evacuation.
+<span class="lineNum">      21 </span>            :  */
+<span class="lineNum">      22 </span>            : 
+<a name="23"><span class="lineNum">      23 </span>            : /* Returns whether the object is still in the nursery. */</a>
+<span class="lineNum">      24 </span>            : static inline MONO_ALWAYS_INLINE gboolean
+<span class="lineNum">      25 </span>            : COPY_OR_MARK_FUNCTION_NAME (GCObject **ptr, GCObject *obj, SgenGrayQueue *queue)
+<span class="lineNum">      26 </span>            : {
+<span class="lineNum">      27 </span>            :         MSBlockInfo *block;
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">      30 </span>            :         ++stat_optimized_copy;
+<span class="lineNum">      31 </span>            :         {
+<span class="lineNum">      32 </span>            :                 GCObject *forwarded;
+<span class="lineNum">      33 </span>            :                 SgenDescriptor desc;
+<span class="lineNum">      34 </span>            :                 if ((forwarded = SGEN_OBJECT_IS_FORWARDED (obj)))
+<span class="lineNum">      35 </span>            :                         desc = sgen_obj_get_descriptor_safe (forwarded);
+<span class="lineNum">      36 </span>            :                 else
+<span class="lineNum">      37 </span>            :                         desc = sgen_obj_get_descriptor_safe (obj);
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            :                 sgen_descriptor_count_copied_object (desc);
+<span class="lineNum">      40 </span>            :         }
+<span class="lineNum">      41 </span>            : #endif
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span><span class="lineCov"> 1281850970 :         SGEN_ASSERT (9, obj, &quot;null object from pointer %p&quot;, ptr);</span>
+<span class="lineNum">      44 </span>            : #if !defined(COPY_OR_MARK_CONCURRENT) &amp;&amp; !defined(COPY_OR_MARK_CONCURRENT_WITH_EVACUATION)
+<span class="lineNum">      45 </span><span class="lineCov">  775549759 :         SGEN_ASSERT (9, current_collection_generation == GENERATION_OLD, &quot;old gen parallel allocator called from a %d collection&quot;, current_collection_generation);</span>
+<span class="lineNum">      46 </span>            : #endif
+<span class="lineNum">      47 </span>            : 
+<span class="lineNum">      48 </span><span class="lineCov">  640925485 :         if (sgen_ptr_in_nursery (obj)) {</span>
+<span class="lineNum">      49 </span><span class="lineCov">     124626 : #if !defined(COPY_OR_MARK_CONCURRENT) &amp;&amp; !defined(COPY_OR_MARK_CONCURRENT_WITH_EVACUATION)</span>
+<span class="lineNum">      50 </span>            :                 int word, bit;
+<span class="lineNum">      51 </span>            :                 GCObject *forwarded, *old_obj;
+<span class="lineNum">      52 </span><span class="lineCov">   38262002 :                 mword vtable_word = *(mword*)obj;</span>
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span>            :                 HEAVY_STAT (++stat_optimized_copy_nursery);
+<span class="lineNum">      55 </span>            : 
+<span class="lineNum">      56 </span><span class="lineCov"> 6708732357 : #if SGEN_MAX_DEBUG_LEVEL &gt;= 9</span>
+<span class="lineNum">      57 </span>            :                 if (sgen_nursery_is_to_space (obj))
+<span class="lineNum">      58 </span>            :                         SGEN_ASSERT (9, !SGEN_VTABLE_IS_PINNED (vtable_word) &amp;&amp; !SGEN_VTABLE_IS_FORWARDED (vtable_word), &quot;To-space object can't be pinned or forwarded.&quot;);
+<span class="lineNum">      59 </span><span class="lineCov">   18233932 : #endif</span>
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span><span class="lineCov">   38261771 :                 if (SGEN_VTABLE_IS_PINNED (vtable_word)) {</span>
+<span class="lineNum">      62 </span><span class="lineCov">   13416274 :                         SGEN_ASSERT (9, !SGEN_VTABLE_IS_FORWARDED (vtable_word), &quot;Cannot be both pinned and forwarded.&quot;);</span>
+<span class="lineNum">      63 </span><span class="lineCov"> 5753180138 :                         HEAVY_STAT (++stat_optimized_copy_nursery_pinned);</span>
+<span class="lineNum">      64 </span><span class="lineCov">    6708137 :                         return TRUE;</span>
+<span class="lineNum">      65 </span>            :                 }
+<span class="lineNum">      66 </span><span class="lineCov">  292782516 :                 if ((forwarded = (GCObject *)SGEN_VTABLE_IS_FORWARDED (vtable_word))) {</span>
+<span class="lineNum">      67 </span>            :                         HEAVY_STAT (++stat_optimized_copy_nursery_forwarded);
+<span class="lineNum">      68 </span><span class="lineCov">   16693862 :                         SGEN_UPDATE_REFERENCE (ptr, forwarded);</span>
+<span class="lineNum">      69 </span><span class="lineCov">   16693862 :                         return sgen_ptr_in_nursery (forwarded);</span>
+<span class="lineNum">      70 </span>            :                 }
+<span class="lineNum">      71 </span><span class="lineCov">     706101 : </span>
+<span class="lineNum">      72 </span>            :                 /* An object in the nursery To Space has already been copied and grayed. Nothing to do. */
+<span class="lineNum">      73 </span><span class="lineCov">   17384922 :                 if (sgen_nursery_is_to_space (obj))</span>
+<span class="lineNum">      74 </span><span class="lineCov">       1981 :                         return TRUE;</span>
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span>            : #ifdef COPY_OR_MARK_WITH_EVACUATION
+<span class="lineNum">      77 </span>            :         do_copy_object:
+<span class="lineNum">      78 </span>            : #endif
+<span class="lineNum">      79 </span><span class="lineCov">   14885455 :                 old_obj = obj;</span>
+<span class="lineNum">      80 </span><span class="lineCov">   15437615 :                 obj = copy_object_no_checks (obj, queue);</span>
+<span class="lineNum">      81 </span><span class="lineCov">   14885455 :                 if (G_UNLIKELY (old_obj == obj)) {</span>
+<span class="lineNum">      82 </span>            :                         /*
+<span class="lineNum">      83 </span><span class="lineCov">          6 :                          * If we fail to evacuate an object we just stop doing it for a</span>
+<span class="lineNum">      84 </span>            :                          * given block size as all other will surely fail too.
+<span class="lineNum">      85 </span>            :                          */
+<span class="lineNum">      86 </span>            :                         /* FIXME: test this case somehow. */
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 :                         if (!sgen_ptr_in_nursery (obj)) {</span>
+<span class="lineNum">      88 </span><span class="lineCov">     289723 :                                 int size_index;</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :                                 block = MS_BLOCK_FOR_OBJ (obj);</span>
+<span class="lineNum">      90 </span><span class="lineNoCov">          0 :                                 size_index = block-&gt;obj_size_index;</span>
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 :                                 evacuate_block_obj_sizes [size_index] = FALSE;</span>
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :                                 MS_MARK_OBJECT_AND_ENQUEUE (obj, sgen_obj_get_descriptor (obj), block, queue);</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :                                 return FALSE;</span>
+<span class="lineNum">      94 </span>            :                         }
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">      96 </span>            :                 }
+<span class="lineNum">      97 </span>            :                 HEAVY_STAT (++stat_objects_copied_major);
+<span class="lineNum">      98 </span><span class="lineCov">   14885455 :                 SGEN_UPDATE_REFERENCE (ptr, obj);</span>
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span><span class="lineCov">   14885455 :                 if (sgen_ptr_in_nursery (obj))</span>
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     102 </span>            : 
+<span class="lineNum">     103 </span>            :                 /*
+<span class="lineNum">     104 </span>            :                  * FIXME: See comment for copy_object_no_checks().  If
+<span class="lineNum">     105 </span>            :                  * we have that, we can let the allocation function
+<span class="lineNum">     106 </span>            :                  * give us the block info, too, and we won't have to
+<span class="lineNum">     107 </span>            :                  * re-fetch it.
+<span class="lineNum">     108 </span>            :                  *
+<span class="lineNum">     109 </span>            :                  * FIXME (2): We should rework this to avoid all those nursery checks.
+<span class="lineNum">     110 </span>            :                  */
+<span class="lineNum">     111 </span>            :                 /*
+<span class="lineNum">     112 </span>            :                  * For the split nursery allocator the object might
+<span class="lineNum">     113 </span>            :                  * still be in the nursery despite having being
+<span class="lineNum">     114 </span>            :                  * promoted, in which case we can't mark it.
+<span class="lineNum">     115 </span>            :                  */
+<span class="lineNum">     116 </span><span class="lineCov">   14885455 :                 block = MS_BLOCK_FOR_OBJ (obj);</span>
+<span class="lineNum">     117 </span><span class="lineCov">   29770910 :                 MS_CALC_MARK_BIT (word, bit, obj);</span>
+<span class="lineNum">     118 </span><span class="lineCov">   29770910 :                 SGEN_ASSERT (9, !MS_MARK_BIT (block, word, bit), &quot;object %p already marked&quot;, obj);</span>
+<span class="lineNum">     119 </span><span class="lineCov">   14885455 :                 MS_SET_MARK_BIT (block, word, bit);</span>
+<span class="lineNum">     120 </span><span class="lineCov">   14885455 :                 binary_protocol_mark (obj, (gpointer)SGEN_LOAD_VTABLE (obj), sgen_safe_object_get_size (obj));</span>
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span><span class="lineCov">   14885455 :                 return FALSE;</span>
+<span class="lineNum">     123 </span>            : #endif
+<span class="lineNum">     124 </span><span class="lineCov">       4365 :         } else {</span>
+<span class="lineNum">     125 </span><span class="lineCov">  602659349 :                 mword vtable_word = *(mword*)obj;</span>
+<span class="lineNum">     126 </span>            :                 SgenDescriptor desc;
+<span class="lineNum">     127 </span>            :                 int type;
+<span class="lineNum">     128 </span>            : 
+<span class="lineNum">     129 </span>            :                 HEAVY_STAT (++stat_optimized_copy_major);
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span>            : #ifdef COPY_OR_MARK_WITH_EVACUATION
+<span class="lineNum">     132 </span>            :                 {
+<span class="lineNum">     133 </span>            :                         GCObject *forwarded;
+<span class="lineNum">     134 </span><span class="lineCov">  374094045 :                         if ((forwarded = (GCObject *)SGEN_VTABLE_IS_FORWARDED (vtable_word))) {</span>
+<span class="lineNum">     135 </span>            :                                 HEAVY_STAT (++stat_optimized_copy_major_forwarded);
+<span class="lineNum">     136 </span><span class="lineCov">       6264 :                                 SGEN_UPDATE_REFERENCE (ptr, forwarded);</span>
+<span class="lineNum">     137 </span><span class="lineCov">      12528 :                                 SGEN_ASSERT (9, !sgen_ptr_in_nursery (forwarded), &quot;Cannot be forwarded to nursery.&quot;);</span>
+<span class="lineNum">     138 </span><span class="lineCov">       6264 :                                 return FALSE;</span>
+<span class="lineNum">     139 </span>            :                         }
+<span class="lineNum">     140 </span>            :                 }
+<span class="lineNum">     141 </span>            : #endif
+<span class="lineNum">     142 </span>            : 
+<span class="lineNum">     143 </span><span class="lineCov"> 1205306170 :                 SGEN_ASSERT (9, !SGEN_VTABLE_IS_PINNED (vtable_word), &quot;Pinned object in non-pinned block?&quot;);</span>
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span>            :                 /* We untag the vtable for concurrent M&amp;S, in case bridge is running and it tagged it */
+<span class="lineNum">     146 </span><span class="lineCov">  602653085 :                 desc = sgen_vtable_get_descriptor ((GCVTable)SGEN_POINTER_UNTAG_VTABLE (vtable_word));</span>
+<span class="lineNum">     147 </span><span class="lineCov">  602653085 :                 type = desc &amp; DESC_TYPE_MASK;</span>
+<span class="lineNum">     148 </span>            : 
+<span class="lineNum">     149 </span><span class="lineCov">  602653085 :                 if (sgen_safe_object_is_small (obj, type)) {</span>
+<span class="lineNum">     150 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     151 </span>            :                         if (type &lt;= DESC_TYPE_MAX_SMALL_OBJ)
+<span class="lineNum">     152 </span>            :                                 ++stat_optimized_copy_major_small_fast;
+<span class="lineNum">     153 </span>            :                         else
+<span class="lineNum">     154 </span>            :                                 ++stat_optimized_copy_major_small_slow;
+<span class="lineNum">     155 </span>            : #endif
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span><span class="lineCov">  602519666 :                         block = MS_BLOCK_FOR_OBJ (obj);</span>
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span>            : #ifdef COPY_OR_MARK_CONCURRENT_WITH_EVACUATION
+<span class="lineNum">     160 </span><span class="lineCov">   79130858 :                         if (G_UNLIKELY (major_block_is_evacuating (block))) {</span>
+<span class="lineNum">     161 </span>            :                                 /*
+<span class="lineNum">     162 </span>            :                                  * We don't copy within the concurrent phase. These objects will
+<span class="lineNum">     163 </span>            :                                  * be handled below in the finishing pause, by scanning the mod-union
+<span class="lineNum">     164 </span>            :                                  * card table.
+<span class="lineNum">     165 </span>            :                                  */
+<span class="lineNum">     166 </span><span class="lineCov">        241 :                                 return FALSE;</span>
+<span class="lineNum">     167 </span>            :                         }
+<span class="lineNum">     168 </span>            : #endif
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span>            : #ifdef COPY_OR_MARK_WITH_EVACUATION
+<span class="lineNum">     171 </span><span class="lineCov">  124662343 :                         if (major_block_is_evacuating (block)) {</span>
+<span class="lineNum">     172 </span>            :                                 HEAVY_STAT (++stat_optimized_copy_major_small_evacuate);
+<span class="lineNum">     173 </span><span class="lineCov">      25683 :                                 goto do_copy_object;</span>
+<span class="lineNum">     174 </span>            :                         }
+<span class="lineNum">     175 </span>            : #endif
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineCov"> 4852405962 :                         MS_MARK_OBJECT_AND_ENQUEUE (obj, desc, block, queue);</span>
+<span class="lineNum">     178 </span><span class="lineCov">  602493742 :                 } else {</span>
+<span class="lineNum">     179 </span>            :                         HEAVY_STAT (++stat_optimized_copy_major_large);
+<span class="lineNum">     180 </span>            : 
+<span class="lineNum">     181 </span><span class="lineCov">     133419 :                         if (sgen_los_object_is_pinned (obj))</span>
+<span class="lineNum">     182 </span><span class="lineCov">      41204 :                                 return FALSE;</span>
+<span class="lineNum">     183 </span><span class="lineCov">      92215 :                         binary_protocol_pin (obj, (gpointer)SGEN_LOAD_VTABLE (obj), sgen_safe_object_get_size (obj));</span>
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span><span class="lineCov">      92215 :                         sgen_los_pin_object (obj);</span>
+<span class="lineNum">     186 </span><span class="lineCov">      92215 :                         if (SGEN_OBJECT_HAS_REFERENCES (obj))</span>
+<span class="lineNum">     187 </span><span class="lineCov">      46573 :                                 GRAY_OBJECT_ENQUEUE (queue, obj, desc);</span>
+<span class="lineNum">     188 </span>            :                 }
+<span class="lineNum">     189 </span><span class="lineCov">  602585957 :                 return FALSE;</span>
+<span class="lineNum">     190 </span>            :         }
+<span class="lineNum">     191 </span>            : 
+<span class="lineNum">     192 </span><span class="lineCov">       4365 :         return TRUE;</span>
+<span class="lineNum">     193 </span><span class="lineCov">  640925485 : }</span>
+<a name="194"><span class="lineNum">     194 </span>            : </a>
+<span class="lineNum">     195 </span>            : static void
+<span class="lineNum">     196 </span>            : SCAN_OBJECT_FUNCTION_NAME (GCObject *full_object, SgenDescriptor desc, SgenGrayQueue *queue)
+<span class="lineNum">     197 </span>            : {
+<span class="lineNum">     198 </span><span class="lineCov">  199119476 :         char *start = (char*)full_object;</span>
+<span class="lineNum">     199 </span>            : 
+<span class="lineNum">     200 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     201 </span>            :         ++stat_optimized_major_scan;
+<span class="lineNum">     202 </span>            :         if (!sgen_gc_descr_has_references (desc))
+<span class="lineNum">     203 </span>            :                 ++stat_optimized_major_scan_no_refs;
+<span class="lineNum">     204 </span>            :         sgen_descriptor_count_scanned_object (desc);
+<span class="lineNum">     205 </span>            : #endif
+<span class="lineNum">     206 </span>            : #ifdef SGEN_HEAVY_BINARY_PROTOCOL
+<span class="lineNum">     207 </span>            :         add_scanned_object (start);
+<span class="lineNum">     208 </span>            : #endif
+<span class="lineNum">     209 </span>            : 
+<span class="lineNum">     210 </span>            :         /* Now scan the object. */
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span>            : #undef HANDLE_PTR
+<span class="lineNum">     213 </span>            : #if defined(COPY_OR_MARK_CONCURRENT_WITH_EVACUATION)
+<span class="lineNum">     214 </span>            : #define HANDLE_PTR(ptr,obj)     do {                                    \
+<span class="lineNum">     215 </span>            :                 GCObject *__old = *(ptr);                               \
+<span class="lineNum">     216 </span>            :                 binary_protocol_scan_process_reference ((full_object), (ptr), __old); \
+<span class="lineNum">     217 </span>            :                 if (__old &amp;&amp; !sgen_ptr_in_nursery (__old)) {            \
+<span class="lineNum">     218 </span>            :                         if (G_UNLIKELY (!sgen_ptr_in_nursery (ptr) &amp;&amp;   \
+<span class="lineNum">     219 </span>            :                                         sgen_safe_object_is_small (__old, sgen_obj_get_descriptor (__old) &amp; DESC_TYPE_MASK) &amp;&amp; \
+<span class="lineNum">     220 </span>            :                                         major_block_is_evacuating (MS_BLOCK_FOR_OBJ (__old)))) { \
+<span class="lineNum">     221 </span>            :                                 mark_mod_union_card ((full_object), (void**)(ptr), __old); \
+<span class="lineNum">     222 </span>            :                         } else {                                        \
+<span class="lineNum">     223 </span>            :                                 PREFETCH_READ (__old);                  \
+<span class="lineNum">     224 </span>            :                                 COPY_OR_MARK_FUNCTION_NAME ((ptr), __old, queue); \
+<span class="lineNum">     225 </span>            :                         }                                               \
+<span class="lineNum">     226 </span>            :                 } else {                                                \
+<span class="lineNum">     227 </span>            :                         if (G_UNLIKELY (sgen_ptr_in_nursery (__old) &amp;&amp; !sgen_ptr_in_nursery ((ptr)) &amp;&amp; !sgen_cement_is_forced (__old))) \
+<span class="lineNum">     228 </span>            :                                 mark_mod_union_card ((full_object), (void**)(ptr), __old); \
+<span class="lineNum">     229 </span>            :                         }                                               \
+<span class="lineNum">     230 </span>            :                 } while (0)
+<span class="lineNum">     231 </span>            : #elif defined(COPY_OR_MARK_CONCURRENT)
+<span class="lineNum">     232 </span>            : #define HANDLE_PTR(ptr,obj)     do {                                    \
+<span class="lineNum">     233 </span>            :                 GCObject *__old = *(ptr);                               \
+<span class="lineNum">     234 </span>            :                 binary_protocol_scan_process_reference ((full_object), (ptr), __old); \
+<span class="lineNum">     235 </span>            :                 if (__old &amp;&amp; !sgen_ptr_in_nursery (__old)) {            \
+<span class="lineNum">     236 </span>            :                         PREFETCH_READ (__old);                  \
+<span class="lineNum">     237 </span>            :                         COPY_OR_MARK_FUNCTION_NAME ((ptr), __old, queue); \
+<span class="lineNum">     238 </span>            :                 } else {                                                \
+<span class="lineNum">     239 </span>            :                         if (G_UNLIKELY (sgen_ptr_in_nursery (__old) &amp;&amp; !sgen_ptr_in_nursery ((ptr)) &amp;&amp; !sgen_cement_is_forced (__old))) \
+<span class="lineNum">     240 </span>            :                                 mark_mod_union_card ((full_object), (void**)(ptr), __old); \
+<span class="lineNum">     241 </span>            :                         }                                               \
+<span class="lineNum">     242 </span>            :                 } while (0)
+<span class="lineNum">     243 </span>            : #else
+<span class="lineNum">     244 </span>            : #define HANDLE_PTR(ptr,obj)     do {                                    \
+<span class="lineNum">     245 </span>            :                 GCObject *__old = *(ptr);                                       \
+<span class="lineNum">     246 </span>            :                 binary_protocol_scan_process_reference ((full_object), (ptr), __old); \
+<span class="lineNum">     247 </span>            :                 if (__old) {                                            \
+<span class="lineNum">     248 </span>            :                         gboolean __still_in_nursery = COPY_OR_MARK_FUNCTION_NAME ((ptr), __old, queue); \
+<span class="lineNum">     249 </span>            :                         if (G_UNLIKELY (__still_in_nursery &amp;&amp; !sgen_ptr_in_nursery ((ptr)) &amp;&amp; !SGEN_OBJECT_IS_CEMENTED (*(ptr)))) { \
+<span class="lineNum">     250 </span>            :                                 GCObject *__copy = *(ptr);                      \
+<span class="lineNum">     251 </span>            :                                 sgen_add_to_global_remset ((ptr), __copy); \
+<span class="lineNum">     252 </span>            :                         }                                               \
+<span class="lineNum">     253 </span>            :                 }                                                       \
+<span class="lineNum">     254 </span>            :         } while (0)
+<span class="lineNum">     255 </span>            : #endif
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span>            : #define SCAN_OBJECT_PROTOCOL
+<span class="lineNum">     258 </span>            : #include &quot;sgen-scan-object.h&quot;
+<span class="lineNum">     259 </span><span class="lineCov">  199119476 : }</span>
+<span class="lineNum">     260 </span>            : 
+<a name="261"><span class="lineNum">     261 </span>            : #ifdef SCAN_VTYPE_FUNCTION_NAME </a>
+<span class="lineNum">     262 </span>            : static void
+<span class="lineNum">     263 </span>            : SCAN_VTYPE_FUNCTION_NAME (GCObject *full_object, char *start, SgenDescriptor desc, SgenGrayQueue *queue BINARY_PROTOCOL_ARG (size_t size))
+<span class="lineNum">     264 </span>            : {
+<span class="lineNum">     265 </span>            :         SGEN_OBJECT_LAYOUT_STATISTICS_DECLARE_BITMAP;
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     268 </span>            :         /* FIXME: We're half scanning this object.  How do we account for that? */
+<span class="lineNum">     269 </span>            :         //add_scanned_object (start);
+<span class="lineNum">     270 </span>            : #endif
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span>            :         /* The descriptors include info about the object header as well */
+<span class="lineNum">     273 </span><span class="lineCov">   17528011 :         start -= SGEN_CLIENT_OBJECT_HEADER_SIZE;</span>
+<span class="lineNum">     274 </span>            : 
+<span class="lineNum">     275 </span>            :         /* We use the same HANDLE_PTR from the obj scan function */
+<span class="lineNum">     276 </span>            : #define SCAN_OBJECT_NOVTABLE
+<span class="lineNum">     277 </span>            : #define SCAN_OBJECT_PROTOCOL
+<span class="lineNum">     278 </span>            : #include &quot;sgen-scan-object.h&quot;
+<span class="lineNum">     279 </span>            : 
+<span class="lineNum">     280 </span>            :         SGEN_OBJECT_LAYOUT_STATISTICS_COMMIT_BITMAP;
+<span class="lineNum">     281 </span><span class="lineCov">   17528011 : }</span>
+<span class="lineNum">     282 </span>            : #endif
+<span class="lineNum">     283 </span>            : 
+<a name="284"><span class="lineNum">     284 </span>            : #ifdef SCAN_PTR_FIELD_FUNCTION_NAME</a>
+<span class="lineNum">     285 </span>            : static void
+<span class="lineNum">     286 </span>            : SCAN_PTR_FIELD_FUNCTION_NAME (GCObject *full_object, GCObject **ptr, SgenGrayQueue *queue)
+<span class="lineNum">     287 </span>            : {
+<span class="lineNum">     288 </span><span class="lineCov">   32851266 :         HANDLE_PTR (ptr, NULL);</span>
+<span class="lineNum">     289 </span><span class="lineCov">    5598512 : }</span>
+<span class="lineNum">     290 </span>            : #endif
+<a name="291"><span class="lineNum">     291 </span>            : </a>
+<span class="lineNum">     292 </span>            : static gboolean
+<span class="lineNum">     293 </span>            : DRAIN_GRAY_STACK_FUNCTION_NAME (SgenGrayQueue *queue)
+<span class="lineNum">     294 </span>            : {
+<span class="lineNum">     295 </span>            : #if defined(COPY_OR_MARK_CONCURRENT) || defined(COPY_OR_MARK_CONCURRENT_WITH_EVACUATION)
+<span class="lineNum">     296 </span>            :         int i;
+<span class="lineNum">     297 </span><span class="lineCov">  222877118 :         for (i = 0; i &lt; 32; i++) {</span>
+<span class="lineNum">     298 </span>            : #else
+<span class="lineNum">     299 </span><span class="lineCov">   71768488 :         for (;;) {</span>
+<span class="lineNum">     300 </span>            : #endif
+<span class="lineNum">     301 </span>            :                 GCObject *obj;
+<span class="lineNum">     302 </span>            :                 SgenDescriptor desc;
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span>            :                 HEAVY_STAT (++stat_drain_loops);
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineCov">  179832499 :                 GRAY_OBJECT_DEQUEUE (queue, &amp;obj, &amp;desc);</span>
+<span class="lineNum">     307 </span><span class="lineCov">  179832499 :                 if (!obj)</span>
+<span class="lineNum">     308 </span><span class="lineCov">    1263510 :                         return TRUE;</span>
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span><span class="lineCov">  178568989 :                 SCAN_OBJECT_FUNCTION_NAME (obj, desc, queue);</span>
+<span class="lineNum">     311 </span><span class="lineCov">  108060340 :         }</span>
+<span class="lineNum">     312 </span><span class="lineCov">    3374548 :         return FALSE;</span>
+<span class="lineNum">     313 </span><span class="lineCov">    3378219 : }</span>
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span>            : #undef COPY_OR_MARK_FUNCTION_NAME
+<span class="lineNum">     316 </span>            : #undef COPY_OR_MARK_WITH_EVACUATION
+<span class="lineNum">     317 </span>            : #undef COPY_OR_MARK_CONCURRENT
+<span class="lineNum">     318 </span>            : #undef COPY_OR_MARK_CONCURRENT_WITH_EVACUATION
+<span class="lineNum">     319 </span>            : #undef SCAN_OBJECT_FUNCTION_NAME
+<span class="lineNum">     320 </span>            : #undef SCAN_VTYPE_FUNCTION_NAME
+<span class="lineNum">     321 </span>            : #undef SCAN_PTR_FIELD_FUNCTION_NAME
+<span class="lineNum">     322 </span>            : #undef DRAIN_GRAY_STACK_FUNCTION_NAME
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

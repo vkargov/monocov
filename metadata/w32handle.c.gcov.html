@@ -1,0 +1,1555 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/w32handle.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - w32handle.c<span style="font-size: 80%;"> (source / <a href="w32handle.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">461</td>
+            <td class="headerCovTableEntry">640</td>
+            <td class="headerCovTableEntryLo">72.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">44</td>
+            <td class="headerCovTableEntry">53</td>
+            <td class="headerCovTableEntryMed">83.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * w32handle.c:  Generic and internal operations on handles
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Dick Porter (dick@ximian.com)
+<span class="lineNum">       6 </span>            :  *      Ludovic Henry (luhenry@microsoft.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * (C) 2002-2011 Novell, Inc.
+<span class="lineNum">       9 </span>            :  * Copyright 2011 Xamarin Inc
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &quot;w32handle.h&quot;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #include &quot;utils/atomic.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;utils/mono-logger-internals.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;utils/mono-os-mutex.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;utils/mono-proclib.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;utils/mono-threads.h&quot;
+<span class="lineNum">      23 </span>            : #include &quot;utils/mono-time.h&quot;
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : #undef DEBUG_REFS
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : #define SLOT_MAX                (1024 * 16)
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : /* must be a power of 2 */
+<span class="lineNum">      30 </span>            : #define HANDLE_PER_SLOT (256)
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : typedef struct {
+<span class="lineNum">      33 </span>            :         MonoW32HandleType type;
+<span class="lineNum">      34 </span>            :         guint ref;
+<span class="lineNum">      35 </span>            :         gboolean signalled;
+<span class="lineNum">      36 </span>            :         mono_mutex_t signal_mutex;
+<span class="lineNum">      37 </span>            :         mono_cond_t signal_cond;
+<span class="lineNum">      38 </span>            :         gpointer specific;
+<span class="lineNum">      39 </span>            : } MonoW32HandleBase;
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span>            : static MonoW32HandleCapability handle_caps [MONO_W32HANDLE_COUNT];
+<span class="lineNum">      42 </span>            : static MonoW32HandleOps *handle_ops [MONO_W32HANDLE_COUNT];
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span>            : /*
+<span class="lineNum">      45 </span>            :  * We can hold SLOT_MAX * HANDLE_PER_SLOT handles.
+<span class="lineNum">      46 </span>            :  * If 4M handles are not enough... Oh, well... we will crash.
+<span class="lineNum">      47 </span>            :  */
+<span class="lineNum">      48 </span>            : #define SLOT_INDEX(x)   (x / HANDLE_PER_SLOT)
+<span class="lineNum">      49 </span>            : #define SLOT_OFFSET(x)  (x % HANDLE_PER_SLOT)
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : static MonoW32HandleBase *private_handles [SLOT_MAX];
+<span class="lineNum">      52 </span>            : static guint32 private_handles_count = 0;
+<span class="lineNum">      53 </span>            : static guint32 private_handles_slots_count = 0;
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : guint32 mono_w32handle_fd_reserve;
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : /*
+<span class="lineNum">      58 </span>            :  * This is an internal handle which is used for handling waiting for multiple handles.
+<span class="lineNum">      59 </span>            :  * Threads which wait for multiple handles wait on this one handle, and when a handle
+<span class="lineNum">      60 </span>            :  * is signalled, this handle is signalled too.
+<span class="lineNum">      61 </span>            :  */
+<span class="lineNum">      62 </span>            : static mono_mutex_t global_signal_mutex;
+<span class="lineNum">      63 </span>            : static mono_cond_t global_signal_cond;
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : static mono_mutex_t scan_mutex;
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            : static gboolean shutting_down = FALSE;
+<a name="68"><span class="lineNum">      68 </span>            : </a>
+<span class="lineNum">      69 </span>            : static gboolean
+<span class="lineNum">      70 </span>            : type_is_fd (MonoW32HandleType type)
+<span class="lineNum">      71 </span>            : {
+<span class="lineNum">      72 </span><span class="lineCov">     137738 :         switch (type) {</span>
+<span class="lineNum">      73 </span>            :         case MONO_W32HANDLE_FILE:
+<span class="lineNum">      74 </span>            :         case MONO_W32HANDLE_CONSOLE:
+<span class="lineNum">      75 </span>            :         case MONO_W32HANDLE_SOCKET:
+<span class="lineNum">      76 </span>            :         case MONO_W32HANDLE_PIPE:
+<span class="lineNum">      77 </span><span class="lineCov">      90462 :                 return TRUE;</span>
+<span class="lineNum">      78 </span>            :         default:
+<span class="lineNum">      79 </span><span class="lineCov">      47276 :                 return FALSE;</span>
+<span class="lineNum">      80 </span>            :         }
+<span class="lineNum">      81 </span><span class="lineCov">     137739 : }</span>
+<a name="82"><span class="lineNum">      82 </span>            : </a>
+<span class="lineNum">      83 </span>            : static gboolean
+<span class="lineNum">      84 </span>            : mono_w32handle_lookup_data (gpointer handle, MonoW32HandleBase **handle_data)
+<span class="lineNum">      85 </span>            : {
+<span class="lineNum">      86 </span>            :         gsize index, offset;
+<span class="lineNum">      87 </span>            : 
+<span class="lineNum">      88 </span><span class="lineCov">   18994925 :         g_assert (handle_data);</span>
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span><span class="lineCov">    6331814 :         index = SLOT_INDEX ((gsize) handle);</span>
+<span class="lineNum">      91 </span><span class="lineCov">    6331814 :         if (index &gt;= SLOT_MAX)</span>
+<span class="lineNum">      92 </span><span class="lineCov">          2 :                 return FALSE;</span>
+<span class="lineNum">      93 </span><span class="lineCov">    6332100 :         if (!private_handles [index])</span>
+<span class="lineNum">      94 </span><span class="lineCov">       1724 :                 return FALSE;</span>
+<span class="lineNum">      95 </span>            : 
+<span class="lineNum">      96 </span><span class="lineCov">    6330414 :         offset = SLOT_OFFSET ((gsize) handle);</span>
+<span class="lineNum">      97 </span><span class="lineCov">    6330414 :         if (private_handles [index][offset].type == MONO_W32HANDLE_UNUSED)</span>
+<span class="lineNum">      98 </span><span class="lineCov">       4312 :                 return FALSE;</span>
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span><span class="lineCov">    6326290 :         *handle_data = &amp;private_handles [index][offset];</span>
+<span class="lineNum">     101 </span><span class="lineCov">    6326290 :         return TRUE;</span>
+<span class="lineNum">     102 </span><span class="lineCov">    6332406 : }</span>
+<a name="103"><span class="lineNum">     103 </span>            : </a>
+<span class="lineNum">     104 </span>            : MonoW32HandleType
+<span class="lineNum">     105 </span>            : mono_w32handle_get_type (gpointer handle)
+<span class="lineNum">     106 </span>            : {
+<span class="lineNum">     107 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span><span class="lineCov">    3487854 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data))</span>
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_UNUSED;   /* An impossible type */</span>
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineCov">    3487839 :         return handle_data-&gt;type;</span>
+<span class="lineNum">     113 </span><span class="lineCov">    3487860 : }</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span>            : static const gchar*
+<span class="lineNum">     116 </span>            : mono_w32handle_ops_typename (MonoW32HandleType type);
+<a name="117"><span class="lineNum">     117 </span>            : </a>
+<span class="lineNum">     118 </span>            : const gchar*
+<span class="lineNum">     119 </span>            : mono_w32handle_get_typename (MonoW32HandleType type)
+<span class="lineNum">     120 </span>            : {
+<span class="lineNum">     121 </span><span class="lineCov">     105673 :         return mono_w32handle_ops_typename (type);</span>
+<span class="lineNum">     122 </span>            : }
+<a name="123"><span class="lineNum">     123 </span>            : </a>
+<span class="lineNum">     124 </span>            : void
+<span class="lineNum">     125 </span>            : mono_w32handle_set_signal_state (gpointer handle, gboolean state, gboolean broadcast)
+<span class="lineNum">     126 </span>            : {
+<span class="lineNum">     127 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     128 </span>            : 
+<span class="lineNum">     129 </span><span class="lineCov">      56340 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     131 </span>            :         }
+<span class="lineNum">     132 </span>            : 
+<span class="lineNum">     133 </span>            : #ifdef DEBUG
+<span class="lineNum">     134 </span>            :         g_message (&quot;%s: setting state of %p to %s (broadcast %s)&quot;, __func__,
+<span class="lineNum">     135 </span>            :                    handle, state?&quot;TRUE&quot;:&quot;FALSE&quot;, broadcast?&quot;TRUE&quot;:&quot;FALSE&quot;);
+<span class="lineNum">     136 </span>            : #endif
+<span class="lineNum">     137 </span>            : 
+<span class="lineNum">     138 </span><span class="lineCov">      56335 :         if (state == TRUE) {</span>
+<span class="lineNum">     139 </span>            :                 /* Tell everyone blocking on a single handle */
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span>            :                 /* The condition the global signal cond is waiting on is the signalling of
+<span class="lineNum">     142 </span>            :                  * _any_ handle. So lock it before setting the signalled state.
+<span class="lineNum">     143 </span>            :                  */
+<span class="lineNum">     144 </span><span class="lineCov">      45358 :                 mono_os_mutex_lock (&amp;global_signal_mutex);</span>
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span>            :                 /* This function _must_ be called with
+<span class="lineNum">     147 </span>            :                  * handle-&gt;signal_mutex locked
+<span class="lineNum">     148 </span>            :                  */
+<span class="lineNum">     149 </span><span class="lineCov">      45358 :                 handle_data-&gt;signalled=state;</span>
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span><span class="lineCov">      45358 :                 if (broadcast == TRUE) {</span>
+<span class="lineNum">     152 </span><span class="lineCov">      31592 :                         mono_os_cond_broadcast (&amp;handle_data-&gt;signal_cond);</span>
+<span class="lineNum">     153 </span><span class="lineCov">      31592 :                 } else {</span>
+<span class="lineNum">     154 </span><span class="lineCov">      13766 :                         mono_os_cond_signal (&amp;handle_data-&gt;signal_cond);</span>
+<span class="lineNum">     155 </span>            :                 }
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span>            :                 /* Tell everyone blocking on multiple handles that something
+<span class="lineNum">     158 </span>            :                  * was signalled
+<span class="lineNum">     159 </span>            :                  */
+<span class="lineNum">     160 </span><span class="lineCov">      45358 :                 mono_os_cond_broadcast (&amp;global_signal_cond);</span>
+<span class="lineNum">     161 </span>            : 
+<span class="lineNum">     162 </span><span class="lineCov">      45358 :                 mono_os_mutex_unlock (&amp;global_signal_mutex);</span>
+<span class="lineNum">     163 </span><span class="lineCov">      45358 :         } else {</span>
+<span class="lineNum">     164 </span><span class="lineCov">      10993 :                 handle_data-&gt;signalled=state;</span>
+<span class="lineNum">     165 </span>            :         }
+<span class="lineNum">     166 </span><span class="lineCov">      56351 : }</span>
+<a name="167"><span class="lineNum">     167 </span>            : </a>
+<span class="lineNum">     168 </span>            : gboolean
+<span class="lineNum">     169 </span>            : mono_w32handle_issignalled (gpointer handle)
+<span class="lineNum">     170 </span>            : {
+<span class="lineNum">     171 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span><span class="lineCov">      52307 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     174 </span><span class="lineNoCov">          0 :                 return(FALSE);</span>
+<span class="lineNum">     175 </span>            :         }
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineCov">      52307 :         return handle_data-&gt;signalled;</span>
+<span class="lineNum">     178 </span><span class="lineCov">      52307 : }</span>
+<a name="179"><span class="lineNum">     179 </span>            : </a>
+<span class="lineNum">     180 </span>            : static void
+<span class="lineNum">     181 </span>            : mono_w32handle_lock_signal_mutex (void)
+<span class="lineNum">     182 </span>            : {
+<span class="lineNum">     183 </span>            : #ifdef DEBUG
+<span class="lineNum">     184 </span>            :         g_message (&quot;%s: lock global signal mutex&quot;, __func__);
+<span class="lineNum">     185 </span>            : #endif
+<span class="lineNum">     186 </span>            : 
+<span class="lineNum">     187 </span><span class="lineCov">       2866 :         mono_os_mutex_lock (&amp;global_signal_mutex);</span>
+<span class="lineNum">     188 </span><span class="lineCov">       2866 : }</span>
+<a name="189"><span class="lineNum">     189 </span>            : </a>
+<span class="lineNum">     190 </span>            : static void
+<span class="lineNum">     191 </span>            : mono_w32handle_unlock_signal_mutex (void)
+<span class="lineNum">     192 </span>            : {
+<span class="lineNum">     193 </span>            : #ifdef DEBUG
+<span class="lineNum">     194 </span>            :         g_message (&quot;%s: unlock global signal mutex&quot;, __func__);
+<span class="lineNum">     195 </span>            : #endif
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span><span class="lineCov">       2866 :         mono_os_mutex_unlock (&amp;global_signal_mutex);</span>
+<span class="lineNum">     198 </span><span class="lineCov">       2866 : }</span>
+<a name="199"><span class="lineNum">     199 </span>            : </a>
+<span class="lineNum">     200 </span>            : void
+<span class="lineNum">     201 </span>            : mono_w32handle_lock_handle (gpointer handle)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     204 </span>            : 
+<span class="lineNum">     205 </span><span class="lineCov">     108114 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data))</span>
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: failed to lookup handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span><span class="lineCov">     108111 :         mono_w32handle_ref (handle);</span>
+<span class="lineNum">     209 </span>            : 
+<span class="lineNum">     210 </span><span class="lineCov">     108111 :         mono_os_mutex_lock (&amp;handle_data-&gt;signal_mutex);</span>
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span><span class="lineCov">     108111 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: lock handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     213 </span><span class="lineCov">     108111 : }</span>
+<a name="214"><span class="lineNum">     214 </span>            : </a>
+<span class="lineNum">     215 </span>            : gboolean
+<span class="lineNum">     216 </span>            : mono_w32handle_trylock_handle (gpointer handle)
+<span class="lineNum">     217 </span>            : {
+<span class="lineNum">     218 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     219 </span>            :         gboolean locked;
+<span class="lineNum">     220 </span>            : 
+<span class="lineNum">     221 </span><span class="lineCov">       8532 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: trylock handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     222 </span>            : 
+<span class="lineNum">     223 </span><span class="lineCov">       8532 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data))</span>
+<span class="lineNum">     224 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: failed to lookup handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span><span class="lineCov">       8532 :         mono_w32handle_ref (handle);</span>
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span><span class="lineCov">       8532 :         locked = mono_os_mutex_trylock (&amp;handle_data-&gt;signal_mutex) == 0;</span>
+<span class="lineNum">     229 </span><span class="lineCov">       8532 :         if (!locked)</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :                 mono_w32handle_unref (handle);</span>
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span><span class="lineCov">       8532 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: trylock handle %p, locked: %s&quot;, __func__, handle, locked ? &quot;true&quot; : &quot;false&quot;);</span>
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span><span class="lineCov">       8532 :         return locked;</span>
+<span class="lineNum">     235 </span>            : }
+<a name="236"><span class="lineNum">     236 </span>            : </a>
+<span class="lineNum">     237 </span>            : void
+<span class="lineNum">     238 </span>            : mono_w32handle_unlock_handle (gpointer handle)
+<span class="lineNum">     239 </span>            : {
+<span class="lineNum">     240 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span><span class="lineCov">     116655 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data))</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: failed to lookup handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span><span class="lineCov">     116654 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: unlock handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     246 </span>            : 
+<span class="lineNum">     247 </span><span class="lineCov">     116654 :         mono_os_mutex_unlock (&amp;handle_data-&gt;signal_mutex);</span>
+<span class="lineNum">     248 </span>            : 
+<span class="lineNum">     249 </span><span class="lineCov">     116654 :         mono_w32handle_unref (handle);</span>
+<span class="lineNum">     250 </span><span class="lineCov">     116654 : }</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span>            : /*
+<span class="lineNum">     253 </span>            :  * wapi_init:
+<span class="lineNum">     254 </span>            :  *
+<span class="lineNum">     255 </span>            :  *   Initialize the io-layer.
+<a name="256"><span class="lineNum">     256 </span>            :  */</a>
+<span class="lineNum">     257 </span>            : void
+<span class="lineNum">     258 </span>            : mono_w32handle_init (void)
+<span class="lineNum">     259 </span>            : {
+<span class="lineNum">     260 </span>            :         static gboolean initialized = FALSE;
+<span class="lineNum">     261 </span>            : 
+<span class="lineNum">     262 </span><span class="lineCov">      13142 :         if (initialized)</span>
+<span class="lineNum">     263 </span><span class="lineCov">       9855 :                 return;</span>
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineCov">       6574 :         g_assert ((sizeof (handle_ops) / sizeof (handle_ops[0]))</span>
+<span class="lineNum">     266 </span>            :                   == MONO_W32HANDLE_COUNT);
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span>            :         /* This is needed by the code in mono_w32handle_new_internal */
+<span class="lineNum">     269 </span><span class="lineCov">       3287 :         mono_w32handle_fd_reserve = (eg_getdtablesize () + (HANDLE_PER_SLOT - 1)) &amp; ~(HANDLE_PER_SLOT - 1);</span>
+<span class="lineNum">     270 </span>            : 
+<span class="lineNum">     271 </span><span class="lineCov">       3287 :         do {</span>
+<span class="lineNum">     272 </span>            :                 /*
+<span class="lineNum">     273 </span>            :                  * The entries in private_handles reserved for fds are allocated lazily to
+<span class="lineNum">     274 </span>            :                  * save memory.
+<span class="lineNum">     275 </span>            :                  */
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span><span class="lineCov">      26296 :                 private_handles_count += HANDLE_PER_SLOT;</span>
+<span class="lineNum">     278 </span><span class="lineCov">      26296 :                 private_handles_slots_count ++;</span>
+<span class="lineNum">     279 </span><span class="lineCov">      52592 :         } while(mono_w32handle_fd_reserve &gt; private_handles_count);</span>
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span><span class="lineCov">       3287 :         mono_os_mutex_init (&amp;scan_mutex);</span>
+<span class="lineNum">     282 </span>            : 
+<span class="lineNum">     283 </span><span class="lineCov">       3287 :         mono_os_cond_init (&amp;global_signal_cond);</span>
+<span class="lineNum">     284 </span><span class="lineCov">       3287 :         mono_os_mutex_init (&amp;global_signal_mutex);</span>
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span><span class="lineCov">       3287 :         initialized = TRUE;</span>
+<span class="lineNum">     287 </span><span class="lineCov">      16429 : }</span>
+<a name="288"><span class="lineNum">     288 </span>            : </a>
+<span class="lineNum">     289 </span>            : void
+<span class="lineNum">     290 </span>            : mono_w32handle_cleanup (void)
+<span class="lineNum">     291 </span>            : {
+<span class="lineNum">     292 </span>            :         int i, j, k;
+<span class="lineNum">     293 </span>            : 
+<span class="lineNum">     294 </span><span class="lineCov">       9816 :         g_assert (!shutting_down);</span>
+<span class="lineNum">     295 </span><span class="lineCov">       3272 :         shutting_down = TRUE;</span>
+<span class="lineNum">     296 </span>            : 
+<span class="lineNum">     297 </span>            :         /* Every shared handle we were using ought really to be closed
+<span class="lineNum">     298 </span>            :          * by now, but to make sure just blow them all away.  The
+<span class="lineNum">     299 </span>            :          * exiting finalizer thread in particular races us to the
+<span class="lineNum">     300 </span>            :          * program exit and doesn't always win, so it can be left
+<span class="lineNum">     301 </span>            :          * cluttering up the shared file.  Anything else left over is
+<span class="lineNum">     302 </span>            :          * really a bug.
+<span class="lineNum">     303 </span>            :          */
+<span class="lineNum">     304 </span><span class="lineCov">      11318 :         for(i = SLOT_INDEX (0); private_handles[i] != NULL; i++) {</span>
+<span class="lineNum">     305 </span><span class="lineCov">    1226918 :                 for(j = SLOT_OFFSET (0); j &lt; HANDLE_PER_SLOT; j++) {</span>
+<span class="lineNum">     306 </span><span class="lineCov">     611072 :                         MonoW32HandleBase *handle_data = &amp;private_handles[i][j];</span>
+<span class="lineNum">     307 </span><span class="lineCov">     611072 :                         gpointer handle = GINT_TO_POINTER (i*HANDLE_PER_SLOT+j);</span>
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span><span class="lineCov">    1347636 :                         for(k = handle_data-&gt;ref; k &gt; 0; k--) {</span>
+<span class="lineNum">     310 </span><span class="lineCov">      62746 :                                 mono_w32handle_unref (handle);</span>
+<span class="lineNum">     311 </span><span class="lineCov">      62746 :                         }</span>
+<span class="lineNum">     312 </span><span class="lineCov">     611072 :                 }</span>
+<span class="lineNum">     313 </span><span class="lineCov">       2387 :         }</span>
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span><span class="lineCov">  107223440 :         for (i = 0; i &lt; SLOT_MAX; ++i)</span>
+<span class="lineNum">     316 </span><span class="lineCov">   53608448 :                 g_free (private_handles [i]);</span>
+<span class="lineNum">     317 </span><span class="lineCov">       3272 : }</span>
+<span class="lineNum">     318 </span>            : 
+<span class="lineNum">     319 </span>            : static gsize
+<a name="320"><span class="lineNum">     320 </span>            : mono_w32handle_ops_typesize (MonoW32HandleType type);</a>
+<span class="lineNum">     321 </span>            : 
+<span class="lineNum">     322 </span>            : static void mono_w32handle_init_handle (MonoW32HandleBase *handle,
+<span class="lineNum">     323 </span>            :                                MonoW32HandleType type, gpointer handle_specific)
+<span class="lineNum">     324 </span>            : {
+<span class="lineNum">     325 </span><span class="lineCov">     413235 :         g_assert (handle-&gt;ref == 0);</span>
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span><span class="lineCov">     137746 :         handle-&gt;type = type;</span>
+<span class="lineNum">     328 </span><span class="lineCov">     137746 :         handle-&gt;signalled = FALSE;</span>
+<span class="lineNum">     329 </span><span class="lineCov">     137746 :         handle-&gt;ref = 1;</span>
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span><span class="lineCov">     137746 :         mono_os_cond_init (&amp;handle-&gt;signal_cond);</span>
+<span class="lineNum">     332 </span><span class="lineCov">     137746 :         mono_os_mutex_init (&amp;handle-&gt;signal_mutex);</span>
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span><span class="lineCov">     137746 :         if (handle_specific)</span>
+<span class="lineNum">     335 </span><span class="lineCov">     137746 :                 handle-&gt;specific = g_memdup (handle_specific, mono_w32handle_ops_typesize (type));</span>
+<span class="lineNum">     336 </span><span class="lineCov">     137747 : }</span>
+<span class="lineNum">     337 </span>            : 
+<span class="lineNum">     338 </span>            : /*
+<span class="lineNum">     339 </span>            :  * mono_w32handle_new_internal:
+<span class="lineNum">     340 </span>            :  * @type: Init handle to this type
+<span class="lineNum">     341 </span>            :  *
+<span class="lineNum">     342 </span>            :  * Search for a free handle and initialize it. Return the handle on
+<span class="lineNum">     343 </span>            :  * success and 0 on failure.  This is only called from
+<a name="344"><span class="lineNum">     344 </span>            :  * mono_w32handle_new, and scan_mutex must be held.</a>
+<span class="lineNum">     345 </span>            :  */
+<span class="lineNum">     346 </span>            : static guint32 mono_w32handle_new_internal (MonoW32HandleType type,
+<span class="lineNum">     347 </span>            :                                           gpointer handle_specific)
+<span class="lineNum">     348 </span>            : {
+<span class="lineNum">     349 </span>            :         guint32 i, k, count;
+<span class="lineNum">     350 </span>            :         static guint32 last = 0;
+<span class="lineNum">     351 </span><span class="lineCov">      50599 :         gboolean retry = FALSE;</span>
+<span class="lineNum">     352 </span>            :         
+<span class="lineNum">     353 </span>            :         /* A linear scan should be fast enough.  Start from the last
+<span class="lineNum">     354 </span>            :          * allocation, assuming that handles are allocated more often
+<span class="lineNum">     355 </span>            :          * than they're freed. Leave the space reserved for file
+<span class="lineNum">     356 </span>            :          * descriptors
+<span class="lineNum">     357 </span>            :          */
+<span class="lineNum">     358 </span>            : 
+<span class="lineNum">     359 </span><span class="lineCov">     101198 :         if (last &lt; mono_w32handle_fd_reserve) {</span>
+<span class="lineNum">     360 </span><span class="lineCov">       3285 :                 last = mono_w32handle_fd_reserve;</span>
+<span class="lineNum">     361 </span><span class="lineCov">       3285 :         } else {</span>
+<span class="lineNum">     362 </span><span class="lineCov">      47314 :                 retry = TRUE;</span>
+<span class="lineNum">     363 </span>            :         }
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span>            : again:
+<span class="lineNum">     366 </span><span class="lineCov">      50749 :         count = last;</span>
+<span class="lineNum">     367 </span><span class="lineCov">     102126 :         for(i = SLOT_INDEX (count); i &lt; private_handles_slots_count; i++) {</span>
+<span class="lineNum">     368 </span><span class="lineCov">      47595 :                 if (private_handles [i]) {</span>
+<span class="lineNum">     369 </span><span class="lineCov">     255692 :                         for (k = SLOT_OFFSET (count); k &lt; HANDLE_PER_SLOT; k++) {</span>
+<span class="lineNum">     370 </span><span class="lineCov">     127532 :                                 MonoW32HandleBase *handle = &amp;private_handles [i][k];</span>
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span><span class="lineCov">     127532 :                                 if(handle-&gt;type == MONO_W32HANDLE_UNUSED) {</span>
+<span class="lineNum">     373 </span><span class="lineCov">      47281 :                                         last = count + 1;</span>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span><span class="lineCov">      47281 :                                         mono_w32handle_init_handle (handle, type, handle_specific);</span>
+<span class="lineNum">     376 </span><span class="lineCov">      47281 :                                         return (count);</span>
+<span class="lineNum">     377 </span>            :                                 }
+<span class="lineNum">     378 </span><span class="lineCov">      80251 :                                 count++;</span>
+<span class="lineNum">     379 </span><span class="lineCov">      80251 :                         }</span>
+<span class="lineNum">     380 </span><span class="lineCov">        314 :                 }</span>
+<span class="lineNum">     381 </span><span class="lineCov">        314 :         }</span>
+<span class="lineNum">     382 </span>            : 
+<span class="lineNum">     383 </span><span class="lineCov">       3651 :         if(retry &amp;&amp; last &gt; mono_w32handle_fd_reserve) {</span>
+<span class="lineNum">     384 </span>            :                 /* Try again from the beginning */
+<span class="lineNum">     385 </span><span class="lineCov">        150 :                 last = mono_w32handle_fd_reserve;</span>
+<span class="lineNum">     386 </span><span class="lineCov">        150 :                 goto again;</span>
+<span class="lineNum">     387 </span>            :         }
+<span class="lineNum">     388 </span>            : 
+<span class="lineNum">     389 </span>            :         /* Will need to expand the array.  The caller will sort it out */
+<span class="lineNum">     390 </span>            : 
+<span class="lineNum">     391 </span><span class="lineCov">       3318 :         return(0);</span>
+<span class="lineNum">     392 </span><span class="lineCov">      50599 : }</span>
+<a name="393"><span class="lineNum">     393 </span>            : </a>
+<span class="lineNum">     394 </span>            : gpointer
+<span class="lineNum">     395 </span>            : mono_w32handle_new (MonoW32HandleType type, gpointer handle_specific)
+<span class="lineNum">     396 </span>            : {
+<span class="lineNum">     397 </span><span class="lineCov">      47280 :         guint32 handle_idx = 0;</span>
+<span class="lineNum">     398 </span>            :         gpointer handle;
+<span class="lineNum">     399 </span>            : 
+<span class="lineNum">     400 </span><span class="lineCov">     141841 :         g_assert (!shutting_down);</span>
+<span class="lineNum">     401 </span>            : 
+<span class="lineNum">     402 </span><span class="lineCov">     141835 :         g_assert(!type_is_fd(type));</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineCov">      47277 :         mono_os_mutex_lock (&amp;scan_mutex);</span>
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span><span class="lineCov">     101194 :         while ((handle_idx = mono_w32handle_new_internal (type, handle_specific)) == 0) {</span>
+<span class="lineNum">     407 </span>            :                 /* Try and expand the array, and have another go */
+<span class="lineNum">     408 </span><span class="lineCov">       3318 :                 int idx = SLOT_INDEX (private_handles_count);</span>
+<span class="lineNum">     409 </span><span class="lineCov">       3318 :                 if (idx &gt;= SLOT_MAX) {</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     411 </span>            :                 }
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span><span class="lineCov">       3318 :                 private_handles [idx] = g_new0 (MonoW32HandleBase, HANDLE_PER_SLOT);</span>
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span><span class="lineCov">       3318 :                 private_handles_count += HANDLE_PER_SLOT;</span>
+<span class="lineNum">     416 </span><span class="lineCov">       3318 :                 private_handles_slots_count ++;</span>
+<span class="lineNum">     417 </span>            :         }
+<span class="lineNum">     418 </span>            : 
+<span class="lineNum">     419 </span><span class="lineCov">      47281 :         mono_os_mutex_unlock (&amp;scan_mutex);</span>
+<span class="lineNum">     420 </span>            : 
+<span class="lineNum">     421 </span><span class="lineCov">      47281 :         if (handle_idx == 0) {</span>
+<span class="lineNum">     422 </span>            :                 /* We ran out of slots */
+<span class="lineNum">     423 </span><span class="lineNoCov">          0 :                 handle = INVALID_HANDLE_VALUE;</span>
+<span class="lineNum">     424 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: failed to create %s handle&quot;, __func__, mono_w32handle_ops_typename (type));</span>
+<span class="lineNum">     425 </span><span class="lineNoCov">          0 :                 goto done;</span>
+<span class="lineNum">     426 </span>            :         }
+<span class="lineNum">     427 </span>            : 
+<span class="lineNum">     428 </span>            :         /* Make sure we left the space for fd mappings */
+<span class="lineNum">     429 </span><span class="lineCov">     141843 :         g_assert (handle_idx &gt;= mono_w32handle_fd_reserve);</span>
+<span class="lineNum">     430 </span>            : 
+<span class="lineNum">     431 </span><span class="lineCov">      47281 :         handle = GUINT_TO_POINTER (handle_idx);</span>
+<span class="lineNum">     432 </span>            : 
+<span class="lineNum">     433 </span><span class="lineCov">      47281 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: create %s handle %p&quot;, __func__, mono_w32handle_ops_typename (type), handle);</span>
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span>            : done:
+<span class="lineNum">     436 </span><span class="lineCov">      47281 :         return(handle);</span>
+<a name="437"><span class="lineNum">     437 </span>            : }</a>
+<span class="lineNum">     438 </span>            : 
+<span class="lineNum">     439 </span>            : gpointer mono_w32handle_new_fd (MonoW32HandleType type, int fd,
+<span class="lineNum">     440 </span>            :                               gpointer handle_specific)
+<span class="lineNum">     441 </span>            : {
+<span class="lineNum">     442 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     443 </span>            :         int fd_index, fd_offset;
+<span class="lineNum">     444 </span>            : 
+<span class="lineNum">     445 </span><span class="lineCov">     271389 :         g_assert (!shutting_down);</span>
+<span class="lineNum">     446 </span>            : 
+<span class="lineNum">     447 </span><span class="lineCov">     271387 :         g_assert(type_is_fd(type));</span>
+<span class="lineNum">     448 </span>            : 
+<span class="lineNum">     449 </span><span class="lineCov">      90462 :         if (fd &gt;= mono_w32handle_fd_reserve) {</span>
+<span class="lineNum">     450 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: failed to create %s handle, fd is too big&quot;, __func__, mono_w32handle_ops_typename (type));</span>
+<span class="lineNum">     451 </span>            : 
+<span class="lineNum">     452 </span><span class="lineNoCov">          0 :                 return(GUINT_TO_POINTER (INVALID_HANDLE_VALUE));</span>
+<span class="lineNum">     453 </span>            :         }
+<span class="lineNum">     454 </span>            : 
+<span class="lineNum">     455 </span><span class="lineCov">      90462 :         fd_index = SLOT_INDEX (fd);</span>
+<span class="lineNum">     456 </span><span class="lineCov">      90462 :         fd_offset = SLOT_OFFSET (fd);</span>
+<span class="lineNum">     457 </span>            : 
+<span class="lineNum">     458 </span>            :         /* Initialize the array entries on demand */
+<span class="lineNum">     459 </span><span class="lineCov">      90462 :         if (!private_handles [fd_index]) {</span>
+<span class="lineNum">     460 </span><span class="lineCov">       2391 :                 mono_os_mutex_lock (&amp;scan_mutex);</span>
+<span class="lineNum">     461 </span>            : 
+<span class="lineNum">     462 </span><span class="lineCov">       2391 :                 if (!private_handles [fd_index])</span>
+<span class="lineNum">     463 </span><span class="lineCov">       2391 :                         private_handles [fd_index] = g_new0 (MonoW32HandleBase, HANDLE_PER_SLOT);</span>
+<span class="lineNum">     464 </span>            : 
+<span class="lineNum">     465 </span><span class="lineCov">       2391 :                 mono_os_mutex_unlock (&amp;scan_mutex);</span>
+<span class="lineNum">     466 </span><span class="lineCov">       2391 :         }</span>
+<span class="lineNum">     467 </span>            : 
+<span class="lineNum">     468 </span><span class="lineCov">      90466 :         handle_data = &amp;private_handles [fd_index][fd_offset];</span>
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span><span class="lineCov">      90466 :         if (handle_data-&gt;type != MONO_W32HANDLE_UNUSED) {</span>
+<span class="lineNum">     471 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: failed to create %s handle, fd is already in use&quot;, __func__, mono_w32handle_ops_typename (type));</span>
+<span class="lineNum">     472 </span>            :                 /* FIXME: clean up this handle?  We can't do anything
+<span class="lineNum">     473 </span>            :                  * with the fd, cos thats the new one
+<span class="lineNum">     474 </span>            :                  */
+<span class="lineNum">     475 </span><span class="lineNoCov">          0 :                 return(GUINT_TO_POINTER (INVALID_HANDLE_VALUE));</span>
+<span class="lineNum">     476 </span>            :         }
+<span class="lineNum">     477 </span>            : 
+<span class="lineNum">     478 </span><span class="lineCov">      90466 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: create %s handle %p&quot;, __func__, mono_w32handle_ops_typename (type), GUINT_TO_POINTER(fd));</span>
+<span class="lineNum">     479 </span>            : 
+<span class="lineNum">     480 </span><span class="lineCov">      90466 :         mono_w32handle_init_handle (handle_data, type, handle_specific);</span>
+<span class="lineNum">     481 </span>            : 
+<span class="lineNum">     482 </span><span class="lineCov">      90466 :         return(GUINT_TO_POINTER(fd));</span>
+<span class="lineNum">     483 </span><span class="lineCov">      90466 : }</span>
+<a name="484"><span class="lineNum">     484 </span>            : </a>
+<span class="lineNum">     485 </span>            : gboolean
+<span class="lineNum">     486 </span>            : mono_w32handle_lookup (gpointer handle, MonoW32HandleType type,
+<span class="lineNum">     487 </span>            :                               gpointer *handle_specific)
+<span class="lineNum">     488 </span>            : {
+<span class="lineNum">     489 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     490 </span>            : 
+<span class="lineNum">     491 </span><span class="lineCov">    4624173 :         g_assert (handle_specific);</span>
+<span class="lineNum">     492 </span>            : 
+<span class="lineNum">     493 </span><span class="lineCov">    1541505 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     494 </span><span class="lineCov">       6036 :                 return(FALSE);</span>
+<span class="lineNum">     495 </span>            :         }
+<span class="lineNum">     496 </span>            : 
+<span class="lineNum">     497 </span><span class="lineCov">    1535478 :         if (handle_data-&gt;type != type) {</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :                 return(FALSE);</span>
+<span class="lineNum">     499 </span>            :         }
+<span class="lineNum">     500 </span>            : 
+<span class="lineNum">     501 </span><span class="lineCov">    1535478 :         *handle_specific = handle_data-&gt;specific;</span>
+<span class="lineNum">     502 </span>            : 
+<span class="lineNum">     503 </span><span class="lineCov">    1535478 :         return(TRUE);</span>
+<span class="lineNum">     504 </span><span class="lineCov">    1541513 : }</span>
+<span class="lineNum">     505 </span>            : 
+<span class="lineNum">     506 </span>            : static gboolean
+<span class="lineNum">     507 </span>            : mono_w32handle_ref_core (gpointer handle, MonoW32HandleBase *handle_data);
+<span class="lineNum">     508 </span>            : 
+<span class="lineNum">     509 </span>            : static gboolean
+<span class="lineNum">     510 </span>            : mono_w32handle_unref_core (gpointer handle, MonoW32HandleBase *handle_data);
+<span class="lineNum">     511 </span>            : 
+<span class="lineNum">     512 </span>            : static void
+<span class="lineNum">     513 </span>            : w32handle_destroy (gpointer handle);
+<a name="514"><span class="lineNum">     514 </span>            : </a>
+<span class="lineNum">     515 </span>            : void
+<span class="lineNum">     516 </span>            : mono_w32handle_foreach (gboolean (*on_each)(gpointer handle, gpointer data, gpointer user_data), gpointer user_data)
+<span class="lineNum">     517 </span>            : {
+<span class="lineNum">     518 </span>            :         GPtrArray *handles_to_destroy;
+<span class="lineNum">     519 </span>            :         guint32 i, k;
+<span class="lineNum">     520 </span>            : 
+<span class="lineNum">     521 </span><span class="lineCov">     279822 :         handles_to_destroy = NULL;</span>
+<span class="lineNum">     522 </span>            : 
+<span class="lineNum">     523 </span><span class="lineCov">     279822 :         mono_os_mutex_lock (&amp;scan_mutex);</span>
+<span class="lineNum">     524 </span>            : 
+<span class="lineNum">     525 </span><span class="lineCov">    5595532 :         for (i = SLOT_INDEX (0); i &lt; private_handles_slots_count; i++) {</span>
+<span class="lineNum">     526 </span><span class="lineCov">    2518431 :                 if (!private_handles [i])</span>
+<span class="lineNum">     527 </span><span class="lineCov">    2071904 :                         continue;</span>
+<span class="lineNum">     528 </span><span class="lineCov">  229316186 :                 for (k = SLOT_OFFSET (0); k &lt; HANDLE_PER_SLOT; k++) {</span>
+<span class="lineNum">     529 </span><span class="lineCov">  114212053 :                         MonoW32HandleBase *handle_data = NULL;</span>
+<span class="lineNum">     530 </span>            :                         gpointer handle;
+<span class="lineNum">     531 </span>            :                         gboolean destroy, finished;
+<span class="lineNum">     532 </span>            : 
+<span class="lineNum">     533 </span><span class="lineCov">  114212053 :                         handle_data = &amp;private_handles [i][k];</span>
+<span class="lineNum">     534 </span><span class="lineCov">  114212053 :                         if (handle_data-&gt;type == MONO_W32HANDLE_UNUSED)</span>
+<span class="lineNum">     535 </span><span class="lineCov">  112197345 :                                 continue;</span>
+<span class="lineNum">     536 </span>            : 
+<span class="lineNum">     537 </span><span class="lineCov">    2014708 :                         handle = GUINT_TO_POINTER (i * HANDLE_PER_SLOT + k);</span>
+<span class="lineNum">     538 </span>            : 
+<span class="lineNum">     539 </span><span class="lineCov">    2014708 :                         if (!mono_w32handle_ref_core (handle, handle_data)) {</span>
+<span class="lineNum">     540 </span>            :                                 /* we are racing with mono_w32handle_unref:
+<span class="lineNum">     541 </span>            :                                  *  the handle ref has been decremented, but it
+<span class="lineNum">     542 </span>            :                                  *  hasn't yet been destroyed. */
+<span class="lineNum">     543 </span><span class="lineCov">       2341 :                                 continue;</span>
+<span class="lineNum">     544 </span>            :                         }
+<span class="lineNum">     545 </span>            : 
+<span class="lineNum">     546 </span><span class="lineCov">    2012367 :                         finished = on_each (handle, handle_data-&gt;specific, user_data);</span>
+<span class="lineNum">     547 </span>            : 
+<span class="lineNum">     548 </span>            :                         /* we might have to destroy the handle here, as
+<span class="lineNum">     549 </span>            :                          * it could have been unrefed in another thread */
+<span class="lineNum">     550 </span><span class="lineCov">    2012367 :                         destroy = mono_w32handle_unref_core (handle, handle_data);</span>
+<span class="lineNum">     551 </span><span class="lineCov">    2012367 :                         if (destroy) {</span>
+<span class="lineNum">     552 </span>            :                                 /* we do not destroy it while holding the scan_mutex
+<span class="lineNum">     553 </span>            :                                  * lock, because w32handle_destroy also needs to take
+<span class="lineNum">     554 </span>            :                                  * the lock, and it calls user code which might lead
+<span class="lineNum">     555 </span>            :                                  * to a deadlock */
+<span class="lineNum">     556 </span><span class="lineCov">          7 :                                 if (!handles_to_destroy)</span>
+<span class="lineNum">     557 </span><span class="lineCov">          7 :                                         handles_to_destroy = g_ptr_array_sized_new (4);</span>
+<span class="lineNum">     558 </span><span class="lineCov">          7 :                                 g_ptr_array_add (handles_to_destroy, handle);</span>
+<span class="lineNum">     559 </span><span class="lineCov">          7 :                         }</span>
+<span class="lineNum">     560 </span>            : 
+<span class="lineNum">     561 </span><span class="lineCov">    2012367 :                         if (finished)</span>
+<span class="lineNum">     562 </span><span class="lineCov">        487 :                                 goto done;</span>
+<span class="lineNum">     563 </span><span class="lineCov">    2011880 :                 }</span>
+<span class="lineNum">     564 </span><span class="lineCov">     725375 :         }</span>
+<span class="lineNum">     565 </span>            : 
+<span class="lineNum">     566 </span>            : done:
+<span class="lineNum">     567 </span><span class="lineCov">     279822 :         mono_os_mutex_unlock (&amp;scan_mutex);</span>
+<span class="lineNum">     568 </span>            : 
+<span class="lineNum">     569 </span><span class="lineCov">     279822 :         if (handles_to_destroy) {</span>
+<span class="lineNum">     570 </span><span class="lineCov">         28 :                 for (i = 0; i &lt; handles_to_destroy-&gt;len; ++i)</span>
+<span class="lineNum">     571 </span><span class="lineCov">          7 :                         w32handle_destroy (handles_to_destroy-&gt;pdata [i]);</span>
+<span class="lineNum">     572 </span>            : 
+<span class="lineNum">     573 </span><span class="lineCov">          7 :                 g_ptr_array_free (handles_to_destroy, TRUE);</span>
+<span class="lineNum">     574 </span><span class="lineCov">          7 :         }</span>
+<span class="lineNum">     575 </span><span class="lineCov">     279822 : }</span>
+<a name="576"><span class="lineNum">     576 </span>            : </a>
+<span class="lineNum">     577 </span>            : static gboolean
+<span class="lineNum">     578 </span>            : mono_w32handle_ref_core (gpointer handle, MonoW32HandleBase *handle_data)
+<span class="lineNum">     579 </span>            : {
+<span class="lineNum">     580 </span>            :         guint old, new;
+<span class="lineNum">     581 </span>            : 
+<span class="lineNum">     582 </span><span class="lineCov">    2291468 :         do {</span>
+<span class="lineNum">     583 </span><span class="lineCov">    2292415 :                 old = handle_data-&gt;ref;</span>
+<span class="lineNum">     584 </span><span class="lineCov">    2292415 :                 if (old == 0)</span>
+<span class="lineNum">     585 </span><span class="lineCov">       2341 :                         return FALSE;</span>
+<span class="lineNum">     586 </span>            : 
+<span class="lineNum">     587 </span><span class="lineCov">    2290077 :                 new = old + 1;</span>
+<span class="lineNum">     588 </span><span class="lineCov">    4580353 :         } while (InterlockedCompareExchange ((gint32*) &amp;handle_data-&gt;ref, new, old) != old);</span>
+<span class="lineNum">     589 </span>            : 
+<span class="lineNum">     590 </span><span class="lineCov">    2289389 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: ref %s handle %p, ref: %d -&gt; %d&quot;,</span>
+<span class="lineNum">     591 </span><span class="lineCov">    2289389 :                 __func__, mono_w32handle_ops_typename (handle_data-&gt;type), handle, old, new);</span>
+<span class="lineNum">     592 </span>            : 
+<span class="lineNum">     593 </span><span class="lineCov">    2289389 :         return TRUE;</span>
+<span class="lineNum">     594 </span><span class="lineCov">    2291576 : }</span>
+<a name="595"><span class="lineNum">     595 </span>            : </a>
+<span class="lineNum">     596 </span>            : static gboolean
+<span class="lineNum">     597 </span>            : mono_w32handle_unref_core (gpointer handle, MonoW32HandleBase *handle_data)
+<span class="lineNum">     598 </span>            : {
+<span class="lineNum">     599 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     600 </span>            :         guint old, new;
+<span class="lineNum">     601 </span>            : 
+<span class="lineNum">     602 </span><span class="lineCov">    2381249 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     603 </span>            : 
+<span class="lineNum">     604 </span><span class="lineCov">    2381249 :         do {</span>
+<span class="lineNum">     605 </span><span class="lineCov">    2381361 :                 old = handle_data-&gt;ref;</span>
+<span class="lineNum">     606 </span><span class="lineCov">    2381361 :                 if (!(old &gt;= 1))</span>
+<span class="lineNum">     607 </span><span class="lineNoCov">          0 :                         g_error (&quot;%s: handle %p has ref %d, it should be &gt;= 1&quot;, __func__, handle, old);</span>
+<span class="lineNum">     608 </span>            : 
+<span class="lineNum">     609 </span><span class="lineCov">    2381365 :                 new = old - 1;</span>
+<span class="lineNum">     610 </span><span class="lineCov">    4762792 :         } while (InterlockedCompareExchange ((gint32*) &amp;handle_data-&gt;ref, new, old) != old);</span>
+<span class="lineNum">     611 </span>            : 
+<span class="lineNum">     612 </span>            :         /* handle_data might contain invalid data from now on, if
+<span class="lineNum">     613 </span>            :          * another thread is unref'ing this handle at the same time */
+<span class="lineNum">     614 </span>            : 
+<span class="lineNum">     615 </span><span class="lineCov">    2381360 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: unref %s handle %p, ref: %d -&gt; %d destroy: %s&quot;,</span>
+<span class="lineNum">     616 </span><span class="lineCov">    2381360 :                 __func__, mono_w32handle_ops_typename (type), handle, old, new, new == 0 ? &quot;true&quot; : &quot;false&quot;);</span>
+<span class="lineNum">     617 </span>            : 
+<span class="lineNum">     618 </span><span class="lineCov">    2381360 :         return new == 0;</span>
+<a name="619"><span class="lineNum">     619 </span>            : }</a>
+<span class="lineNum">     620 </span>            : 
+<span class="lineNum">     621 </span>            : void mono_w32handle_ref (gpointer handle)
+<span class="lineNum">     622 </span>            : {
+<span class="lineNum">     623 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     624 </span>            : 
+<span class="lineNum">     625 </span><span class="lineCov">     276945 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     626 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: failed to ref handle %p, unknown handle&quot;, __func__, handle);</span>
+<span class="lineNum">     627 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     628 </span>            :         }
+<span class="lineNum">     629 </span>            : 
+<span class="lineNum">     630 </span><span class="lineCov">     276981 :         if (!mono_w32handle_ref_core (handle, handle_data))</span>
+<span class="lineNum">     631 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: failed to ref handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     632 </span><span class="lineCov">     276963 : }</span>
+<span class="lineNum">     633 </span>            : 
+<span class="lineNum">     634 </span>            : static void (*_wapi_handle_ops_get_close_func (MonoW32HandleType type))(gpointer, gpointer);
+<a name="635"><span class="lineNum">     635 </span>            : </a>
+<span class="lineNum">     636 </span>            : static void
+<span class="lineNum">     637 </span>            : w32handle_destroy (gpointer handle)
+<span class="lineNum">     638 </span>            : {
+<span class="lineNum">     639 </span>            :         /* Need to copy the handle info, reset the slot in the
+<span class="lineNum">     640 </span>            :          * array, and _only then_ call the close function to
+<span class="lineNum">     641 </span>            :          * avoid race conditions (eg file descriptors being
+<span class="lineNum">     642 </span>            :          * closed, and another file being opened getting the
+<span class="lineNum">     643 </span>            :          * same fd racing the memset())
+<span class="lineNum">     644 </span>            :          */
+<span class="lineNum">     645 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     646 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     647 </span>            :         gpointer handle_specific;
+<span class="lineNum">     648 </span>            :         void (*close_func)(gpointer, gpointer);
+<span class="lineNum">     649 </span>            : 
+<span class="lineNum">     650 </span><span class="lineCov">     134356 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data))</span>
+<span class="lineNum">     651 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: unknown handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     652 </span>            : 
+<span class="lineNum">     653 </span><span class="lineCov">     134361 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     654 </span><span class="lineCov">     134361 :         handle_specific = handle_data-&gt;specific;</span>
+<span class="lineNum">     655 </span>            : 
+<span class="lineNum">     656 </span><span class="lineCov">     134361 :         mono_os_mutex_lock (&amp;scan_mutex);</span>
+<span class="lineNum">     657 </span>            : 
+<span class="lineNum">     658 </span><span class="lineCov">     134361 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: destroy %s handle %p&quot;, __func__, mono_w32handle_ops_typename (type), handle);</span>
+<span class="lineNum">     659 </span>            : 
+<span class="lineNum">     660 </span><span class="lineCov">     134361 :         mono_os_mutex_destroy (&amp;handle_data-&gt;signal_mutex);</span>
+<span class="lineNum">     661 </span><span class="lineCov">     134361 :         mono_os_cond_destroy (&amp;handle_data-&gt;signal_cond);</span>
+<span class="lineNum">     662 </span>            : 
+<span class="lineNum">     663 </span><span class="lineCov">     134361 :         memset (handle_data, 0, sizeof (MonoW32HandleBase));</span>
+<span class="lineNum">     664 </span>            : 
+<span class="lineNum">     665 </span><span class="lineCov">     134361 :         mono_os_mutex_unlock (&amp;scan_mutex);</span>
+<span class="lineNum">     666 </span>            : 
+<span class="lineNum">     667 </span><span class="lineCov">     134361 :         close_func = _wapi_handle_ops_get_close_func (type);</span>
+<span class="lineNum">     668 </span><span class="lineCov">     134361 :         if (close_func != NULL) {</span>
+<span class="lineNum">     669 </span><span class="lineCov">     109613 :                 close_func (handle, handle_specific);</span>
+<span class="lineNum">     670 </span><span class="lineCov">     109613 :         }</span>
+<span class="lineNum">     671 </span>            : 
+<span class="lineNum">     672 </span><span class="lineCov">     134353 :         g_free (handle_specific);</span>
+<span class="lineNum">     673 </span><span class="lineCov">     134353 : }</span>
+<span class="lineNum">     674 </span>            : 
+<a name="675"><span class="lineNum">     675 </span>            : /* The handle must not be locked on entry to this function */</a>
+<span class="lineNum">     676 </span>            : void
+<span class="lineNum">     677 </span>            : mono_w32handle_unref (gpointer handle)
+<span class="lineNum">     678 </span>            : {
+<span class="lineNum">     679 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     680 </span>            :         gboolean destroy;
+<span class="lineNum">     681 </span>            : 
+<span class="lineNum">     682 </span><span class="lineCov">     369025 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     683 </span><span class="lineCov">          2 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: failed to unref handle %p, unknown handle&quot;,</span>
+<span class="lineNum">     684 </span><span class="lineCov">          2 :                         __func__, handle);</span>
+<span class="lineNum">     685 </span><span class="lineCov">          2 :                 return;</span>
+<span class="lineNum">     686 </span>            :         }
+<span class="lineNum">     687 </span>            : 
+<span class="lineNum">     688 </span><span class="lineCov">     369011 :         destroy = mono_w32handle_unref_core (handle, handle_data);</span>
+<span class="lineNum">     689 </span><span class="lineCov">     369011 :         if (destroy)</span>
+<span class="lineNum">     690 </span><span class="lineCov">     134340 :                 w32handle_destroy (handle);</span>
+<span class="lineNum">     691 </span><span class="lineCov">     369025 : }</span>
+<span class="lineNum">     692 </span>            : 
+<span class="lineNum">     693 </span>            : static void
+<span class="lineNum">     694 </span>            : mono_w32handle_ops_close (gpointer handle, gpointer data);
+<a name="695"><span class="lineNum">     695 </span>            : </a>
+<span class="lineNum">     696 </span>            : void
+<span class="lineNum">     697 </span>            : mono_w32handle_force_close (gpointer handle, gpointer data)
+<span class="lineNum">     698 </span>            : {
+<span class="lineNum">     699 </span><span class="lineNoCov">          0 :         mono_w32handle_ops_close (handle, data);</span>
+<span class="lineNum">     700 </span><span class="lineNoCov">          0 : }</span>
+<a name="701"><span class="lineNum">     701 </span>            : </a>
+<span class="lineNum">     702 </span>            : void
+<span class="lineNum">     703 </span>            : mono_w32handle_register_ops (MonoW32HandleType type, MonoW32HandleOps *ops)
+<span class="lineNum">     704 </span>            : {
+<span class="lineNum">     705 </span><span class="lineCov">      39420 :         handle_ops [type] = ops;</span>
+<a name="706"><span class="lineNum">     706 </span><span class="lineCov">      39420 : }</span></a>
+<span class="lineNum">     707 </span>            : 
+<span class="lineNum">     708 </span>            : void mono_w32handle_register_capabilities (MonoW32HandleType type,
+<span class="lineNum">     709 </span>            :                                          MonoW32HandleCapability caps)
+<span class="lineNum">     710 </span>            : {
+<span class="lineNum">     711 </span><span class="lineCov">      22995 :         handle_caps[type] = caps;</span>
+<a name="712"><span class="lineNum">     712 </span><span class="lineCov">      22995 : }</span></a>
+<span class="lineNum">     713 </span>            : 
+<span class="lineNum">     714 </span>            : gboolean mono_w32handle_test_capabilities (gpointer handle,
+<span class="lineNum">     715 </span>            :                                          MonoW32HandleCapability caps)
+<span class="lineNum">     716 </span>            : {
+<span class="lineNum">     717 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     718 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     719 </span>            : 
+<span class="lineNum">     720 </span><span class="lineCov">      98003 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     721 </span><span class="lineNoCov">          0 :                 return(FALSE);</span>
+<span class="lineNum">     722 </span>            :         }
+<span class="lineNum">     723 </span>            : 
+<span class="lineNum">     724 </span><span class="lineCov">      98003 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     725 </span>            : 
+<span class="lineNum">     726 </span><span class="lineCov">      98003 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: testing 0x%x against 0x%x (%d)&quot;, __func__,</span>
+<span class="lineNum">     727 </span><span class="lineCov">      98003 :                    handle_caps[type], caps, handle_caps[type] &amp; caps);</span>
+<span class="lineNum">     728 </span>            : 
+<span class="lineNum">     729 </span><span class="lineCov">      98003 :         return((handle_caps[type] &amp; caps) != 0);</span>
+<a name="730"><span class="lineNum">     730 </span><span class="lineCov">      97995 : }</span></a>
+<span class="lineNum">     731 </span>            : 
+<span class="lineNum">     732 </span>            : static void (*_wapi_handle_ops_get_close_func (MonoW32HandleType type))(gpointer, gpointer)
+<span class="lineNum">     733 </span>            : {
+<span class="lineNum">     734 </span><span class="lineCov">     268721 :         if (handle_ops[type] != NULL &amp;&amp;</span>
+<span class="lineNum">     735 </span><span class="lineCov">     134361 :             handle_ops[type]-&gt;close != NULL) {</span>
+<span class="lineNum">     736 </span><span class="lineCov">     109613 :                 return (handle_ops[type]-&gt;close);</span>
+<span class="lineNum">     737 </span>            :         }
+<span class="lineNum">     738 </span>            : 
+<span class="lineNum">     739 </span><span class="lineCov">      24748 :         return (NULL);</span>
+<span class="lineNum">     740 </span><span class="lineCov">     134361 : }</span>
+<a name="741"><span class="lineNum">     741 </span>            : </a>
+<span class="lineNum">     742 </span>            : static void
+<span class="lineNum">     743 </span>            : mono_w32handle_ops_close (gpointer handle, gpointer data)
+<span class="lineNum">     744 </span>            : {
+<span class="lineNum">     745 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     746 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     747 </span>            : 
+<span class="lineNum">     748 </span><span class="lineNoCov">          0 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     749 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     750 </span>            :         }
+<span class="lineNum">     751 </span>            : 
+<span class="lineNum">     752 </span><span class="lineNoCov">          0 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     753 </span>            : 
+<span class="lineNum">     754 </span><span class="lineNoCov">          0 :         if (handle_ops[type] != NULL &amp;&amp;</span>
+<span class="lineNum">     755 </span><span class="lineNoCov">          0 :             handle_ops[type]-&gt;close != NULL) {</span>
+<span class="lineNum">     756 </span><span class="lineNoCov">          0 :                 handle_ops[type]-&gt;close (handle, data);</span>
+<span class="lineNum">     757 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     758 </span><span class="lineNoCov">          0 : }</span>
+<a name="759"><span class="lineNum">     759 </span>            : </a>
+<span class="lineNum">     760 </span>            : static void
+<span class="lineNum">     761 </span>            : mono_w32handle_ops_details (MonoW32HandleType type, gpointer data)
+<span class="lineNum">     762 </span>            : {
+<span class="lineNum">     763 </span><span class="lineNoCov">          0 :         if (handle_ops[type] != NULL &amp;&amp;</span>
+<span class="lineNum">     764 </span><span class="lineNoCov">          0 :             handle_ops[type]-&gt;details != NULL) {</span>
+<span class="lineNum">     765 </span><span class="lineNoCov">          0 :                 handle_ops[type]-&gt;details (data);</span>
+<span class="lineNum">     766 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     767 </span><span class="lineNoCov">          0 : }</span>
+<a name="768"><span class="lineNum">     768 </span>            : </a>
+<span class="lineNum">     769 </span>            : static const gchar*
+<span class="lineNum">     770 </span>            : mono_w32handle_ops_typename (MonoW32HandleType type)
+<span class="lineNum">     771 </span>            : {
+<span class="lineNum">     772 </span><span class="lineCov">   15187527 :         g_assert (handle_ops [type]);</span>
+<span class="lineNum">     773 </span><span class="lineCov">   15187583 :         g_assert (handle_ops [type]-&gt;typename);</span>
+<span class="lineNum">     774 </span><span class="lineCov">    5062581 :         return handle_ops [type]-&gt;typename ();</span>
+<span class="lineNum">     775 </span>            : }
+<a name="776"><span class="lineNum">     776 </span>            : </a>
+<span class="lineNum">     777 </span>            : static gsize
+<span class="lineNum">     778 </span>            : mono_w32handle_ops_typesize (MonoW32HandleType type)
+<span class="lineNum">     779 </span>            : {
+<span class="lineNum">     780 </span><span class="lineCov">     413240 :         g_assert (handle_ops [type]);</span>
+<span class="lineNum">     781 </span><span class="lineCov">     413241 :         g_assert (handle_ops [type]-&gt;typesize);</span>
+<span class="lineNum">     782 </span><span class="lineCov">     137747 :         return handle_ops [type]-&gt;typesize ();</span>
+<span class="lineNum">     783 </span>            : }
+<a name="784"><span class="lineNum">     784 </span>            : </a>
+<span class="lineNum">     785 </span>            : static void
+<span class="lineNum">     786 </span>            : mono_w32handle_ops_signal (gpointer handle)
+<span class="lineNum">     787 </span>            : {
+<span class="lineNum">     788 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     789 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     790 </span>            : 
+<span class="lineNum">     791 </span><span class="lineNoCov">          0 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     792 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     793 </span>            :         }
+<span class="lineNum">     794 </span>            : 
+<span class="lineNum">     795 </span><span class="lineNoCov">          0 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     796 </span>            : 
+<span class="lineNum">     797 </span><span class="lineNoCov">          0 :         if (handle_ops[type] != NULL &amp;&amp; handle_ops[type]-&gt;signal != NULL) {</span>
+<span class="lineNum">     798 </span><span class="lineNoCov">          0 :                 handle_ops[type]-&gt;signal (handle);</span>
+<span class="lineNum">     799 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     800 </span><span class="lineNoCov">          0 : }</span>
+<a name="801"><span class="lineNum">     801 </span>            : </a>
+<span class="lineNum">     802 </span>            : static gboolean
+<span class="lineNum">     803 </span>            : mono_w32handle_ops_own (gpointer handle, gboolean *abandoned)
+<span class="lineNum">     804 </span>            : {
+<span class="lineNum">     805 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     806 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     807 </span>            : 
+<span class="lineNum">     808 </span><span class="lineCov">      19988 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     809 </span><span class="lineNoCov">          0 :                 return(FALSE);</span>
+<span class="lineNum">     810 </span>            :         }
+<span class="lineNum">     811 </span>            : 
+<span class="lineNum">     812 </span><span class="lineCov">      19988 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     813 </span>            : 
+<span class="lineNum">     814 </span><span class="lineCov">      39976 :         if (handle_ops[type] != NULL &amp;&amp; handle_ops[type]-&gt;own_handle != NULL) {</span>
+<span class="lineNum">     815 </span><span class="lineCov">      18588 :                 return(handle_ops[type]-&gt;own_handle (handle, abandoned));</span>
+<span class="lineNum">     816 </span>            :         } else {
+<span class="lineNum">     817 </span><span class="lineCov">       1400 :                 return(FALSE);</span>
+<span class="lineNum">     818 </span>            :         }
+<span class="lineNum">     819 </span><span class="lineCov">      19988 : }</span>
+<a name="820"><span class="lineNum">     820 </span>            : </a>
+<span class="lineNum">     821 </span>            : static gboolean
+<span class="lineNum">     822 </span>            : mono_w32handle_ops_isowned (gpointer handle)
+<span class="lineNum">     823 </span>            : {
+<span class="lineNum">     824 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     825 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     826 </span>            : 
+<span class="lineNum">     827 </span><span class="lineCov">       3415 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     828 </span><span class="lineNoCov">          0 :                 return(FALSE);</span>
+<span class="lineNum">     829 </span>            :         }
+<span class="lineNum">     830 </span>            : 
+<span class="lineNum">     831 </span><span class="lineCov">       3415 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     832 </span>            : 
+<span class="lineNum">     833 </span><span class="lineCov">       6830 :         if (handle_ops[type] != NULL &amp;&amp; handle_ops[type]-&gt;is_owned != NULL) {</span>
+<span class="lineNum">     834 </span><span class="lineCov">       3415 :                 return(handle_ops[type]-&gt;is_owned (handle));</span>
+<span class="lineNum">     835 </span>            :         } else {
+<span class="lineNum">     836 </span><span class="lineNoCov">          0 :                 return(FALSE);</span>
+<span class="lineNum">     837 </span>            :         }
+<span class="lineNum">     838 </span><span class="lineCov">       3415 : }</span>
+<a name="839"><span class="lineNum">     839 </span>            : </a>
+<span class="lineNum">     840 </span>            : static MonoW32HandleWaitRet
+<span class="lineNum">     841 </span>            : mono_w32handle_ops_specialwait (gpointer handle, guint32 timeout, gboolean *alerted)
+<span class="lineNum">     842 </span>            : {
+<span class="lineNum">     843 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     844 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     845 </span>            : 
+<span class="lineNum">     846 </span><span class="lineCov">      26917 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     847 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">     848 </span>            :         }
+<span class="lineNum">     849 </span>            : 
+<span class="lineNum">     850 </span><span class="lineCov">      26888 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     851 </span>            : 
+<span class="lineNum">     852 </span><span class="lineCov">      53802 :         if (handle_ops[type] != NULL &amp;&amp;</span>
+<span class="lineNum">     853 </span><span class="lineCov">      26914 :             handle_ops[type]-&gt;special_wait != NULL) {</span>
+<span class="lineNum">     854 </span><span class="lineCov">      26917 :                 return(handle_ops[type]-&gt;special_wait (handle, timeout, alerted));</span>
+<span class="lineNum">     855 </span>            :         } else {
+<span class="lineNum">     856 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">     857 </span>            :         }
+<span class="lineNum">     858 </span><span class="lineCov">      26893 : }</span>
+<a name="859"><span class="lineNum">     859 </span>            : </a>
+<span class="lineNum">     860 </span>            : static void
+<span class="lineNum">     861 </span>            : mono_w32handle_ops_prewait (gpointer handle)
+<span class="lineNum">     862 </span>            : {
+<span class="lineNum">     863 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">     864 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     865 </span>            : 
+<span class="lineNum">     866 </span><span class="lineCov">      19957 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data)) {</span>
+<span class="lineNum">     867 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     868 </span>            :         }
+<span class="lineNum">     869 </span>            : 
+<span class="lineNum">     870 </span><span class="lineCov">      19957 :         type = handle_data-&gt;type;</span>
+<span class="lineNum">     871 </span>            : 
+<span class="lineNum">     872 </span><span class="lineCov">      39914 :         if (handle_ops[type] != NULL &amp;&amp;</span>
+<span class="lineNum">     873 </span><span class="lineCov">      19957 :             handle_ops[type]-&gt;prewait != NULL) {</span>
+<span class="lineNum">     874 </span><span class="lineCov">        208 :                 handle_ops[type]-&gt;prewait (handle);</span>
+<span class="lineNum">     875 </span><span class="lineCov">        208 :         }</span>
+<span class="lineNum">     876 </span><span class="lineCov">      19957 : }</span>
+<a name="877"><span class="lineNum">     877 </span>            : </a>
+<span class="lineNum">     878 </span>            : static void
+<span class="lineNum">     879 </span>            : spin (guint32 ms)
+<span class="lineNum">     880 </span>            : {
+<span class="lineNum">     881 </span>            : #ifdef HOST_WIN32
+<span class="lineNum">     882 </span>            :         SleepEx (ms, TRUE);
+<span class="lineNum">     883 </span>            : #else
+<span class="lineNum">     884 </span>            :         struct timespec sleepytime;
+<span class="lineNum">     885 </span>            : 
+<span class="lineNum">     886 </span><span class="lineNoCov">          0 :         g_assert (ms &lt; 1000);</span>
+<span class="lineNum">     887 </span>            : 
+<span class="lineNum">     888 </span><span class="lineNoCov">          0 :         sleepytime.tv_sec = 0;</span>
+<span class="lineNum">     889 </span><span class="lineNoCov">          0 :         sleepytime.tv_nsec = ms * 1000000;</span>
+<span class="lineNum">     890 </span><span class="lineNoCov">          0 :         nanosleep (&amp;sleepytime, NULL);</span>
+<span class="lineNum">     891 </span>            : #endif /* HOST_WIN32 */
+<span class="lineNum">     892 </span><span class="lineNoCov">          0 : }</span>
+<a name="893"><span class="lineNum">     893 </span>            : </a>
+<span class="lineNum">     894 </span>            : static void
+<span class="lineNum">     895 </span>            : mono_w32handle_lock_handles (gpointer *handles, gsize numhandles)
+<span class="lineNum">     896 </span>            : {
+<span class="lineNum">     897 </span><span class="lineCov">       4266 :         guint32 i, iter=0;</span>
+<span class="lineNum">     898 </span>            : 
+<span class="lineNum">     899 </span>            :         /* Lock all the handles, with backoff */
+<span class="lineNum">     900 </span>            : again:
+<span class="lineNum">     901 </span><span class="lineCov">      25596 :         for(i=0; i&lt;numhandles; i++) {</span>
+<span class="lineNum">     902 </span><span class="lineCov">       8532 :                 gpointer handle = handles[i];</span>
+<span class="lineNum">     903 </span>            : 
+<span class="lineNum">     904 </span><span class="lineCov">       8532 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: attempting to lock %p&quot;, __func__, handle);</span>
+<span class="lineNum">     905 </span>            : 
+<span class="lineNum">     906 </span><span class="lineCov">       8532 :                 if (!mono_w32handle_trylock_handle (handle)) {</span>
+<span class="lineNum">     907 </span>            :                         /* Bummer */
+<span class="lineNum">     908 </span>            : 
+<span class="lineNum">     909 </span><span class="lineNoCov">          0 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: attempt failed for %p.&quot;, __func__,</span>
+<span class="lineNum">     910 </span><span class="lineNoCov">          0 :                                    handle);</span>
+<span class="lineNum">     911 </span>            : 
+<span class="lineNum">     912 </span><span class="lineNoCov">          0 :                         while (i--) {</span>
+<span class="lineNum">     913 </span><span class="lineNoCov">          0 :                                 handle = handles[i];</span>
+<span class="lineNum">     914 </span>            : 
+<span class="lineNum">     915 </span><span class="lineNoCov">          0 :                                 mono_w32handle_unlock_handle (handle);</span>
+<span class="lineNum">     916 </span>            :                         }
+<span class="lineNum">     917 </span>            : 
+<span class="lineNum">     918 </span>            :                         /* If iter ever reaches 100 the nanosleep will
+<span class="lineNum">     919 </span>            :                          * return EINVAL immediately, but we have a
+<span class="lineNum">     920 </span>            :                          * design flaw if that happens.
+<span class="lineNum">     921 </span>            :                          */
+<span class="lineNum">     922 </span><span class="lineNoCov">          0 :                         iter++;</span>
+<span class="lineNum">     923 </span><span class="lineNoCov">          0 :                         if(iter==100) {</span>
+<span class="lineNum">     924 </span><span class="lineNoCov">          0 :                                 g_warning (&quot;%s: iteration overflow!&quot;,</span>
+<span class="lineNum">     925 </span>            :                                            __func__);
+<span class="lineNum">     926 </span><span class="lineNoCov">          0 :                                 iter=1;</span>
+<span class="lineNum">     927 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     928 </span>            : 
+<span class="lineNum">     929 </span><span class="lineNoCov">          0 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: Backing off for %d ms&quot;, __func__,</span>
+<span class="lineNum">     930 </span><span class="lineNoCov">          0 :                                    iter*10);</span>
+<span class="lineNum">     931 </span><span class="lineNoCov">          0 :                         spin (10 * iter);</span>
+<span class="lineNum">     932 </span>            : 
+<span class="lineNum">     933 </span><span class="lineNoCov">          0 :                         goto again;</span>
+<span class="lineNum">     934 </span>            :                 }
+<span class="lineNum">     935 </span><span class="lineCov">       8532 :         }</span>
+<span class="lineNum">     936 </span>            : 
+<span class="lineNum">     937 </span><span class="lineCov">       4266 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: Locked all handles&quot;, __func__);</span>
+<span class="lineNum">     938 </span><span class="lineCov">       4266 : }</span>
+<a name="939"><span class="lineNum">     939 </span>            : </a>
+<span class="lineNum">     940 </span>            : static void
+<span class="lineNum">     941 </span>            : mono_w32handle_unlock_handles (gpointer *handles, gsize numhandles)
+<span class="lineNum">     942 </span>            : {
+<span class="lineNum">     943 </span>            :         guint32 i;
+<span class="lineNum">     944 </span>            : 
+<span class="lineNum">     945 </span><span class="lineCov">      25596 :         for(i=0; i&lt;numhandles; i++) {</span>
+<span class="lineNum">     946 </span><span class="lineCov">       8532 :                 gpointer handle = handles[i];</span>
+<span class="lineNum">     947 </span>            : 
+<span class="lineNum">     948 </span><span class="lineCov">       8532 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: unlocking handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     949 </span>            : 
+<span class="lineNum">     950 </span><span class="lineCov">       8532 :                 mono_w32handle_unlock_handle (handle);</span>
+<span class="lineNum">     951 </span><span class="lineCov">       8532 :         }</span>
+<span class="lineNum">     952 </span><span class="lineCov">       4266 : }</span>
+<a name="953"><span class="lineNum">     953 </span>            : </a>
+<span class="lineNum">     954 </span>            : static int
+<span class="lineNum">     955 </span>            : mono_w32handle_timedwait_signal_naked (mono_cond_t *cond, mono_mutex_t *mutex, guint32 timeout, gboolean poll, gboolean *alerted)
+<span class="lineNum">     956 </span>            : {
+<span class="lineNum">     957 </span>            :         int res;
+<span class="lineNum">     958 </span>            : 
+<span class="lineNum">     959 </span><span class="lineCov">      15694 :         if (!poll) {</span>
+<span class="lineNum">     960 </span><span class="lineCov">      14228 :                 res = mono_os_cond_timedwait (cond, mutex, timeout);</span>
+<span class="lineNum">     961 </span><span class="lineCov">      14228 :         } else {</span>
+<span class="lineNum">     962 </span>            :                 /* This is needed when waiting for process handles */
+<span class="lineNum">     963 </span><span class="lineCov">       1466 :                 if (!alerted) {</span>
+<span class="lineNum">     964 </span>            :                         /*
+<span class="lineNum">     965 </span>            :                          * pthread_cond_(timed)wait() can return 0 even if the condition was not
+<span class="lineNum">     966 </span>            :                          * signalled.  This happens at least on Darwin.  We surface this, i.e., we
+<span class="lineNum">     967 </span>            :                          * get spurious wake-ups.
+<span class="lineNum">     968 </span>            :                          *
+<span class="lineNum">     969 </span>            :                          * http://pubs.opengroup.org/onlinepubs/007908775/xsh/pthread_cond_wait.html
+<span class="lineNum">     970 </span>            :                          */
+<span class="lineNum">     971 </span><span class="lineNoCov">          0 :                         res = mono_os_cond_timedwait (cond, mutex, timeout);</span>
+<span class="lineNum">     972 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     973 </span><span class="lineCov">       1466 :                         if (timeout &lt; 100) {</span>
+<span class="lineNum">     974 </span>            :                                 /* Real timeout is less than 100ms time */
+<span class="lineNum">     975 </span><span class="lineNoCov">          0 :                                 res = mono_os_cond_timedwait (cond, mutex, timeout);</span>
+<span class="lineNum">     976 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     977 </span><span class="lineCov">       1466 :                                 res = mono_os_cond_timedwait (cond, mutex, 100);</span>
+<span class="lineNum">     978 </span>            : 
+<span class="lineNum">     979 </span>            :                                 /* Mask the fake timeout, this will cause
+<span class="lineNum">     980 </span>            :                                  * another poll if the cond was not really signaled
+<span class="lineNum">     981 </span>            :                                  */
+<span class="lineNum">     982 </span><span class="lineCov">       1466 :                                 if (res == -1)</span>
+<span class="lineNum">     983 </span><span class="lineCov">         42 :                                         res = 0;</span>
+<span class="lineNum">     984 </span>            :                         }
+<span class="lineNum">     985 </span>            :                 }
+<span class="lineNum">     986 </span>            :         }
+<span class="lineNum">     987 </span>            : 
+<span class="lineNum">     988 </span><span class="lineCov">      15692 :         return res;</span>
+<span class="lineNum">     989 </span>            : }
+<a name="990"><span class="lineNum">     990 </span>            : </a>
+<span class="lineNum">     991 </span>            : static void
+<span class="lineNum">     992 </span>            : signal_global (gpointer unused)
+<span class="lineNum">     993 </span>            : {
+<span class="lineNum">     994 </span>            :         /* If we reach here, then interrupt token is set to the flag value, which
+<span class="lineNum">     995 </span>            :          * means that the target thread is either
+<span class="lineNum">     996 </span>            :          * - before the first CAS in timedwait, which means it won't enter the wait.
+<span class="lineNum">     997 </span>            :          * - it is after the first CAS, so it is already waiting, or it will enter
+<span class="lineNum">     998 </span>            :          *    the wait, and it will be interrupted by the broadcast. */
+<span class="lineNum">     999 </span><span class="lineNoCov">          0 :         mono_os_mutex_lock (&amp;global_signal_mutex);</span>
+<span class="lineNum">    1000 </span><span class="lineNoCov">          0 :         mono_os_cond_broadcast (&amp;global_signal_cond);</span>
+<span class="lineNum">    1001 </span><span class="lineNoCov">          0 :         mono_os_mutex_unlock (&amp;global_signal_mutex);</span>
+<span class="lineNum">    1002 </span><span class="lineNoCov">          0 : }</span>
+<a name="1003"><span class="lineNum">    1003 </span>            : </a>
+<span class="lineNum">    1004 </span>            : static int
+<span class="lineNum">    1005 </span>            : mono_w32handle_timedwait_signal (guint32 timeout, gboolean poll, gboolean *alerted)
+<span class="lineNum">    1006 </span>            : {
+<span class="lineNum">    1007 </span>            :         int res;
+<span class="lineNum">    1008 </span>            : 
+<span class="lineNum">    1009 </span><span class="lineCov">       1466 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: waiting for global&quot;, __func__);</span>
+<span class="lineNum">    1010 </span>            : 
+<span class="lineNum">    1011 </span><span class="lineCov">       1466 :         if (alerted)</span>
+<span class="lineNum">    1012 </span><span class="lineCov">       1466 :                 *alerted = FALSE;</span>
+<span class="lineNum">    1013 </span>            : 
+<span class="lineNum">    1014 </span><span class="lineCov">       1466 :         if (alerted) {</span>
+<span class="lineNum">    1015 </span><span class="lineCov">       1466 :                 mono_thread_info_install_interrupt (signal_global, NULL, alerted);</span>
+<span class="lineNum">    1016 </span><span class="lineCov">       1466 :                 if (*alerted)</span>
+<span class="lineNum">    1017 </span><span class="lineNoCov">          0 :                         return 0;</span>
+<span class="lineNum">    1018 </span><span class="lineCov">       1466 :         }</span>
+<span class="lineNum">    1019 </span>            : 
+<span class="lineNum">    1020 </span><span class="lineCov">       1466 :         res = mono_w32handle_timedwait_signal_naked (&amp;global_signal_cond, &amp;global_signal_mutex, timeout, poll, alerted);</span>
+<span class="lineNum">    1021 </span>            : 
+<span class="lineNum">    1022 </span><span class="lineCov">       1466 :         if (alerted)</span>
+<span class="lineNum">    1023 </span><span class="lineCov">       1466 :                 mono_thread_info_uninstall_interrupt (alerted);</span>
+<span class="lineNum">    1024 </span>            : 
+<span class="lineNum">    1025 </span><span class="lineCov">       1466 :         return res;</span>
+<span class="lineNum">    1026 </span><span class="lineCov">       1466 : }</span>
+<a name="1027"><span class="lineNum">    1027 </span>            : </a>
+<span class="lineNum">    1028 </span>            : static void
+<span class="lineNum">    1029 </span>            : signal_handle_and_unref (gpointer handle)
+<span class="lineNum">    1030 </span>            : {
+<span class="lineNum">    1031 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">    1032 </span>            :         mono_cond_t *cond;
+<span class="lineNum">    1033 </span>            :         mono_mutex_t *mutex;
+<span class="lineNum">    1034 </span>            : 
+<span class="lineNum">    1035 </span><span class="lineCov">        366 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data))</span>
+<span class="lineNum">    1036 </span><span class="lineNoCov">          0 :                 g_error (&quot;cannot signal unknown handle %p&quot;, handle);</span>
+<span class="lineNum">    1037 </span>            : 
+<span class="lineNum">    1038 </span>            :         /* If we reach here, then interrupt token is set to the flag value, which
+<span class="lineNum">    1039 </span>            :          * means that the target thread is either
+<span class="lineNum">    1040 </span>            :          * - before the first CAS in timedwait, which means it won't enter the wait.
+<span class="lineNum">    1041 </span>            :          * - it is after the first CAS, so it is already waiting, or it will enter
+<span class="lineNum">    1042 </span>            :          *    the wait, and it will be interrupted by the broadcast. */
+<span class="lineNum">    1043 </span><span class="lineCov">        366 :         cond = &amp;handle_data-&gt;signal_cond;</span>
+<span class="lineNum">    1044 </span><span class="lineCov">        366 :         mutex = &amp;handle_data-&gt;signal_mutex;</span>
+<span class="lineNum">    1045 </span>            : 
+<span class="lineNum">    1046 </span><span class="lineCov">        366 :         mono_os_mutex_lock (mutex);</span>
+<span class="lineNum">    1047 </span><span class="lineCov">        366 :         mono_os_cond_broadcast (cond);</span>
+<span class="lineNum">    1048 </span><span class="lineCov">        366 :         mono_os_mutex_unlock (mutex);</span>
+<span class="lineNum">    1049 </span>            : 
+<span class="lineNum">    1050 </span><span class="lineCov">        366 :         mono_w32handle_unref (handle);</span>
+<span class="lineNum">    1051 </span><span class="lineCov">        366 : }</span>
+<a name="1052"><span class="lineNum">    1052 </span>            : </a>
+<span class="lineNum">    1053 </span>            : static int
+<span class="lineNum">    1054 </span>            : mono_w32handle_timedwait_signal_handle (gpointer handle, guint32 timeout, gboolean poll, gboolean *alerted)
+<span class="lineNum">    1055 </span>            : {
+<span class="lineNum">    1056 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">    1057 </span>            :         int res;
+<span class="lineNum">    1058 </span>            : 
+<span class="lineNum">    1059 </span><span class="lineCov">      14228 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data))</span>
+<span class="lineNum">    1060 </span><span class="lineNoCov">          0 :                 g_error (&quot;cannot wait on unknown handle %p&quot;, handle);</span>
+<span class="lineNum">    1061 </span>            : 
+<span class="lineNum">    1062 </span><span class="lineCov">      28456 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: waiting for %p (type %s)&quot;, __func__, handle,</span>
+<span class="lineNum">    1063 </span><span class="lineCov">      14228 :                    mono_w32handle_ops_typename (mono_w32handle_get_type (handle)));</span>
+<span class="lineNum">    1064 </span>            : 
+<span class="lineNum">    1065 </span><span class="lineCov">      14228 :         if (alerted)</span>
+<span class="lineNum">    1066 </span><span class="lineCov">      14228 :                 *alerted = FALSE;</span>
+<span class="lineNum">    1067 </span>            : 
+<span class="lineNum">    1068 </span><span class="lineCov">      14228 :         if (alerted) {</span>
+<span class="lineNum">    1069 </span><span class="lineCov">      14228 :                 mono_thread_info_install_interrupt (signal_handle_and_unref, handle, alerted);</span>
+<span class="lineNum">    1070 </span><span class="lineCov">      14228 :                 if (*alerted)</span>
+<span class="lineNum">    1071 </span><span class="lineNoCov">          0 :                         return 0;</span>
+<span class="lineNum">    1072 </span><span class="lineCov">      14228 :                 mono_w32handle_ref (handle);</span>
+<span class="lineNum">    1073 </span><span class="lineCov">      14228 :         }</span>
+<span class="lineNum">    1074 </span>            : 
+<span class="lineNum">    1075 </span><span class="lineCov">      14226 :         res = mono_w32handle_timedwait_signal_naked (&amp;handle_data-&gt;signal_cond, &amp;handle_data-&gt;signal_mutex, timeout, poll, alerted);</span>
+<span class="lineNum">    1076 </span>            : 
+<span class="lineNum">    1077 </span><span class="lineCov">      14226 :         if (alerted) {</span>
+<span class="lineNum">    1078 </span><span class="lineCov">      14226 :                 mono_thread_info_uninstall_interrupt (alerted);</span>
+<span class="lineNum">    1079 </span><span class="lineCov">      14226 :                 if (!*alerted) {</span>
+<span class="lineNum">    1080 </span>            :                         /* if it is alerted, then the handle is unref in the interrupt callback */
+<span class="lineNum">    1081 </span><span class="lineCov">      13860 :                         mono_w32handle_unref (handle);</span>
+<span class="lineNum">    1082 </span><span class="lineCov">      13860 :                 }</span>
+<span class="lineNum">    1083 </span><span class="lineCov">      14226 :         }</span>
+<span class="lineNum">    1084 </span>            : 
+<span class="lineNum">    1085 </span><span class="lineCov">      14226 :         return res;</span>
+<span class="lineNum">    1086 </span><span class="lineCov">      14226 : }</span>
+<a name="1087"><span class="lineNum">    1087 </span>            : </a>
+<span class="lineNum">    1088 </span>            : static gboolean
+<span class="lineNum">    1089 </span>            : dump_callback (gpointer handle, gpointer handle_specific, gpointer user_data)
+<span class="lineNum">    1090 </span>            : {
+<span class="lineNum">    1091 </span>            :         MonoW32HandleBase *handle_data;
+<span class="lineNum">    1092 </span>            : 
+<span class="lineNum">    1093 </span><span class="lineNoCov">          0 :         if (!mono_w32handle_lookup_data (handle, &amp;handle_data))</span>
+<span class="lineNum">    1094 </span><span class="lineNoCov">          0 :                 g_error (&quot;cannot dump unknown handle %p&quot;, handle);</span>
+<span class="lineNum">    1095 </span>            : 
+<span class="lineNum">    1096 </span><span class="lineNoCov">          0 :         g_print (&quot;%p [%7s] signalled: %5s ref: %3d &quot;,</span>
+<span class="lineNum">    1097 </span><span class="lineNoCov">          0 :                 handle, mono_w32handle_ops_typename (handle_data-&gt;type), handle_data-&gt;signalled ? &quot;true&quot; : &quot;false&quot;, handle_data-&gt;ref);</span>
+<span class="lineNum">    1098 </span><span class="lineNoCov">          0 :         mono_w32handle_ops_details (handle_data-&gt;type, handle_data-&gt;specific);</span>
+<span class="lineNum">    1099 </span><span class="lineNoCov">          0 :         g_print (&quot;\n&quot;);</span>
+<span class="lineNum">    1100 </span>            : 
+<span class="lineNum">    1101 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<a name="1102"><span class="lineNum">    1102 </span>            : }</a>
+<span class="lineNum">    1103 </span>            : 
+<span class="lineNum">    1104 </span>            : void mono_w32handle_dump (void)
+<span class="lineNum">    1105 </span>            : {
+<span class="lineNum">    1106 </span><span class="lineNoCov">          0 :         mono_w32handle_foreach (dump_callback, NULL);</span>
+<span class="lineNum">    1107 </span><span class="lineNoCov">          0 : }</span>
+<a name="1108"><span class="lineNum">    1108 </span>            : </a>
+<span class="lineNum">    1109 </span>            : static gboolean
+<span class="lineNum">    1110 </span>            : own_if_signalled (gpointer handle, gboolean *abandoned)
+<span class="lineNum">    1111 </span>            : {
+<span class="lineNum">    1112 </span><span class="lineCov">      35616 :         if (!mono_w32handle_issignalled (handle))</span>
+<span class="lineNum">    1113 </span><span class="lineCov">      15628 :                 return FALSE;</span>
+<span class="lineNum">    1114 </span>            : 
+<span class="lineNum">    1115 </span><span class="lineCov">      19988 :         *abandoned = FALSE;</span>
+<span class="lineNum">    1116 </span><span class="lineCov">      19988 :         mono_w32handle_ops_own (handle, abandoned);</span>
+<span class="lineNum">    1117 </span><span class="lineCov">      19988 :         return TRUE;</span>
+<span class="lineNum">    1118 </span><span class="lineCov">      35615 : }</span>
+<a name="1119"><span class="lineNum">    1119 </span>            : </a>
+<span class="lineNum">    1120 </span>            : static gboolean
+<span class="lineNum">    1121 </span>            : own_if_owned( gpointer handle, gboolean *abandoned)
+<span class="lineNum">    1122 </span>            : {
+<span class="lineNum">    1123 </span><span class="lineCov">       3415 :         if (!mono_w32handle_ops_isowned (handle))</span>
+<span class="lineNum">    1124 </span><span class="lineCov">       3415 :                 return FALSE;</span>
+<span class="lineNum">    1125 </span>            : 
+<span class="lineNum">    1126 </span><span class="lineNoCov">          0 :         *abandoned = FALSE;</span>
+<span class="lineNum">    1127 </span><span class="lineNoCov">          0 :         mono_w32handle_ops_own (handle, abandoned);</span>
+<span class="lineNum">    1128 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">    1129 </span><span class="lineCov">       3415 : }</span>
+<a name="1130"><span class="lineNum">    1130 </span>            : </a>
+<span class="lineNum">    1131 </span>            : MonoW32HandleWaitRet
+<span class="lineNum">    1132 </span>            : mono_w32handle_wait_one (gpointer handle, guint32 timeout, gboolean alertable)
+<span class="lineNum">    1133 </span>            : {
+<span class="lineNum">    1134 </span>            :         MonoW32HandleWaitRet ret;
+<span class="lineNum">    1135 </span>            :         gboolean alerted;
+<span class="lineNum">    1136 </span>            :         gint64 start;
+<span class="lineNum">    1137 </span><span class="lineCov">      43021 :         gboolean abandoned = FALSE;</span>
+<span class="lineNum">    1138 </span>            : 
+<span class="lineNum">    1139 </span><span class="lineCov">      43021 :         alerted = FALSE;</span>
+<span class="lineNum">    1140 </span>            : 
+<span class="lineNum">    1141 </span><span class="lineCov">      43021 :         if (mono_w32handle_test_capabilities (handle, MONO_W32HANDLE_CAP_SPECIAL_WAIT)) {</span>
+<span class="lineNum">    1142 </span><span class="lineCov">      24067 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: handle %p has special wait&quot;,</span>
+<span class="lineNum">    1143 </span><span class="lineCov">      24067 :                         __func__, handle);</span>
+<span class="lineNum">    1144 </span>            : 
+<span class="lineNum">    1145 </span><span class="lineCov">      72137 :                 return mono_w32handle_ops_specialwait (handle, timeout, alertable ? &amp;alerted : NULL);</span>
+<span class="lineNum">    1146 </span>            :         }
+<span class="lineNum">    1147 </span>            : 
+<span class="lineNum">    1148 </span><span class="lineCov">      18959 :         if (!mono_w32handle_test_capabilities (handle, MONO_W32HANDLE_CAP_WAIT)) {</span>
+<span class="lineNum">    1149 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: handle %p can't be waited for&quot;,</span>
+<span class="lineNum">    1150 </span><span class="lineNoCov">          0 :                         __func__, handle);</span>
+<span class="lineNum">    1151 </span>            : 
+<span class="lineNum">    1152 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">    1153 </span>            :         }
+<span class="lineNum">    1154 </span>            : 
+<span class="lineNum">    1155 </span><span class="lineCov">      18959 :         mono_w32handle_lock_handle (handle);</span>
+<span class="lineNum">    1156 </span>            : 
+<span class="lineNum">    1157 </span><span class="lineCov">      18959 :         if (mono_w32handle_test_capabilities (handle, MONO_W32HANDLE_CAP_OWN)) {</span>
+<span class="lineNum">    1158 </span><span class="lineCov">       3415 :                 if (own_if_owned (handle, &amp;abandoned)) {</span>
+<span class="lineNum">    1159 </span><span class="lineNoCov">          0 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: handle %p already owned&quot;,</span>
+<span class="lineNum">    1160 </span><span class="lineNoCov">          0 :                                 __func__, handle);</span>
+<span class="lineNum">    1161 </span>            : 
+<span class="lineNum">    1162 </span><span class="lineNoCov">          0 :                         ret = abandoned ? MONO_W32HANDLE_WAIT_RET_ABANDONED_0 : MONO_W32HANDLE_WAIT_RET_SUCCESS_0;</span>
+<span class="lineNum">    1163 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">    1164 </span>            :                 }
+<span class="lineNum">    1165 </span><span class="lineCov">       3415 :         }</span>
+<span class="lineNum">    1166 </span>            : 
+<span class="lineNum">    1167 </span><span class="lineCov">      18959 :         if (timeout != MONO_INFINITE_WAIT)</span>
+<span class="lineNum">    1168 </span><span class="lineCov">      10666 :                 start = mono_msec_ticks ();</span>
+<span class="lineNum">    1169 </span>            : 
+<span class="lineNum">    1170 </span><span class="lineCov">      32815 :         for (;;) {</span>
+<span class="lineNum">    1171 </span>            :                 gint waited;
+<span class="lineNum">    1172 </span>            : 
+<span class="lineNum">    1173 </span><span class="lineCov">      32816 :                 if (own_if_signalled (handle, &amp;abandoned)) {</span>
+<span class="lineNum">    1174 </span><span class="lineCov">      18588 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: handle %p signalled&quot;,</span>
+<span class="lineNum">    1175 </span><span class="lineCov">      18588 :                                 __func__, handle);</span>
+<span class="lineNum">    1176 </span>            : 
+<span class="lineNum">    1177 </span><span class="lineCov">      18588 :                         ret = abandoned ? MONO_W32HANDLE_WAIT_RET_ABANDONED_0 : MONO_W32HANDLE_WAIT_RET_SUCCESS_0;</span>
+<span class="lineNum">    1178 </span><span class="lineCov">      18588 :                         goto done;</span>
+<span class="lineNum">    1179 </span>            :                 }
+<span class="lineNum">    1180 </span>            : 
+<span class="lineNum">    1181 </span><span class="lineCov">      14228 :                 mono_w32handle_ops_prewait (handle);</span>
+<span class="lineNum">    1182 </span>            : 
+<span class="lineNum">    1183 </span><span class="lineCov">      14228 :                 if (timeout == MONO_INFINITE_WAIT) {</span>
+<span class="lineNum">    1184 </span><span class="lineCov">      23457 :                         waited = mono_w32handle_timedwait_signal_handle (handle, MONO_INFINITE_WAIT, FALSE, alertable ? &amp;alerted : NULL);</span>
+<span class="lineNum">    1185 </span><span class="lineCov">       7819 :                 } else {</span>
+<span class="lineNum">    1186 </span>            :                         gint64 elapsed;
+<span class="lineNum">    1187 </span>            : 
+<span class="lineNum">    1188 </span><span class="lineCov">       6409 :                         elapsed = mono_msec_ticks () - start;</span>
+<span class="lineNum">    1189 </span><span class="lineCov">       6409 :                         if (elapsed &gt; timeout) {</span>
+<span class="lineNum">    1190 </span><span class="lineNoCov">          0 :                                 ret = MONO_W32HANDLE_WAIT_RET_TIMEOUT;</span>
+<span class="lineNum">    1191 </span><span class="lineNoCov">          0 :                                 goto done;</span>
+<span class="lineNum">    1192 </span>            :                         }
+<span class="lineNum">    1193 </span>            : 
+<span class="lineNum">    1194 </span><span class="lineCov">      19227 :                         waited = mono_w32handle_timedwait_signal_handle (handle, timeout - elapsed, FALSE, alertable ? &amp;alerted : NULL);</span>
+<span class="lineNum">    1195 </span>            :                 }
+<span class="lineNum">    1196 </span>            : 
+<span class="lineNum">    1197 </span><span class="lineCov">      14226 :                 if (alerted) {</span>
+<span class="lineNum">    1198 </span><span class="lineCov">        366 :                         ret = MONO_W32HANDLE_WAIT_RET_ALERTED;</span>
+<span class="lineNum">    1199 </span><span class="lineCov">        366 :                         goto done;</span>
+<span class="lineNum">    1200 </span>            :                 }
+<span class="lineNum">    1201 </span>            : 
+<span class="lineNum">    1202 </span><span class="lineCov">      13860 :                 if (waited != 0) {</span>
+<span class="lineNum">    1203 </span><span class="lineCov">          4 :                         ret = MONO_W32HANDLE_WAIT_RET_TIMEOUT;</span>
+<span class="lineNum">    1204 </span><span class="lineCov">          4 :                         goto done;</span>
+<span class="lineNum">    1205 </span>            :                 }
+<span class="lineNum">    1206 </span>            :         }
+<span class="lineNum">    1207 </span>            : 
+<span class="lineNum">    1208 </span>            : done:
+<span class="lineNum">    1209 </span><span class="lineCov">      18958 :         mono_w32handle_unlock_handle (handle);</span>
+<span class="lineNum">    1210 </span>            : 
+<span class="lineNum">    1211 </span><span class="lineCov">      18958 :         return ret;</span>
+<span class="lineNum">    1212 </span><span class="lineCov">      43038 : }</span>
+<a name="1213"><span class="lineNum">    1213 </span>            : </a>
+<span class="lineNum">    1214 </span>            : MonoW32HandleWaitRet
+<span class="lineNum">    1215 </span>            : mono_w32handle_wait_multiple (gpointer *handles, gsize nhandles, gboolean waitall, guint32 timeout, gboolean alertable)
+<span class="lineNum">    1216 </span>            : {
+<span class="lineNum">    1217 </span>            :         MonoW32HandleWaitRet ret;
+<span class="lineNum">    1218 </span>            :         gboolean alerted, poll;
+<span class="lineNum">    1219 </span>            :         gint i;
+<span class="lineNum">    1220 </span>            :         gint64 start;
+<span class="lineNum">    1221 </span>            :         gpointer handles_sorted [MONO_W32HANDLE_MAXIMUM_WAIT_OBJECTS];
+<span class="lineNum">    1222 </span><span class="lineCov">      36100 :         gboolean abandoned [MONO_W32HANDLE_MAXIMUM_WAIT_OBJECTS] = {0};</span>
+<span class="lineNum">    1223 </span>            : 
+<span class="lineNum">    1224 </span><span class="lineCov">      36100 :         if (nhandles == 0)</span>
+<span class="lineNum">    1225 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">    1226 </span>            : 
+<span class="lineNum">    1227 </span><span class="lineCov">      36048 :         if (nhandles == 1)</span>
+<span class="lineNum">    1228 </span><span class="lineCov">      34670 :                 return mono_w32handle_wait_one (handles [0], timeout, alertable);</span>
+<span class="lineNum">    1229 </span>            : 
+<span class="lineNum">    1230 </span><span class="lineCov">       1400 :         alerted = FALSE;</span>
+<span class="lineNum">    1231 </span>            : 
+<span class="lineNum">    1232 </span><span class="lineCov">       1400 :         if (nhandles &gt; MONO_W32HANDLE_MAXIMUM_WAIT_OBJECTS) {</span>
+<span class="lineNum">    1233 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: too many handles: %zd&quot;,</span>
+<span class="lineNum">    1234 </span><span class="lineNoCov">          0 :                         __func__, nhandles);</span>
+<span class="lineNum">    1235 </span>            : 
+<span class="lineNum">    1236 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">    1237 </span>            :         }
+<span class="lineNum">    1238 </span>            : 
+<span class="lineNum">    1239 </span><span class="lineCov">       8400 :         for (i = 0; i &lt; nhandles; ++i) {</span>
+<span class="lineNum">    1240 </span><span class="lineCov">       2800 :                 if (!mono_w32handle_test_capabilities (handles[i], MONO_W32HANDLE_CAP_WAIT)</span>
+<span class="lineNum">    1241 </span><span class="lineCov">       2800 :                          &amp;&amp; !mono_w32handle_test_capabilities (handles[i], MONO_W32HANDLE_CAP_SPECIAL_WAIT))</span>
+<span class="lineNum">    1242 </span>            :                 {
+<span class="lineNum">    1243 </span><span class="lineNoCov">          0 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: handle %p can't be waited for&quot;,</span>
+<span class="lineNum">    1244 </span><span class="lineNoCov">          0 :                                    __func__, handles [i]);</span>
+<span class="lineNum">    1245 </span>            : 
+<span class="lineNum">    1246 </span><span class="lineNoCov">          0 :                         return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">    1247 </span>            :                 }
+<span class="lineNum">    1248 </span>            : 
+<span class="lineNum">    1249 </span><span class="lineCov">       2800 :                 handles_sorted [i] = handles [i];</span>
+<span class="lineNum">    1250 </span><span class="lineCov">       2800 :         }</span>
+<span class="lineNum">    1251 </span>            : 
+<span class="lineNum">    1252 </span><span class="lineCov">       1400 :         qsort (handles_sorted, nhandles, sizeof (gpointer), g_direct_equal);</span>
+<span class="lineNum">    1253 </span><span class="lineCov">       5600 :         for (i = 1; i &lt; nhandles; ++i) {</span>
+<span class="lineNum">    1254 </span><span class="lineCov">       1400 :                 if (handles_sorted [i - 1] == handles_sorted [i]) {</span>
+<span class="lineNum">    1255 </span><span class="lineNoCov">          0 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: handle %p is duplicated&quot;,</span>
+<span class="lineNum">    1256 </span><span class="lineNoCov">          0 :                                 __func__, handles_sorted [i]);</span>
+<span class="lineNum">    1257 </span>            : 
+<span class="lineNum">    1258 </span><span class="lineNoCov">          0 :                         return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">    1259 </span>            :                 }
+<span class="lineNum">    1260 </span><span class="lineCov">       1400 :         }</span>
+<span class="lineNum">    1261 </span>            : 
+<span class="lineNum">    1262 </span><span class="lineCov">       1400 :         poll = FALSE;</span>
+<span class="lineNum">    1263 </span><span class="lineCov">       8400 :         for (i = 0; i &lt; nhandles; ++i) {</span>
+<span class="lineNum">    1264 </span><span class="lineCov">       2800 :                 if (mono_w32handle_get_type (handles [i]) == MONO_W32HANDLE_PROCESS) {</span>
+<span class="lineNum">    1265 </span>            :                         /* Can't wait for a process handle + another handle without polling */
+<span class="lineNum">    1266 </span><span class="lineCov">       1400 :                         poll = TRUE;</span>
+<span class="lineNum">    1267 </span><span class="lineCov">       1400 :                 }</span>
+<span class="lineNum">    1268 </span><span class="lineCov">       2800 :         }</span>
+<span class="lineNum">    1269 </span>            : 
+<span class="lineNum">    1270 </span><span class="lineCov">       1400 :         if (timeout != MONO_INFINITE_WAIT)</span>
+<span class="lineNum">    1271 </span><span class="lineNoCov">          0 :                 start = mono_msec_ticks ();</span>
+<span class="lineNum">    1272 </span>            : 
+<span class="lineNum">    1273 </span><span class="lineCov">       8400 :         for (i = 0; i &lt; nhandles; ++i) {</span>
+<span class="lineNum">    1274 </span>            :                 /* Add a reference, as we need to ensure the handle wont
+<span class="lineNum">    1275 </span>            :                  * disappear from under us while we're waiting in the loop
+<span class="lineNum">    1276 </span>            :                  * (not lock, as we don't want exclusive access here) */
+<span class="lineNum">    1277 </span><span class="lineCov">       2800 :                 mono_w32handle_ref (handles [i]);</span>
+<span class="lineNum">    1278 </span><span class="lineCov">       2800 :         }</span>
+<span class="lineNum">    1279 </span>            : 
+<span class="lineNum">    1280 </span><span class="lineCov">       4266 :         for (;;) {</span>
+<span class="lineNum">    1281 </span>            :                 gsize count, lowest;
+<span class="lineNum">    1282 </span>            :                 gboolean signalled;
+<span class="lineNum">    1283 </span>            :                 gint waited;
+<span class="lineNum">    1284 </span>            : 
+<span class="lineNum">    1285 </span><span class="lineCov">       4266 :                 count = 0;</span>
+<span class="lineNum">    1286 </span><span class="lineCov">       4266 :                 lowest = nhandles;</span>
+<span class="lineNum">    1287 </span>            : 
+<span class="lineNum">    1288 </span><span class="lineCov">       4266 :                 mono_w32handle_lock_handles (handles, nhandles);</span>
+<span class="lineNum">    1289 </span>            : 
+<span class="lineNum">    1290 </span><span class="lineCov">      25596 :                 for (i = 0; i &lt; nhandles; i++) {</span>
+<span class="lineNum">    1291 </span><span class="lineCov">      17064 :                         if ((mono_w32handle_test_capabilities (handles [i], MONO_W32HANDLE_CAP_OWN) &amp;&amp; mono_w32handle_ops_isowned (handles [i]))</span>
+<span class="lineNum">    1292 </span><span class="lineCov">       8532 :                                  || mono_w32handle_issignalled (handles [i]))</span>
+<span class="lineNum">    1293 </span>            :                         {
+<span class="lineNum">    1294 </span><span class="lineCov">       1400 :                                 count ++;</span>
+<span class="lineNum">    1295 </span>            : 
+<span class="lineNum">    1296 </span><span class="lineCov">       1400 :                                 if (i &lt; lowest)</span>
+<span class="lineNum">    1297 </span><span class="lineCov">       1400 :                                         lowest = i;</span>
+<span class="lineNum">    1298 </span><span class="lineCov">       1400 :                         }</span>
+<span class="lineNum">    1299 </span><span class="lineCov">       8532 :                 }</span>
+<span class="lineNum">    1300 </span>            : 
+<span class="lineNum">    1301 </span><span class="lineCov">      21330 :                 signalled = (waitall &amp;&amp; count == nhandles) || (!waitall &amp;&amp; count &gt; 0);</span>
+<span class="lineNum">    1302 </span>            : 
+<span class="lineNum">    1303 </span><span class="lineCov">       4266 :                 if (signalled) {</span>
+<span class="lineNum">    1304 </span><span class="lineCov">       8400 :                         for (i = 0; i &lt; nhandles; i++)</span>
+<span class="lineNum">    1305 </span><span class="lineCov">       2800 :                                 own_if_signalled (handles [i], &amp;abandoned [i]);</span>
+<span class="lineNum">    1306 </span><span class="lineCov">       1400 :                 }</span>
+<span class="lineNum">    1307 </span>            : 
+<span class="lineNum">    1308 </span><span class="lineCov">       4266 :                 mono_w32handle_unlock_handles (handles, nhandles);</span>
+<span class="lineNum">    1309 </span>            : 
+<span class="lineNum">    1310 </span><span class="lineCov">       4266 :                 if (signalled) {</span>
+<span class="lineNum">    1311 </span><span class="lineCov">       1400 :                         ret = MONO_W32HANDLE_WAIT_RET_SUCCESS_0 + lowest;</span>
+<span class="lineNum">    1312 </span><span class="lineCov">       8400 :                         for (i = lowest; i &lt; nhandles; i++) {</span>
+<span class="lineNum">    1313 </span><span class="lineCov">       2800 :                                 if (abandoned [i]) {</span>
+<span class="lineNum">    1314 </span><span class="lineNoCov">          0 :                                         ret = MONO_W32HANDLE_WAIT_RET_ABANDONED_0 + lowest;</span>
+<span class="lineNum">    1315 </span><span class="lineNoCov">          0 :                                         break;</span>
+<span class="lineNum">    1316 </span>            :                                 }
+<span class="lineNum">    1317 </span><span class="lineCov">       2800 :                         }</span>
+<span class="lineNum">    1318 </span><span class="lineCov">       1400 :                         goto done;</span>
+<span class="lineNum">    1319 </span>            :                 }
+<span class="lineNum">    1320 </span>            : 
+<span class="lineNum">    1321 </span><span class="lineCov">      17196 :                 for (i = 0; i &lt; nhandles; i++) {</span>
+<span class="lineNum">    1322 </span><span class="lineCov">       5732 :                         mono_w32handle_ops_prewait (handles[i]);</span>
+<span class="lineNum">    1323 </span>            : 
+<span class="lineNum">    1324 </span><span class="lineCov">       8598 :                         if (mono_w32handle_test_capabilities (handles [i], MONO_W32HANDLE_CAP_SPECIAL_WAIT)</span>
+<span class="lineNum">    1325 </span><span class="lineCov">       8598 :                                  &amp;&amp; !mono_w32handle_issignalled (handles [i]))</span>
+<span class="lineNum">    1326 </span>            :                         {
+<span class="lineNum">    1327 </span><span class="lineCov">       8598 :                                 mono_w32handle_ops_specialwait (handles [i], 0, alertable ? &amp;alerted : NULL);</span>
+<span class="lineNum">    1328 </span><span class="lineCov">       2866 :                         }</span>
+<span class="lineNum">    1329 </span><span class="lineCov">       5732 :                 }</span>
+<span class="lineNum">    1330 </span>            : 
+<span class="lineNum">    1331 </span><span class="lineCov">       2866 :                 mono_w32handle_lock_signal_mutex ();</span>
+<span class="lineNum">    1332 </span>            : 
+<span class="lineNum">    1333 </span><span class="lineCov">       2866 :                 if (waitall) {</span>
+<span class="lineNum">    1334 </span><span class="lineNoCov">          0 :                         signalled = TRUE;</span>
+<span class="lineNum">    1335 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; nhandles; ++i) {</span>
+<span class="lineNum">    1336 </span><span class="lineNoCov">          0 :                                 if (!mono_w32handle_issignalled (handles [i])) {</span>
+<span class="lineNum">    1337 </span><span class="lineNoCov">          0 :                                         signalled = FALSE;</span>
+<span class="lineNum">    1338 </span><span class="lineNoCov">          0 :                                         break;</span>
+<span class="lineNum">    1339 </span>            :                                 }
+<span class="lineNum">    1340 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1341 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">    1342 </span><span class="lineCov">       2866 :                         signalled = FALSE;</span>
+<span class="lineNum">    1343 </span><span class="lineCov">      11596 :                         for (i = 0; i &lt; nhandles; ++i) {</span>
+<span class="lineNum">    1344 </span><span class="lineCov">       4332 :                                 if (mono_w32handle_issignalled (handles [i])) {</span>
+<span class="lineNum">    1345 </span><span class="lineCov">       1400 :                                         signalled = TRUE;</span>
+<span class="lineNum">    1346 </span><span class="lineCov">       1400 :                                         break;</span>
+<span class="lineNum">    1347 </span>            :                                 }
+<span class="lineNum">    1348 </span><span class="lineCov">       2932 :                         }</span>
+<span class="lineNum">    1349 </span>            :                 }
+<span class="lineNum">    1350 </span>            : 
+<span class="lineNum">    1351 </span><span class="lineCov">       2866 :                 waited = 0;</span>
+<span class="lineNum">    1352 </span>            : 
+<span class="lineNum">    1353 </span><span class="lineCov">       2866 :                 if (!signalled) {</span>
+<span class="lineNum">    1354 </span><span class="lineCov">       1466 :                         if (timeout == MONO_INFINITE_WAIT) {</span>
+<span class="lineNum">    1355 </span><span class="lineCov">       4398 :                                 waited = mono_w32handle_timedwait_signal (MONO_INFINITE_WAIT, poll, alertable ? &amp;alerted : NULL);</span>
+<span class="lineNum">    1356 </span><span class="lineCov">       1466 :                         } else {</span>
+<span class="lineNum">    1357 </span>            :                                 gint64 elapsed;
+<span class="lineNum">    1358 </span>            : 
+<span class="lineNum">    1359 </span><span class="lineNoCov">          0 :                                 elapsed = mono_msec_ticks () - start;</span>
+<span class="lineNum">    1360 </span><span class="lineNoCov">          0 :                                 if (elapsed &gt; timeout) {</span>
+<span class="lineNum">    1361 </span><span class="lineNoCov">          0 :                                         ret = MONO_W32HANDLE_WAIT_RET_TIMEOUT;</span>
+<span class="lineNum">    1362 </span>            : 
+<span class="lineNum">    1363 </span><span class="lineNoCov">          0 :                                         mono_w32handle_unlock_signal_mutex ();</span>
+<span class="lineNum">    1364 </span>            : 
+<span class="lineNum">    1365 </span><span class="lineNoCov">          0 :                                         goto done;</span>
+<span class="lineNum">    1366 </span>            :                                 }
+<span class="lineNum">    1367 </span>            : 
+<span class="lineNum">    1368 </span><span class="lineNoCov">          0 :                                 waited = mono_w32handle_timedwait_signal (timeout - elapsed, poll, alertable ? &amp;alerted : NULL);</span>
+<span class="lineNum">    1369 </span>            :                         }
+<span class="lineNum">    1370 </span><span class="lineCov">       1466 :                 }</span>
+<span class="lineNum">    1371 </span>            : 
+<span class="lineNum">    1372 </span><span class="lineCov">       2866 :                 mono_w32handle_unlock_signal_mutex ();</span>
+<span class="lineNum">    1373 </span>            : 
+<span class="lineNum">    1374 </span><span class="lineCov">       2866 :                 if (alerted) {</span>
+<span class="lineNum">    1375 </span><span class="lineNoCov">          0 :                         ret = MONO_W32HANDLE_WAIT_RET_ALERTED;</span>
+<span class="lineNum">    1376 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">    1377 </span>            :                 }
+<span class="lineNum">    1378 </span>            : 
+<span class="lineNum">    1379 </span><span class="lineCov">       2866 :                 if (waited != 0) {</span>
+<span class="lineNum">    1380 </span><span class="lineNoCov">          0 :                         ret = MONO_W32HANDLE_WAIT_RET_TIMEOUT;</span>
+<span class="lineNum">    1381 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">    1382 </span>            :                 }
+<span class="lineNum">    1383 </span>            :         }
+<span class="lineNum">    1384 </span>            : 
+<span class="lineNum">    1385 </span>            : done:
+<span class="lineNum">    1386 </span><span class="lineCov">       8400 :         for (i = 0; i &lt; nhandles; i++) {</span>
+<span class="lineNum">    1387 </span>            :                 /* Unref everything we reffed above */
+<span class="lineNum">    1388 </span><span class="lineCov">       2800 :                 mono_w32handle_unref (handles [i]);</span>
+<span class="lineNum">    1389 </span><span class="lineCov">       2800 :         }</span>
+<span class="lineNum">    1390 </span>            : 
+<span class="lineNum">    1391 </span><span class="lineCov">       1400 :         return ret;</span>
+<span class="lineNum">    1392 </span><span class="lineCov">      36127 : }</span>
+<a name="1393"><span class="lineNum">    1393 </span>            : </a>
+<span class="lineNum">    1394 </span>            : MonoW32HandleWaitRet
+<span class="lineNum">    1395 </span>            : mono_w32handle_signal_and_wait (gpointer signal_handle, gpointer wait_handle, guint32 timeout, gboolean alertable)
+<span class="lineNum">    1396 </span>            : {
+<span class="lineNum">    1397 </span>            :         MonoW32HandleWaitRet ret;
+<span class="lineNum">    1398 </span>            :         gint64 start;
+<span class="lineNum">    1399 </span>            :         gboolean alerted;
+<span class="lineNum">    1400 </span><span class="lineNoCov">          0 :         gboolean abandoned = FALSE;</span>
+<span class="lineNum">    1401 </span>            :         gpointer handles [2];
+<span class="lineNum">    1402 </span>            : 
+<span class="lineNum">    1403 </span><span class="lineNoCov">          0 :         alerted = FALSE;</span>
+<span class="lineNum">    1404 </span>            : 
+<span class="lineNum">    1405 </span><span class="lineNoCov">          0 :         if (!mono_w32handle_test_capabilities (signal_handle, MONO_W32HANDLE_CAP_SIGNAL))</span>
+<span class="lineNum">    1406 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">    1407 </span><span class="lineNoCov">          0 :         if (!mono_w32handle_test_capabilities (wait_handle, MONO_W32HANDLE_CAP_WAIT))</span>
+<span class="lineNum">    1408 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">    1409 </span>            : 
+<span class="lineNum">    1410 </span><span class="lineNoCov">          0 :         if (mono_w32handle_test_capabilities (wait_handle, MONO_W32HANDLE_CAP_SPECIAL_WAIT)) {</span>
+<span class="lineNum">    1411 </span><span class="lineNoCov">          0 :                 g_warning (&quot;%s: handle %p has special wait, implement me!!&quot;, __func__, wait_handle);</span>
+<span class="lineNum">    1412 </span><span class="lineNoCov">          0 :                 return MONO_W32HANDLE_WAIT_RET_FAILED;</span>
+<span class="lineNum">    1413 </span>            :         }
+<span class="lineNum">    1414 </span>            : 
+<span class="lineNum">    1415 </span><span class="lineNoCov">          0 :         handles [0] = wait_handle;</span>
+<span class="lineNum">    1416 </span><span class="lineNoCov">          0 :         handles [1] = signal_handle;</span>
+<span class="lineNum">    1417 </span>            : 
+<span class="lineNum">    1418 </span><span class="lineNoCov">          0 :         mono_w32handle_lock_handles (handles, 2);</span>
+<span class="lineNum">    1419 </span>            : 
+<span class="lineNum">    1420 </span><span class="lineNoCov">          0 :         mono_w32handle_ops_signal (signal_handle);</span>
+<span class="lineNum">    1421 </span>            : 
+<span class="lineNum">    1422 </span><span class="lineNoCov">          0 :         mono_w32handle_unlock_handle (signal_handle);</span>
+<span class="lineNum">    1423 </span>            : 
+<span class="lineNum">    1424 </span><span class="lineNoCov">          0 :         if (mono_w32handle_test_capabilities (wait_handle, MONO_W32HANDLE_CAP_OWN)) {</span>
+<span class="lineNum">    1425 </span><span class="lineNoCov">          0 :                 if (own_if_owned (wait_handle, &amp;abandoned)) {</span>
+<span class="lineNum">    1426 </span><span class="lineNoCov">          0 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: handle %p already owned&quot;,</span>
+<span class="lineNum">    1427 </span><span class="lineNoCov">          0 :                                 __func__, wait_handle);</span>
+<span class="lineNum">    1428 </span>            : 
+<span class="lineNum">    1429 </span><span class="lineNoCov">          0 :                         ret = abandoned ? MONO_W32HANDLE_WAIT_RET_ABANDONED_0 : MONO_W32HANDLE_WAIT_RET_SUCCESS_0;</span>
+<span class="lineNum">    1430 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">    1431 </span>            :                 }
+<span class="lineNum">    1432 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1433 </span>            : 
+<span class="lineNum">    1434 </span><span class="lineNoCov">          0 :         if (timeout != MONO_INFINITE_WAIT)</span>
+<span class="lineNum">    1435 </span><span class="lineNoCov">          0 :                 start = mono_msec_ticks ();</span>
+<span class="lineNum">    1436 </span>            : 
+<span class="lineNum">    1437 </span><span class="lineNoCov">          0 :         for (;;) {</span>
+<span class="lineNum">    1438 </span>            :                 gint waited;
+<span class="lineNum">    1439 </span>            : 
+<span class="lineNum">    1440 </span><span class="lineNoCov">          0 :                 if (own_if_signalled (wait_handle, &amp;abandoned)) {</span>
+<span class="lineNum">    1441 </span><span class="lineNoCov">          0 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_W32HANDLE, &quot;%s: handle %p signalled&quot;,</span>
+<span class="lineNum">    1442 </span><span class="lineNoCov">          0 :                                 __func__, wait_handle);</span>
+<span class="lineNum">    1443 </span>            : 
+<span class="lineNum">    1444 </span><span class="lineNoCov">          0 :                         ret = abandoned ? MONO_W32HANDLE_WAIT_RET_ABANDONED_0 : MONO_W32HANDLE_WAIT_RET_SUCCESS_0;</span>
+<span class="lineNum">    1445 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">    1446 </span>            :                 }
+<span class="lineNum">    1447 </span>            : 
+<span class="lineNum">    1448 </span><span class="lineNoCov">          0 :                 mono_w32handle_ops_prewait (wait_handle);</span>
+<span class="lineNum">    1449 </span>            : 
+<span class="lineNum">    1450 </span><span class="lineNoCov">          0 :                 if (timeout == MONO_INFINITE_WAIT) {</span>
+<span class="lineNum">    1451 </span><span class="lineNoCov">          0 :                         waited = mono_w32handle_timedwait_signal_handle (wait_handle, MONO_INFINITE_WAIT, FALSE, alertable ? &amp;alerted : NULL);</span>
+<span class="lineNum">    1452 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">    1453 </span>            :                         gint64 elapsed;
+<span class="lineNum">    1454 </span>            : 
+<span class="lineNum">    1455 </span><span class="lineNoCov">          0 :                         elapsed = mono_msec_ticks () - start;</span>
+<span class="lineNum">    1456 </span><span class="lineNoCov">          0 :                         if (elapsed &gt; timeout) {</span>
+<span class="lineNum">    1457 </span><span class="lineNoCov">          0 :                                 ret = MONO_W32HANDLE_WAIT_RET_TIMEOUT;</span>
+<span class="lineNum">    1458 </span><span class="lineNoCov">          0 :                                 goto done;</span>
+<span class="lineNum">    1459 </span>            :                         }
+<span class="lineNum">    1460 </span>            : 
+<span class="lineNum">    1461 </span><span class="lineNoCov">          0 :                         waited = mono_w32handle_timedwait_signal_handle (wait_handle, timeout - elapsed, FALSE, alertable ? &amp;alerted : NULL);</span>
+<span class="lineNum">    1462 </span>            :                 }
+<span class="lineNum">    1463 </span>            : 
+<span class="lineNum">    1464 </span><span class="lineNoCov">          0 :                 if (alerted) {</span>
+<span class="lineNum">    1465 </span><span class="lineNoCov">          0 :                         ret = MONO_W32HANDLE_WAIT_RET_ALERTED;</span>
+<span class="lineNum">    1466 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">    1467 </span>            :                 }
+<span class="lineNum">    1468 </span>            : 
+<span class="lineNum">    1469 </span><span class="lineNoCov">          0 :                 if (waited != 0) {</span>
+<span class="lineNum">    1470 </span><span class="lineNoCov">          0 :                         ret = MONO_W32HANDLE_WAIT_RET_TIMEOUT;</span>
+<span class="lineNum">    1471 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">    1472 </span>            :                 }
+<span class="lineNum">    1473 </span>            :         }
+<span class="lineNum">    1474 </span>            : 
+<span class="lineNum">    1475 </span>            : done:
+<span class="lineNum">    1476 </span><span class="lineNoCov">          0 :         mono_w32handle_unlock_handle (wait_handle);</span>
+<span class="lineNum">    1477 </span>            : 
+<span class="lineNum">    1478 </span><span class="lineNoCov">          0 :         return ret;</span>
+<span class="lineNum">    1479 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

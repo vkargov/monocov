@@ -1,0 +1,327 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-hash-table.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-hash-table.c<span style="font-size: 80%;"> (source / <a href="sgen-hash-table.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">79</td>
+            <td class="headerCovTableEntry">106</td>
+            <td class="headerCovTableEntryLo">74.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntryMed">80.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-hash-table.c
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Permission is hereby granted, free of charge, to any person obtaining
+<span class="lineNum">       5 </span>            :  * a copy of this software and associated documentation files (the
+<span class="lineNum">       6 </span>            :  * &quot;Software&quot;), to deal in the Software without restriction, including
+<span class="lineNum">       7 </span>            :  * without limitation the rights to use, copy, modify, merge, publish,
+<span class="lineNum">       8 </span>            :  * distribute, sublicense, and/or sell copies of the Software, and to
+<span class="lineNum">       9 </span>            :  * permit persons to whom the Software is furnished to do so, subject to
+<span class="lineNum">      10 </span>            :  * the following conditions:
+<span class="lineNum">      11 </span>            :  * 
+<span class="lineNum">      12 </span>            :  * The above copyright notice and this permission notice shall be
+<span class="lineNum">      13 </span>            :  * included in all copies or substantial portions of the Software.
+<span class="lineNum">      14 </span>            :  * 
+<span class="lineNum">      15 </span>            :  * THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+<span class="lineNum">      16 </span>            :  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+<span class="lineNum">      17 </span>            :  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+<span class="lineNum">      18 </span>            :  * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+<span class="lineNum">      19 </span>            :  * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+<span class="lineNum">      20 </span>            :  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+<span class="lineNum">      21 </span>            :  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+<span class="lineNum">      22 </span>            :  */
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      27 </span>            : 
+<span class="lineNum">      28 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : #include &lt;mono/sgen/sgen-gc.h&gt;
+<span class="lineNum">      31 </span>            : #include &lt;mono/sgen/sgen-hash-table.h&gt;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">      34 </span>            : static guint64 stat_lookups;
+<span class="lineNum">      35 </span>            : static guint64 stat_lookup_iterations;
+<span class="lineNum">      36 </span>            : static guint64 stat_lookup_max_iterations;
+<span class="lineNum">      37 </span>            : #endif
+<a name="38"><span class="lineNum">      38 </span>            : </a>
+<span class="lineNum">      39 </span>            : static void
+<span class="lineNum">      40 </span>            : rehash (SgenHashTable *hash_table)
+<span class="lineNum">      41 </span>            : {
+<span class="lineNum">      42 </span><span class="lineCov">      25344 :         SgenHashTableEntry **old_hash = hash_table-&gt;table;</span>
+<span class="lineNum">      43 </span><span class="lineCov">      25344 :         guint old_hash_size = hash_table-&gt;size;</span>
+<span class="lineNum">      44 </span>            :         guint i, hash, new_size;
+<span class="lineNum">      45 </span>            :         SgenHashTableEntry **new_hash;
+<span class="lineNum">      46 </span>            :         SgenHashTableEntry *entry, *next;
+<span class="lineNum">      47 </span>            : 
+<span class="lineNum">      48 </span><span class="lineCov">      25344 :         if (!old_hash) {</span>
+<span class="lineNum">      49 </span><span class="lineCov">      31212 :                 sgen_register_fixed_internal_mem_type (hash_table-&gt;entry_mem_type,</span>
+<span class="lineNum">      50 </span><span class="lineCov">      15606 :                                 sizeof (SgenHashTableEntry*) + sizeof (gpointer) + hash_table-&gt;data_size);</span>
+<span class="lineNum">      51 </span><span class="lineCov">      15606 :                 new_size = 13;</span>
+<span class="lineNum">      52 </span><span class="lineCov">      15606 :         } else {</span>
+<span class="lineNum">      53 </span><span class="lineCov">       9738 :                 new_size = g_spaced_primes_closest (hash_table-&gt;num_entries);</span>
+<span class="lineNum">      54 </span>            :         }
+<span class="lineNum">      55 </span>            : 
+<span class="lineNum">      56 </span><span class="lineCov">      25344 :         new_hash = (SgenHashTableEntry **)sgen_alloc_internal_dynamic (new_size * sizeof (SgenHashTableEntry*), hash_table-&gt;table_mem_type, TRUE);</span>
+<span class="lineNum">      57 </span><span class="lineCov">    5850860 :         for (i = 0; i &lt; old_hash_size; ++i) {</span>
+<span class="lineNum">      58 </span><span class="lineCov">   17400516 :                 for (entry = old_hash [i]; entry; entry = next) {</span>
+<span class="lineNum">      59 </span><span class="lineCov">    5800172 :                         hash = hash_table-&gt;hash_func (entry-&gt;key) % new_size;</span>
+<span class="lineNum">      60 </span><span class="lineCov">    5800172 :                         next = entry-&gt;next;</span>
+<span class="lineNum">      61 </span><span class="lineCov">    5800172 :                         entry-&gt;next = new_hash [hash];</span>
+<span class="lineNum">      62 </span><span class="lineCov">    5800172 :                         new_hash [hash] = entry;</span>
+<span class="lineNum">      63 </span><span class="lineCov">    5800172 :                 }</span>
+<span class="lineNum">      64 </span><span class="lineCov">    2900086 :         }</span>
+<span class="lineNum">      65 </span><span class="lineCov">      25344 :         sgen_free_internal_dynamic (old_hash, old_hash_size * sizeof (SgenHashTableEntry*), hash_table-&gt;table_mem_type);</span>
+<span class="lineNum">      66 </span><span class="lineCov">      25344 :         hash_table-&gt;table = new_hash;</span>
+<span class="lineNum">      67 </span><span class="lineCov">      25344 :         hash_table-&gt;size = new_size;</span>
+<span class="lineNum">      68 </span><span class="lineCov">      25344 : }</span>
+<a name="69"><span class="lineNum">      69 </span>            : </a>
+<span class="lineNum">      70 </span>            : static void
+<span class="lineNum">      71 </span>            : rehash_if_necessary (SgenHashTable *hash_table)
+<span class="lineNum">      72 </span>            : {
+<span class="lineNum">      73 </span><span class="lineCov">   10747222 :         if (hash_table-&gt;num_entries &gt;= hash_table-&gt;size * 2)</span>
+<span class="lineNum">      74 </span><span class="lineCov">      25344 :                 rehash (hash_table);</span>
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span><span class="lineCov">   32241666 :         SGEN_ASSERT (1, hash_table-&gt;size, &quot;rehash guarantees size &gt; 0&quot;);</span>
+<span class="lineNum">      77 </span><span class="lineCov">   10747222 : }</span>
+<a name="78"><span class="lineNum">      78 </span>            : </a>
+<span class="lineNum">      79 </span>            : static SgenHashTableEntry*
+<span class="lineNum">      80 </span>            : lookup (SgenHashTable *hash_table, gpointer key, guint *_hash)
+<span class="lineNum">      81 </span>            : {
+<span class="lineNum">      82 </span>            :         SgenHashTableEntry *entry;
+<span class="lineNum">      83 </span>            :         guint hash;
+<span class="lineNum">      84 </span><span class="lineCov">   10898484 :         GEqualFunc equal = hash_table-&gt;equal_func;</span>
+<span class="lineNum">      85 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">      86 </span>            :         guint64 iterations = 0;
+<span class="lineNum">      87 </span>            :         ++stat_lookups;
+<span class="lineNum">      88 </span>            : #endif
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span><span class="lineCov">   10898484 :         if (!hash_table-&gt;size)</span>
+<span class="lineNum">      91 </span><span class="lineCov">      26280 :                 return NULL;</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span><span class="lineCov">   10872204 :         hash = hash_table-&gt;hash_func (key) % hash_table-&gt;size;</span>
+<span class="lineNum">      94 </span><span class="lineCov">   10872204 :         if (_hash)</span>
+<span class="lineNum">      95 </span><span class="lineCov">    7263213 :                 *_hash = hash;</span>
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span><span class="lineCov">   44635560 :         for (entry = hash_table-&gt;table [hash]; entry; entry = entry-&gt;next) {</span>
+<span class="lineNum">      98 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">      99 </span>            :                 ++stat_lookup_iterations;
+<span class="lineNum">     100 </span>            :                 ++iterations;
+<span class="lineNum">     101 </span>            :                 if (iterations &gt; stat_lookup_max_iterations)
+<span class="lineNum">     102 </span>            :                         stat_lookup_max_iterations = iterations;
+<span class="lineNum">     103 </span>            : #endif
+<span class="lineNum">     104 </span><span class="lineCov">   34343786 :                 if ((equal &amp;&amp; equal (entry-&gt;key, key)) || (!equal &amp;&amp; entry-&gt;key == key))</span>
+<span class="lineNum">     105 </span><span class="lineCov">       3529 :                         return entry;</span>
+<span class="lineNum">     106 </span><span class="lineCov">   11445576 :         }</span>
+<span class="lineNum">     107 </span><span class="lineCov">   10868675 :         return NULL;</span>
+<span class="lineNum">     108 </span><span class="lineCov">   10898484 : }</span>
+<a name="109"><span class="lineNum">     109 </span>            : </a>
+<span class="lineNum">     110 </span>            : gpointer
+<span class="lineNum">     111 </span>            : sgen_hash_table_lookup (SgenHashTable *hash_table, gpointer key)
+<span class="lineNum">     112 </span>            : {
+<span class="lineNum">     113 </span><span class="lineCov">    3635271 :         SgenHashTableEntry *entry = lookup (hash_table, key, NULL);</span>
+<span class="lineNum">     114 </span><span class="lineCov">    3635271 :         if (!entry)</span>
+<span class="lineNum">     115 </span><span class="lineCov">    3635271 :                 return NULL;</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :         return entry-&gt;data;</span>
+<span class="lineNum">     117 </span><span class="lineCov">    3635271 : }</span>
+<a name="118"><span class="lineNum">     118 </span>            : </a>
+<span class="lineNum">     119 </span>            : gboolean
+<span class="lineNum">     120 </span>            : sgen_hash_table_replace (SgenHashTable *hash_table, gpointer key, gpointer new_value, gpointer old_value)
+<span class="lineNum">     121 </span>            : {
+<span class="lineNum">     122 </span>            :         guint hash;
+<span class="lineNum">     123 </span>            :         SgenHashTableEntry *entry;
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span><span class="lineCov">    7263213 :         rehash_if_necessary (hash_table);</span>
+<span class="lineNum">     126 </span><span class="lineCov">    7263213 :         entry = lookup (hash_table, key, &amp;hash);</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span><span class="lineCov">    7263213 :         if (entry) {</span>
+<span class="lineNum">     129 </span><span class="lineCov">       3529 :                 if (old_value)</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :                         memcpy (old_value, entry-&gt;data, hash_table-&gt;data_size);   </span>
+<span class="lineNum">     131 </span><span class="lineCov">       3529 :                 memcpy (entry-&gt;data, new_value, hash_table-&gt;data_size);</span>
+<span class="lineNum">     132 </span><span class="lineCov">       3529 :                 return FALSE;</span>
+<span class="lineNum">     133 </span>            :         }
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span><span class="lineCov">    7259684 :         entry = (SgenHashTableEntry *)sgen_alloc_internal (hash_table-&gt;entry_mem_type);</span>
+<span class="lineNum">     136 </span><span class="lineCov">    7259684 :         entry-&gt;key = key;</span>
+<span class="lineNum">     137 </span><span class="lineCov">    7259684 :         memcpy (entry-&gt;data, new_value, hash_table-&gt;data_size);</span>
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span><span class="lineCov">    7259684 :         entry-&gt;next = hash_table-&gt;table [hash];</span>
+<span class="lineNum">     140 </span><span class="lineCov">    7259684 :         hash_table-&gt;table [hash] = entry;</span>
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span><span class="lineCov">    7259684 :         hash_table-&gt;num_entries++;</span>
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span><span class="lineCov">    7259684 :         return TRUE;</span>
+<span class="lineNum">     145 </span><span class="lineCov">    7263213 : }</span>
+<a name="146"><span class="lineNum">     146 </span>            : </a>
+<span class="lineNum">     147 </span>            : gboolean
+<span class="lineNum">     148 </span>            : sgen_hash_table_set_value (SgenHashTable *hash_table, gpointer key, gpointer new_value, gpointer old_value)
+<span class="lineNum">     149 </span>            : {
+<span class="lineNum">     150 </span>            :         guint hash;
+<span class="lineNum">     151 </span>            :         SgenHashTableEntry *entry;
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :         entry = lookup (hash_table, key, &amp;hash);</span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :         if (entry) {</span>
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :                 if (old_value)</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :                         memcpy (old_value, entry-&gt;data, hash_table-&gt;data_size);</span>
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :                 memcpy (entry-&gt;data, new_value, hash_table-&gt;data_size);</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     160 </span>            :         }
+<span class="lineNum">     161 </span>            : 
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 : }</span>
+<a name="164"><span class="lineNum">     164 </span>            : </a>
+<span class="lineNum">     165 </span>            : gboolean
+<span class="lineNum">     166 </span>            : sgen_hash_table_set_key (SgenHashTable *hash_table, gpointer old_key, gpointer new_key)
+<span class="lineNum">     167 </span>            : {
+<span class="lineNum">     168 </span>            :         guint hash;
+<span class="lineNum">     169 </span>            :         SgenHashTableEntry *entry;
+<span class="lineNum">     170 </span>            : 
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :         entry = lookup (hash_table, old_key, &amp;hash);</span>
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :         if (entry) {</span>
+<span class="lineNum">     174 </span><span class="lineNoCov">          0 :                 entry-&gt;key = new_key;</span>
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     176 </span>            :         }
+<span class="lineNum">     177 </span>            : 
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 : }</span>
+<a name="180"><span class="lineNum">     180 </span>            : </a>
+<span class="lineNum">     181 </span>            : gboolean
+<span class="lineNum">     182 </span>            : sgen_hash_table_remove (SgenHashTable *hash_table, gpointer key, gpointer data_return)
+<span class="lineNum">     183 </span>            : {
+<span class="lineNum">     184 </span>            :         SgenHashTableEntry *entry, *prev;
+<span class="lineNum">     185 </span>            :         guint hash;
+<span class="lineNum">     186 </span><span class="lineCov">    3484009 :         GEqualFunc equal = hash_table-&gt;equal_func;</span>
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span><span class="lineCov">    3484009 :         rehash_if_necessary (hash_table);</span>
+<span class="lineNum">     189 </span><span class="lineCov">    3484009 :         hash = hash_table-&gt;hash_func (key) % hash_table-&gt;size;</span>
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span><span class="lineCov">    3484009 :         prev = NULL;</span>
+<span class="lineNum">     192 </span><span class="lineCov">    8791288 :         for (entry = hash_table-&gt;table [hash]; entry; entry = entry-&gt;next) {</span>
+<span class="lineNum">     193 </span><span class="lineCov">    4682566 :                 if ((equal &amp;&amp; equal (entry-&gt;key, key)) || (!equal &amp;&amp; entry-&gt;key == key)) {</span>
+<span class="lineNum">     194 </span><span class="lineCov">     925241 :                         if (prev)</span>
+<span class="lineNum">     195 </span><span class="lineCov">      39894 :                                 prev-&gt;next = entry-&gt;next;</span>
+<span class="lineNum">     196 </span>            :                         else
+<span class="lineNum">     197 </span><span class="lineCov">     885347 :                                 hash_table-&gt;table [hash] = entry-&gt;next;</span>
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span><span class="lineCov">     925241 :                         hash_table-&gt;num_entries--;</span>
+<span class="lineNum">     200 </span>            : 
+<span class="lineNum">     201 </span><span class="lineCov">     925241 :                         if (data_return)</span>
+<span class="lineNum">     202 </span><span class="lineCov">      97179 :                                 memcpy (data_return, entry-&gt;data, hash_table-&gt;data_size);</span>
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span><span class="lineCov">     925241 :                         sgen_free_internal (entry, hash_table-&gt;entry_mem_type);</span>
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span><span class="lineCov">     925241 :                         return TRUE;</span>
+<span class="lineNum">     207 </span>            :                 }
+<span class="lineNum">     208 </span><span class="lineCov">     911635 :                 prev = entry;</span>
+<span class="lineNum">     209 </span><span class="lineCov">     911635 :         }</span>
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineCov">    2558768 :         return FALSE;</span>
+<span class="lineNum">     212 </span><span class="lineCov">    3484009 : }</span>
+<a name="213"><span class="lineNum">     213 </span>            : </a>
+<span class="lineNum">     214 </span>            : void
+<span class="lineNum">     215 </span>            : sgen_hash_table_clean (SgenHashTable *hash_table)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span>            :         guint i;
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span><span class="lineCov">     379930 :         if (!hash_table-&gt;size) {</span>
+<span class="lineNum">     220 </span><span class="lineCov">    1139790 :                 SGEN_ASSERT (1, !hash_table-&gt;table, &quot;clean should reset hash_table-&gt;table&quot;);</span>
+<span class="lineNum">     221 </span><span class="lineCov">    1139790 :                 SGEN_ASSERT (1, !hash_table-&gt;num_entries, &quot;clean should reset hash_table-&gt;num_entries&quot;);</span>
+<span class="lineNum">     222 </span><span class="lineCov">     379930 :                 return;</span>
+<span class="lineNum">     223 </span>            :         }
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; hash_table-&gt;size; ++i) {</span>
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :                 SgenHashTableEntry *entry = hash_table-&gt;table [i];</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :                 while (entry) {</span>
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :                         SgenHashTableEntry *next = entry-&gt;next;</span>
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :                         sgen_free_internal (entry, hash_table-&gt;entry_mem_type);</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :                         entry = next;</span>
+<span class="lineNum">     231 </span>            :                 }
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (hash_table-&gt;table, hash_table-&gt;size * sizeof (SgenHashTableEntry*), hash_table-&gt;table_mem_type);</span>
+<span class="lineNum">     235 </span>            : 
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 :         hash_table-&gt;table = NULL;</span>
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :         hash_table-&gt;size = 0;</span>
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :         hash_table-&gt;num_entries = 0;</span>
+<span class="lineNum">     239 </span><span class="lineCov">     379930 : }</span>
+<a name="240"><span class="lineNum">     240 </span>            : </a>
+<span class="lineNum">     241 </span>            : void
+<span class="lineNum">     242 </span>            : sgen_init_hash_table (void)
+<span class="lineNum">     243 </span>            : {
+<span class="lineNum">     244 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     245 </span>            :         mono_counters_register (&quot;Hash table lookups&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_lookups);
+<span class="lineNum">     246 </span>            :         mono_counters_register (&quot;Hash table lookup iterations&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_lookup_iterations);
+<span class="lineNum">     247 </span>            :         mono_counters_register (&quot;Hash table lookup max iterations&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_lookup_max_iterations);
+<span class="lineNum">     248 </span>            : #endif
+<span class="lineNum">     249 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     250 </span>            : 
+<span class="lineNum">     251 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

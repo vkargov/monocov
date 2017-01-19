@@ -1,0 +1,201 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/reflection-cache.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - reflection-cache.h<span style="font-size: 80%;"> (source / <a href="reflection-cache.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">44</td>
+            <td class="headerCovTableEntry">46</td>
+            <td class="headerCovTableEntryHi">95.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /* </a>
+<span class="lineNum">       2 </span>            :  * Copyright 2016 Microsoft
+<span class="lineNum">       3 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       4 </span>            :  */
+<span class="lineNum">       5 </span>            : #ifndef __MONO_METADATA_REFLECTION_CACHE_H__
+<span class="lineNum">       6 </span>            : #define __MONO_METADATA_REFLECTION_CACHE_H__
+<span class="lineNum">       7 </span>            : 
+<span class="lineNum">       8 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">       9 </span>            : #include &lt;mono/metadata/domain-internals.h&gt;
+<span class="lineNum">      10 </span>            : #include &lt;mono/metadata/handle.h&gt;
+<span class="lineNum">      11 </span>            : #include &lt;mono/metadata/mono-hash.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;mono/metadata/mempool.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;mono/utils/mono-error-internals.h&gt;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : /*
+<span class="lineNum">      16 </span>            :  * We need to return always the same object for MethodInfo, FieldInfo etc..
+<span class="lineNum">      17 </span>            :  * but we need to consider the reflected type.
+<span class="lineNum">      18 </span>            :  * type uses a different hash, since it uses custom hash/equal functions.
+<span class="lineNum">      19 </span>            :  */
+<span class="lineNum">      20 </span>            : 
+<span class="lineNum">      21 </span>            : typedef struct {
+<span class="lineNum">      22 </span>            :         gpointer item;
+<span class="lineNum">      23 </span>            :         MonoClass *refclass;
+<span class="lineNum">      24 </span>            : } ReflectedEntry;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : gboolean
+<span class="lineNum">      27 </span>            : reflected_equal (gconstpointer a, gconstpointer b);
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : guint
+<span class="lineNum">      30 </span>            : reflected_hash (gconstpointer a);
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : #ifdef HAVE_BOEHM_GC
+<span class="lineNum">      33 </span>            : /* ReflectedEntry doesn't need to be GC tracked */
+<span class="lineNum">      34 </span>            : #define ALLOC_REFENTRY g_new0 (ReflectedEntry, 1)
+<span class="lineNum">      35 </span>            : #define FREE_REFENTRY(entry) g_free ((entry))
+<span class="lineNum">      36 </span>            : #define REFENTRY_REQUIRES_CLEANUP
+<span class="lineNum">      37 </span>            : #else
+<span class="lineNum">      38 </span>            : #define ALLOC_REFENTRY (ReflectedEntry *)mono_mempool_alloc (domain-&gt;mp, sizeof (ReflectedEntry))
+<span class="lineNum">      39 </span>            : /* FIXME: */
+<span class="lineNum">      40 </span>            : #define FREE_REFENTRY(entry)
+<span class="lineNum">      41 </span>            : #endif
+<a name="42"><span class="lineNum">      42 </span>            : </a>
+<span class="lineNum">      43 </span>            : static inline MonoObject*
+<span class="lineNum">      44 </span>            : cache_object (MonoDomain *domain, MonoClass *klass, gpointer item, MonoObject* o)
+<span class="lineNum">      45 </span>            : {
+<span class="lineNum">      46 </span>            :         MonoObject *obj;
+<span class="lineNum">      47 </span>            :         ReflectedEntry pe;
+<span class="lineNum">      48 </span><span class="lineCov">         96 :         pe.item = item;</span>
+<span class="lineNum">      49 </span><span class="lineCov">         96 :         pe.refclass = klass;</span>
+<span class="lineNum">      50 </span><span class="lineCov">         96 :         mono_domain_lock (domain);</span>
+<span class="lineNum">      51 </span><span class="lineCov">         96 :         if (!domain-&gt;refobject_hash)</span>
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 :                 domain-&gt;refobject_hash = mono_g_hash_table_new_type (reflected_hash, reflected_equal, MONO_HASH_VALUE_GC, MONO_ROOT_SOURCE_DOMAIN, &quot;domain reflection objects table&quot;);</span>
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span><span class="lineCov">         96 :         obj = (MonoObject*) mono_g_hash_table_lookup (domain-&gt;refobject_hash, &amp;pe);</span>
+<span class="lineNum">      55 </span><span class="lineCov">         96 :         if (obj == NULL) {</span>
+<span class="lineNum">      56 </span><span class="lineCov">         96 :                 ReflectedEntry *e = ALLOC_REFENTRY;</span>
+<span class="lineNum">      57 </span><span class="lineCov">         96 :                 e-&gt;item = item;</span>
+<span class="lineNum">      58 </span><span class="lineCov">         96 :                 e-&gt;refclass = klass;</span>
+<span class="lineNum">      59 </span><span class="lineCov">         96 :                 mono_g_hash_table_insert (domain-&gt;refobject_hash, e, o);</span>
+<span class="lineNum">      60 </span><span class="lineCov">         96 :                 obj = o;</span>
+<span class="lineNum">      61 </span><span class="lineCov">         96 :         }</span>
+<span class="lineNum">      62 </span><span class="lineCov">         96 :         mono_domain_unlock (domain);</span>
+<span class="lineNum">      63 </span><span class="lineCov">         96 :         return obj;</span>
+<span class="lineNum">      64 </span>            : }
+<span class="lineNum">      65 </span>            : 
+<a name="66"><span class="lineNum">      66 </span>            : </a>
+<span class="lineNum">      67 </span>            : static inline MonoObjectHandle
+<span class="lineNum">      68 </span>            : cache_object_handle (MonoDomain *domain, MonoClass *klass, gpointer item, MonoObjectHandle o)
+<span class="lineNum">      69 </span>            : {
+<span class="lineNum">      70 </span>            :         ReflectedEntry pe;
+<span class="lineNum">      71 </span><span class="lineCov">     248891 :         pe.item = item;</span>
+<span class="lineNum">      72 </span><span class="lineCov">     248891 :         pe.refclass = klass;</span>
+<span class="lineNum">      73 </span><span class="lineCov">     248891 :         mono_domain_lock (domain);</span>
+<span class="lineNum">      74 </span><span class="lineCov">     248891 :         if (!domain-&gt;refobject_hash)</span>
+<span class="lineNum">      75 </span><span class="lineNoCov">          0 :                 domain-&gt;refobject_hash = mono_g_hash_table_new_type (reflected_hash, reflected_equal, MONO_HASH_VALUE_GC, MONO_ROOT_SOURCE_DOMAIN, &quot;domain reflection objects table&quot;);</span>
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span><span class="lineCov">     248887 :         MonoObjectHandle obj = MONO_HANDLE_NEW (MonoObject, mono_g_hash_table_lookup (domain-&gt;refobject_hash, &amp;pe));</span>
+<span class="lineNum">      78 </span><span class="lineCov">     248887 :         if (MONO_HANDLE_IS_NULL (obj)) {</span>
+<span class="lineNum">      79 </span><span class="lineCov">     246418 :                 ReflectedEntry *e = ALLOC_REFENTRY;</span>
+<span class="lineNum">      80 </span><span class="lineCov">     246418 :                 e-&gt;item = item;</span>
+<span class="lineNum">      81 </span><span class="lineCov">     246418 :                 e-&gt;refclass = klass;</span>
+<span class="lineNum">      82 </span><span class="lineCov">     246418 :                 mono_g_hash_table_insert (domain-&gt;refobject_hash, e, MONO_HANDLE_RAW (o));</span>
+<span class="lineNum">      83 </span><span class="lineCov">     246418 :                 MONO_HANDLE_ASSIGN (obj, o);</span>
+<span class="lineNum">      84 </span><span class="lineCov">     246418 :         }</span>
+<span class="lineNum">      85 </span><span class="lineCov">     248886 :         mono_domain_unlock (domain);</span>
+<span class="lineNum">      86 </span><span class="lineCov">     248886 :         return obj;</span>
+<span class="lineNum">      87 </span>            : }
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : #define CACHE_OBJECT(t,p,o,k) ((t) (cache_object (domain, (k), (p), (o))))
+<a name="90"><span class="lineNum">      90 </span>            : </a>
+<span class="lineNum">      91 </span>            : static inline MonoObjectHandle
+<span class="lineNum">      92 </span>            : check_object_handle (MonoDomain* domain, MonoClass *klass, gpointer item)
+<span class="lineNum">      93 </span>            : {
+<span class="lineNum">      94 </span>            :         ReflectedEntry e;
+<span class="lineNum">      95 </span><span class="lineCov">    3208480 :         e.item = item;</span>
+<span class="lineNum">      96 </span><span class="lineCov">    3208480 :         e.refclass = klass;</span>
+<span class="lineNum">      97 </span><span class="lineCov">    3208480 :         mono_domain_lock (domain);</span>
+<span class="lineNum">      98 </span><span class="lineCov">    3208480 :         if (!domain-&gt;refobject_hash)</span>
+<span class="lineNum">      99 </span><span class="lineCov">       3527 :                 domain-&gt;refobject_hash = mono_g_hash_table_new_type (reflected_hash, reflected_equal, MONO_HASH_VALUE_GC, MONO_ROOT_SOURCE_DOMAIN, &quot;domain reflection objects table&quot;);</span>
+<span class="lineNum">     100 </span><span class="lineCov">    3208484 :         MonoObjectHandle obj = MONO_HANDLE_NEW (MonoObject, mono_g_hash_table_lookup (domain-&gt;refobject_hash, &amp;e));</span>
+<span class="lineNum">     101 </span><span class="lineCov">    3208484 :         mono_domain_unlock (domain);</span>
+<span class="lineNum">     102 </span><span class="lineCov">    3208484 :         return obj;</span>
+<span class="lineNum">     103 </span>            : }
+<span class="lineNum">     104 </span>            : 
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span>            : typedef MonoObjectHandle (*ReflectionCacheConstructFunc_handle) (MonoDomain*, MonoClass*, gpointer, gpointer, MonoError *);
+<a name="107"><span class="lineNum">     107 </span>            : </a>
+<span class="lineNum">     108 </span>            : static inline MonoObjectHandle
+<span class="lineNum">     109 </span>            : check_or_construct_handle (MonoDomain *domain, MonoClass *klass, gpointer item, gpointer user_data, MonoError *error, ReflectionCacheConstructFunc_handle construct)
+<span class="lineNum">     110 </span>            : {
+<span class="lineNum">     111 </span><span class="lineCov">    3208449 :         mono_error_init (error);</span>
+<span class="lineNum">     112 </span><span class="lineCov">    3208449 :         MonoObjectHandle obj = check_object_handle (domain, klass, item);</span>
+<span class="lineNum">     113 </span><span class="lineCov">    3208449 :         if (!MONO_HANDLE_IS_NULL (obj))</span>
+<span class="lineNum">     114 </span><span class="lineCov">    2959594 :                 return obj;</span>
+<span class="lineNum">     115 </span><span class="lineCov">     248889 :         MONO_HANDLE_ASSIGN (obj, construct (domain, klass, item, user_data, error));</span>
+<span class="lineNum">     116 </span><span class="lineCov">     746630 :         return_val_if_nok (error, NULL);</span>
+<span class="lineNum">     117 </span>            :         /* note no caching if there was an error in construction */
+<span class="lineNum">     118 </span><span class="lineCov">     248872 :         return cache_object_handle (domain, klass, item, obj);</span>
+<span class="lineNum">     119 </span><span class="lineCov">    3208437 : }</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span>            : #define CHECK_OR_CONSTRUCT_HANDLE(t,p,k,construct,ud) ((t) check_or_construct_handle (domain, (k), (p), (ud), error, (ReflectionCacheConstructFunc_handle) (construct)))
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span>            : #endif /*__MONO_METADATA_REFLECTION_CACHE_H__*/
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

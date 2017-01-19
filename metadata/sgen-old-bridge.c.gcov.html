@@ -1,0 +1,1008 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/sgen-old-bridge.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - sgen-old-bridge.c<span style="font-size: 80%;"> (source / <a href="sgen-old-bridge.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">433</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">51</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-bridge.c: Simple generational GC.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright 2011 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       5 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       6 </span>            :  * Copyright 2001-2003 Ximian, Inc
+<span class="lineNum">       7 </span>            :  * Copyright 2003-2010 Novell, Inc.
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : #include &quot;sgen/sgen-gc.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;sgen-bridge-internals.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;sgen/sgen-hash-table.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;sgen/sgen-qsort.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;sgen/sgen-client.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;utils/mono-logger-internals.h&quot;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : typedef struct {
+<span class="lineNum">      25 </span>            :         int size;
+<span class="lineNum">      26 </span>            :         int capacity;
+<span class="lineNum">      27 </span>            :         char *data;
+<span class="lineNum">      28 </span>            : } DynArray;
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : /*Specializations*/
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : typedef struct {
+<span class="lineNum">      33 </span>            :         DynArray array;
+<span class="lineNum">      34 </span>            : } DynIntArray;
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : typedef struct {
+<span class="lineNum">      37 </span>            :         DynArray array;
+<span class="lineNum">      38 </span>            : } DynPtrArray;
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : typedef struct {
+<span class="lineNum">      41 </span>            :         DynArray array;
+<span class="lineNum">      42 </span>            : } DynSCCArray;
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span>            : /*
+<span class="lineNum">      45 </span><span class="lineNoCov">          0 :  * Bridge data for a single managed object</span>
+<span class="lineNum">      46 </span>            :  *
+<span class="lineNum">      47 </span>            :  * FIXME: Optimizations:
+<span class="lineNum">      48 </span>            :  *
+<span class="lineNum">      49 </span><span class="lineNoCov">          0 :  * Don't allocate a srcs array for just one source.  Most objects have</span>
+<span class="lineNum">      50 </span>            :  * just one source, so use the srcs pointer itself.
+<span class="lineNum">      51 </span>            :  */
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 : typedef struct _HashEntry {</span>
+<span class="lineNum">      53 </span>            :         GCObject *obj;  /* This is a duplicate - it's already stored in the hash table */
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            :         gboolean is_bridge;
+<span class="lineNum">      56 </span><span class="lineNoCov">          0 :         gboolean is_visited;</span>
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            :         int finishing_time;
+<span class="lineNum">      59 </span><span class="lineNoCov">          0 : </span>
+<span class="lineNum">      60 </span>            :         // &quot;Source&quot; managed objects pointing at this destination
+<span class="lineNum">      61 </span>            :         DynPtrArray srcs;
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span><span class="lineNoCov">          0 :         // Index in sccs array of SCC this object was folded into</span>
+<span class="lineNum">      64 </span>            :         int scc_index;
+<span class="lineNum">      65 </span>            : } HashEntry;
+<span class="lineNum">      66 </span><span class="lineNoCov">          0 : </span>
+<span class="lineNum">      67 </span>            : typedef struct {
+<span class="lineNum">      68 </span>            :         HashEntry entry;
+<span class="lineNum">      69 </span>            :         double weight;
+<span class="lineNum">      70 </span>            : } HashEntryWithAccounting;
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 : </span>
+<span class="lineNum">      72 </span>            : // The graph of managed objects/HashEntries is reduced to a graph of strongly connected components
+<span class="lineNum">      73 </span>            : typedef struct _SCC {
+<span class="lineNum">      74 </span><span class="lineNoCov">          0 :         int index;</span>
+<span class="lineNum">      75 </span>            :         int api_index;
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span>            :         // How many bridged objects does this SCC hold references to?
+<span class="lineNum">      78 </span>            :         int num_bridge_entries;
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :         // Index in global sccs array of SCCs holding pointers to this SCC</span>
+<span class="lineNum">      81 </span>            :         DynIntArray xrefs;              /* these are incoming, not outgoing */
+<span class="lineNum">      82 </span>            : } SCC;
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 : </span>
+<span class="lineNum">      84 </span>            : // Maps managed objects to corresponding HashEntry stricts
+<span class="lineNum">      85 </span>            : static SgenHashTable hash_table = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_OLD_BRIDGE_HASH_TABLE, INTERNAL_MEM_OLD_BRIDGE_HASH_TABLE_ENTRY, sizeof (HashEntry), mono_aligned_addr_hash, NULL);
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span>            : static int current_time;
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 : </span>
+<span class="lineNum">      89 </span>            : static gboolean bridge_accounting_enabled = FALSE;
+<span class="lineNum">      90 </span><span class="lineNoCov">          0 : </span>
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 : static SgenBridgeProcessor *bridge_processor;</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span>            : /* Core functions */
+<span class="lineNum">      94 </span>            : /* public */
+<span class="lineNum">      95 </span>            : 
+<span class="lineNum">      96 </span>            : /* private */
+<a name="97"><span class="lineNum">      97 </span>            : </a>
+<span class="lineNum">      98 </span>            : static void
+<span class="lineNum">      99 </span>            : dyn_array_init (DynArray *da)
+<span class="lineNum">     100 </span>            : {
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :         da-&gt;size = 0;</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :         da-&gt;capacity = 0;</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :         da-&gt;data = NULL;</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 : }</span>
+<a name="105"><span class="lineNum">     105 </span>            : </a>
+<span class="lineNum">     106 </span>            : static void
+<span class="lineNum">     107 </span>            : dyn_array_uninit (DynArray *da, int elem_size)
+<span class="lineNum">     108 </span>            : {
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :         if (da-&gt;capacity &lt;= 0)</span>
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (da-&gt;data, elem_size * da-&gt;capacity, INTERNAL_MEM_BRIDGE_DATA);</span>
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :         da-&gt;data = NULL;</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 : }</span>
+<a name="115"><span class="lineNum">     115 </span>            : </a>
+<span class="lineNum">     116 </span>            : static void
+<span class="lineNum">     117 </span>            : dyn_array_ensure_capacity (DynArray *da, int capacity, int elem_size)
+<span class="lineNum">     118 </span>            : {
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :         int old_capacity = da-&gt;capacity;</span>
+<span class="lineNum">     120 </span>            :         char *new_data;
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 :         if (capacity &lt;= old_capacity)</span>
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :         if (da-&gt;capacity == 0)</span>
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :                 da-&gt;capacity = 2;</span>
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :         while (capacity &gt; da-&gt;capacity)</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 :                 da-&gt;capacity *= 2;</span>
+<span class="lineNum">     129 </span>            : 
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :         new_data = (char *)sgen_alloc_internal_dynamic (elem_size * da-&gt;capacity, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :         memcpy (new_data, da-&gt;data, elem_size * da-&gt;size);</span>
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (da-&gt;data, elem_size * old_capacity, INTERNAL_MEM_BRIDGE_DATA);</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :         da-&gt;data = new_data;</span>
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 : }</span>
+<a name="135"><span class="lineNum">     135 </span>            : </a>
+<span class="lineNum">     136 </span>            : static void*
+<span class="lineNum">     137 </span>            : dyn_array_add (DynArray *da, int elem_size)
+<span class="lineNum">     138 </span>            : {
+<span class="lineNum">     139 </span>            :         void *p;
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :         dyn_array_ensure_capacity (da, da-&gt;size + 1, elem_size);</span>
+<span class="lineNum">     142 </span>            : 
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :         p = da-&gt;data + da-&gt;size * elem_size;</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :         ++da-&gt;size;</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :         return p;</span>
+<span class="lineNum">     146 </span>            : }
+<span class="lineNum">     147 </span>            : 
+<a name="148"><span class="lineNum">     148 </span>            : /* int */</a>
+<span class="lineNum">     149 </span>            : static void
+<span class="lineNum">     150 </span>            : dyn_array_int_init (DynIntArray *da)
+<span class="lineNum">     151 </span>            : {
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :         dyn_array_init (&amp;da-&gt;array);</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 : }</span>
+<a name="154"><span class="lineNum">     154 </span>            : </a>
+<span class="lineNum">     155 </span>            : static void
+<span class="lineNum">     156 </span>            : dyn_array_int_uninit (DynIntArray *da)
+<span class="lineNum">     157 </span>            : {
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :         dyn_array_uninit (&amp;da-&gt;array, sizeof (int));</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 : }</span>
+<a name="160"><span class="lineNum">     160 </span>            : </a>
+<span class="lineNum">     161 </span>            : static int
+<span class="lineNum">     162 </span>            : dyn_array_int_size (DynIntArray *da)
+<span class="lineNum">     163 </span>            : {
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :         return da-&gt;array.size;</span>
+<span class="lineNum">     165 </span>            : }
+<a name="166"><span class="lineNum">     166 </span>            : </a>
+<span class="lineNum">     167 </span>            : static void
+<span class="lineNum">     168 </span>            : dyn_array_int_set_size (DynIntArray *da, int size)
+<span class="lineNum">     169 </span>            : {
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :         da-&gt;array.size = size;</span>
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 : }</span>
+<a name="172"><span class="lineNum">     172 </span>            : </a>
+<span class="lineNum">     173 </span>            : static void
+<span class="lineNum">     174 </span>            : dyn_array_int_add (DynIntArray *da, int x)
+<span class="lineNum">     175 </span>            : {
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :         int *p = (int *)dyn_array_add (&amp;da-&gt;array, sizeof (int));</span>
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :         *p = x;</span>
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 : }</span>
+<a name="179"><span class="lineNum">     179 </span>            : </a>
+<span class="lineNum">     180 </span>            : static int
+<span class="lineNum">     181 </span>            : dyn_array_int_get (DynIntArray *da, int x)
+<span class="lineNum">     182 </span>            : {
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :         return ((int*)da-&gt;array.data)[x];</span>
+<span class="lineNum">     184 </span>            : }
+<a name="185"><span class="lineNum">     185 </span>            : </a>
+<span class="lineNum">     186 </span>            : static void
+<span class="lineNum">     187 </span>            : dyn_array_int_set (DynIntArray *da, int idx, int val)
+<span class="lineNum">     188 </span>            : {
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :         ((int*)da-&gt;array.data)[idx] = val;</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 : }</span>
+<a name="191"><span class="lineNum">     191 </span>            : </a>
+<span class="lineNum">     192 </span>            : static void
+<span class="lineNum">     193 </span>            : dyn_array_int_ensure_capacity (DynIntArray *da, int capacity)
+<span class="lineNum">     194 </span>            : {
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :         dyn_array_ensure_capacity (&amp;da-&gt;array, capacity, sizeof (int));</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 : }</span>
+<a name="197"><span class="lineNum">     197 </span>            : </a>
+<span class="lineNum">     198 </span>            : static void
+<span class="lineNum">     199 </span>            : dyn_array_int_set_all (DynIntArray *dst, DynIntArray *src)
+<span class="lineNum">     200 </span>            : {
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :         dyn_array_int_ensure_capacity (dst, src-&gt;array.size);</span>
+<span class="lineNum">     202 </span><span class="lineNoCov">          0 :         memcpy (dst-&gt;array.data, src-&gt;array.data, src-&gt;array.size * sizeof (int));</span>
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :         dst-&gt;array.size = src-&gt;array.size;</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span>            : /* ptr */
+<a name="207"><span class="lineNum">     207 </span>            : </a>
+<span class="lineNum">     208 </span>            : static void
+<span class="lineNum">     209 </span>            : dyn_array_ptr_init (DynPtrArray *da)
+<span class="lineNum">     210 </span>            : {
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :         dyn_array_init (&amp;da-&gt;array);</span>
+<span class="lineNum">     212 </span><span class="lineNoCov">          0 : }</span>
+<a name="213"><span class="lineNum">     213 </span>            : </a>
+<span class="lineNum">     214 </span>            : static void
+<span class="lineNum">     215 </span>            : dyn_array_ptr_uninit (DynPtrArray *da)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :         dyn_array_uninit (&amp;da-&gt;array, sizeof (void*));</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 : }</span>
+<a name="219"><span class="lineNum">     219 </span>            : </a>
+<span class="lineNum">     220 </span>            : static int
+<span class="lineNum">     221 </span>            : dyn_array_ptr_size (DynPtrArray *da)
+<span class="lineNum">     222 </span>            : {
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :         return da-&gt;array.size;</span>
+<span class="lineNum">     224 </span>            : }
+<a name="225"><span class="lineNum">     225 </span>            : </a>
+<span class="lineNum">     226 </span>            : static void
+<span class="lineNum">     227 </span>            : dyn_array_ptr_set_size (DynPtrArray *da, int size)
+<span class="lineNum">     228 </span>            : {
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :         da-&gt;array.size = size;</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 : }</span>
+<a name="231"><span class="lineNum">     231 </span>            : </a>
+<span class="lineNum">     232 </span>            : static void*
+<span class="lineNum">     233 </span>            : dyn_array_ptr_get (DynPtrArray *da, int x)
+<span class="lineNum">     234 </span>            : {
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :         return ((void**)da-&gt;array.data)[x];</span>
+<span class="lineNum">     236 </span>            : }
+<a name="237"><span class="lineNum">     237 </span>            : </a>
+<span class="lineNum">     238 </span>            : static void
+<span class="lineNum">     239 </span>            : dyn_array_ptr_add (DynPtrArray *da, void *ptr)
+<span class="lineNum">     240 </span>            : {
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :         void **p = (void **)dyn_array_add (&amp;da-&gt;array, sizeof (void*));</span>
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :         *p = ptr;</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span>            : #define dyn_array_ptr_push dyn_array_ptr_add
+<a name="246"><span class="lineNum">     246 </span>            : </a>
+<span class="lineNum">     247 </span>            : static void*
+<span class="lineNum">     248 </span>            : dyn_array_ptr_pop (DynPtrArray *da)
+<span class="lineNum">     249 </span>            : {
+<span class="lineNum">     250 </span>            :         void *p;
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :         int size = da-&gt;array.size;</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :         g_assert (size &gt; 0);</span>
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :         p = dyn_array_ptr_get (da, size - 1);</span>
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :         --da-&gt;array.size;</span>
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :         return p;</span>
+<span class="lineNum">     256 </span>            : }
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span>            : /*SCC */
+<a name="259"><span class="lineNum">     259 </span>            : </a>
+<span class="lineNum">     260 </span>            : static void
+<span class="lineNum">     261 </span>            : dyn_array_scc_init (DynSCCArray *da)
+<span class="lineNum">     262 </span>            : {
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :         dyn_array_init (&amp;da-&gt;array);</span>
+<span class="lineNum">     264 </span><span class="lineNoCov">          0 : }</span>
+<a name="265"><span class="lineNum">     265 </span>            : </a>
+<span class="lineNum">     266 </span>            : static void
+<span class="lineNum">     267 </span>            : dyn_array_scc_uninit (DynSCCArray *da)
+<span class="lineNum">     268 </span>            : {
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :         dyn_array_uninit (&amp;da-&gt;array, sizeof (SCC));</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 : }</span>
+<a name="271"><span class="lineNum">     271 </span>            : </a>
+<span class="lineNum">     272 </span>            : static int
+<span class="lineNum">     273 </span>            : dyn_array_scc_size (DynSCCArray *da)
+<span class="lineNum">     274 </span>            : {
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :         return da-&gt;array.size;</span>
+<span class="lineNum">     276 </span>            : }
+<a name="277"><span class="lineNum">     277 </span>            : </a>
+<span class="lineNum">     278 </span>            : static SCC*
+<span class="lineNum">     279 </span>            : dyn_array_scc_add (DynSCCArray *da)
+<span class="lineNum">     280 </span>            : {
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 :         return (SCC *)dyn_array_add (&amp;da-&gt;array, sizeof (SCC));</span>
+<span class="lineNum">     282 </span>            : }
+<a name="283"><span class="lineNum">     283 </span>            : </a>
+<span class="lineNum">     284 </span>            : static SCC*
+<span class="lineNum">     285 </span>            : dyn_array_scc_get_ptr (DynSCCArray *da, int x)
+<span class="lineNum">     286 </span>            : {
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :         return &amp;((SCC*)da-&gt;array.data)[x];</span>
+<span class="lineNum">     288 </span>            : }
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span>            : /* Merge code*/
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span>            : static DynIntArray merge_array;
+<a name="293"><span class="lineNum">     293 </span>            : </a>
+<span class="lineNum">     294 </span>            : static gboolean
+<span class="lineNum">     295 </span>            : dyn_array_int_contains (DynIntArray *da, int x)
+<span class="lineNum">     296 </span>            : {
+<span class="lineNum">     297 </span>            :         int i;
+<span class="lineNum">     298 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_int_size (da); ++i)</span>
+<span class="lineNum">     299 </span><span class="lineNoCov">          0 :                 if (dyn_array_int_get (da, i) == x)</span>
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     303 </span>            : 
+<a name="304"><span class="lineNum">     304 </span>            : </a>
+<span class="lineNum">     305 </span>            : static void
+<span class="lineNum">     306 </span>            : dyn_array_int_merge (DynIntArray *dst, DynIntArray *src)
+<span class="lineNum">     307 </span>            : {
+<span class="lineNum">     308 </span>            :         int i, j;
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span><span class="lineNoCov">          0 :         dyn_array_int_ensure_capacity (&amp;merge_array, dyn_array_int_size (dst) + dyn_array_int_size (src));</span>
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :         dyn_array_int_set_size (&amp;merge_array, 0);</span>
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :         for (i = j = 0; i &lt; dyn_array_int_size (dst) || j &lt; dyn_array_int_size (src); ) {</span>
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :                 if (i &lt; dyn_array_int_size (dst) &amp;&amp; j &lt; dyn_array_int_size (src)) {</span>
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :                         int a = dyn_array_int_get (dst, i); </span>
+<span class="lineNum">     316 </span><span class="lineNoCov">          0 :                         int b = dyn_array_int_get (src, j); </span>
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :                         if (a &lt; b) {</span>
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :                                 dyn_array_int_add (&amp;merge_array, a);</span>
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :                                 ++i;</span>
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                         } else if (a == b) {</span>
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :                                 dyn_array_int_add (&amp;merge_array, a);</span>
+<span class="lineNum">     322 </span><span class="lineNoCov">          0 :                                 ++i;</span>
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :                                 ++j;    </span>
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :                                 dyn_array_int_add (&amp;merge_array, b);</span>
+<span class="lineNum">     326 </span><span class="lineNoCov">          0 :                                 ++j;</span>
+<span class="lineNum">     327 </span>            :                         }
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :                 } else if (i &lt; dyn_array_int_size (dst)) {</span>
+<span class="lineNum">     329 </span><span class="lineNoCov">          0 :                         dyn_array_int_add (&amp;merge_array, dyn_array_int_get (dst, i));</span>
+<span class="lineNum">     330 </span><span class="lineNoCov">          0 :                         ++i;</span>
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :                         dyn_array_int_add (&amp;merge_array, dyn_array_int_get (src, j));</span>
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :                         ++j;</span>
+<span class="lineNum">     334 </span>            :                 }
+<span class="lineNum">     335 </span>            :         }
+<span class="lineNum">     336 </span>            : 
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :         if (dyn_array_int_size (&amp;merge_array) &gt; dyn_array_int_size (dst)) {</span>
+<span class="lineNum">     338 </span><span class="lineNoCov">          0 :                 dyn_array_int_set_all (dst, &amp;merge_array);</span>
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 : }</span>
+<a name="341"><span class="lineNum">     341 </span>            : </a>
+<span class="lineNum">     342 </span>            : static void
+<span class="lineNum">     343 </span>            : dyn_array_int_merge_one (DynIntArray *array, int value)
+<span class="lineNum">     344 </span>            : {
+<span class="lineNum">     345 </span>            :         int i;
+<span class="lineNum">     346 </span>            :         int tmp;
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :         int size = dyn_array_int_size (array);</span>
+<span class="lineNum">     348 </span>            : 
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; size; ++i) {</span>
+<span class="lineNum">     350 </span><span class="lineNoCov">          0 :                 if (dyn_array_int_get (array, i) == value)</span>
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     352 </span><span class="lineNoCov">          0 :                 else if (dyn_array_int_get (array, i) &gt; value)</span>
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     354 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     355 </span>            : 
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :         dyn_array_int_ensure_capacity (array, size + 1);</span>
+<span class="lineNum">     357 </span>            : 
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :         if (i &lt; size) {</span>
+<span class="lineNum">     359 </span><span class="lineNoCov">          0 :                 tmp = dyn_array_int_get (array, i);</span>
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 :                 for (; i &lt; size; ++i) {</span>
+<span class="lineNum">     361 </span><span class="lineNoCov">          0 :                         dyn_array_int_set (array, i, value);</span>
+<span class="lineNum">     362 </span><span class="lineNoCov">          0 :                         value = tmp;</span>
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :                         tmp = dyn_array_int_get (array, i + 1);</span>
+<span class="lineNum">     364 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     365 </span><span class="lineNoCov">          0 :                 dyn_array_int_set (array, size, value);</span>
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :                 dyn_array_int_set (array, size, value);</span>
+<span class="lineNum">     368 </span>            :         }
+<span class="lineNum">     369 </span>            : 
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :         dyn_array_int_set_size (array, size + 1);</span>
+<span class="lineNum">     371 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     372 </span>            : 
+<a name="373"><span class="lineNum">     373 </span>            : </a>
+<span class="lineNum">     374 </span>            : static void
+<span class="lineNum">     375 </span>            : set_config (const SgenBridgeProcessorConfig *config)
+<span class="lineNum">     376 </span>            : {
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :         if (config-&gt;accounting) {</span>
+<span class="lineNum">     378 </span><span class="lineNoCov">          0 :                 SgenHashTable table = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_BRIDGE_HASH_TABLE, INTERNAL_MEM_BRIDGE_HASH_TABLE_ENTRY, sizeof (HashEntryWithAccounting), mono_aligned_addr_hash, NULL);</span>
+<span class="lineNum">     379 </span><span class="lineNoCov">          0 :                 bridge_accounting_enabled = TRUE;</span>
+<span class="lineNum">     380 </span><span class="lineNoCov">          0 :                 hash_table = table;</span>
+<span class="lineNum">     381 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     382 </span><span class="lineNoCov">          0 : }</span>
+<a name="383"><span class="lineNum">     383 </span>            : </a>
+<span class="lineNum">     384 </span>            : static MonoGCBridgeObjectKind
+<span class="lineNum">     385 </span>            : class_kind (MonoClass *klass)
+<span class="lineNum">     386 </span>            : {
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :         return bridge_callbacks.bridge_class_kind (klass);</span>
+<span class="lineNum">     388 </span>            : }
+<a name="389"><span class="lineNum">     389 </span>            : </a>
+<span class="lineNum">     390 </span>            : static HashEntry*
+<span class="lineNum">     391 </span>            : get_hash_entry (GCObject *obj, gboolean *existing)
+<span class="lineNum">     392 </span>            : {
+<span class="lineNum">     393 </span><span class="lineNoCov">          0 :         HashEntry *entry = (HashEntry *)sgen_hash_table_lookup (&amp;hash_table, obj);</span>
+<span class="lineNum">     394 </span>            :         HashEntry new_entry;
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineNoCov">          0 :         if (entry) {</span>
+<span class="lineNum">     397 </span><span class="lineNoCov">          0 :                 if (existing)</span>
+<span class="lineNum">     398 </span><span class="lineNoCov">          0 :                         *existing = TRUE;</span>
+<span class="lineNum">     399 </span><span class="lineNoCov">          0 :                 return entry;</span>
+<span class="lineNum">     400 </span>            :         }
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :         if (existing)</span>
+<span class="lineNum">     402 </span><span class="lineNoCov">          0 :                 *existing = FALSE;</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineNoCov">          0 :         memset (&amp;new_entry, 0, sizeof (HashEntry));</span>
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span><span class="lineNoCov">          0 :         new_entry.obj = obj;</span>
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :         dyn_array_ptr_init (&amp;new_entry.srcs);</span>
+<span class="lineNum">     408 </span><span class="lineNoCov">          0 :         new_entry.finishing_time = -1;</span>
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :         new_entry.scc_index = -1;</span>
+<span class="lineNum">     410 </span>            : 
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         sgen_hash_table_replace (&amp;hash_table, obj, &amp;new_entry, NULL);</span>
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span><span class="lineNoCov">          0 :         return (HashEntry *)sgen_hash_table_lookup (&amp;hash_table, obj);</span>
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 : }</span>
+<a name="415"><span class="lineNum">     415 </span>            : </a>
+<span class="lineNum">     416 </span>            : static void
+<span class="lineNum">     417 </span>            : add_source (HashEntry *entry, HashEntry *src)
+<span class="lineNum">     418 </span>            : {
+<span class="lineNum">     419 </span><span class="lineNoCov">          0 :         dyn_array_ptr_add (&amp;entry-&gt;srcs, src);</span>
+<span class="lineNum">     420 </span><span class="lineNoCov">          0 : }</span>
+<a name="421"><span class="lineNum">     421 </span>            : </a>
+<span class="lineNum">     422 </span>            : static void
+<span class="lineNum">     423 </span>            : free_data (void)
+<span class="lineNum">     424 </span>            : {
+<span class="lineNum">     425 </span>            :         GCObject *obj G_GNUC_UNUSED;
+<span class="lineNum">     426 </span>            :         HashEntry *entry;
+<span class="lineNum">     427 </span><span class="lineNoCov">          0 :         int total_srcs = 0;</span>
+<span class="lineNum">     428 </span><span class="lineNoCov">          0 :         int max_srcs = 0;</span>
+<span class="lineNum">     429 </span>            : 
+<span class="lineNum">     430 </span><span class="lineNoCov">          0 :         SGEN_HASH_TABLE_FOREACH (&amp;hash_table, GCObject *, obj, HashEntry *, entry) {</span>
+<span class="lineNum">     431 </span><span class="lineNoCov">          0 :                 int entry_size = dyn_array_ptr_size (&amp;entry-&gt;srcs);</span>
+<span class="lineNum">     432 </span><span class="lineNoCov">          0 :                 total_srcs += entry_size;</span>
+<span class="lineNum">     433 </span><span class="lineNoCov">          0 :                 if (entry_size &gt; max_srcs)</span>
+<span class="lineNum">     434 </span><span class="lineNoCov">          0 :                         max_srcs = entry_size;</span>
+<span class="lineNum">     435 </span><span class="lineNoCov">          0 :                 dyn_array_ptr_uninit (&amp;entry-&gt;srcs);</span>
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 :         } SGEN_HASH_TABLE_FOREACH_END;</span>
+<span class="lineNum">     437 </span>            : 
+<span class="lineNum">     438 </span><span class="lineNoCov">          0 :         sgen_hash_table_clean (&amp;hash_table);</span>
+<span class="lineNum">     439 </span>            : 
+<span class="lineNum">     440 </span><span class="lineNoCov">          0 :         dyn_array_int_uninit (&amp;merge_array);</span>
+<span class="lineNum">     441 </span>            :         //g_print (&quot;total srcs %d - max %d\n&quot;, total_srcs, max_srcs);
+<span class="lineNum">     442 </span><span class="lineNoCov">          0 : }</span>
+<a name="443"><span class="lineNum">     443 </span>            : </a>
+<span class="lineNum">     444 </span>            : static HashEntry*
+<span class="lineNum">     445 </span>            : register_bridge_object (GCObject *obj)
+<span class="lineNum">     446 </span>            : {
+<span class="lineNum">     447 </span><span class="lineNoCov">          0 :         HashEntry *entry = get_hash_entry (obj, NULL);</span>
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :         entry-&gt;is_bridge = TRUE;</span>
+<span class="lineNum">     449 </span><span class="lineNoCov">          0 :         return entry;</span>
+<span class="lineNum">     450 </span>            : }
+<a name="451"><span class="lineNum">     451 </span>            : </a>
+<span class="lineNum">     452 </span>            : static void
+<span class="lineNum">     453 </span>            : register_finishing_time (HashEntry *entry, int t)
+<span class="lineNum">     454 </span>            : {
+<span class="lineNum">     455 </span><span class="lineNoCov">          0 :         g_assert (entry-&gt;finishing_time &lt; 0);</span>
+<span class="lineNum">     456 </span><span class="lineNoCov">          0 :         entry-&gt;finishing_time = t;</span>
+<span class="lineNum">     457 </span><span class="lineNoCov">          0 : }</span>
+<a name="458"><span class="lineNum">     458 </span>            : </a>
+<span class="lineNum">     459 </span>            : static gboolean
+<span class="lineNum">     460 </span>            : object_is_live (GCObject **objp)
+<span class="lineNum">     461 </span>            : {
+<span class="lineNum">     462 </span><span class="lineNoCov">          0 :         GCObject *obj = *objp;</span>
+<span class="lineNum">     463 </span><span class="lineNoCov">          0 :         GCObject *fwd = SGEN_OBJECT_IS_FORWARDED (obj);</span>
+<span class="lineNum">     464 </span><span class="lineNoCov">          0 :         if (fwd) {</span>
+<span class="lineNum">     465 </span><span class="lineNoCov">          0 :                 *objp = fwd;</span>
+<span class="lineNum">     466 </span><span class="lineNoCov">          0 :                 return sgen_hash_table_lookup (&amp;hash_table, fwd) == NULL;</span>
+<span class="lineNum">     467 </span>            :         }
+<span class="lineNum">     468 </span><span class="lineNoCov">          0 :         if (!sgen_object_is_live (obj))</span>
+<span class="lineNum">     469 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     470 </span><span class="lineNoCov">          0 :         return sgen_hash_table_lookup (&amp;hash_table, obj) == NULL;</span>
+<span class="lineNum">     471 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     472 </span>            : 
+<span class="lineNum">     473 </span>            : static DynPtrArray registered_bridges;
+<span class="lineNum">     474 </span>            : static DynPtrArray dfs_stack;
+<span class="lineNum">     475 </span>            : 
+<span class="lineNum">     476 </span>            : static int dfs1_passes, dfs2_passes;
+<span class="lineNum">     477 </span>            : 
+<span class="lineNum">     478 </span>            : 
+<span class="lineNum">     479 </span>            : #undef HANDLE_PTR
+<span class="lineNum">     480 </span>            : #define HANDLE_PTR(ptr,obj)     do {                                    \
+<span class="lineNum">     481 </span>            :                 GCObject *dst = (GCObject*)*(ptr);                      \
+<span class="lineNum">     482 </span>            :                 if (dst &amp;&amp; !object_is_live (&amp;dst)) {                        \
+<span class="lineNum">     483 </span>            :                         dyn_array_ptr_push (&amp;dfs_stack, obj_entry); \
+<span class="lineNum">     484 </span>            :                         dyn_array_ptr_push (&amp;dfs_stack, get_hash_entry (dst, NULL)); \
+<span class="lineNum">     485 </span>            :                 }                                                       \
+<span class="lineNum">     486 </span>            :         } while (0)
+<a name="487"><span class="lineNum">     487 </span>            : </a>
+<span class="lineNum">     488 </span>            : static void
+<span class="lineNum">     489 </span>            : dfs1 (HashEntry *obj_entry)
+<span class="lineNum">     490 </span>            : {
+<span class="lineNum">     491 </span>            :         HashEntry *src;
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :         g_assert (dyn_array_ptr_size (&amp;dfs_stack) == 0);</span>
+<span class="lineNum">     493 </span>            : 
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :         dyn_array_ptr_push (&amp;dfs_stack, NULL);</span>
+<span class="lineNum">     495 </span><span class="lineNoCov">          0 :         dyn_array_ptr_push (&amp;dfs_stack, obj_entry);</span>
+<span class="lineNum">     496 </span>            : 
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :         do {</span>
+<span class="lineNum">     498 </span>            :                 GCObject *obj;
+<span class="lineNum">     499 </span><span class="lineNoCov">          0 :                 ++dfs1_passes;</span>
+<span class="lineNum">     500 </span>            : 
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 :                 obj_entry = (HashEntry *)dyn_array_ptr_pop (&amp;dfs_stack);</span>
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 :                 if (obj_entry) {</span>
+<span class="lineNum">     503 </span>            :                         char *start;
+<span class="lineNum">     504 </span>            :                         mword desc;
+<span class="lineNum">     505 </span><span class="lineNoCov">          0 :                         src = (HashEntry *)dyn_array_ptr_pop (&amp;dfs_stack);</span>
+<span class="lineNum">     506 </span>            : 
+<span class="lineNum">     507 </span><span class="lineNoCov">          0 :                         obj = obj_entry-&gt;obj;</span>
+<span class="lineNum">     508 </span><span class="lineNoCov">          0 :                         desc = sgen_obj_get_descriptor_safe (obj);</span>
+<span class="lineNum">     509 </span>            : 
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :                         if (src) {</span>
+<span class="lineNum">     511 </span>            :                                 //g_print (&quot;link %s -&gt; %s\n&quot;, sgen_safe_name (src-&gt;obj), sgen_safe_name (obj));
+<span class="lineNum">     512 </span><span class="lineNoCov">          0 :                                 add_source (obj_entry, src);</span>
+<span class="lineNum">     513 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     514 </span>            :                                 //g_print (&quot;starting with %s\n&quot;, sgen_safe_name (obj));
+<span class="lineNum">     515 </span>            :                         }
+<span class="lineNum">     516 </span>            : 
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :                         if (obj_entry-&gt;is_visited)</span>
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     519 </span>            : 
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :                         obj_entry-&gt;is_visited = TRUE;</span>
+<span class="lineNum">     521 </span>            : 
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_push (&amp;dfs_stack, obj_entry);</span>
+<span class="lineNum">     523 </span>            :                         /* NULL marks that the next entry is to be finished */
+<span class="lineNum">     524 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_push (&amp;dfs_stack, NULL);</span>
+<span class="lineNum">     525 </span>            : 
+<span class="lineNum">     526 </span><span class="lineNoCov">          0 :                         start = (char*)obj;</span>
+<span class="lineNum">     527 </span>            : #include &quot;sgen/sgen-scan-object.h&quot;
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     529 </span><span class="lineNoCov">          0 :                         obj_entry = (HashEntry *)dyn_array_ptr_pop (&amp;dfs_stack);</span>
+<span class="lineNum">     530 </span>            : 
+<span class="lineNum">     531 </span>            :                         //g_print (&quot;finish %s\n&quot;, sgen_safe_name (obj_entry-&gt;obj));
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :                         register_finishing_time (obj_entry, current_time++);</span>
+<span class="lineNum">     533 </span>            :                 }
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 :         } while (dyn_array_ptr_size (&amp;dfs_stack) &gt; 0);</span>
+<span class="lineNum">     535 </span><span class="lineNoCov">          0 : }</span>
+<a name="536"><span class="lineNum">     536 </span>            : </a>
+<span class="lineNum">     537 </span>            : static void
+<span class="lineNum">     538 </span>            : scc_add_xref (SCC *src, SCC *dst)
+<span class="lineNum">     539 </span>            : {
+<span class="lineNum">     540 </span><span class="lineNoCov">          0 :         g_assert (src != dst);</span>
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :         g_assert (src-&gt;index != dst-&gt;index);</span>
+<span class="lineNum">     542 </span>            : 
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :         if (dyn_array_int_contains (&amp;dst-&gt;xrefs, src-&gt;index))</span>
+<span class="lineNum">     544 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 :         if (src-&gt;num_bridge_entries) {</span>
+<span class="lineNum">     546 </span><span class="lineNoCov">          0 :                 dyn_array_int_merge_one (&amp;dst-&gt;xrefs, src-&gt;index);</span>
+<span class="lineNum">     547 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     548 </span>            :                 int i;
+<span class="lineNum">     549 </span><span class="lineNoCov">          0 :                 dyn_array_int_merge (&amp;dst-&gt;xrefs, &amp;src-&gt;xrefs);</span>
+<span class="lineNum">     550 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; dyn_array_int_size (&amp;dst-&gt;xrefs); ++i)</span>
+<span class="lineNum">     551 </span><span class="lineNoCov">          0 :                         g_assert (dyn_array_int_get (&amp;dst-&gt;xrefs, i) != dst-&gt;index);</span>
+<span class="lineNum">     552 </span>            :         }
+<span class="lineNum">     553 </span><span class="lineNoCov">          0 : }</span>
+<a name="554"><span class="lineNum">     554 </span>            : </a>
+<span class="lineNum">     555 </span>            : static void
+<span class="lineNum">     556 </span>            : scc_add_entry (SCC *scc, HashEntry *entry)
+<span class="lineNum">     557 </span>            : {
+<span class="lineNum">     558 </span><span class="lineNoCov">          0 :         g_assert (entry-&gt;scc_index &lt; 0);</span>
+<span class="lineNum">     559 </span><span class="lineNoCov">          0 :         entry-&gt;scc_index = scc-&gt;index;</span>
+<span class="lineNum">     560 </span><span class="lineNoCov">          0 :         if (entry-&gt;is_bridge)</span>
+<span class="lineNum">     561 </span><span class="lineNoCov">          0 :                 ++scc-&gt;num_bridge_entries;</span>
+<span class="lineNum">     562 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     563 </span>            : 
+<span class="lineNum">     564 </span>            : static DynSCCArray sccs;
+<span class="lineNum">     565 </span>            : static SCC *current_scc;
+<a name="566"><span class="lineNum">     566 </span>            : </a>
+<span class="lineNum">     567 </span>            : static void
+<span class="lineNum">     568 </span>            : dfs2 (HashEntry *entry)
+<span class="lineNum">     569 </span>            : {
+<span class="lineNum">     570 </span>            :         int i;
+<span class="lineNum">     571 </span>            : 
+<span class="lineNum">     572 </span><span class="lineNoCov">          0 :         g_assert (dyn_array_ptr_size (&amp;dfs_stack) == 0);</span>
+<span class="lineNum">     573 </span>            : 
+<span class="lineNum">     574 </span><span class="lineNoCov">          0 :         dyn_array_ptr_push (&amp;dfs_stack, entry);</span>
+<span class="lineNum">     575 </span>            : 
+<span class="lineNum">     576 </span><span class="lineNoCov">          0 :         do {</span>
+<span class="lineNum">     577 </span><span class="lineNoCov">          0 :                 entry = (HashEntry *)dyn_array_ptr_pop (&amp;dfs_stack);</span>
+<span class="lineNum">     578 </span><span class="lineNoCov">          0 :                 ++dfs2_passes;</span>
+<span class="lineNum">     579 </span>            : 
+<span class="lineNum">     580 </span><span class="lineNoCov">          0 :                 if (entry-&gt;scc_index &gt;= 0) {</span>
+<span class="lineNum">     581 </span><span class="lineNoCov">          0 :                         if (entry-&gt;scc_index != current_scc-&gt;index)</span>
+<span class="lineNum">     582 </span><span class="lineNoCov">          0 :                                 scc_add_xref (dyn_array_scc_get_ptr (&amp;sccs, entry-&gt;scc_index), current_scc);</span>
+<span class="lineNum">     583 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     584 </span>            :                 }
+<span class="lineNum">     585 </span>            : 
+<span class="lineNum">     586 </span><span class="lineNoCov">          0 :                 scc_add_entry (current_scc, entry);</span>
+<span class="lineNum">     587 </span>            : 
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; dyn_array_ptr_size (&amp;entry-&gt;srcs); ++i)</span>
+<span class="lineNum">     589 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_push (&amp;dfs_stack, dyn_array_ptr_get (&amp;entry-&gt;srcs, i));</span>
+<span class="lineNum">     590 </span><span class="lineNoCov">          0 :         } while (dyn_array_ptr_size (&amp;dfs_stack) &gt; 0);</span>
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 : }</span>
+<a name="592"><span class="lineNum">     592 </span>            : </a>
+<span class="lineNum">     593 </span>            : static int
+<span class="lineNum">     594 </span>            : compare_hash_entries (const HashEntry *e1, const HashEntry *e2)
+<span class="lineNum">     595 </span>            : {
+<span class="lineNum">     596 </span><span class="lineNoCov">          0 :         return e2-&gt;finishing_time - e1-&gt;finishing_time;</span>
+<a name="597"><span class="lineNum">     597 </span>            : }</a>
+<span class="lineNum">     598 </span>            : 
+<span class="lineNum">     599 </span><span class="lineNoCov">          0 : DEF_QSORT_INLINE(hash_entries, HashEntry*, compare_hash_entries)</span>
+<span class="lineNum">     600 </span>            : 
+<span class="lineNum">     601 </span>            : static gint64 step_1, step_2, step_3, step_4, step_5, step_6;
+<span class="lineNum">     602 </span>            : static int fist_pass_links, second_pass_links, sccs_links;
+<span class="lineNum">     603 </span>            : static int max_sccs_links = 0;
+<a name="604"><span class="lineNum">     604 </span>            : </a>
+<span class="lineNum">     605 </span>            : static void
+<span class="lineNum">     606 </span>            : register_finalized_object (GCObject *obj)
+<span class="lineNum">     607 </span>            : {
+<span class="lineNum">     608 </span><span class="lineNoCov">          0 :         g_assert (sgen_need_bridge_processing ());</span>
+<span class="lineNum">     609 </span><span class="lineNoCov">          0 :         dyn_array_ptr_push (&amp;registered_bridges, obj);</span>
+<span class="lineNum">     610 </span><span class="lineNoCov">          0 : }</span>
+<a name="611"><span class="lineNum">     611 </span>            : </a>
+<span class="lineNum">     612 </span>            : static void
+<span class="lineNum">     613 </span>            : reset_data (void)
+<span class="lineNum">     614 </span>            : {
+<span class="lineNum">     615 </span><span class="lineNoCov">          0 :         dyn_array_ptr_set_size (&amp;registered_bridges, 0);</span>
+<span class="lineNum">     616 </span><span class="lineNoCov">          0 : }</span>
+<a name="617"><span class="lineNum">     617 </span>            : </a>
+<span class="lineNum">     618 </span>            : static void
+<span class="lineNum">     619 </span>            : processing_stw_step (void)
+<span class="lineNum">     620 </span>            : {
+<span class="lineNum">     621 </span>            :         int i;
+<span class="lineNum">     622 </span>            :         int bridge_count;
+<span class="lineNum">     623 </span>            :         SGEN_TV_DECLARE (atv);
+<span class="lineNum">     624 </span>            :         SGEN_TV_DECLARE (btv);
+<span class="lineNum">     625 </span>            : 
+<span class="lineNum">     626 </span><span class="lineNoCov">          0 :         if (!dyn_array_ptr_size (&amp;registered_bridges))</span>
+<span class="lineNum">     627 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     628 </span>            : 
+<span class="lineNum">     629 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (btv);</span>
+<span class="lineNum">     630 </span>            : 
+<span class="lineNum">     631 </span>            :         /* first DFS pass */
+<span class="lineNum">     632 </span>            : 
+<span class="lineNum">     633 </span><span class="lineNoCov">          0 :         dyn_array_ptr_init (&amp;dfs_stack);</span>
+<span class="lineNum">     634 </span><span class="lineNoCov">          0 :         dyn_array_int_init (&amp;merge_array);</span>
+<span class="lineNum">     635 </span>            : 
+<span class="lineNum">     636 </span><span class="lineNoCov">          0 :         current_time = 0;</span>
+<span class="lineNum">     637 </span>            :         /*
+<span class="lineNum">     638 </span>            :         First we insert all bridges into the hash table and then we do dfs1.
+<span class="lineNum">     639 </span>            : 
+<span class="lineNum">     640 </span>            :         It must be done in 2 steps since the bridge arrays doesn't come in reverse topological order,
+<span class="lineNum">     641 </span>            :         which means that we can have entry N pointing to entry N + 1.
+<span class="lineNum">     642 </span>            : 
+<span class="lineNum">     643 </span>            :         If we dfs1 entry N before N + 1 is registered we'll not consider N + 1 for this bridge
+<span class="lineNum">     644 </span>            :         pass and not create the required xref between the two.
+<span class="lineNum">     645 </span>            :         */
+<span class="lineNum">     646 </span><span class="lineNoCov">          0 :         bridge_count = dyn_array_ptr_size (&amp;registered_bridges);</span>
+<span class="lineNum">     647 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; bridge_count ; ++i)</span>
+<span class="lineNum">     648 </span><span class="lineNoCov">          0 :                 register_bridge_object ((GCObject *)dyn_array_ptr_get (&amp;registered_bridges, i));</span>
+<span class="lineNum">     649 </span>            : 
+<span class="lineNum">     650 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; bridge_count; ++i)</span>
+<span class="lineNum">     651 </span><span class="lineNoCov">          0 :                 dfs1 (get_hash_entry ((GCObject *)dyn_array_ptr_get (&amp;registered_bridges, i), NULL));</span>
+<span class="lineNum">     652 </span>            : 
+<span class="lineNum">     653 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (atv);</span>
+<span class="lineNum">     654 </span><span class="lineNoCov">          0 :         step_2 = SGEN_TV_ELAPSED (btv, atv);</span>
+<span class="lineNum">     655 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     656 </span>            : 
+<span class="lineNum">     657 </span>            : static int num_registered_bridges, hash_table_size;
+<a name="658"><span class="lineNum">     658 </span>            : </a>
+<span class="lineNum">     659 </span>            : static void
+<span class="lineNum">     660 </span>            : processing_build_callback_data (int generation)
+<span class="lineNum">     661 </span>            : {
+<span class="lineNum">     662 </span>            :         int i, j;
+<span class="lineNum">     663 </span>            :         int num_sccs, num_xrefs;
+<span class="lineNum">     664 </span>            :         int max_entries, max_xrefs;
+<span class="lineNum">     665 </span>            :         GCObject *obj G_GNUC_UNUSED;
+<span class="lineNum">     666 </span>            :         HashEntry *entry;
+<span class="lineNum">     667 </span>            :         HashEntry **all_entries;
+<span class="lineNum">     668 </span>            :         MonoGCBridgeSCC **api_sccs;
+<span class="lineNum">     669 </span>            :         MonoGCBridgeXRef *api_xrefs;
+<span class="lineNum">     670 </span>            :         SGEN_TV_DECLARE (atv);
+<span class="lineNum">     671 </span>            :         SGEN_TV_DECLARE (btv);
+<span class="lineNum">     672 </span>            : 
+<span class="lineNum">     673 </span><span class="lineNoCov">          0 :         g_assert (bridge_processor-&gt;num_sccs == 0 &amp;&amp; bridge_processor-&gt;num_xrefs == 0);</span>
+<span class="lineNum">     674 </span><span class="lineNoCov">          0 :         g_assert (!bridge_processor-&gt;api_sccs &amp;&amp; !bridge_processor-&gt;api_xrefs);</span>
+<span class="lineNum">     675 </span>            : 
+<span class="lineNum">     676 </span><span class="lineNoCov">          0 :         if (!dyn_array_ptr_size (&amp;registered_bridges))</span>
+<span class="lineNum">     677 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     678 </span>            : 
+<span class="lineNum">     679 </span><span class="lineNoCov">          0 :         g_assert (bridge_processing_in_progress);</span>
+<span class="lineNum">     680 </span>            : 
+<span class="lineNum">     681 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (atv);</span>
+<span class="lineNum">     682 </span>            : 
+<span class="lineNum">     683 </span>            :         /* alloc and fill array of all entries */
+<span class="lineNum">     684 </span>            : 
+<span class="lineNum">     685 </span><span class="lineNoCov">          0 :         all_entries = (HashEntry **)sgen_alloc_internal_dynamic (sizeof (HashEntry*) * hash_table.num_entries, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">     686 </span>            : 
+<span class="lineNum">     687 </span><span class="lineNoCov">          0 :         j = 0;</span>
+<span class="lineNum">     688 </span><span class="lineNoCov">          0 :         SGEN_HASH_TABLE_FOREACH (&amp;hash_table, GCObject *, obj, HashEntry *, entry) {</span>
+<span class="lineNum">     689 </span><span class="lineNoCov">          0 :                 g_assert (entry-&gt;finishing_time &gt;= 0);</span>
+<span class="lineNum">     690 </span><span class="lineNoCov">          0 :                 all_entries [j++] = entry;</span>
+<span class="lineNum">     691 </span><span class="lineNoCov">          0 :                 fist_pass_links += dyn_array_ptr_size (&amp;entry-&gt;srcs);</span>
+<span class="lineNum">     692 </span><span class="lineNoCov">          0 :         } SGEN_HASH_TABLE_FOREACH_END;</span>
+<span class="lineNum">     693 </span><span class="lineNoCov">          0 :         g_assert (j == hash_table.num_entries);</span>
+<span class="lineNum">     694 </span><span class="lineNoCov">          0 :         hash_table_size = hash_table.num_entries;</span>
+<span class="lineNum">     695 </span>            : 
+<span class="lineNum">     696 </span>            :         /* sort array according to decreasing finishing time */
+<span class="lineNum">     697 </span><span class="lineNoCov">          0 :         qsort_hash_entries (all_entries, hash_table.num_entries);</span>
+<span class="lineNum">     698 </span>            : 
+<span class="lineNum">     699 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (btv);</span>
+<span class="lineNum">     700 </span><span class="lineNoCov">          0 :         step_3 = SGEN_TV_ELAPSED (atv, btv);</span>
+<span class="lineNum">     701 </span>            : 
+<span class="lineNum">     702 </span>            :         /* second DFS pass */
+<span class="lineNum">     703 </span>            : 
+<span class="lineNum">     704 </span><span class="lineNoCov">          0 :         dyn_array_scc_init (&amp;sccs);</span>
+<span class="lineNum">     705 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; hash_table.num_entries; ++i) {</span>
+<span class="lineNum">     706 </span><span class="lineNoCov">          0 :                 HashEntry *entry = all_entries [i];</span>
+<span class="lineNum">     707 </span><span class="lineNoCov">          0 :                 if (entry-&gt;scc_index &lt; 0) {</span>
+<span class="lineNum">     708 </span><span class="lineNoCov">          0 :                         int index = dyn_array_scc_size (&amp;sccs);</span>
+<span class="lineNum">     709 </span><span class="lineNoCov">          0 :                         current_scc = dyn_array_scc_add (&amp;sccs);</span>
+<span class="lineNum">     710 </span><span class="lineNoCov">          0 :                         current_scc-&gt;index = index;</span>
+<span class="lineNum">     711 </span><span class="lineNoCov">          0 :                         current_scc-&gt;num_bridge_entries = 0;</span>
+<span class="lineNum">     712 </span><span class="lineNoCov">          0 :                         current_scc-&gt;api_index = -1;</span>
+<span class="lineNum">     713 </span><span class="lineNoCov">          0 :                         dyn_array_int_init (&amp;current_scc-&gt;xrefs);</span>
+<span class="lineNum">     714 </span>            : 
+<span class="lineNum">     715 </span><span class="lineNoCov">          0 :                         dfs2 (entry);</span>
+<span class="lineNum">     716 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     717 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     718 </span>            : 
+<span class="lineNum">     719 </span>            :         /*
+<span class="lineNum">     720 </span>            :          * Compute the weight of each object. The weight of an object is its size plus the size of all
+<span class="lineNum">     721 </span>            :          * objects it points do. When the an object is pointed by multiple objects we distribute it's weight
+<span class="lineNum">     722 </span>            :          * equally among them. This distribution gives a rough estimate of the real impact of making the object
+<span class="lineNum">     723 </span>            :          * go away.
+<span class="lineNum">     724 </span>            :          *
+<span class="lineNum">     725 </span>            :          * The reasoning for this model is that complex graphs with single roots will have a bridge with very high
+<span class="lineNum">     726 </span>            :          * value in comparison to others.
+<span class="lineNum">     727 </span>            :          *
+<span class="lineNum">     728 </span>            :          * The all_entries array has all objects topologically sorted. To correctly propagate the weights it must be
+<span class="lineNum">     729 </span>            :          * done in reverse topological order - so we calculate the weight of the pointed-to objects before processing
+<span class="lineNum">     730 </span>            :          * pointer-from objects.
+<span class="lineNum">     731 </span>            :          *
+<span class="lineNum">     732 </span>            :          * We log those objects in the opposite order for no particular reason. The other constrain is that it should use the same
+<span class="lineNum">     733 </span>            :          * direction as the other logging loop that records live/dead information.
+<span class="lineNum">     734 </span>            :          */
+<span class="lineNum">     735 </span><span class="lineNoCov">          0 :         if (bridge_accounting_enabled) {</span>
+<span class="lineNum">     736 </span><span class="lineNoCov">          0 :                 for (i = hash_table.num_entries - 1; i &gt;= 0; --i) {</span>
+<span class="lineNum">     737 </span>            :                         double w;
+<span class="lineNum">     738 </span><span class="lineNoCov">          0 :                         HashEntryWithAccounting *entry = (HashEntryWithAccounting*)all_entries [i];</span>
+<span class="lineNum">     739 </span>            : 
+<span class="lineNum">     740 </span><span class="lineNoCov">          0 :                         entry-&gt;weight += (double)sgen_safe_object_get_size (entry-&gt;entry.obj);</span>
+<span class="lineNum">     741 </span><span class="lineNoCov">          0 :                         w = entry-&gt;weight / dyn_array_ptr_size (&amp;entry-&gt;entry.srcs);</span>
+<span class="lineNum">     742 </span><span class="lineNoCov">          0 :                         for (j = 0; j &lt; dyn_array_ptr_size (&amp;entry-&gt;entry.srcs); ++j) {</span>
+<span class="lineNum">     743 </span><span class="lineNoCov">          0 :                                 HashEntryWithAccounting *other = (HashEntryWithAccounting *)dyn_array_ptr_get (&amp;entry-&gt;entry.srcs, j);</span>
+<span class="lineNum">     744 </span><span class="lineNoCov">          0 :                                 other-&gt;weight += w;</span>
+<span class="lineNum">     745 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     746 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     747 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; hash_table.num_entries; ++i) {</span>
+<span class="lineNum">     748 </span><span class="lineNoCov">          0 :                         HashEntryWithAccounting *entry = (HashEntryWithAccounting*)all_entries [i];</span>
+<span class="lineNum">     749 </span><span class="lineNoCov">          0 :                         if (entry-&gt;entry.is_bridge) {</span>
+<span class="lineNum">     750 </span><span class="lineNoCov">          0 :                                 MonoClass *klass = SGEN_LOAD_VTABLE (entry-&gt;entry.obj)-&gt;klass;</span>
+<span class="lineNum">     751 </span><span class="lineNoCov">          0 :                                 mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_GC, &quot;OBJECT %s::%s (%p) weight %f&quot;, klass-&gt;name_space, klass-&gt;name, entry-&gt;entry.obj, entry-&gt;weight);</span>
+<span class="lineNum">     752 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     753 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     754 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     755 </span>            : 
+<span class="lineNum">     756 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; hash_table.num_entries; ++i) {</span>
+<span class="lineNum">     757 </span><span class="lineNoCov">          0 :                 HashEntry *entry = all_entries [i];</span>
+<span class="lineNum">     758 </span><span class="lineNoCov">          0 :                 second_pass_links += dyn_array_ptr_size (&amp;entry-&gt;srcs);</span>
+<span class="lineNum">     759 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     760 </span>            : 
+<span class="lineNum">     761 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (atv);</span>
+<span class="lineNum">     762 </span><span class="lineNoCov">          0 :         step_4 = SGEN_TV_ELAPSED (btv, atv);</span>
+<span class="lineNum">     763 </span>            : 
+<span class="lineNum">     764 </span>            :         //g_print (&quot;%d sccs\n&quot;, sccs.size);
+<span class="lineNum">     765 </span>            : 
+<span class="lineNum">     766 </span><span class="lineNoCov">          0 :         dyn_array_ptr_uninit (&amp;dfs_stack);</span>
+<span class="lineNum">     767 </span>            : 
+<span class="lineNum">     768 </span>            :         /* init data for callback */
+<span class="lineNum">     769 </span>            : 
+<span class="lineNum">     770 </span><span class="lineNoCov">          0 :         num_sccs = 0;</span>
+<span class="lineNum">     771 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_scc_size (&amp;sccs); ++i) {</span>
+<span class="lineNum">     772 </span><span class="lineNoCov">          0 :                 SCC *scc = dyn_array_scc_get_ptr (&amp;sccs, i);</span>
+<span class="lineNum">     773 </span><span class="lineNoCov">          0 :                 g_assert (scc-&gt;index == i);</span>
+<span class="lineNum">     774 </span><span class="lineNoCov">          0 :                 if (scc-&gt;num_bridge_entries)</span>
+<span class="lineNum">     775 </span><span class="lineNoCov">          0 :                         ++num_sccs;</span>
+<span class="lineNum">     776 </span><span class="lineNoCov">          0 :                 sccs_links += dyn_array_int_size (&amp;scc-&gt;xrefs);</span>
+<span class="lineNum">     777 </span><span class="lineNoCov">          0 :                 max_sccs_links = MAX (max_sccs_links, dyn_array_int_size (&amp;scc-&gt;xrefs));</span>
+<span class="lineNum">     778 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     779 </span>            : 
+<span class="lineNum">     780 </span><span class="lineNoCov">          0 :         api_sccs = (MonoGCBridgeSCC **)sgen_alloc_internal_dynamic (sizeof (MonoGCBridgeSCC*) * num_sccs, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">     781 </span><span class="lineNoCov">          0 :         num_xrefs = 0;</span>
+<span class="lineNum">     782 </span><span class="lineNoCov">          0 :         j = 0;</span>
+<span class="lineNum">     783 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_scc_size (&amp;sccs); ++i) {</span>
+<span class="lineNum">     784 </span><span class="lineNoCov">          0 :                 SCC *scc = dyn_array_scc_get_ptr (&amp;sccs, i);</span>
+<span class="lineNum">     785 </span><span class="lineNoCov">          0 :                 if (!scc-&gt;num_bridge_entries)</span>
+<span class="lineNum">     786 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     787 </span>            : 
+<span class="lineNum">     788 </span><span class="lineNoCov">          0 :                 api_sccs [j] = (MonoGCBridgeSCC *)sgen_alloc_internal_dynamic (sizeof (MonoGCBridgeSCC) + sizeof (MonoObject*) * scc-&gt;num_bridge_entries, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">     789 </span><span class="lineNoCov">          0 :                 api_sccs [j]-&gt;is_alive = FALSE;</span>
+<span class="lineNum">     790 </span><span class="lineNoCov">          0 :                 api_sccs [j]-&gt;num_objs = scc-&gt;num_bridge_entries;</span>
+<span class="lineNum">     791 </span><span class="lineNoCov">          0 :                 scc-&gt;num_bridge_entries = 0;</span>
+<span class="lineNum">     792 </span><span class="lineNoCov">          0 :                 scc-&gt;api_index = j++;</span>
+<span class="lineNum">     793 </span>            : 
+<span class="lineNum">     794 </span><span class="lineNoCov">          0 :                 num_xrefs += dyn_array_int_size (&amp;scc-&gt;xrefs);</span>
+<span class="lineNum">     795 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     796 </span>            : 
+<span class="lineNum">     797 </span><span class="lineNoCov">          0 :         SGEN_HASH_TABLE_FOREACH (&amp;hash_table, GCObject *, obj, HashEntry *, entry) {</span>
+<span class="lineNum">     798 </span><span class="lineNoCov">          0 :                 if (entry-&gt;is_bridge) {</span>
+<span class="lineNum">     799 </span><span class="lineNoCov">          0 :                         SCC *scc = dyn_array_scc_get_ptr (&amp;sccs, entry-&gt;scc_index);</span>
+<span class="lineNum">     800 </span><span class="lineNoCov">          0 :                         api_sccs [scc-&gt;api_index]-&gt;objs [scc-&gt;num_bridge_entries++] = (MonoObject*)entry-&gt;obj;</span>
+<span class="lineNum">     801 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     802 </span><span class="lineNoCov">          0 :         } SGEN_HASH_TABLE_FOREACH_END;</span>
+<span class="lineNum">     803 </span>            : 
+<span class="lineNum">     804 </span><span class="lineNoCov">          0 :         api_xrefs = (MonoGCBridgeXRef *)sgen_alloc_internal_dynamic (sizeof (MonoGCBridgeXRef) * num_xrefs, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">     805 </span><span class="lineNoCov">          0 :         j = 0;</span>
+<span class="lineNum">     806 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_scc_size (&amp;sccs); ++i) {</span>
+<span class="lineNum">     807 </span>            :                 int k;
+<span class="lineNum">     808 </span><span class="lineNoCov">          0 :                 SCC *scc = dyn_array_scc_get_ptr (&amp;sccs, i);</span>
+<span class="lineNum">     809 </span><span class="lineNoCov">          0 :                 if (!scc-&gt;num_bridge_entries)</span>
+<span class="lineNum">     810 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     811 </span><span class="lineNoCov">          0 :                 for (k = 0; k &lt; dyn_array_int_size (&amp;scc-&gt;xrefs); ++k) {</span>
+<span class="lineNum">     812 </span><span class="lineNoCov">          0 :                         SCC *src_scc = dyn_array_scc_get_ptr (&amp;sccs, dyn_array_int_get (&amp;scc-&gt;xrefs, k));</span>
+<span class="lineNum">     813 </span><span class="lineNoCov">          0 :                         if (!src_scc-&gt;num_bridge_entries)</span>
+<span class="lineNum">     814 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     815 </span><span class="lineNoCov">          0 :                         api_xrefs [j].src_scc_index = src_scc-&gt;api_index;</span>
+<span class="lineNum">     816 </span><span class="lineNoCov">          0 :                         api_xrefs [j].dst_scc_index = scc-&gt;api_index;</span>
+<span class="lineNum">     817 </span><span class="lineNoCov">          0 :                         ++j;</span>
+<span class="lineNum">     818 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     819 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     820 </span>            : 
+<span class="lineNum">     821 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (btv);</span>
+<span class="lineNum">     822 </span><span class="lineNoCov">          0 :         step_5 = SGEN_TV_ELAPSED (atv, btv);</span>
+<span class="lineNum">     823 </span>            : 
+<span class="lineNum">     824 </span>            :         /* free data */
+<span class="lineNum">     825 </span>            : 
+<span class="lineNum">     826 </span><span class="lineNoCov">          0 :         j = 0;</span>
+<span class="lineNum">     827 </span><span class="lineNoCov">          0 :         max_entries = max_xrefs = 0;</span>
+<span class="lineNum">     828 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_scc_size (&amp;sccs); ++i) {</span>
+<span class="lineNum">     829 </span><span class="lineNoCov">          0 :                 SCC *scc = dyn_array_scc_get_ptr (&amp;sccs, i);</span>
+<span class="lineNum">     830 </span><span class="lineNoCov">          0 :                 if (scc-&gt;num_bridge_entries)</span>
+<span class="lineNum">     831 </span><span class="lineNoCov">          0 :                         ++j;</span>
+<span class="lineNum">     832 </span><span class="lineNoCov">          0 :                 if (scc-&gt;num_bridge_entries &gt; max_entries)</span>
+<span class="lineNum">     833 </span><span class="lineNoCov">          0 :                         max_entries = scc-&gt;num_bridge_entries;</span>
+<span class="lineNum">     834 </span><span class="lineNoCov">          0 :                 if (dyn_array_int_size (&amp;scc-&gt;xrefs) &gt; max_xrefs)</span>
+<span class="lineNum">     835 </span><span class="lineNoCov">          0 :                         max_xrefs = dyn_array_int_size (&amp;scc-&gt;xrefs);</span>
+<span class="lineNum">     836 </span><span class="lineNoCov">          0 :                 dyn_array_int_uninit (&amp;scc-&gt;xrefs);</span>
+<span class="lineNum">     837 </span>            : 
+<span class="lineNum">     838 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     839 </span><span class="lineNoCov">          0 :         dyn_array_scc_uninit (&amp;sccs);</span>
+<span class="lineNum">     840 </span>            : 
+<span class="lineNum">     841 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (all_entries, sizeof (HashEntry*) * hash_table.num_entries, INTERNAL_MEM_BRIDGE_DATA);</span>
+<span class="lineNum">     842 </span>            : 
+<span class="lineNum">     843 </span><span class="lineNoCov">          0 :         free_data ();</span>
+<span class="lineNum">     844 </span>            :         /* Empty the registered bridges array */
+<span class="lineNum">     845 </span><span class="lineNoCov">          0 :         num_registered_bridges = dyn_array_ptr_size (&amp;registered_bridges);</span>
+<span class="lineNum">     846 </span><span class="lineNoCov">          0 :         dyn_array_ptr_set_size (&amp;registered_bridges, 0);</span>
+<span class="lineNum">     847 </span>            : 
+<span class="lineNum">     848 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (atv);</span>
+<span class="lineNum">     849 </span><span class="lineNoCov">          0 :         step_6 = SGEN_TV_ELAPSED (btv, atv);</span>
+<span class="lineNum">     850 </span>            : 
+<span class="lineNum">     851 </span>            :         //g_print (&quot;%d sccs containing bridges - %d max bridge objects - %d max xrefs\n&quot;, j, max_entries, max_xrefs);
+<span class="lineNum">     852 </span>            : 
+<span class="lineNum">     853 </span><span class="lineNoCov">          0 :         bridge_processor-&gt;num_sccs = num_sccs;</span>
+<span class="lineNum">     854 </span><span class="lineNoCov">          0 :         bridge_processor-&gt;api_sccs = api_sccs;</span>
+<span class="lineNum">     855 </span><span class="lineNoCov">          0 :         bridge_processor-&gt;num_xrefs = num_xrefs;</span>
+<span class="lineNum">     856 </span><span class="lineNoCov">          0 :         bridge_processor-&gt;api_xrefs = api_xrefs;</span>
+<span class="lineNum">     857 </span><span class="lineNoCov">          0 : }</span>
+<a name="858"><span class="lineNum">     858 </span>            : </a>
+<span class="lineNum">     859 </span>            : static void
+<span class="lineNum">     860 </span>            : processing_after_callback (int generation)
+<span class="lineNum">     861 </span>            : {
+<span class="lineNum">     862 </span>            :         int i, j;
+<span class="lineNum">     863 </span><span class="lineNoCov">          0 :         int num_sccs = bridge_processor-&gt;num_sccs;</span>
+<span class="lineNum">     864 </span><span class="lineNoCov">          0 :         MonoGCBridgeSCC **api_sccs = bridge_processor-&gt;api_sccs;</span>
+<span class="lineNum">     865 </span>            : 
+<span class="lineNum">     866 </span><span class="lineNoCov">          0 :         if (bridge_accounting_enabled) {</span>
+<span class="lineNum">     867 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; num_sccs; ++i) {</span>
+<span class="lineNum">     868 </span><span class="lineNoCov">          0 :                         for (j = 0; j &lt; api_sccs [i]-&gt;num_objs; ++j) {</span>
+<span class="lineNum">     869 </span><span class="lineNoCov">          0 :                                 GCVTable vtable = SGEN_LOAD_VTABLE (api_sccs [i]-&gt;objs [j]);</span>
+<span class="lineNum">     870 </span><span class="lineNoCov">          0 :                                 mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_GC,</span>
+<span class="lineNum">     871 </span>            :                                         &quot;OBJECT %s.%s (%p) SCC [%d] %s&quot;,
+<span class="lineNum">     872 </span><span class="lineNoCov">          0 :                                                 sgen_client_vtable_get_namespace (vtable), sgen_client_vtable_get_name (vtable), api_sccs [i]-&gt;objs [j],</span>
+<span class="lineNum">     873 </span><span class="lineNoCov">          0 :                                                 i,</span>
+<span class="lineNum">     874 </span><span class="lineNoCov">          0 :                                                 api_sccs [i]-&gt;is_alive  ? &quot;ALIVE&quot; : &quot;DEAD&quot;);</span>
+<span class="lineNum">     875 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     876 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     877 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     878 </span>            : 
+<span class="lineNum">     879 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_GC, &quot;GC_OLD_BRIDGE num-objects %d num_hash_entries %d sccs size %d init %.2fms df1 %.2fms sort %.2fms dfs2 %.2fms setup-cb %.2fms free-data %.2fms links %d/%d/%d/%d dfs passes %d/%d&quot;,</span>
+<span class="lineNum">     880 </span><span class="lineNoCov">          0 :                 num_registered_bridges, hash_table_size, dyn_array_scc_size (&amp;sccs),</span>
+<span class="lineNum">     881 </span><span class="lineNoCov">          0 :                 step_1 / 10000.0f,</span>
+<span class="lineNum">     882 </span><span class="lineNoCov">          0 :                 step_2 / 10000.0f,</span>
+<span class="lineNum">     883 </span><span class="lineNoCov">          0 :                 step_3 / 10000.0f,</span>
+<span class="lineNum">     884 </span><span class="lineNoCov">          0 :                 step_4 / 10000.0f,</span>
+<span class="lineNum">     885 </span><span class="lineNoCov">          0 :                 step_5 / 10000.0f,</span>
+<span class="lineNum">     886 </span><span class="lineNoCov">          0 :                 step_6 / 10000.0f,</span>
+<span class="lineNum">     887 </span><span class="lineNoCov">          0 :                 fist_pass_links, second_pass_links, sccs_links, max_sccs_links,</span>
+<span class="lineNum">     888 </span><span class="lineNoCov">          0 :                 dfs1_passes, dfs2_passes);</span>
+<span class="lineNum">     889 </span>            : 
+<span class="lineNum">     890 </span><span class="lineNoCov">          0 :         step_1 = 0; /* We must cleanup since this value is used as an accumulator. */</span>
+<span class="lineNum">     891 </span><span class="lineNoCov">          0 :         fist_pass_links = second_pass_links = sccs_links = max_sccs_links = 0;</span>
+<span class="lineNum">     892 </span><span class="lineNoCov">          0 :         dfs1_passes = dfs2_passes = 0;</span>
+<span class="lineNum">     893 </span><span class="lineNoCov">          0 : }</span>
+<a name="894"><span class="lineNum">     894 </span>            : </a>
+<span class="lineNum">     895 </span>            : static void
+<span class="lineNum">     896 </span>            : describe_pointer (GCObject *obj)
+<span class="lineNum">     897 </span>            : {
+<span class="lineNum">     898 </span>            :         HashEntry *entry;
+<span class="lineNum">     899 </span>            :         int i;
+<span class="lineNum">     900 </span>            : 
+<span class="lineNum">     901 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_ptr_size (&amp;registered_bridges); ++i) {</span>
+<span class="lineNum">     902 </span><span class="lineNoCov">          0 :                 if (obj == dyn_array_ptr_get (&amp;registered_bridges, i)) {</span>
+<span class="lineNum">     903 </span><span class="lineNoCov">          0 :                         printf (&quot;Pointer is a registered bridge object.\n&quot;);</span>
+<span class="lineNum">     904 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     905 </span>            :                 }
+<span class="lineNum">     906 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     907 </span>            : 
+<span class="lineNum">     908 </span><span class="lineNoCov">          0 :         entry = (HashEntry *)sgen_hash_table_lookup (&amp;hash_table, obj);</span>
+<span class="lineNum">     909 </span><span class="lineNoCov">          0 :         if (!entry)</span>
+<span class="lineNum">     910 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     911 </span>            : 
+<span class="lineNum">     912 </span><span class="lineNoCov">          0 :         printf (&quot;Bridge hash table entry %p:\n&quot;, entry);</span>
+<span class="lineNum">     913 </span><span class="lineNoCov">          0 :         printf (&quot;  is bridge: %d\n&quot;, (int)entry-&gt;is_bridge);</span>
+<span class="lineNum">     914 </span><span class="lineNoCov">          0 :         printf (&quot;  is visited: %d\n&quot;, (int)entry-&gt;is_visited);</span>
+<span class="lineNum">     915 </span><span class="lineNoCov">          0 : }</span>
+<a name="916"><span class="lineNum">     916 </span>            : </a>
+<span class="lineNum">     917 </span>            : void
+<span class="lineNum">     918 </span>            : sgen_old_bridge_init (SgenBridgeProcessor *collector)
+<span class="lineNum">     919 </span>            : {
+<span class="lineNum">     920 </span><span class="lineNoCov">          0 :         collector-&gt;reset_data = reset_data;</span>
+<span class="lineNum">     921 </span><span class="lineNoCov">          0 :         collector-&gt;processing_stw_step = processing_stw_step;</span>
+<span class="lineNum">     922 </span><span class="lineNoCov">          0 :         collector-&gt;processing_build_callback_data = processing_build_callback_data;</span>
+<span class="lineNum">     923 </span><span class="lineNoCov">          0 :         collector-&gt;processing_after_callback = processing_after_callback;</span>
+<span class="lineNum">     924 </span><span class="lineNoCov">          0 :         collector-&gt;class_kind = class_kind;</span>
+<span class="lineNum">     925 </span><span class="lineNoCov">          0 :         collector-&gt;register_finalized_object = register_finalized_object;</span>
+<span class="lineNum">     926 </span><span class="lineNoCov">          0 :         collector-&gt;describe_pointer = describe_pointer;</span>
+<span class="lineNum">     927 </span><span class="lineNoCov">          0 :         collector-&gt;set_config = set_config;</span>
+<span class="lineNum">     928 </span>            : 
+<span class="lineNum">     929 </span><span class="lineNoCov">          0 :         bridge_processor = collector;</span>
+<span class="lineNum">     930 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     931 </span>            : 
+<span class="lineNum">     932 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

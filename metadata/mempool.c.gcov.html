@@ -1,0 +1,511 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/mempool.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - mempool.c<span style="font-size: 80%;"> (source / <a href="mempool.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">79</td>
+            <td class="headerCovTableEntry">108</td>
+            <td class="headerCovTableEntryLo">73.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntry">14</td>
+            <td class="headerCovTableEntryLo">71.4 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mempool.c: efficient memory allocation
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * MonoMemPool is for fast allocation of memory. We free
+<span class="lineNum">       5 </span>            :  * all memory when the pool is destroyed.
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Author:
+<span class="lineNum">       8 </span>            :  *   Dietmar Maurer (dietmar@ximian.com)
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * Copyright 2001-2003 Ximian, Inc (http://www.ximian.com)
+<span class="lineNum">      11 </span>            :  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">      12 </span>            :  * Copyright 2011 Xamarin Inc. (http://www.xamarin.com)
+<span class="lineNum">      13 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      14 </span>            :  */
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : #include &quot;mempool.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;mempool-internals.h&quot;
+<span class="lineNum">      22 </span>            : 
+<span class="lineNum">      23 </span>            : /*
+<span class="lineNum">      24 </span>            :  * MonoMemPool is for fast allocation of memory. We free
+<span class="lineNum">      25 </span>            :  * all memory when the pool is destroyed.
+<span class="lineNum">      26 </span>            :  */
+<span class="lineNum">      27 </span>            : 
+<span class="lineNum">      28 </span>            : #define MEM_ALIGN 8
+<span class="lineNum">      29 </span>            : #define ALIGN_SIZE(s)   (((s) + MEM_ALIGN - 1) &amp; ~(MEM_ALIGN - 1))
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : // Size of memory at start of mempool reserved for header
+<span class="lineNum">      32 </span>            : #define SIZEOF_MEM_POOL (ALIGN_SIZE (sizeof (MonoMemPool)))
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : #if MONO_SMALL_CONFIG
+<span class="lineNum">      35 </span>            : #define MONO_MEMPOOL_PAGESIZE 4096
+<span class="lineNum">      36 </span>            : #define MONO_MEMPOOL_MINSIZE 256
+<span class="lineNum">      37 </span>            : #else
+<span class="lineNum">      38 </span>            : #define MONO_MEMPOOL_PAGESIZE 8192
+<span class="lineNum">      39 </span>            : #define MONO_MEMPOOL_MINSIZE 512
+<span class="lineNum">      40 </span>            : #endif
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : // The --with-malloc-mempools debug-build flag causes mempools to be allocated in single-element blocks, so tools like Valgrind can run better.
+<span class="lineNum">      43 </span>            : #if USE_MALLOC_FOR_MEMPOOLS
+<span class="lineNum">      44 </span>            : #define INDIVIDUAL_ALLOCATIONS
+<span class="lineNum">      45 </span>            : #define MONO_MEMPOOL_PREFER_INDIVIDUAL_ALLOCATION_SIZE 0
+<span class="lineNum">      46 </span>            : #else
+<span class="lineNum">      47 </span>            : #define MONO_MEMPOOL_PREFER_INDIVIDUAL_ALLOCATION_SIZE MONO_MEMPOOL_PAGESIZE
+<span class="lineNum">      48 </span>            : #endif
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span>            : #ifndef G_LIKELY
+<span class="lineNum">      51 </span>            : #define G_LIKELY(a) (a)
+<span class="lineNum">      52 </span>            : #define G_UNLIKELY(a) (a)
+<span class="lineNum">      53 </span>            : #endif
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : // A mempool is a linked list of memory blocks, each of which begins with this header structure.
+<span class="lineNum">      56 </span>            : // The initial block in the linked list is special, and tracks additional information.
+<span class="lineNum">      57 </span>            : struct _MonoMemPool {
+<span class="lineNum">      58 </span>            :         // Next block after this one in linked list
+<span class="lineNum">      59 </span>            :         MonoMemPool *next;
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span>            :         // Size of this memory block only
+<span class="lineNum">      62 </span>            :         guint32 size;
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            :         // Used in &quot;initial block&quot; only: Beginning of current free space in mempool (may be in some block other than the first one)
+<span class="lineNum">      65 </span>            :         guint8 *pos;
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            :         // Used in &quot;initial block&quot; only: End of current free space in mempool (ie, the first byte following the end of usable space)
+<span class="lineNum">      68 </span>            :         guint8 *end;
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span>            :         union {
+<span class="lineNum">      71 </span>            :                 // Unused: Imposing floating point memory rules on _MonoMemPool's final field ensures proper alignment of whole header struct
+<span class="lineNum">      72 </span>            :                 double pad;
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span>            :                 // Used in &quot;initial block&quot; only: Number of bytes so far allocated (whether used or not) in the whole mempool
+<span class="lineNum">      75 </span>            :                 guint32 allocated;
+<span class="lineNum">      76 </span>            :         } d;
+<span class="lineNum">      77 </span>            : };
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            : static long total_bytes_allocated = 0;
+<span class="lineNum">      80 </span>            : 
+<span class="lineNum">      81 </span>            : /**
+<span class="lineNum">      82 </span>            :  * mono_mempool_new:
+<span class="lineNum">      83 </span>            :  *
+<span class="lineNum">      84 </span>            :  * Returns: a new memory pool.
+<a name="85"><span class="lineNum">      85 </span>            :  */</a>
+<span class="lineNum">      86 </span>            : MonoMemPool *
+<span class="lineNum">      87 </span>            : mono_mempool_new (void)
+<span class="lineNum">      88 </span>            : {
+<span class="lineNum">      89 </span><span class="lineCov">   15669734 :         return mono_mempool_new_size (MONO_MEMPOOL_PAGESIZE);</span>
+<span class="lineNum">      90 </span>            : }
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span>            : /**
+<span class="lineNum">      93 </span>            :  * mono_mempool_new_size:
+<span class="lineNum">      94 </span>            :  * @initial_size: the amount of memory to initially reserve for the memory pool.
+<span class="lineNum">      95 </span>            :  *
+<span class="lineNum">      96 </span>            :  * Returns: a new memory pool with a specific initial memory reservation.
+<a name="97"><span class="lineNum">      97 </span>            :  */</a>
+<span class="lineNum">      98 </span>            : MonoMemPool *
+<span class="lineNum">      99 </span>            : mono_mempool_new_size (int initial_size)
+<span class="lineNum">     100 </span>            : {
+<span class="lineNum">     101 </span>            :         MonoMemPool *pool;
+<span class="lineNum">     102 </span>            : 
+<span class="lineNum">     103 </span>            : #ifdef INDIVIDUAL_ALLOCATIONS
+<span class="lineNum">     104 </span>            :         // In individual allocation mode, create initial block with zero storage space.
+<span class="lineNum">     105 </span>            :         initial_size = SIZEOF_MEM_POOL;
+<span class="lineNum">     106 </span>            : #else
+<span class="lineNum">     107 </span><span class="lineCov">   15782002 :         if (initial_size &lt; MONO_MEMPOOL_MINSIZE)</span>
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :                 initial_size = MONO_MEMPOOL_MINSIZE;</span>
+<span class="lineNum">     109 </span>            : #endif
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span><span class="lineCov">   15782177 :         pool = (MonoMemPool *)g_malloc (initial_size);</span>
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span><span class="lineCov">   15782177 :         pool-&gt;next = NULL;</span>
+<span class="lineNum">     114 </span><span class="lineCov">   15782177 :         pool-&gt;pos = (guint8*)pool + SIZEOF_MEM_POOL; // Start after header</span>
+<span class="lineNum">     115 </span><span class="lineCov">   15782177 :         pool-&gt;end = (guint8*)pool + initial_size;    // End at end of allocated space </span>
+<span class="lineNum">     116 </span><span class="lineCov">   15782177 :         pool-&gt;d.allocated = pool-&gt;size = initial_size;</span>
+<span class="lineNum">     117 </span><span class="lineCov">   15782177 :         total_bytes_allocated += initial_size;</span>
+<span class="lineNum">     118 </span><span class="lineCov">   15782177 :         return pool;</span>
+<span class="lineNum">     119 </span>            : }
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span>            : /**
+<span class="lineNum">     122 </span>            :  * mono_mempool_destroy:
+<span class="lineNum">     123 </span>            :  * @pool: the memory pool to destroy
+<span class="lineNum">     124 </span>            :  *
+<span class="lineNum">     125 </span>            :  * Free all memory associated with this pool.
+<a name="126"><span class="lineNum">     126 </span>            :  */</a>
+<span class="lineNum">     127 </span>            : void
+<span class="lineNum">     128 </span>            : mono_mempool_destroy (MonoMemPool *pool)
+<span class="lineNum">     129 </span>            : {
+<span class="lineNum">     130 </span>            :         MonoMemPool *p, *n;
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineCov">   15782012 :         total_bytes_allocated -= pool-&gt;d.allocated;</span>
+<span class="lineNum">     133 </span>            : 
+<span class="lineNum">     134 </span><span class="lineCov">   15782012 :         p = pool;</span>
+<span class="lineNum">     135 </span><span class="lineCov">  248683990 :         while (p) {</span>
+<span class="lineNum">     136 </span><span class="lineCov">  108560002 :                 n = p-&gt;next;</span>
+<span class="lineNum">     137 </span><span class="lineCov">  108560002 :                 g_free (p);</span>
+<span class="lineNum">     138 </span><span class="lineCov">  108560002 :                 p = n;</span>
+<span class="lineNum">     139 </span>            :         }
+<span class="lineNum">     140 </span><span class="lineCov">   15782011 : }</span>
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span>            : /**
+<span class="lineNum">     143 </span>            :  * mono_mempool_invalidate:
+<span class="lineNum">     144 </span>            :  * @pool: the memory pool to invalidate
+<span class="lineNum">     145 </span>            :  *
+<span class="lineNum">     146 </span>            :  * Fill the memory associated with this pool to 0x2a (42). Useful for debugging.
+<a name="147"><span class="lineNum">     147 </span>            :  */</a>
+<span class="lineNum">     148 </span>            : void
+<span class="lineNum">     149 </span>            : mono_mempool_invalidate (MonoMemPool *pool)
+<span class="lineNum">     150 </span>            : {
+<span class="lineNum">     151 </span>            :         MonoMemPool *p, *n;
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span><span class="lineCov">         52 :         p = pool;</span>
+<span class="lineNum">     154 </span><span class="lineCov">       1940 :         while (p) {</span>
+<span class="lineNum">     155 </span><span class="lineCov">        918 :                 n = p-&gt;next;</span>
+<span class="lineNum">     156 </span><span class="lineCov">        918 :                 memset (p, 42, p-&gt;size);</span>
+<span class="lineNum">     157 </span><span class="lineCov">        918 :                 p = n;</span>
+<span class="lineNum">     158 </span>            :         }
+<span class="lineNum">     159 </span><span class="lineCov">         52 : }</span>
+<span class="lineNum">     160 </span>            : 
+<span class="lineNum">     161 </span>            : /**
+<span class="lineNum">     162 </span>            :  * mono_mempool_stats:
+<span class="lineNum">     163 </span>            :  * @pool: the momory pool we need stats for
+<span class="lineNum">     164 </span>            :  *
+<span class="lineNum">     165 </span>            :  * Print a few stats about the mempool:
+<span class="lineNum">     166 </span>            :  * - Total memory allocated (malloced) by mem pool
+<span class="lineNum">     167 </span>            :  * - Number of chunks/blocks memory is allocated in
+<span class="lineNum">     168 </span>            :  * - How much memory is available to dispense before a new malloc must occur?
+<a name="169"><span class="lineNum">     169 </span>            :  */</a>
+<span class="lineNum">     170 </span>            : void
+<span class="lineNum">     171 </span>            : mono_mempool_stats (MonoMemPool *pool)
+<span class="lineNum">     172 </span>            : {
+<span class="lineNum">     173 </span>            :         MonoMemPool *p;
+<span class="lineNum">     174 </span><span class="lineNoCov">          0 :         int count = 0;</span>
+<span class="lineNum">     175 </span>            :         guint32 still_free;
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :         p = pool;</span>
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 :         while (p) {</span>
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :                 p = p-&gt;next;</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :                 count++;</span>
+<span class="lineNum">     181 </span>            :         }
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :         if (pool) {</span>
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :                 still_free = pool-&gt;end - pool-&gt;pos;</span>
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :                 g_print (&quot;Mempool %p stats:\n&quot;, pool);</span>
+<span class="lineNum">     185 </span><span class="lineNoCov">          0 :                 g_print (&quot;Total mem allocated: %d\n&quot;, pool-&gt;d.allocated);</span>
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :                 g_print (&quot;Num chunks: %d\n&quot;, count);</span>
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :                 g_print (&quot;Free memory: %d\n&quot;, still_free);</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span>            : #ifdef TRACE_ALLOCATIONS
+<span class="lineNum">     192 </span>            : #include &lt;execinfo.h&gt;
+<span class="lineNum">     193 </span>            : #include &quot;metadata/appdomain.h&quot;
+<span class="lineNum">     194 </span>            : #include &quot;metadata/metadata-internals.h&quot;
+<span class="lineNum">     195 </span>            : 
+<span class="lineNum">     196 </span>            : static mono_mutex_t mempool_tracing_lock;
+<span class="lineNum">     197 </span>            : #define BACKTRACE_DEPTH 7
+<span class="lineNum">     198 </span>            : static void
+<span class="lineNum">     199 </span>            : mono_backtrace (int size)
+<span class="lineNum">     200 </span>            : {
+<span class="lineNum">     201 </span>            :         void *array[BACKTRACE_DEPTH];
+<span class="lineNum">     202 </span>            :         char **names;
+<span class="lineNum">     203 </span>            :         int i, symbols;
+<span class="lineNum">     204 </span>            :         static gboolean inited;
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span>            :         if (!inited) {
+<span class="lineNum">     207 </span>            :                 mono_os_mutex_init_recursive (&amp;mempool_tracing_lock);
+<span class="lineNum">     208 </span>            :                 inited = TRUE;
+<span class="lineNum">     209 </span>            :         }
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span>            :         mono_os_mutex_lock (&amp;mempool_tracing_lock);
+<span class="lineNum">     212 </span>            :         g_print (&quot;Allocating %d bytes\n&quot;, size);
+<span class="lineNum">     213 </span>            :         MONO_ENTER_GC_SAFE;
+<span class="lineNum">     214 </span>            :         symbols = backtrace (array, BACKTRACE_DEPTH);
+<span class="lineNum">     215 </span>            :         names = backtrace_symbols (array, symbols);
+<span class="lineNum">     216 </span>            :         MONO_EXIT_GC_SAFE;
+<span class="lineNum">     217 </span>            :         for (i = 1; i &lt; symbols; ++i) {
+<span class="lineNum">     218 </span>            :                 g_print (&quot;\t%s\n&quot;, names [i]);
+<span class="lineNum">     219 </span>            :         }
+<span class="lineNum">     220 </span>            :         g_free (names);
+<span class="lineNum">     221 </span>            :         mono_os_mutex_unlock (&amp;mempool_tracing_lock);
+<span class="lineNum">     222 </span>            : }
+<span class="lineNum">     223 </span>            : 
+<span class="lineNum">     224 </span>            : #endif
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span>            : /**
+<span class="lineNum">     227 </span>            :  * mono_mempool_alloc:
+<span class="lineNum">     228 </span>            :  * @pool: the memory pool to use
+<span class="lineNum">     229 </span>            :  * @size: size of the memory entity we are trying to allocate
+<span class="lineNum">     230 </span>            :  *
+<span class="lineNum">     231 </span>            :  * A mempool is growing; give a recommended size for the next block.
+<span class="lineNum">     232 </span>            :  * Each block in a mempool should be about 150% bigger than the previous one,
+<span class="lineNum">     233 </span>            :  * or bigger if it is necessary to include the new entity.
+<span class="lineNum">     234 </span>            :  *
+<span class="lineNum">     235 </span>            :  * Returns: the recommended size.
+<a name="236"><span class="lineNum">     236 </span>            :  */</a>
+<span class="lineNum">     237 </span>            : static guint
+<span class="lineNum">     238 </span>            : get_next_size (MonoMemPool *pool, int size)
+<span class="lineNum">     239 </span>            : {
+<span class="lineNum">     240 </span><span class="lineCov">  213955831 :         int target = pool-&gt;next? pool-&gt;next-&gt;size: pool-&gt;size;</span>
+<span class="lineNum">     241 </span><span class="lineCov">   71326739 :         size += SIZEOF_MEM_POOL;</span>
+<span class="lineNum">     242 </span>            :         /* increase the size */
+<span class="lineNum">     243 </span><span class="lineCov">   71326739 :         target += target / 2;</span>
+<span class="lineNum">     244 </span><span class="lineCov">  142665534 :         while (target &lt; size) {</span>
+<span class="lineNum">     245 </span><span class="lineCov">         86 :                 target += target / 2;</span>
+<span class="lineNum">     246 </span>            :         }
+<span class="lineNum">     247 </span><span class="lineCov">  142383744 :         if (target &gt; MONO_MEMPOOL_PAGESIZE &amp;&amp; size &lt;= MONO_MEMPOOL_PAGESIZE)</span>
+<span class="lineNum">     248 </span><span class="lineCov">   70981243 :                 target = MONO_MEMPOOL_PAGESIZE;</span>
+<span class="lineNum">     249 </span><span class="lineCov">   71349947 :         return target;</span>
+<span class="lineNum">     250 </span>            : }
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span>            : /**
+<span class="lineNum">     253 </span>            :  * mono_mempool_alloc:
+<span class="lineNum">     254 </span>            :  * @pool: the memory pool to use
+<span class="lineNum">     255 </span>            :  * @size: size of the memory block
+<span class="lineNum">     256 </span>            :  *
+<span class="lineNum">     257 </span>            :  * Allocates a new block of memory in @pool.
+<span class="lineNum">     258 </span>            :  *
+<span class="lineNum">     259 </span>            :  * Returns: the address of a newly allocated memory block.
+<a name="260"><span class="lineNum">     260 </span>            :  */</a>
+<span class="lineNum">     261 </span>            : gpointer
+<span class="lineNum">     262 </span>            : mono_mempool_alloc (MonoMemPool *pool, guint size)
+<span class="lineNum">     263 </span>            : {
+<span class="lineNum">     264 </span><span class="lineCov"> 4680965282 :         gpointer rval = pool-&gt;pos; // Return value</span>
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span>            :         // Normal case: Just bump up pos pointer and we are done
+<span class="lineNum">     267 </span><span class="lineCov"> 4680965282 :         size = ALIGN_SIZE (size);</span>
+<span class="lineNum">     268 </span><span class="lineCov"> 4680965282 :         pool-&gt;pos = (guint8*)rval + size;</span>
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span>            : #ifdef TRACE_ALLOCATIONS
+<span class="lineNum">     271 </span>            :         if (pool == mono_get_corlib ()-&gt;mempool) {
+<span class="lineNum">     272 </span>            :                 mono_backtrace (size);
+<span class="lineNum">     273 </span>            :         }
+<span class="lineNum">     274 </span>            : #endif
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span>            :         // If we have just overflowed the current block, we need to back up and try again.
+<span class="lineNum">     277 </span><span class="lineCov"> 4680965282 :         if (G_UNLIKELY (pool-&gt;pos &gt;= pool-&gt;end)) {</span>
+<span class="lineNum">     278 </span><span class="lineCov">   92696555 :                 pool-&gt;pos -= size;  // Back out</span>
+<span class="lineNum">     279 </span>            : 
+<span class="lineNum">     280 </span>            :                 // For large objects, allocate the object into its own block.
+<span class="lineNum">     281 </span>            :                 // (In individual allocation mode, the constant will be 0 and this path will always be taken)
+<span class="lineNum">     282 </span><span class="lineCov">   92696555 :                 if (size &gt;= MONO_MEMPOOL_PREFER_INDIVIDUAL_ALLOCATION_SIZE) {</span>
+<span class="lineNum">     283 </span><span class="lineCov">   21378427 :                         guint new_size = SIZEOF_MEM_POOL + size;</span>
+<span class="lineNum">     284 </span><span class="lineCov">   21378427 :                         MonoMemPool *np = (MonoMemPool *)g_malloc (new_size);</span>
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span><span class="lineCov">   21378427 :                         np-&gt;next = pool-&gt;next;</span>
+<span class="lineNum">     287 </span><span class="lineCov">   21378427 :                         np-&gt;size = new_size;</span>
+<span class="lineNum">     288 </span><span class="lineCov">   21378427 :                         pool-&gt;next = np;</span>
+<span class="lineNum">     289 </span><span class="lineCov">   21378427 :                         pool-&gt;d.allocated += new_size;</span>
+<span class="lineNum">     290 </span><span class="lineCov">   21378427 :                         total_bytes_allocated += new_size;</span>
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span><span class="lineCov">   21378427 :                         rval = (guint8*)np + SIZEOF_MEM_POOL;</span>
+<span class="lineNum">     293 </span><span class="lineCov">   21378427 :                 } else {</span>
+<span class="lineNum">     294 </span>            :                         // Notice: any unused memory at the end of the old head becomes simply abandoned in this case until the mempool is freed (see Bugzilla #35136)
+<span class="lineNum">     295 </span><span class="lineCov">   71326129 :                         guint new_size = get_next_size (pool, size);</span>
+<span class="lineNum">     296 </span><span class="lineCov">   71326129 :                         MonoMemPool *np = (MonoMemPool *)g_malloc (new_size);</span>
+<span class="lineNum">     297 </span>            : 
+<span class="lineNum">     298 </span><span class="lineCov">   71326129 :                         np-&gt;next = pool-&gt;next;</span>
+<span class="lineNum">     299 </span><span class="lineCov">   71326129 :                         np-&gt;size = new_size;</span>
+<span class="lineNum">     300 </span><span class="lineCov">   71326129 :                         pool-&gt;next = np;</span>
+<span class="lineNum">     301 </span><span class="lineCov">   71326129 :                         pool-&gt;pos = (guint8*)np + SIZEOF_MEM_POOL;</span>
+<span class="lineNum">     302 </span><span class="lineCov">   71326129 :                         pool-&gt;end = (guint8*)np + new_size;</span>
+<span class="lineNum">     303 </span><span class="lineCov">   71326129 :                         pool-&gt;d.allocated += new_size;</span>
+<span class="lineNum">     304 </span><span class="lineCov">   71326129 :                         total_bytes_allocated += new_size;</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineCov">   71326129 :                         rval = pool-&gt;pos;</span>
+<span class="lineNum">     307 </span><span class="lineCov">   71326129 :                         pool-&gt;pos += size;</span>
+<span class="lineNum">     308 </span>            :                 }
+<span class="lineNum">     309 </span><span class="lineCov">   92727973 :         }</span>
+<span class="lineNum">     310 </span>            : 
+<span class="lineNum">     311 </span><span class="lineCov"> 4679515505 :         return rval;</span>
+<span class="lineNum">     312 </span>            : }
+<span class="lineNum">     313 </span>            : 
+<span class="lineNum">     314 </span>            : /**
+<span class="lineNum">     315 </span>            :  * mono_mempool_alloc0:
+<span class="lineNum">     316 </span>            :  *
+<span class="lineNum">     317 </span>            :  * same as mono_mempool_alloc, but fills memory with zero.
+<a name="318"><span class="lineNum">     318 </span>            :  */</a>
+<span class="lineNum">     319 </span>            : gpointer
+<span class="lineNum">     320 </span>            : mono_mempool_alloc0 (MonoMemPool *pool, guint size)
+<span class="lineNum">     321 </span>            : {
+<span class="lineNum">     322 </span>            :         gpointer rval;
+<span class="lineNum">     323 </span>            : 
+<span class="lineNum">     324 </span>            :         // For the fast path, repeat the first few lines of mono_mempool_alloc
+<span class="lineNum">     325 </span><span class="lineCov"> 2222149160 :         size = ALIGN_SIZE (size);</span>
+<span class="lineNum">     326 </span><span class="lineCov"> 2222149160 :         rval = pool-&gt;pos;</span>
+<span class="lineNum">     327 </span><span class="lineCov"> 2222149160 :         pool-&gt;pos = (guint8*)rval + size;</span>
+<span class="lineNum">     328 </span>            : 
+<span class="lineNum">     329 </span>            :         // If that doesn't work fall back on mono_mempool_alloc to handle new chunk allocation
+<span class="lineNum">     330 </span><span class="lineCov"> 2222149160 :         if (G_UNLIKELY (pool-&gt;pos &gt;= pool-&gt;end)) {</span>
+<span class="lineNum">     331 </span><span class="lineCov">   40726452 :                 rval = mono_mempool_alloc (pool, size);</span>
+<span class="lineNum">     332 </span><span class="lineCov">   40726452 :         }</span>
+<span class="lineNum">     333 </span>            : #ifdef TRACE_ALLOCATIONS
+<span class="lineNum">     334 </span>            :         else if (pool == mono_get_corlib ()-&gt;mempool) {
+<span class="lineNum">     335 </span>            :                 mono_backtrace (size);
+<span class="lineNum">     336 </span>            :         }
+<span class="lineNum">     337 </span>            : #endif
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span><span class="lineCov"> 2222869569 :         memset (rval, 0, size);</span>
+<span class="lineNum">     340 </span><span class="lineCov"> 2222869569 :         return rval;</span>
+<span class="lineNum">     341 </span>            : }
+<span class="lineNum">     342 </span>            : 
+<span class="lineNum">     343 </span>            : /**
+<span class="lineNum">     344 </span>            :  * mono_mempool_contains_addr:
+<span class="lineNum">     345 </span>            :  *
+<span class="lineNum">     346 </span>            :  *  Determines whenever ADDR is inside the memory used by the mempool.
+<a name="347"><span class="lineNum">     347 </span>            :  */</a>
+<span class="lineNum">     348 </span>            : gboolean
+<span class="lineNum">     349 </span>            : mono_mempool_contains_addr (MonoMemPool *pool,
+<span class="lineNum">     350 </span>            :                                                         gpointer addr)
+<span class="lineNum">     351 </span>            : {
+<span class="lineNum">     352 </span><span class="lineCov">    4739047 :         MonoMemPool *p = pool;</span>
+<span class="lineNum">     353 </span>            : 
+<span class="lineNum">     354 </span><span class="lineCov">  541608770 :         while (p) {</span>
+<span class="lineNum">     355 </span><span class="lineCov">  390917380 :                 if (addr &gt;= (gpointer)p &amp;&amp; addr &lt; (gpointer)((guint8*)p + p-&gt;size))</span>
+<span class="lineNum">     356 </span><span class="lineCov">    4739047 :                         return TRUE;</span>
+<span class="lineNum">     357 </span><span class="lineCov">  266065339 :                 p = p-&gt;next;</span>
+<span class="lineNum">     358 </span>            :         }
+<span class="lineNum">     359 </span>            : 
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     361 </span><span class="lineCov">    4739047 : }</span>
+<span class="lineNum">     362 </span>            : 
+<span class="lineNum">     363 </span>            : /**
+<span class="lineNum">     364 </span>            :  * mono_mempool_strdup:
+<span class="lineNum">     365 </span>            :  *
+<span class="lineNum">     366 </span>            :  * Same as strdup, but allocates memory from the mempool.
+<span class="lineNum">     367 </span>            :  * Returns: a pointer to the newly allocated string data inside the mempool.
+<a name="368"><span class="lineNum">     368 </span>            :  */</a>
+<span class="lineNum">     369 </span>            : char*
+<span class="lineNum">     370 </span>            : mono_mempool_strdup (MonoMemPool *pool,
+<span class="lineNum">     371 </span>            :                                          const char *s)
+<span class="lineNum">     372 </span>            : {
+<span class="lineNum">     373 </span>            :         int l;
+<span class="lineNum">     374 </span>            :         char *res;
+<span class="lineNum">     375 </span>            : 
+<span class="lineNum">     376 </span><span class="lineCov">    2365410 :         if (s == NULL)</span>
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     378 </span>            : 
+<span class="lineNum">     379 </span><span class="lineCov">    2365410 :         l = strlen (s);</span>
+<span class="lineNum">     380 </span><span class="lineCov">    2365410 :         res = (char *)mono_mempool_alloc (pool, l + 1);</span>
+<span class="lineNum">     381 </span><span class="lineCov">    2365410 :         memcpy (res, s, l + 1);</span>
+<span class="lineNum">     382 </span>            : 
+<span class="lineNum">     383 </span><span class="lineCov">    2365410 :         return res;</span>
+<span class="lineNum">     384 </span><span class="lineCov">    2365409 : }</span>
+<a name="385"><span class="lineNum">     385 </span>            : </a>
+<span class="lineNum">     386 </span>            : char*
+<span class="lineNum">     387 </span>            : mono_mempool_strdup_vprintf (MonoMemPool *pool, const char *format, va_list args)
+<span class="lineNum">     388 </span>            : {
+<span class="lineNum">     389 </span>            :         size_t buflen;
+<span class="lineNum">     390 </span>            :         char *buf;
+<span class="lineNum">     391 </span>            :         va_list args2;
+<span class="lineNum">     392 </span><span class="lineNoCov">          0 :         va_copy (args2, args);</span>
+<span class="lineNum">     393 </span><span class="lineNoCov">          0 :         int len = vsnprintf (NULL, 0, format, args2);</span>
+<span class="lineNum">     394 </span><span class="lineNoCov">          0 :         va_end (args2);</span>
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineNoCov">          0 :         if (len &gt;= 0 &amp;&amp; (buf = (char*)mono_mempool_alloc (pool, (buflen = (size_t) (len + 1)))) != NULL) {</span>
+<span class="lineNum">     397 </span><span class="lineNoCov">          0 :                 vsnprintf (buf, buflen, format, args);</span>
+<span class="lineNum">     398 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     399 </span><span class="lineNoCov">          0 :                 buf = NULL;</span>
+<span class="lineNum">     400 </span>            :         }
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :         return buf;</span>
+<span class="lineNum">     402 </span>            : }
+<a name="403"><span class="lineNum">     403 </span>            : </a>
+<span class="lineNum">     404 </span>            : char*
+<span class="lineNum">     405 </span>            : mono_mempool_strdup_printf (MonoMemPool *pool, const char *format, ...)
+<span class="lineNum">     406 </span>            : {
+<span class="lineNum">     407 </span>            :         char *buf;
+<span class="lineNum">     408 </span>            :         va_list args;
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :         va_start (args, format);</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :         buf = mono_mempool_strdup_vprintf (pool, format, args);</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         va_end (args);</span>
+<span class="lineNum">     412 </span><span class="lineNoCov">          0 :         return buf;</span>
+<span class="lineNum">     413 </span>            : }
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span>            : /**
+<span class="lineNum">     416 </span>            :  * mono_mempool_get_allocated:
+<span class="lineNum">     417 </span>            :  *
+<span class="lineNum">     418 </span>            :  * Return the amount of memory allocated for this mempool.
+<a name="419"><span class="lineNum">     419 </span>            :  */</a>
+<span class="lineNum">     420 </span>            : guint32
+<span class="lineNum">     421 </span>            : mono_mempool_get_allocated (MonoMemPool *pool)
+<span class="lineNum">     422 </span>            : {
+<span class="lineNum">     423 </span><span class="lineCov">      48857 :         return pool-&gt;d.allocated;</span>
+<span class="lineNum">     424 </span>            : }
+<span class="lineNum">     425 </span>            : 
+<span class="lineNum">     426 </span>            : /**
+<span class="lineNum">     427 </span>            :  * mono_mempool_get_bytes_allocated:
+<span class="lineNum">     428 </span>            :  *
+<span class="lineNum">     429 </span>            :  * Return the number of bytes currently allocated for mempools.
+<a name="430"><span class="lineNum">     430 </span>            :  */</a>
+<span class="lineNum">     431 </span>            : long
+<span class="lineNum">     432 </span>            : mono_mempool_get_bytes_allocated (void)
+<span class="lineNum">     433 </span>            : {
+<span class="lineNum">     434 </span><span class="lineNoCov">          0 :         return total_bytes_allocated;</span>
+<span class="lineNum">     435 </span>            : }
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

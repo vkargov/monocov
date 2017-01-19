@@ -1,0 +1,574 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-alloc.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-alloc.c<span style="font-size: 80%;"> (source / <a href="sgen-alloc.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">155</td>
+            <td class="headerCovTableEntry">211</td>
+            <td class="headerCovTableEntryLo">73.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">9</td>
+            <td class="headerCovTableEntry">9</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-alloc.c: Object allocation routines + managed allocators
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *  Rodrigo Kumpera (kumpera@gmail.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright 2005-2011 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       9 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">      10 </span>            :  * Copyright 2011 Xamarin, Inc.
+<span class="lineNum">      11 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">      12 </span>            :  *
+<span class="lineNum">      13 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      14 </span>            :  */
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : /*
+<span class="lineNum">      17 </span>            :  * ######################################################################
+<span class="lineNum">      18 </span>            :  * ########  Object allocation
+<span class="lineNum">      19 </span>            :  * ######################################################################
+<span class="lineNum">      20 </span>            :  * This section of code deals with allocating memory for objects.
+<span class="lineNum">      21 </span>            :  * There are several ways:
+<span class="lineNum">      22 </span>            :  * *) allocate large objects
+<span class="lineNum">      23 </span>            :  * *) allocate normal objects
+<span class="lineNum">      24 </span>            :  * *) fast lock-free allocation
+<span class="lineNum">      25 </span>            :  * *) allocation of pinned objects
+<span class="lineNum">      26 </span>            :  */
+<span class="lineNum">      27 </span>            : 
+<span class="lineNum">      28 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      29 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : #include &quot;mono/sgen/sgen-gc.h&quot;
+<span class="lineNum">      34 </span>            : #include &quot;mono/sgen/sgen-protocol.h&quot;
+<span class="lineNum">      35 </span>            : #include &quot;mono/sgen/sgen-memory-governor.h&quot;
+<span class="lineNum">      36 </span>            : #include &quot;mono/sgen/sgen-client.h&quot;
+<span class="lineNum">      37 </span>            : #include &quot;mono/utils/mono-memory-model.h&quot;
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : #define ALIGN_UP                SGEN_ALIGN_UP
+<span class="lineNum">      40 </span>            : #define ALLOC_ALIGN             SGEN_ALLOC_ALIGN
+<span class="lineNum">      41 </span>            : #define MAX_SMALL_OBJ_SIZE      SGEN_MAX_SMALL_OBJ_SIZE
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">      44 </span>            : static guint64 stat_objects_alloced = 0;
+<span class="lineNum">      45 </span>            : static guint64 stat_bytes_alloced = 0;
+<span class="lineNum">      46 </span>            : static guint64 stat_bytes_alloced_los = 0;
+<span class="lineNum">      47 </span>            : 
+<span class="lineNum">      48 </span>            : #endif
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span>            : /*
+<span class="lineNum">      51 </span>            :  * Allocation is done from a Thread Local Allocation Buffer (TLAB). TLABs are allocated
+<span class="lineNum">      52 </span>            :  * from nursery fragments.
+<span class="lineNum">      53 </span>            :  * tlab_next is the pointer to the space inside the TLAB where the next object will 
+<span class="lineNum">      54 </span>            :  * be allocated.
+<span class="lineNum">      55 </span>            :  * tlab_temp_end is the pointer to the end of the temporary space reserved for
+<span class="lineNum">      56 </span>            :  * the allocation: it allows us to set the scan starts at reasonable intervals.
+<span class="lineNum">      57 </span>            :  * tlab_real_end points to the end of the TLAB.
+<span class="lineNum">      58 </span>            :  */
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : #define TLAB_START      (__thread_info__-&gt;tlab_start)
+<span class="lineNum">      61 </span>            : #define TLAB_NEXT       (__thread_info__-&gt;tlab_next)
+<span class="lineNum">      62 </span>            : #define TLAB_TEMP_END   (__thread_info__-&gt;tlab_temp_end)
+<span class="lineNum">      63 </span>            : #define TLAB_REAL_END   (__thread_info__-&gt;tlab_real_end)
+<a name="64"><span class="lineNum">      64 </span>            : </a>
+<span class="lineNum">      65 </span>            : static GCObject*
+<span class="lineNum">      66 </span>            : alloc_degraded (GCVTable vtable, size_t size, gboolean for_mature)
+<span class="lineNum">      67 </span>            : {
+<span class="lineNum">      68 </span>            :         GCObject *p;
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span><span class="lineCov">      39830 :         if (!for_mature) {</span>
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :                 sgen_client_degraded_allocation (size);</span>
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :                 SGEN_ATOMIC_ADD_P (degraded_mode, size);</span>
+<span class="lineNum">      73 </span><span class="lineNoCov">          0 :                 sgen_ensure_free_space (size, GENERATION_OLD);</span>
+<span class="lineNum">      74 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">      75 </span><span class="lineCov">      39830 :                 if (sgen_need_major_collection (size))</span>
+<span class="lineNum">      76 </span><span class="lineCov">         40 :                         sgen_perform_collection (size, GENERATION_OLD, &quot;mature allocation failure&quot;, !for_mature, TRUE);</span>
+<span class="lineNum">      77 </span>            :         }
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineCov">      39830 :         p = major_collector.alloc_degraded (vtable, size);</span>
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span><span class="lineCov">      39830 :         if (!for_mature)</span>
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 :                 binary_protocol_alloc_degraded (p, vtable, size, sgen_client_get_provenance ());</span>
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span><span class="lineCov">      39830 :         return p;</span>
+<span class="lineNum">      86 </span>            : }
+<a name="87"><span class="lineNum">      87 </span>            : </a>
+<span class="lineNum">      88 </span>            : static void
+<span class="lineNum">      89 </span>            : zero_tlab_if_necessary (void *p, size_t size)
+<span class="lineNum">      90 </span>            : {
+<span class="lineNum">      91 </span><span class="lineCov">   15594510 :         if (nursery_clear_policy == CLEAR_AT_TLAB_CREATION || nursery_clear_policy == CLEAR_AT_TLAB_CREATION_DEBUG) {</span>
+<span class="lineNum">      92 </span><span class="lineCov">   15594731 :                 memset (p, 0, size);</span>
+<span class="lineNum">      93 </span><span class="lineCov">   15594731 :         } else {</span>
+<span class="lineNum">      94 </span>            :                 /*
+<span class="lineNum">      95 </span>            :                  * This function is called for all allocations in
+<span class="lineNum">      96 </span>            :                  * TLABs.  TLABs originate from fragments, which are
+<span class="lineNum">      97 </span>            :                  * initialized to be faux arrays.  The remainder of
+<span class="lineNum">      98 </span>            :                  * the fragments are zeroed out at initialization for
+<span class="lineNum">      99 </span>            :                  * CLEAR_AT_GC, so here we just need to make sure that
+<span class="lineNum">     100 </span>            :                  * the array header is zeroed.  Since we don't know
+<span class="lineNum">     101 </span>            :                  * whether we're called for the start of a fragment or
+<span class="lineNum">     102 </span>            :                  * for somewhere in between, we zero in any case, just
+<span class="lineNum">     103 </span>            :                  * to make sure.
+<span class="lineNum">     104 </span>            :                  */
+<span class="lineNum">     105 </span><span class="lineNoCov">          0 :                 sgen_client_zero_array_fill_header (p, size);</span>
+<span class="lineNum">     106 </span>            :         }
+<span class="lineNum">     107 </span><span class="lineCov">   15589873 : }</span>
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span>            : /*
+<span class="lineNum">     110 </span>            :  * Provide a variant that takes just the vtable for small fixed-size objects.
+<span class="lineNum">     111 </span>            :  * The aligned size is already computed and stored in vt-&gt;gc_descr.
+<span class="lineNum">     112 </span>            :  * Note: every SGEN_SCAN_START_SIZE or so we are given the chance to do some special
+<span class="lineNum">     113 </span>            :  * processing. We can keep track of where objects start, for example,
+<span class="lineNum">     114 </span>            :  * so when we scan the thread stacks for pinned objects, we can start
+<span class="lineNum">     115 </span>            :  * a search for the pinned object in SGEN_SCAN_START_SIZE chunks.
+<a name="116"><span class="lineNum">     116 </span>            :  */</a>
+<span class="lineNum">     117 </span>            : GCObject*
+<span class="lineNum">     118 </span>            : sgen_alloc_obj_nolock (GCVTable vtable, size_t size)
+<span class="lineNum">     119 </span>            : {
+<span class="lineNum">     120 </span>            :         /* FIXME: handle OOM */
+<span class="lineNum">     121 </span>            :         void **p;
+<span class="lineNum">     122 </span>            :         char *new_next;
+<span class="lineNum">     123 </span><span class="lineCov">     205629 :         size_t real_size = size;</span>
+<span class="lineNum">     124 </span><span class="lineCov">     205629 :         TLAB_ACCESS_INIT;</span>
+<span class="lineNum">     125 </span>            :         
+<span class="lineNum">     126 </span><span class="lineCov">     205629 :         CANARIFY_SIZE(size);</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            :         HEAVY_STAT (++stat_objects_alloced);
+<span class="lineNum">     129 </span><span class="lineCov">     225219 :         if (real_size &lt;= SGEN_MAX_SMALL_OBJ_SIZE)</span>
+<span class="lineNum">     130 </span>            :                 HEAVY_STAT (stat_bytes_alloced += size);
+<span class="lineNum">     131 </span>            :         else
+<span class="lineNum">     132 </span>            :                 HEAVY_STAT (stat_bytes_alloced_los += size);
+<span class="lineNum">     133 </span>            : 
+<span class="lineNum">     134 </span><span class="lineCov">     205629 :         size = ALIGN_UP (size);</span>
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineCov">     411258 :         SGEN_ASSERT (6, sgen_vtable_get_descriptor (vtable), &quot;VTable without descriptor&quot;);</span>
+<span class="lineNum">     137 </span>            : 
+<span class="lineNum">     138 </span><span class="lineCov">     205629 :         if (G_UNLIKELY (has_per_allocation_action)) {</span>
+<span class="lineNum">     139 </span>            :                 static int alloc_count;
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :                 int current_alloc = InterlockedIncrement (&amp;alloc_count);</span>
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                 if (collect_before_allocs) {</span>
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :                         if (((current_alloc % collect_before_allocs) == 0) &amp;&amp; nursery_section) {</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :                                 sgen_perform_collection (0, GENERATION_NURSERY, &quot;collect-before-alloc-triggered&quot;, TRUE, TRUE);</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :                                 if (!degraded_mode &amp;&amp; sgen_can_alloc_size (size) &amp;&amp; real_size &lt;= SGEN_MAX_SMALL_OBJ_SIZE) {</span>
+<span class="lineNum">     146 </span>            :                                         // FIXME:
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :                                         g_assert_not_reached ();</span>
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :                 } else if (verify_before_allocs) {</span>
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 :                         if ((current_alloc % verify_before_allocs) == 0)</span>
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :                                 sgen_check_whole_heap_stw ();</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span>            :         /*
+<span class="lineNum">     157 </span>            :          * We must already have the lock here instead of after the
+<span class="lineNum">     158 </span>            :          * fast path because we might be interrupted in the fast path
+<span class="lineNum">     159 </span>            :          * (after confirming that new_next &lt; TLAB_TEMP_END) by the GC,
+<span class="lineNum">     160 </span>            :          * and we'll end up allocating an object in a fragment which
+<span class="lineNum">     161 </span>            :          * no longer belongs to us.
+<span class="lineNum">     162 </span>            :          *
+<span class="lineNum">     163 </span>            :          * The managed allocator does not do this, but it's treated
+<span class="lineNum">     164 </span>            :          * specially by the world-stopping code.
+<span class="lineNum">     165 </span>            :          */
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span><span class="lineCov">     205629 :         if (real_size &gt; SGEN_MAX_SMALL_OBJ_SIZE) {</span>
+<span class="lineNum">     168 </span><span class="lineCov">     186039 :                 p = (void **)sgen_los_alloc_large_inner (vtable, ALIGN_UP (real_size));</span>
+<span class="lineNum">     169 </span><span class="lineCov">     186039 :         } else {</span>
+<span class="lineNum">     170 </span>            :                 /* tlab_next and tlab_temp_end are TLS vars so accessing them might be expensive */
+<span class="lineNum">     171 </span>            : 
+<span class="lineNum">     172 </span><span class="lineCov">      19590 :                 p = (void**)TLAB_NEXT;</span>
+<span class="lineNum">     173 </span>            :                 /* FIXME: handle overflow */
+<span class="lineNum">     174 </span><span class="lineCov">      19590 :                 new_next = (char*)p + size;</span>
+<span class="lineNum">     175 </span><span class="lineCov">      19590 :                 TLAB_NEXT = new_next;</span>
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineCov">      19590 :                 if (G_LIKELY (new_next &lt; TLAB_TEMP_END)) {</span>
+<span class="lineNum">     178 </span>            :                         /* Fast path */
+<span class="lineNum">     179 </span>            : 
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :                         CANARIFY_ALLOC(p,real_size);</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :                         SGEN_LOG (6, &quot;Allocated object %p, vtable: %p (%s), size: %zd&quot;, p, vtable, sgen_client_vtable_get_name (vtable), size);</span>
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :                         binary_protocol_alloc (p , vtable, size, sgen_client_get_provenance ());</span>
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :                         g_assert (*p == NULL);</span>
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :                         mono_atomic_store_seq (p, vtable);</span>
+<span class="lineNum">     185 </span>            : 
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :                         return (GCObject*)p;</span>
+<span class="lineNum">     187 </span>            :                 }
+<span class="lineNum">     188 </span>            : 
+<span class="lineNum">     189 </span>            :                 /* Slow path */
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span>            :                 /* there are two cases: the object is too big or we run out of space in the TLAB */
+<span class="lineNum">     192 </span>            :                 /* we also reach here when the thread does its first allocation after a minor 
+<span class="lineNum">     193 </span>            :                  * collection, since the tlab_ variables are initialized to NULL.
+<span class="lineNum">     194 </span>            :                  * there can be another case (from ORP), if we cooperate with the runtime a bit:
+<span class="lineNum">     195 </span>            :                  * objects that need finalizers can have the high bit set in their size
+<span class="lineNum">     196 </span>            :                  * so the above check fails and we can readily add the object to the queue.
+<span class="lineNum">     197 </span>            :                  * This avoids taking again the GC lock when registering, but this is moot when
+<span class="lineNum">     198 </span>            :                  * doing thread-local allocation, so it may not be a good idea.
+<span class="lineNum">     199 </span>            :                  */
+<span class="lineNum">     200 </span><span class="lineCov">      19590 :                 if (TLAB_NEXT &gt;= TLAB_REAL_END) {</span>
+<span class="lineNum">     201 </span>            :                         int available_in_tlab;
+<span class="lineNum">     202 </span>            :                         /* 
+<span class="lineNum">     203 </span>            :                          * Run out of space in the TLAB. When this happens, some amount of space
+<span class="lineNum">     204 </span>            :                          * remains in the TLAB, but not enough to satisfy the current allocation
+<span class="lineNum">     205 </span>            :                          * request. Currently, we retire the TLAB in all cases, later we could
+<span class="lineNum">     206 </span>            :                          * keep it if the remaining space is above a treshold, and satisfy the
+<span class="lineNum">     207 </span>            :                          * allocation directly from the nursery.
+<span class="lineNum">     208 </span>            :                          */
+<span class="lineNum">     209 </span><span class="lineCov">      19590 :                         TLAB_NEXT -= size;</span>
+<span class="lineNum">     210 </span>            :                         /* when running in degraded mode, we continue allocing that way
+<span class="lineNum">     211 </span>            :                          * for a while, to decrease the number of useless nursery collections.
+<span class="lineNum">     212 </span>            :                          */
+<span class="lineNum">     213 </span><span class="lineCov">      19590 :                         if (degraded_mode &amp;&amp; degraded_mode &lt; DEFAULT_NURSERY_SIZE)</span>
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                                 return alloc_degraded (vtable, size, FALSE);</span>
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span><span class="lineCov">      19590 :                         available_in_tlab = (int)(TLAB_REAL_END - TLAB_NEXT);//We'll never have tlabs &gt; 2Gb</span>
+<span class="lineNum">     217 </span><span class="lineCov">      38896 :                         if (size &gt; tlab_size || available_in_tlab &gt; SGEN_MAX_NURSERY_WASTE) {</span>
+<span class="lineNum">     218 </span>            :                                 /* Allocate directly from the nursery */
+<span class="lineNum">     219 </span><span class="lineCov">        487 :                                 p = (void **)sgen_nursery_alloc (size);</span>
+<span class="lineNum">     220 </span><span class="lineCov">        487 :                                 if (!p) {</span>
+<span class="lineNum">     221 </span>            :                                         /*
+<span class="lineNum">     222 </span>            :                                          * We couldn't allocate from the nursery, so we try
+<span class="lineNum">     223 </span>            :                                          * collecting.  Even after the collection, we might
+<span class="lineNum">     224 </span>            :                                          * still not have enough memory to allocate the
+<span class="lineNum">     225 </span>            :                                          * object.  The reason will most likely be that we've
+<span class="lineNum">     226 </span>            :                                          * run out of memory, but there is the theoretical
+<span class="lineNum">     227 </span>            :                                          * possibility that other threads might have consumed
+<span class="lineNum">     228 </span>            :                                          * the freed up memory ahead of us.
+<span class="lineNum">     229 </span>            :                                          *
+<span class="lineNum">     230 </span>            :                                          * What we do in this case is allocate degraded, i.e.,
+<span class="lineNum">     231 </span>            :                                          * from the major heap.
+<span class="lineNum">     232 </span>            :                                          *
+<span class="lineNum">     233 </span>            :                                          * Ideally we'd like to detect the case of other
+<span class="lineNum">     234 </span>            :                                          * threads allocating ahead of us and loop (if we
+<span class="lineNum">     235 </span>            :                                          * always loop we will loop endlessly in the case of
+<span class="lineNum">     236 </span>            :                                          * OOM).
+<span class="lineNum">     237 </span>            :                                          */
+<span class="lineNum">     238 </span><span class="lineCov">        434 :                                         sgen_ensure_free_space (real_size, GENERATION_NURSERY);</span>
+<span class="lineNum">     239 </span><span class="lineCov">        434 :                                         if (!degraded_mode)</span>
+<span class="lineNum">     240 </span><span class="lineCov">        434 :                                                 p = (void **)sgen_nursery_alloc (size);</span>
+<span class="lineNum">     241 </span><span class="lineCov">        434 :                                 }</span>
+<span class="lineNum">     242 </span><span class="lineCov">        487 :                                 if (!p)</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :                                         return alloc_degraded (vtable, size, FALSE);</span>
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span><span class="lineCov">        487 :                                 zero_tlab_if_necessary (p, size);</span>
+<span class="lineNum">     246 </span><span class="lineCov">        487 :                         } else {</span>
+<span class="lineNum">     247 </span><span class="lineCov">      19103 :                                 size_t alloc_size = 0;</span>
+<span class="lineNum">     248 </span><span class="lineCov">      19103 :                                 if (TLAB_START)</span>
+<span class="lineNum">     249 </span><span class="lineCov">      27093 :                                         SGEN_LOG (3, &quot;Retire TLAB: %p-%p [%ld]&quot;, TLAB_START, TLAB_REAL_END, (long)(TLAB_REAL_END - TLAB_NEXT - size));</span>
+<span class="lineNum">     250 </span><span class="lineCov">      19103 :                                 sgen_nursery_retire_region (p, available_in_tlab);</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span><span class="lineCov">      19103 :                                 p = (void **)sgen_nursery_alloc_range (tlab_size, size, &amp;alloc_size);</span>
+<span class="lineNum">     253 </span><span class="lineCov">      19103 :                                 if (!p) {</span>
+<span class="lineNum">     254 </span>            :                                         /* See comment above in similar case. */
+<span class="lineNum">     255 </span><span class="lineCov">       9093 :                                         sgen_ensure_free_space (tlab_size, GENERATION_NURSERY);</span>
+<span class="lineNum">     256 </span><span class="lineCov">       9093 :                                         if (!degraded_mode)</span>
+<span class="lineNum">     257 </span><span class="lineCov">       9093 :                                                 p = (void **)sgen_nursery_alloc_range (tlab_size, size, &amp;alloc_size);</span>
+<span class="lineNum">     258 </span><span class="lineCov">       9093 :                                 }</span>
+<span class="lineNum">     259 </span><span class="lineCov">      19103 :                                 if (!p)</span>
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :                                         return alloc_degraded (vtable, size, FALSE);</span>
+<span class="lineNum">     261 </span>            : 
+<span class="lineNum">     262 </span>            :                                 /* Allocate a new TLAB from the current nursery fragment */
+<span class="lineNum">     263 </span><span class="lineCov">      19103 :                                 TLAB_START = (char*)p;</span>
+<span class="lineNum">     264 </span><span class="lineCov">      19103 :                                 TLAB_NEXT = TLAB_START;</span>
+<span class="lineNum">     265 </span><span class="lineCov">      19103 :                                 TLAB_REAL_END = TLAB_START + alloc_size;</span>
+<span class="lineNum">     266 </span><span class="lineCov">      57309 :                                 TLAB_TEMP_END = TLAB_START + MIN (SGEN_SCAN_START_SIZE, alloc_size);</span>
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span><span class="lineCov">      19103 :                                 zero_tlab_if_necessary (TLAB_START, alloc_size);</span>
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span>            :                                 /* Allocate from the TLAB */
+<span class="lineNum">     271 </span><span class="lineCov">      19103 :                                 p = (void **)TLAB_NEXT;</span>
+<span class="lineNum">     272 </span><span class="lineCov">      19103 :                                 TLAB_NEXT += size;</span>
+<span class="lineNum">     273 </span><span class="lineCov">      19103 :                                 sgen_set_nursery_scan_start ((char*)p);</span>
+<span class="lineNum">     274 </span>            :                         }
+<span class="lineNum">     275 </span><span class="lineCov">      19590 :                 } else {</span>
+<span class="lineNum">     276 </span>            :                         /* Reached tlab_temp_end */
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span>            :                         /* record the scan start so we can find pinned objects more easily */
+<span class="lineNum">     279 </span><span class="lineNoCov">          0 :                         sgen_set_nursery_scan_start ((char*)p);</span>
+<span class="lineNum">     280 </span>            :                         /* we just bump tlab_temp_end as well */
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 :                         TLAB_TEMP_END = MIN (TLAB_REAL_END, TLAB_NEXT + SGEN_SCAN_START_SIZE);</span>
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :                         SGEN_LOG (5, &quot;Expanding local alloc: %p-%p&quot;, TLAB_NEXT, TLAB_TEMP_END);</span>
+<span class="lineNum">     283 </span>            :                 }
+<span class="lineNum">     284 </span><span class="lineCov">      19590 :                 CANARIFY_ALLOC(p,real_size);</span>
+<span class="lineNum">     285 </span>            :         }
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span><span class="lineCov">     205629 :         if (G_LIKELY (p)) {</span>
+<span class="lineNum">     288 </span><span class="lineCov">     411258 :                 SGEN_LOG (6, &quot;Allocated object %p, vtable: %p (%s), size: %zd&quot;, p, vtable, sgen_client_vtable_get_name (vtable), size);</span>
+<span class="lineNum">     289 </span><span class="lineCov">     205629 :                 binary_protocol_alloc (p, vtable, size, sgen_client_get_provenance ());</span>
+<span class="lineNum">     290 </span><span class="lineCov">     411258 :                 mono_atomic_store_seq (p, vtable);</span>
+<span class="lineNum">     291 </span><span class="lineCov">     205629 :         }</span>
+<span class="lineNum">     292 </span>            : 
+<span class="lineNum">     293 </span><span class="lineCov">     205629 :         return (GCObject*)p;</span>
+<span class="lineNum">     294 </span><span class="lineCov">     205629 : }</span>
+<a name="295"><span class="lineNum">     295 </span>            : </a>
+<span class="lineNum">     296 </span>            : GCObject*
+<span class="lineNum">     297 </span>            : sgen_try_alloc_obj_nolock (GCVTable vtable, size_t size)
+<span class="lineNum">     298 </span>            : {
+<span class="lineNum">     299 </span>            :         void **p;
+<span class="lineNum">     300 </span>            :         char *new_next;
+<span class="lineNum">     301 </span><span class="lineCov">   61727763 :         size_t real_size = size;</span>
+<span class="lineNum">     302 </span><span class="lineCov">   61727763 :         TLAB_ACCESS_INIT;</span>
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span><span class="lineCov">   61727763 :         CANARIFY_SIZE(size);</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineCov">   61730234 :         size = ALIGN_UP (size);</span>
+<span class="lineNum">     307 </span><span class="lineCov">  123465893 :         SGEN_ASSERT (9, real_size &gt;= SGEN_CLIENT_MINIMUM_OBJECT_SIZE, &quot;Object too small&quot;);</span>
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span><span class="lineCov">  123472063 :         SGEN_ASSERT (6, sgen_vtable_get_descriptor (vtable), &quot;VTable without descriptor&quot;);</span>
+<span class="lineNum">     310 </span>            : 
+<span class="lineNum">     311 </span><span class="lineCov">   61739602 :         if (real_size &gt; SGEN_MAX_SMALL_OBJ_SIZE)</span>
+<span class="lineNum">     312 </span><span class="lineCov">     186020 :                 return NULL;</span>
+<span class="lineNum">     313 </span>            : 
+<span class="lineNum">     314 </span><span class="lineCov">   61558888 :         if (G_UNLIKELY (size &gt; tlab_size)) {</span>
+<span class="lineNum">     315 </span>            :                 /* Allocate directly from the nursery */
+<span class="lineNum">     316 </span><span class="lineCov">     137861 :                 p = (void **)sgen_nursery_alloc (size);</span>
+<span class="lineNum">     317 </span><span class="lineCov">     137861 :                 if (!p)</span>
+<span class="lineNum">     318 </span><span class="lineCov">        284 :                         return NULL;</span>
+<span class="lineNum">     319 </span><span class="lineCov">     137577 :                 sgen_set_nursery_scan_start ((char*)p);</span>
+<span class="lineNum">     320 </span>            : 
+<span class="lineNum">     321 </span>            :                 /*FIXME we should use weak memory ops here. Should help specially on x86. */
+<span class="lineNum">     322 </span><span class="lineCov">     137577 :                 zero_tlab_if_necessary (p, size);</span>
+<span class="lineNum">     323 </span><span class="lineCov">     137577 :         } else {</span>
+<span class="lineNum">     324 </span>            :                 int available_in_tlab;
+<span class="lineNum">     325 </span>            :                 char *real_end;
+<span class="lineNum">     326 </span>            :                 /* tlab_next and tlab_temp_end are TLS vars so accessing them might be expensive */
+<span class="lineNum">     327 </span>            : 
+<span class="lineNum">     328 </span><span class="lineCov">   61433054 :                 p = (void**)TLAB_NEXT;</span>
+<span class="lineNum">     329 </span>            :                 /* FIXME: handle overflow */
+<span class="lineNum">     330 </span><span class="lineCov">   61433054 :                 new_next = (char*)p + size;</span>
+<span class="lineNum">     331 </span>            : 
+<span class="lineNum">     332 </span><span class="lineCov">   61433054 :                 real_end = TLAB_REAL_END;</span>
+<span class="lineNum">     333 </span><span class="lineCov">   61433054 :                 available_in_tlab = (int)(real_end - (char*)p);//We'll never have tlabs &gt; 2Gb</span>
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span><span class="lineCov">   61433054 :                 if (G_LIKELY (new_next &lt; real_end)) {</span>
+<span class="lineNum">     336 </span><span class="lineCov">   45980819 :                         TLAB_NEXT = new_next;</span>
+<span class="lineNum">     337 </span>            : 
+<span class="lineNum">     338 </span>            :                         /* Second case, we overflowed temp end */
+<span class="lineNum">     339 </span><span class="lineCov">   45980819 :                         if (G_UNLIKELY (new_next &gt;= TLAB_TEMP_END)) {</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 :                                 sgen_set_nursery_scan_start (new_next);</span>
+<span class="lineNum">     341 </span>            :                                 /* we just bump tlab_temp_end as well */
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :                                 TLAB_TEMP_END = MIN (TLAB_REAL_END, TLAB_NEXT + SGEN_SCAN_START_SIZE);</span>
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :                                 SGEN_LOG (5, &quot;Expanding local alloc: %p-%p&quot;, TLAB_NEXT, TLAB_TEMP_END);</span>
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     345 </span><span class="lineCov">   61432142 :                 } else if (available_in_tlab &gt; SGEN_MAX_NURSERY_WASTE) {</span>
+<span class="lineNum">     346 </span>            :                         /* Allocate directly from the nursery */
+<span class="lineNum">     347 </span><span class="lineCov">     252140 :                         p = (void **)sgen_nursery_alloc (size);</span>
+<span class="lineNum">     348 </span><span class="lineCov">     252140 :                         if (!p)</span>
+<span class="lineNum">     349 </span><span class="lineCov">        259 :                                 return NULL;</span>
+<span class="lineNum">     350 </span>            : 
+<span class="lineNum">     351 </span><span class="lineCov">     251881 :                         zero_tlab_if_necessary (p, size);</span>
+<span class="lineNum">     352 </span><span class="lineCov">     251881 :                 } else {</span>
+<span class="lineNum">     353 </span><span class="lineCov">   15205177 :                         size_t alloc_size = 0;</span>
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span><span class="lineCov">   15205177 :                         sgen_nursery_retire_region (p, available_in_tlab);</span>
+<span class="lineNum">     356 </span><span class="lineCov">   15205177 :                         new_next = (char *)sgen_nursery_alloc_range (tlab_size, size, &amp;alloc_size);</span>
+<span class="lineNum">     357 </span><span class="lineCov">   15205177 :                         p = (void**)new_next;</span>
+<span class="lineNum">     358 </span><span class="lineCov">   15205177 :                         if (!p)</span>
+<span class="lineNum">     359 </span><span class="lineCov">      19018 :                                 return NULL;</span>
+<span class="lineNum">     360 </span>            : 
+<span class="lineNum">     361 </span><span class="lineCov">   15186186 :                         TLAB_START = (char*)new_next;</span>
+<span class="lineNum">     362 </span><span class="lineCov">   15186186 :                         TLAB_NEXT = new_next + size;</span>
+<span class="lineNum">     363 </span><span class="lineCov">   15186186 :                         TLAB_REAL_END = new_next + alloc_size;</span>
+<span class="lineNum">     364 </span><span class="lineCov">   45558638 :                         TLAB_TEMP_END = new_next + MIN (SGEN_SCAN_START_SIZE, alloc_size);</span>
+<span class="lineNum">     365 </span><span class="lineCov">   15186233 :                         sgen_set_nursery_scan_start ((char*)p);</span>
+<span class="lineNum">     366 </span>            : 
+<span class="lineNum">     367 </span><span class="lineCov">   15186233 :                         zero_tlab_if_necessary (new_next, alloc_size);</span>
+<span class="lineNum">     368 </span>            :                 }
+<span class="lineNum">     369 </span>            :         }
+<span class="lineNum">     370 </span>            : 
+<span class="lineNum">     371 </span>            :         HEAVY_STAT (++stat_objects_alloced);
+<span class="lineNum">     372 </span>            :         HEAVY_STAT (stat_bytes_alloced += size);
+<span class="lineNum">     373 </span>            : 
+<span class="lineNum">     374 </span><span class="lineCov">   61534908 :         CANARIFY_ALLOC(p,real_size);</span>
+<span class="lineNum">     375 </span><span class="lineCov">  123078275 :         SGEN_LOG (6, &quot;Allocated object %p, vtable: %p (%s), size: %zd&quot;, p, vtable, sgen_client_vtable_get_name (vtable), size);</span>
+<span class="lineNum">     376 </span><span class="lineCov">   61543042 :         binary_protocol_alloc (p, vtable, size, sgen_client_get_provenance ());</span>
+<span class="lineNum">     377 </span><span class="lineCov">  184586972 :         g_assert (*p == NULL); /* FIXME disable this in non debug builds */</span>
+<span class="lineNum">     378 </span>            : 
+<span class="lineNum">     379 </span><span class="lineCov">  123048291 :         mono_atomic_store_seq (p, vtable);</span>
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span><span class="lineCov">   61525944 :         return (GCObject*)p;</span>
+<span class="lineNum">     382 </span><span class="lineCov">   61731457 : }</span>
+<a name="383"><span class="lineNum">     383 </span>            : </a>
+<span class="lineNum">     384 </span>            : GCObject*
+<span class="lineNum">     385 </span>            : sgen_alloc_obj (GCVTable vtable, size_t size)
+<span class="lineNum">     386 </span>            : {
+<span class="lineNum">     387 </span>            :         GCObject *res;
+<span class="lineNum">     388 </span><span class="lineCov">   12942518 :         TLAB_ACCESS_INIT;</span>
+<span class="lineNum">     389 </span>            : 
+<span class="lineNum">     390 </span><span class="lineCov">   12942518 :         if (!SGEN_CAN_ALIGN_UP (size))</span>
+<span class="lineNum">     391 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span><span class="lineCov">   12941744 :         if (G_UNLIKELY (has_per_allocation_action)) {</span>
+<span class="lineNum">     394 </span>            :                 static int alloc_count;
+<span class="lineNum">     395 </span><span class="lineNoCov">          0 :                 int current_alloc = InterlockedIncrement (&amp;alloc_count);</span>
+<span class="lineNum">     396 </span>            : 
+<span class="lineNum">     397 </span><span class="lineNoCov">          0 :                 if (verify_before_allocs) {</span>
+<span class="lineNum">     398 </span><span class="lineNoCov">          0 :                         if ((current_alloc % verify_before_allocs) == 0) {</span>
+<span class="lineNum">     399 </span><span class="lineNoCov">          0 :                                 LOCK_GC;</span>
+<span class="lineNum">     400 </span><span class="lineNoCov">          0 :                                 sgen_check_whole_heap_stw ();</span>
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :                                 UNLOCK_GC;</span>
+<span class="lineNum">     402 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     403 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     404 </span><span class="lineNoCov">          0 :                 if (collect_before_allocs) {</span>
+<span class="lineNum">     405 </span><span class="lineNoCov">          0 :                         if (((current_alloc % collect_before_allocs) == 0) &amp;&amp; nursery_section) {</span>
+<span class="lineNum">     406 </span><span class="lineNoCov">          0 :                                 LOCK_GC;</span>
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :                                 sgen_perform_collection (0, GENERATION_NURSERY, &quot;collect-before-alloc-triggered&quot;, TRUE, TRUE);</span>
+<span class="lineNum">     408 </span><span class="lineNoCov">          0 :                                 UNLOCK_GC;</span>
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span><span class="lineCov">   25883747 :         ENTER_CRITICAL_REGION;</span>
+<span class="lineNum">     414 </span><span class="lineCov">   12943515 :         res = sgen_try_alloc_obj_nolock (vtable, size);</span>
+<span class="lineNum">     415 </span><span class="lineCov">   12943515 :         if (res) {</span>
+<span class="lineNum">     416 </span><span class="lineCov">   51731212 :                 EXIT_CRITICAL_REGION;</span>
+<span class="lineNum">     417 </span><span class="lineCov">   12933025 :                 return res;</span>
+<span class="lineNum">     418 </span>            :         }
+<span class="lineNum">     419 </span><span class="lineCov">      43454 :         EXIT_CRITICAL_REGION;</span>
+<span class="lineNum">     420 </span>            : 
+<span class="lineNum">     421 </span><span class="lineCov">      21734 :         LOCK_GC;</span>
+<span class="lineNum">     422 </span><span class="lineCov">      10887 :         res = sgen_alloc_obj_nolock (vtable, size);</span>
+<span class="lineNum">     423 </span><span class="lineCov">      21774 :         UNLOCK_GC;</span>
+<span class="lineNum">     424 </span><span class="lineCov">      10887 :         return res;</span>
+<span class="lineNum">     425 </span><span class="lineCov">   12943234 : }</span>
+<span class="lineNum">     426 </span>            : 
+<span class="lineNum">     427 </span>            : /*
+<span class="lineNum">     428 </span>            :  * To be used for interned strings and possibly MonoThread, reflection handles.
+<span class="lineNum">     429 </span>            :  * We may want to explicitly free these objects.
+<a name="430"><span class="lineNum">     430 </span>            :  */</a>
+<span class="lineNum">     431 </span>            : GCObject*
+<span class="lineNum">     432 </span>            : sgen_alloc_obj_pinned (GCVTable vtable, size_t size)
+<span class="lineNum">     433 </span>            : {
+<span class="lineNum">     434 </span>            :         GCObject *p;
+<span class="lineNum">     435 </span>            : 
+<span class="lineNum">     436 </span><span class="lineCov">    7380500 :         if (!SGEN_CAN_ALIGN_UP (size))</span>
+<span class="lineNum">     437 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     438 </span><span class="lineCov">    7380499 :         size = ALIGN_UP (size);</span>
+<span class="lineNum">     439 </span>            : 
+<span class="lineNum">     440 </span><span class="lineCov">   14760999 :         LOCK_GC;</span>
+<span class="lineNum">     441 </span>            : 
+<span class="lineNum">     442 </span><span class="lineCov">    7380503 :         if (size &gt; SGEN_MAX_SMALL_OBJ_SIZE) {</span>
+<span class="lineNum">     443 </span>            :                 /* large objects are always pinned anyway */
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :                 p = (GCObject *)sgen_los_alloc_large_inner (vtable, size);</span>
+<span class="lineNum">     445 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     446 </span><span class="lineCov">   14761006 :                 SGEN_ASSERT (9, sgen_client_vtable_is_inited (vtable), &quot;class %s:%s is not initialized&quot;, sgen_client_vtable_get_namespace (vtable), sgen_client_vtable_get_name (vtable));</span>
+<span class="lineNum">     447 </span><span class="lineCov">    7380503 :                 p = major_collector.alloc_small_pinned_obj (vtable, size, SGEN_VTABLE_HAS_REFERENCES (vtable));</span>
+<span class="lineNum">     448 </span>            :         }
+<span class="lineNum">     449 </span><span class="lineCov">    7380503 :         if (G_LIKELY (p)) {</span>
+<span class="lineNum">     450 </span><span class="lineCov">   14761006 :                 SGEN_LOG (6, &quot;Allocated pinned object %p, vtable: %p (%s), size: %zd&quot;, p, vtable, sgen_client_vtable_get_name (vtable), size);</span>
+<span class="lineNum">     451 </span><span class="lineCov">    7380503 :                 binary_protocol_alloc_pinned (p, vtable, size, sgen_client_get_provenance ());</span>
+<span class="lineNum">     452 </span><span class="lineCov">    7380503 :         }</span>
+<span class="lineNum">     453 </span><span class="lineCov">   14761006 :         UNLOCK_GC;</span>
+<span class="lineNum">     454 </span><span class="lineCov">    7380503 :         return p;</span>
+<span class="lineNum">     455 </span><span class="lineCov">    7380503 : }</span>
+<a name="456"><span class="lineNum">     456 </span>            : </a>
+<span class="lineNum">     457 </span>            : GCObject*
+<span class="lineNum">     458 </span>            : sgen_alloc_obj_mature (GCVTable vtable, size_t size)
+<span class="lineNum">     459 </span>            : {
+<span class="lineNum">     460 </span>            :         GCObject *res;
+<span class="lineNum">     461 </span>            : 
+<span class="lineNum">     462 </span><span class="lineCov">      39830 :         if (!SGEN_CAN_ALIGN_UP (size))</span>
+<span class="lineNum">     463 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     464 </span><span class="lineCov">      39830 :         size = ALIGN_UP (size);</span>
+<span class="lineNum">     465 </span>            : 
+<span class="lineNum">     466 </span><span class="lineCov">      79660 :         LOCK_GC;</span>
+<span class="lineNum">     467 </span><span class="lineCov">      39830 :         res = alloc_degraded (vtable, size, TRUE);</span>
+<span class="lineNum">     468 </span><span class="lineCov">      79660 :         UNLOCK_GC;</span>
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span><span class="lineCov">      39830 :         return res;</span>
+<span class="lineNum">     471 </span><span class="lineCov">      39830 : }</span>
+<span class="lineNum">     472 </span>            : 
+<span class="lineNum">     473 </span>            : /*
+<span class="lineNum">     474 </span>            :  * Clear the thread local TLAB variables for all threads.
+<a name="475"><span class="lineNum">     475 </span>            :  */</a>
+<span class="lineNum">     476 </span>            : void
+<span class="lineNum">     477 </span>            : sgen_clear_tlabs (void)
+<span class="lineNum">     478 </span>            : {
+<span class="lineNum">     479 </span><span class="lineCov">    3906684 :         FOREACH_THREAD (info) {</span>
+<span class="lineNum">     480 </span>            :                 /* A new TLAB will be allocated when the thread does its first allocation */
+<span class="lineNum">     481 </span><span class="lineCov">     834288 :                 info-&gt;tlab_start = NULL;</span>
+<span class="lineNum">     482 </span><span class="lineCov">     834288 :                 info-&gt;tlab_next = NULL;</span>
+<span class="lineNum">     483 </span><span class="lineCov">     834288 :                 info-&gt;tlab_temp_end = NULL;</span>
+<span class="lineNum">     484 </span><span class="lineCov">     834288 :                 info-&gt;tlab_real_end = NULL;</span>
+<span class="lineNum">     485 </span><span class="lineCov">    2692772 :         } FOREACH_THREAD_END</span>
+<span class="lineNum">     486 </span><span class="lineCov">     189716 : }</span>
+<a name="487"><span class="lineNum">     487 </span>            : </a>
+<span class="lineNum">     488 </span>            : void
+<span class="lineNum">     489 </span>            : sgen_init_allocator (void)
+<span class="lineNum">     490 </span>            : {
+<span class="lineNum">     491 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     492 </span>            :         mono_counters_register (&quot;# objects allocated&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_objects_alloced);
+<span class="lineNum">     493 </span>            :         mono_counters_register (&quot;bytes allocated&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_bytes_alloced);
+<span class="lineNum">     494 </span>            :         mono_counters_register (&quot;bytes allocated in LOS&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_bytes_alloced_los);
+<span class="lineNum">     495 </span>            : #endif
+<span class="lineNum">     496 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     497 </span>            : 
+<span class="lineNum">     498 </span>            : #endif /*HAVE_SGEN_GC*/
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

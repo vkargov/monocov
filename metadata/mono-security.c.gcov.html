@@ -1,0 +1,686 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/mono-security.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - mono-security.c<span style="font-size: 80%;"> (source / <a href="mono-security.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntry">183</td>
+            <td class="headerCovTableEntryLo">3.3 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">1</td>
+            <td class="headerCovTableEntry">27</td>
+            <td class="headerCovTableEntryLo">3.7 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * security.c:  Security internal calls
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Sebastien Pouliot  &lt;sebastien@ximian.com&gt;
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #ifdef HAVE_CONFIG_H
+<span class="lineNum">      12 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      13 </span>            : #endif
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &lt;mono/metadata/assembly.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;mono/metadata/appdomain.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;mono/metadata/image.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/metadata/exception.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/object-internals.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/metadata/metadata-internals.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/metadata/security.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;mono/io-layer/io-layer.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/utils/strenc.h&gt;
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : #ifndef HOST_WIN32
+<span class="lineNum">      26 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      27 </span>            : #ifdef HAVE_GRP_H
+<span class="lineNum">      28 </span>            : #include &lt;grp.h&gt;
+<span class="lineNum">      29 </span>            : #endif
+<span class="lineNum">      30 </span>            : #ifdef HAVE_PWD_H
+<span class="lineNum">      31 </span>            : #include &lt;pwd.h&gt;
+<span class="lineNum">      32 </span>            : #endif
+<span class="lineNum">      33 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      34 </span>            : #include &lt;sys/stat.h&gt;
+<span class="lineNum">      35 </span>            : #include &lt;sys/types.h&gt;
+<span class="lineNum">      36 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span>            : /* Disclaimers */
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : #if defined(__GNUC__)
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : #ifndef HAVE_GETGRGID_R
+<span class="lineNum">      43 </span>            :         #warning Non-thread safe getgrgid being used!
+<span class="lineNum">      44 </span>            : #endif
+<span class="lineNum">      45 </span>            : #ifndef HAVE_GETGRNAM_R
+<span class="lineNum">      46 </span>            :         #warning Non-thread safe getgrnam being used!
+<span class="lineNum">      47 </span>            : #endif
+<span class="lineNum">      48 </span>            : #ifndef HAVE_GETPWNAM_R
+<span class="lineNum">      49 </span>            :         #warning Non-thread safe getpwnam being used!
+<span class="lineNum">      50 </span>            : #endif
+<span class="lineNum">      51 </span>            : #ifndef HAVE_GETPWUID_R
+<span class="lineNum">      52 </span>            :         #warning Non-thread safe getpwuid being used!
+<span class="lineNum">      53 </span>            : #endif
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : #endif /* defined(__GNUC__) */
+<span class="lineNum">      56 </span>            : #endif /* !HOST_WIN32 */
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            : /* internal functions - reuse driven */
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : /* ask a server to translate a SID into a textual representation */
+<span class="lineNum">      61 </span>            : #ifndef HOST_WIN32
+<span class="lineNum">      62 </span>            : #define MONO_SYSCONF_DEFAULT_SIZE       ((size_t) 1024)
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            : /*
+<span class="lineNum">      65 </span>            :  * Ensure we always get a valid (usable) value from sysconf.
+<a name="66"><span class="lineNum">      66 </span>            :  * In case of error, we return the default value.</a>
+<span class="lineNum">      67 </span>            :  */
+<span class="lineNum">      68 </span>            : static size_t mono_sysconf (int name)
+<span class="lineNum">      69 </span>            : {
+<span class="lineNum">      70 </span><span class="lineNoCov">          0 :         size_t size = (size_t) sysconf (name);</span>
+<span class="lineNum">      71 </span>            :         /* default value */
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :         return (size == -1) ? MONO_SYSCONF_DEFAULT_SIZE : size;</span>
+<span class="lineNum">      73 </span>            : }
+<a name="74"><span class="lineNum">      74 </span>            : </a>
+<span class="lineNum">      75 </span>            : static gchar*
+<span class="lineNum">      76 </span>            : GetTokenName (uid_t uid)
+<span class="lineNum">      77 </span>            : {
+<span class="lineNum">      78 </span><span class="lineNoCov">          0 :         gchar *uname = NULL;</span>
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span>            : #ifdef HAVE_GETPWUID_R
+<span class="lineNum">      81 </span>            :         struct passwd pwd;
+<span class="lineNum">      82 </span>            :         size_t fbufsize;
+<span class="lineNum">      83 </span>            :         gchar *fbuf;
+<span class="lineNum">      84 </span>            :         gint32 retval;
+<span class="lineNum">      85 </span>            : #endif
+<span class="lineNum">      86 </span><span class="lineNoCov">          0 :         struct passwd *p = NULL;</span>
+<span class="lineNum">      87 </span>            :         gboolean result;
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : #ifdef HAVE_GETPWUID_R
+<span class="lineNum">      90 </span>            : #ifdef _SC_GETPW_R_SIZE_MAX
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 :         fbufsize = mono_sysconf (_SC_GETPW_R_SIZE_MAX);</span>
+<span class="lineNum">      92 </span>            : #else
+<span class="lineNum">      93 </span>            :         fbufsize = MONO_SYSCONF_DEFAULT_SIZE;
+<span class="lineNum">      94 </span>            : #endif
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :         fbuf = (gchar *)g_malloc0 (fbufsize);</span>
+<span class="lineNum">      96 </span><span class="lineNoCov">          0 :         retval = getpwuid_r (uid, &amp;pwd, fbuf, fbufsize, &amp;p);</span>
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :         result = ((retval == 0) &amp;&amp; (p == &amp;pwd));</span>
+<span class="lineNum">      98 </span>            : #else
+<span class="lineNum">      99 </span>            :         /* default to non thread-safe but posix compliant function */
+<span class="lineNum">     100 </span>            :         p = getpwuid (uid);
+<span class="lineNum">     101 </span>            :         result = (p != NULL);
+<span class="lineNum">     102 </span>            : #endif
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         if (result) {</span>
+<span class="lineNum">     105 </span><span class="lineNoCov">          0 :                 uname = g_strdup (p-&gt;pw_name);</span>
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span>            : #ifdef HAVE_GETPWUID_R
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :         g_free (fbuf);</span>
+<span class="lineNum">     110 </span>            : #endif
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :         return uname;</span>
+<span class="lineNum">     113 </span>            : }
+<a name="114"><span class="lineNum">     114 </span>            : </a>
+<span class="lineNum">     115 </span>            : static gboolean
+<span class="lineNum">     116 </span>            : IsMemberInList (uid_t user, struct group *g) 
+<span class="lineNum">     117 </span>            : {
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :         gboolean result = FALSE;</span>
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :         gchar *utf8_username = GetTokenName (user);</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :         if (!utf8_username)</span>
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :         if (g) {</span>
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :                 gchar **users = g-&gt;gr_mem;</span>
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :                 while (*users) {</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 :                         gchar *u = *(users);</span>
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :                         if (strcmp (utf8_username, u) == 0) {</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :                                 result = TRUE;</span>
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     132 </span>            :                         }
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :                         users++;</span>
+<span class="lineNum">     134 </span>            :                 }
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :         }               </span>
+<span class="lineNum">     136 </span>            : 
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :         g_free (utf8_username);</span>
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 : }</span>
+<a name="140"><span class="lineNum">     140 </span>            : </a>
+<span class="lineNum">     141 </span>            : static gboolean
+<span class="lineNum">     142 </span>            : IsDefaultGroup (uid_t user, gid_t group)
+<span class="lineNum">     143 </span>            : {
+<span class="lineNum">     144 </span>            : #ifdef HAVE_GETPWUID_R
+<span class="lineNum">     145 </span>            :         struct passwd pwd;
+<span class="lineNum">     146 </span>            :         size_t fbufsize;
+<span class="lineNum">     147 </span>            :         gchar *fbuf;
+<span class="lineNum">     148 </span>            :         gint32 retval;
+<span class="lineNum">     149 </span>            : #endif
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :         struct passwd *p = NULL;</span>
+<span class="lineNum">     151 </span>            :         gboolean result;
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span>            : #ifdef HAVE_GETPWUID_R
+<span class="lineNum">     154 </span>            : #ifdef _SC_GETPW_R_SIZE_MAX
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :         fbufsize = mono_sysconf (_SC_GETPW_R_SIZE_MAX);</span>
+<span class="lineNum">     156 </span>            : #else
+<span class="lineNum">     157 </span>            :         fbufsize = MONO_SYSCONF_DEFAULT_SIZE;
+<span class="lineNum">     158 </span>            : #endif
+<span class="lineNum">     159 </span>            : 
+<span class="lineNum">     160 </span><span class="lineNoCov">          0 :         fbuf = (gchar *)g_malloc0 (fbufsize);</span>
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         retval = getpwuid_r (user, &amp;pwd, fbuf, fbufsize, &amp;p);</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         result = ((retval == 0) &amp;&amp; (p == &amp;pwd));</span>
+<span class="lineNum">     163 </span>            : #else
+<span class="lineNum">     164 </span>            :         /* default to non thread-safe but posix compliant function */
+<span class="lineNum">     165 </span>            :         p = getpwuid (user);
+<span class="lineNum">     166 </span>            :         result = (p != NULL);
+<span class="lineNum">     167 </span>            : #endif
+<span class="lineNum">     168 </span>            : 
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :         if (result) {</span>
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :                 result = (p-&gt;pw_gid == group);</span>
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span>            : #ifdef HAVE_GETPWUID_R
+<span class="lineNum">     174 </span><span class="lineNoCov">          0 :         g_free (fbuf);</span>
+<span class="lineNum">     175 </span>            : #endif
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     178 </span>            : }
+<a name="179"><span class="lineNum">     179 </span>            : </a>
+<span class="lineNum">     180 </span>            : static gboolean
+<span class="lineNum">     181 </span>            : IsMemberOf (gid_t user, struct group *g) 
+<span class="lineNum">     182 </span>            : {
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :         if (!g)</span>
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     185 </span>            : 
+<span class="lineNum">     186 </span>            :         /* is it the user default group */
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :         if (IsDefaultGroup (user, g-&gt;gr_gid))</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     189 </span>            : 
+<span class="lineNum">     190 </span>            :         /* is the user in the group list */
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :         return IsMemberInList (user, g);</span>
+<span class="lineNum">     192 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     193 </span>            : #endif /* !HOST_WIN32 */
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span>            : /* ICALLS */
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span>            : /* System.Security.Principal.WindowsIdentity */
+<span class="lineNum">     198 </span>            : 
+<a name="199"><span class="lineNum">     199 </span>            : #ifndef HOST_WIN32</a>
+<span class="lineNum">     200 </span>            : gpointer
+<span class="lineNum">     201 </span>            : ves_icall_System_Security_Principal_WindowsIdentity_GetCurrentToken (void)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :         return GINT_TO_POINTER (geteuid ());</span>
+<span class="lineNum">     204 </span>            : }
+<a name="205"><span class="lineNum">     205 </span>            : </a>
+<span class="lineNum">     206 </span>            : static gint32
+<span class="lineNum">     207 </span>            : internal_get_token_name (gpointer token, gunichar2 ** uniname)
+<span class="lineNum">     208 </span>            : {
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :         gint32 size = 0;</span>
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :         gchar *uname = GetTokenName ((uid_t) GPOINTER_TO_INT (token));</span>
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :         if (uname) {</span>
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                 size = strlen (uname);</span>
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 :                 *uniname = g_utf8_to_utf16 (uname, size, NULL, NULL, NULL);</span>
+<span class="lineNum">     216 </span><span class="lineNoCov">          0 :                 g_free (uname);</span>
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :         return size;</span>
+<span class="lineNum">     220 </span>            : }
+<a name="221"><span class="lineNum">     221 </span>            : </a>
+<span class="lineNum">     222 </span>            : MonoString*
+<span class="lineNum">     223 </span>            : ves_icall_System_Security_Principal_WindowsIdentity_GetTokenName (gpointer token)
+<span class="lineNum">     224 </span>            : {
+<span class="lineNum">     225 </span>            :         MonoError error;
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :         MonoString *result = NULL;</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :         gunichar2 *uniname = NULL;</span>
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :         gint32 size = 0;</span>
+<span class="lineNum">     229 </span>            : 
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :         mono_error_init (&amp;error);</span>
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :         size = internal_get_token_name (token, &amp;uniname);</span>
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :         if (size &gt; 0) {</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                 result = mono_string_new_utf16_checked (mono_domain_get (), uniname, size, &amp;error);</span>
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     237 </span>            :         else
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :                 result = mono_string_new (mono_domain_get (), &quot;&quot;);</span>
+<span class="lineNum">     239 </span>            : 
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :         if (uniname)</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                 g_free (uniname);</span>
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :         mono_error_set_pending_exception (&amp;error);</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     245 </span>            : }
+<span class="lineNum">     246 </span>            : #endif  /* !HOST_WIN32 */
+<span class="lineNum">     247 </span>            : 
+<a name="248"><span class="lineNum">     248 </span>            : #ifndef HOST_WIN32</a>
+<span class="lineNum">     249 </span>            : gpointer
+<span class="lineNum">     250 </span>            : ves_icall_System_Security_Principal_WindowsIdentity_GetUserToken (MonoString *username)
+<span class="lineNum">     251 </span>            : {
+<span class="lineNum">     252 </span>            : #ifdef HAVE_GETPWNAM_R
+<span class="lineNum">     253 </span>            :         struct passwd pwd;
+<span class="lineNum">     254 </span>            :         size_t fbufsize;
+<span class="lineNum">     255 </span>            :         gchar *fbuf;
+<span class="lineNum">     256 </span>            :         gint32 retval;
+<span class="lineNum">     257 </span>            : #endif
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :         gpointer token = (gpointer) -2;</span>
+<span class="lineNum">     259 </span>            :         struct passwd *p;
+<span class="lineNum">     260 </span>            :         gchar *utf8_name;
+<span class="lineNum">     261 </span>            :         gboolean result;
+<span class="lineNum">     262 </span>            : 
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :         utf8_name = mono_unicode_to_external (mono_string_chars (username));</span>
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span>            : #ifdef HAVE_GETPWNAM_R
+<span class="lineNum">     266 </span>            : #ifdef _SC_GETPW_R_SIZE_MAX
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :         fbufsize = mono_sysconf (_SC_GETPW_R_SIZE_MAX);</span>
+<span class="lineNum">     268 </span>            : #else
+<span class="lineNum">     269 </span>            :         fbufsize = MONO_SYSCONF_DEFAULT_SIZE;
+<span class="lineNum">     270 </span>            : #endif
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :         fbuf = (gchar *)g_malloc0 (fbufsize);</span>
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :         retval = getpwnam_r (utf8_name, &amp;pwd, fbuf, fbufsize, &amp;p);</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :         result = ((retval == 0) &amp;&amp; (p == &amp;pwd));</span>
+<span class="lineNum">     275 </span>            : #else
+<span class="lineNum">     276 </span>            :         /* default to non thread-safe but posix compliant function */
+<span class="lineNum">     277 </span>            :         p = getpwnam (utf8_name);
+<span class="lineNum">     278 </span>            :         result = (p != NULL);
+<span class="lineNum">     279 </span>            : #endif
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 :         if (result) {</span>
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :                 token = GINT_TO_POINTER (p-&gt;pw_uid);</span>
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     284 </span>            : 
+<span class="lineNum">     285 </span>            : #ifdef HAVE_GETPWNAM_R
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :         g_free (fbuf);</span>
+<span class="lineNum">     287 </span>            : #endif
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :         g_free (utf8_name);</span>
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :         return token;</span>
+<span class="lineNum">     291 </span>            : }
+<span class="lineNum">     292 </span>            : #endif /* HOST_WIN32 */
+<span class="lineNum">     293 </span>            : 
+<span class="lineNum">     294 </span>            : /* http://www.dotnet247.com/247reference/msgs/39/195403.aspx
+<span class="lineNum">     295 </span>            : // internal static string[] WindowsIdentity._GetRoles (IntPtr token)
+<span class="lineNum">     296 </span>            : */
+<span class="lineNum">     297 </span>            : 
+<a name="298"><span class="lineNum">     298 </span>            : #ifndef HOST_WIN32</a>
+<span class="lineNum">     299 </span>            : MonoArray*
+<span class="lineNum">     300 </span>            : ves_icall_System_Security_Principal_WindowsIdentity_GetRoles (gpointer token)
+<span class="lineNum">     301 </span>            : {
+<span class="lineNum">     302 </span>            :         MonoError error;
+<span class="lineNum">     303 </span><span class="lineNoCov">          0 :         MonoArray *array = NULL;</span>
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :         MonoDomain *domain = mono_domain_get ();</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span>            :         /* POSIX-compliant systems should use IsMemberOfGroupId or IsMemberOfGroupName */
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :         g_warning (&quot;WindowsIdentity._GetRoles should never be called on POSIX&quot;);</span>
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span><span class="lineNoCov">          0 :         if (!array) {</span>
+<span class="lineNum">     310 </span>            :                 /* return empty array of string, i.e. string [0] */
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :                 array = mono_array_new_checked (domain, mono_get_string_class (), 0, &amp;error);</span>
+<span class="lineNum">     312 </span><span class="lineNoCov">          0 :                 mono_error_set_pending_exception (&amp;error);</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :         return array;</span>
+<span class="lineNum">     315 </span>            : }
+<span class="lineNum">     316 </span>            : #endif /* !HOST_WIN32 */
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span>            : /* System.Security.Principal.WindowsImpersonationContext */
+<span class="lineNum">     319 </span>            : 
+<a name="320"><span class="lineNum">     320 </span>            : #ifndef HOST_WIN32</a>
+<span class="lineNum">     321 </span>            : gboolean
+<span class="lineNum">     322 </span>            : ves_icall_System_Security_Principal_WindowsImpersonationContext_CloseToken (gpointer token)
+<span class="lineNum">     323 </span>            : {
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     325 </span>            : }
+<span class="lineNum">     326 </span>            : #endif /* !HOST_WIN32 */
+<span class="lineNum">     327 </span>            : 
+<a name="328"><span class="lineNum">     328 </span>            : #ifndef HOST_WIN32</a>
+<span class="lineNum">     329 </span>            : gpointer
+<span class="lineNum">     330 </span>            : ves_icall_System_Security_Principal_WindowsImpersonationContext_DuplicateToken (gpointer token)
+<span class="lineNum">     331 </span>            : {
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :         return token;</span>
+<span class="lineNum">     333 </span>            : }
+<span class="lineNum">     334 </span>            : #endif /* !HOST_WIN32 */
+<span class="lineNum">     335 </span>            : 
+<a name="336"><span class="lineNum">     336 </span>            : #if G_HAVE_API_SUPPORT(HAVE_CLASSIC_WINAPI_SUPPORT)</a>
+<span class="lineNum">     337 </span>            : gboolean
+<span class="lineNum">     338 </span>            : ves_icall_System_Security_Principal_WindowsImpersonationContext_SetCurrentToken (gpointer token)
+<span class="lineNum">     339 </span>            : {
+<span class="lineNum">     340 </span>            : #ifdef HOST_WIN32
+<span class="lineNum">     341 </span>            :         return (ImpersonateLoggedOnUser (token) != 0);
+<span class="lineNum">     342 </span>            : #else
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :         uid_t itoken = (uid_t) GPOINTER_TO_INT (token);</span>
+<span class="lineNum">     344 </span>            : #ifdef HAVE_SETRESUID
+<span class="lineNum">     345 </span>            :         if (setresuid (-1, itoken, getuid ()) &lt; 0)
+<span class="lineNum">     346 </span>            :                 return FALSE;
+<span class="lineNum">     347 </span>            : #endif
+<span class="lineNum">     348 </span><span class="lineNoCov">          0 :         return geteuid () == itoken;</span>
+<span class="lineNum">     349 </span>            : #endif
+<span class="lineNum">     350 </span>            : }
+<a name="351"><span class="lineNum">     351 </span>            : </a>
+<span class="lineNum">     352 </span>            : gboolean
+<span class="lineNum">     353 </span>            : ves_icall_System_Security_Principal_WindowsImpersonationContext_RevertToSelf (void)
+<span class="lineNum">     354 </span>            : {
+<span class="lineNum">     355 </span>            : #ifdef HOST_WIN32
+<span class="lineNum">     356 </span>            :         return (RevertToSelf () != 0);
+<span class="lineNum">     357 </span>            : #else
+<span class="lineNum">     358 </span>            : #ifdef HAVE_GETRESUID
+<span class="lineNum">     359 </span>            :         uid_t ruid, euid;
+<span class="lineNum">     360 </span>            : #endif
+<span class="lineNum">     361 </span><span class="lineNoCov">          0 :         uid_t suid = -1;</span>
+<span class="lineNum">     362 </span>            : 
+<span class="lineNum">     363 </span>            : #ifdef HAVE_GETRESUID
+<span class="lineNum">     364 </span>            :         if (getresuid (&amp;ruid, &amp;euid, &amp;suid) &lt; 0)
+<span class="lineNum">     365 </span>            :                 return FALSE;
+<span class="lineNum">     366 </span>            : #endif
+<span class="lineNum">     367 </span>            : #ifdef HAVE_SETRESUID
+<span class="lineNum">     368 </span>            :         if (setresuid (-1, suid, -1) &lt; 0)
+<span class="lineNum">     369 </span>            :                 return FALSE;
+<span class="lineNum">     370 </span>            : #else
+<span class="lineNum">     371 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     372 </span>            : #endif
+<span class="lineNum">     373 </span>            :         return geteuid () == suid;
+<span class="lineNum">     374 </span>            : #endif
+<span class="lineNum">     375 </span>            : }
+<span class="lineNum">     376 </span>            : #endif /* G_HAVE_API_SUPPORT(HAVE_CLASSIC_WINAPI_SUPPORT) */
+<span class="lineNum">     377 </span>            : 
+<span class="lineNum">     378 </span>            : /* System.Security.Principal.WindowsPrincipal */
+<span class="lineNum">     379 </span>            : 
+<a name="380"><span class="lineNum">     380 </span>            : #ifndef HOST_WIN32</a>
+<span class="lineNum">     381 </span>            : gboolean
+<span class="lineNum">     382 </span>            : ves_icall_System_Security_Principal_WindowsPrincipal_IsMemberOfGroupId (gpointer user, gpointer group)
+<span class="lineNum">     383 </span>            : {
+<span class="lineNum">     384 </span><span class="lineNoCov">          0 :         gboolean result = FALSE;</span>
+<span class="lineNum">     385 </span>            : 
+<span class="lineNum">     386 </span>            : #ifdef HAVE_GETGRGID_R
+<span class="lineNum">     387 </span>            :         struct group grp;
+<span class="lineNum">     388 </span>            :         size_t fbufsize;
+<span class="lineNum">     389 </span>            :         gchar *fbuf;
+<span class="lineNum">     390 </span>            :         gint32 retval;
+<span class="lineNum">     391 </span>            : #endif
+<span class="lineNum">     392 </span><span class="lineNoCov">          0 :         struct group *g = NULL;</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span>            : #ifdef HAVE_GETGRGID_R
+<span class="lineNum">     395 </span>            : #ifdef _SC_GETGR_R_SIZE_MAX
+<span class="lineNum">     396 </span><span class="lineNoCov">          0 :         fbufsize = mono_sysconf (_SC_GETGR_R_SIZE_MAX);</span>
+<span class="lineNum">     397 </span>            : #else
+<span class="lineNum">     398 </span>            :         fbufsize = MONO_SYSCONF_DEFAULT_SIZE;
+<span class="lineNum">     399 </span>            : #endif
+<span class="lineNum">     400 </span><span class="lineNoCov">          0 :         fbuf = (gchar *)g_malloc0 (fbufsize);</span>
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :         retval = getgrgid_r ((gid_t) GPOINTER_TO_INT (group), &amp;grp, fbuf, fbufsize, &amp;g);</span>
+<span class="lineNum">     402 </span><span class="lineNoCov">          0 :         result = ((retval == 0) &amp;&amp; (g == &amp;grp));</span>
+<span class="lineNum">     403 </span>            : #else
+<span class="lineNum">     404 </span>            :         /* default to non thread-safe but posix compliant function */
+<span class="lineNum">     405 </span>            :         g = getgrgid ((gid_t) GPOINTER_TO_INT (group));
+<span class="lineNum">     406 </span>            :         result = (g != NULL);
+<span class="lineNum">     407 </span>            : #endif
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :         if (result) {</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :                 result = IsMemberOf ((uid_t) GPOINTER_TO_INT (user), g);</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span>            : #ifdef HAVE_GETGRGID_R
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :         g_free (fbuf);</span>
+<span class="lineNum">     415 </span>            : #endif
+<span class="lineNum">     416 </span>            : 
+<span class="lineNum">     417 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     418 </span>            : }
+<a name="419"><span class="lineNum">     419 </span>            : </a>
+<span class="lineNum">     420 </span>            : gboolean
+<span class="lineNum">     421 </span>            : ves_icall_System_Security_Principal_WindowsPrincipal_IsMemberOfGroupName (gpointer user, MonoString *group)
+<span class="lineNum">     422 </span>            : {
+<span class="lineNum">     423 </span><span class="lineNoCov">          0 :         gboolean result = FALSE;</span>
+<span class="lineNum">     424 </span>            :         gchar *utf8_groupname;
+<span class="lineNum">     425 </span>            : 
+<span class="lineNum">     426 </span><span class="lineNoCov">          0 :         utf8_groupname = mono_unicode_to_external (mono_string_chars (group));</span>
+<span class="lineNum">     427 </span><span class="lineNoCov">          0 :         if (utf8_groupname) {</span>
+<span class="lineNum">     428 </span><span class="lineNoCov">          0 :                 struct group *g = NULL;</span>
+<span class="lineNum">     429 </span>            : #ifdef HAVE_GETGRNAM_R
+<span class="lineNum">     430 </span>            :                 struct group grp;
+<span class="lineNum">     431 </span>            :                 gchar *fbuf;
+<span class="lineNum">     432 </span>            :                 gint32 retval;
+<span class="lineNum">     433 </span>            : #ifdef _SC_GETGR_R_SIZE_MAX
+<span class="lineNum">     434 </span><span class="lineNoCov">          0 :                 size_t fbufsize = mono_sysconf (_SC_GETGR_R_SIZE_MAX);</span>
+<span class="lineNum">     435 </span>            : #else
+<span class="lineNum">     436 </span>            :                 size_t fbufsize = MONO_SYSCONF_DEFAULT_SIZE;
+<span class="lineNum">     437 </span>            : #endif
+<span class="lineNum">     438 </span><span class="lineNoCov">          0 :                 fbuf = (gchar *)g_malloc0 (fbufsize);</span>
+<span class="lineNum">     439 </span><span class="lineNoCov">          0 :                 retval = getgrnam_r (utf8_groupname, &amp;grp, fbuf, fbufsize, &amp;g);</span>
+<span class="lineNum">     440 </span><span class="lineNoCov">          0 :                 result = ((retval == 0) &amp;&amp; (g == &amp;grp));</span>
+<span class="lineNum">     441 </span>            : #else
+<span class="lineNum">     442 </span>            :                 /* default to non thread-safe but posix compliant function */
+<span class="lineNum">     443 </span>            :                 g = getgrnam (utf8_groupname);
+<span class="lineNum">     444 </span>            :                 result = (g != NULL);
+<span class="lineNum">     445 </span>            : #endif
+<span class="lineNum">     446 </span>            : 
+<span class="lineNum">     447 </span><span class="lineNoCov">          0 :                 if (result) {</span>
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :                         result = IsMemberOf ((uid_t) GPOINTER_TO_INT (user), g);</span>
+<span class="lineNum">     449 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     450 </span>            : 
+<span class="lineNum">     451 </span>            : #ifdef HAVE_GETGRNAM_R
+<span class="lineNum">     452 </span><span class="lineNoCov">          0 :                 g_free (fbuf);</span>
+<span class="lineNum">     453 </span>            : #endif
+<span class="lineNum">     454 </span><span class="lineNoCov">          0 :                 g_free (utf8_groupname);</span>
+<span class="lineNum">     455 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     456 </span>            : 
+<span class="lineNum">     457 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     458 </span>            : }
+<span class="lineNum">     459 </span>            : #endif /* !HOST_WIN32 */
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span>            : /* Mono.Security.Cryptography IO related internal calls */
+<span class="lineNum">     462 </span>            : 
+<a name="463"><span class="lineNum">     463 </span>            : #ifndef HOST_WIN32</a>
+<span class="lineNum">     464 </span>            : static gboolean
+<span class="lineNum">     465 </span>            : IsProtected (MonoString *path, gint32 protection) 
+<span class="lineNum">     466 </span>            : {
+<span class="lineNum">     467 </span><span class="lineNoCov">          0 :         gboolean result = FALSE;</span>
+<span class="lineNum">     468 </span><span class="lineNoCov">          0 :         gchar *utf8_name = mono_unicode_to_external (mono_string_chars (path));</span>
+<span class="lineNum">     469 </span><span class="lineNoCov">          0 :         if (utf8_name) {</span>
+<span class="lineNum">     470 </span>            :                 struct stat st;
+<span class="lineNum">     471 </span><span class="lineNoCov">          0 :                 if (stat (utf8_name, &amp;st) == 0) {</span>
+<span class="lineNum">     472 </span><span class="lineNoCov">          0 :                         result = (((st.st_mode &amp; 0777) &amp; protection) == 0);</span>
+<span class="lineNum">     473 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     474 </span><span class="lineNoCov">          0 :                 g_free (utf8_name);</span>
+<span class="lineNum">     475 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     476 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     477 </span>            : }
+<span class="lineNum">     478 </span>            : 
+<a name="479"><span class="lineNum">     479 </span>            : </a>
+<span class="lineNum">     480 </span>            : static gboolean
+<span class="lineNum">     481 </span>            : Protect (MonoString *path, gint32 file_mode, gint32 add_dir_mode)
+<span class="lineNum">     482 </span>            : {
+<span class="lineNum">     483 </span><span class="lineNoCov">          0 :         gboolean result = FALSE;</span>
+<span class="lineNum">     484 </span><span class="lineNoCov">          0 :         gchar *utf8_name = mono_unicode_to_external (mono_string_chars (path));</span>
+<span class="lineNum">     485 </span><span class="lineNoCov">          0 :         if (utf8_name) {</span>
+<span class="lineNum">     486 </span>            :                 struct stat st;
+<span class="lineNum">     487 </span><span class="lineNoCov">          0 :                 if (stat (utf8_name, &amp;st) == 0) {</span>
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :                         int mode = file_mode;</span>
+<span class="lineNum">     489 </span><span class="lineNoCov">          0 :                         if (st.st_mode &amp; S_IFDIR)</span>
+<span class="lineNum">     490 </span><span class="lineNoCov">          0 :                                 mode |= add_dir_mode;</span>
+<span class="lineNum">     491 </span><span class="lineNoCov">          0 :                         result = (chmod (utf8_name, mode) == 0);</span>
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 :                 g_free (utf8_name);</span>
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     495 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     496 </span>            : }
+<a name="497"><span class="lineNum">     497 </span>            : </a>
+<span class="lineNum">     498 </span>            : MonoBoolean
+<span class="lineNum">     499 </span>            : ves_icall_Mono_Security_Cryptography_KeyPairPersistence_CanSecure (MonoString *root)
+<span class="lineNum">     500 </span>            : {
+<span class="lineNum">     501 </span>            :         /* we assume some kind of security is applicable outside Windows */
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     503 </span>            : }
+<a name="504"><span class="lineNum">     504 </span>            : </a>
+<span class="lineNum">     505 </span>            : MonoBoolean
+<span class="lineNum">     506 </span>            : ves_icall_Mono_Security_Cryptography_KeyPairPersistence_IsMachineProtected (MonoString *path)
+<span class="lineNum">     507 </span>            : {
+<span class="lineNum">     508 </span><span class="lineNoCov">          0 :         gboolean ret = FALSE;</span>
+<span class="lineNum">     509 </span>            : 
+<span class="lineNum">     510 </span>            :         /* no one, but the owner, should have write access to the directory */
+<span class="lineNum">     511 </span><span class="lineNoCov">          0 :         ret = IsProtected (path, (S_IWGRP | S_IWOTH));</span>
+<span class="lineNum">     512 </span><span class="lineNoCov">          0 :         return (MonoBoolean)ret;</span>
+<span class="lineNum">     513 </span>            : }
+<a name="514"><span class="lineNum">     514 </span>            : </a>
+<span class="lineNum">     515 </span>            : MonoBoolean
+<span class="lineNum">     516 </span>            : ves_icall_Mono_Security_Cryptography_KeyPairPersistence_IsUserProtected (MonoString *path)
+<span class="lineNum">     517 </span>            : {
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :         gboolean ret = FALSE;</span>
+<span class="lineNum">     519 </span>            : 
+<span class="lineNum">     520 </span>            :         /* no one, but the user, should have access to the directory */
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 :         ret = IsProtected (path, (S_IRGRP | S_IWGRP | S_IXGRP | S_IROTH | S_IWOTH | S_IXOTH));</span>
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :         return (MonoBoolean)ret;</span>
+<span class="lineNum">     523 </span>            : }
+<a name="524"><span class="lineNum">     524 </span>            : </a>
+<span class="lineNum">     525 </span>            : MonoBoolean
+<span class="lineNum">     526 </span>            : ves_icall_Mono_Security_Cryptography_KeyPairPersistence_ProtectMachine (MonoString *path)
+<span class="lineNum">     527 </span>            : {
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :         gboolean ret = FALSE;</span>
+<span class="lineNum">     529 </span>            : 
+<span class="lineNum">     530 </span>            :         /* read/write to owner, read to everyone else */
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :         ret = Protect (path, (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH), (S_IXUSR | S_IXGRP | S_IXOTH));</span>
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :         return (MonoBoolean)ret;</span>
+<span class="lineNum">     533 </span>            : }
+<a name="534"><span class="lineNum">     534 </span>            : </a>
+<span class="lineNum">     535 </span>            : MonoBoolean
+<span class="lineNum">     536 </span>            : ves_icall_Mono_Security_Cryptography_KeyPairPersistence_ProtectUser (MonoString *path)
+<span class="lineNum">     537 </span>            : {
+<span class="lineNum">     538 </span><span class="lineNoCov">          0 :         gboolean ret = FALSE;</span>
+<span class="lineNum">     539 </span>            :         
+<span class="lineNum">     540 </span>            :         /* read/write to user, no access to everyone else */
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :         ret = Protect (path, (S_IRUSR | S_IWUSR), S_IXUSR);</span>
+<span class="lineNum">     542 </span><span class="lineNoCov">          0 :         return (MonoBoolean)ret;</span>
+<span class="lineNum">     543 </span>            : }
+<span class="lineNum">     544 </span>            : #endif /* !HOST_WIN32 */
+<span class="lineNum">     545 </span>            : 
+<span class="lineNum">     546 </span>            : /*
+<span class="lineNum">     547 </span>            :  * Returns TRUE if there is &quot;something&quot; where the Authenticode signature is 
+<span class="lineNum">     548 </span>            :  * normally located. Returns FALSE is data directory is empty.
+<span class="lineNum">     549 </span>            :  *
+<span class="lineNum">     550 </span>            :  * Note: Neither the structure nor the signature is verified by this function.
+<a name="551"><span class="lineNum">     551 </span>            :  */</a>
+<span class="lineNum">     552 </span>            : MonoBoolean
+<span class="lineNum">     553 </span>            : ves_icall_System_Security_Policy_Evidence_IsAuthenticodePresent (MonoReflectionAssemblyHandle refass, MonoError *error)
+<span class="lineNum">     554 </span>            : {
+<span class="lineNum">     555 </span><span class="lineCov">         68 :         mono_error_init (error);</span>
+<span class="lineNum">     556 </span><span class="lineCov">         68 :         if (MONO_HANDLE_IS_NULL (refass))</span>
+<span class="lineNum">     557 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     558 </span><span class="lineCov">         68 :         MonoAssembly *assembly = MONO_HANDLE_GETVAL (refass, assembly);</span>
+<span class="lineNum">     559 </span><span class="lineCov">        136 :         if (assembly &amp;&amp; assembly-&gt;image) {</span>
+<span class="lineNum">     560 </span><span class="lineCov">         68 :                 return (MonoBoolean)mono_image_has_authenticode_entry (assembly-&gt;image);</span>
+<span class="lineNum">     561 </span>            :         }
+<span class="lineNum">     562 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     563 </span><span class="lineCov">         68 : }</span>
+<span class="lineNum">     564 </span>            : 
+<span class="lineNum">     565 </span>            : 
+<span class="lineNum">     566 </span>            : /* System.Security.SecureString related internal calls */
+<span class="lineNum">     567 </span>            : 
+<span class="lineNum">     568 </span>            : static MonoImage *system_security_assembly = NULL;
+<a name="569"><span class="lineNum">     569 </span>            : </a>
+<span class="lineNum">     570 </span>            : void
+<span class="lineNum">     571 </span>            : ves_icall_System_Security_SecureString_DecryptInternal (MonoArray *data, MonoObject *scope)
+<span class="lineNum">     572 </span>            : {
+<span class="lineNum">     573 </span>            :         MonoError error;
+<span class="lineNum">     574 </span><span class="lineNoCov">          0 :         invoke_protected_memory_method (data, scope, FALSE, &amp;error);</span>
+<span class="lineNum">     575 </span><span class="lineNoCov">          0 :         mono_error_set_pending_exception (&amp;error);</span>
+<a name="576"><span class="lineNum">     576 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">     577 </span>            : void
+<span class="lineNum">     578 </span>            : ves_icall_System_Security_SecureString_EncryptInternal (MonoArray* data, MonoObject *scope)
+<span class="lineNum">     579 </span>            : {
+<span class="lineNum">     580 </span>            :         MonoError error;
+<span class="lineNum">     581 </span><span class="lineNoCov">          0 :         invoke_protected_memory_method (data, scope, TRUE, &amp;error);</span>
+<span class="lineNum">     582 </span><span class="lineNoCov">          0 :         mono_error_set_pending_exception (&amp;error);</span>
+<a name="583"><span class="lineNum">     583 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">     584 </span>            : 
+<span class="lineNum">     585 </span>            : void invoke_protected_memory_method (MonoArray *data, MonoObject *scope, gboolean encrypt, MonoError *error)
+<span class="lineNum">     586 </span>            : {
+<span class="lineNum">     587 </span>            :         MonoClass *klass;
+<span class="lineNum">     588 </span>            :         MonoMethod *method;
+<span class="lineNum">     589 </span>            :         void *params [2];
+<span class="lineNum">     590 </span>            : 
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 :         mono_error_init (error);</span>
+<span class="lineNum">     592 </span>            :         
+<span class="lineNum">     593 </span><span class="lineNoCov">          0 :         if (system_security_assembly == NULL) {</span>
+<span class="lineNum">     594 </span><span class="lineNoCov">          0 :                 system_security_assembly = mono_image_loaded (&quot;System.Security&quot;);</span>
+<span class="lineNum">     595 </span><span class="lineNoCov">          0 :                 if (!system_security_assembly) {</span>
+<span class="lineNum">     596 </span><span class="lineNoCov">          0 :                         MonoAssembly *sa = mono_assembly_open (&quot;System.Security.dll&quot;, NULL);</span>
+<span class="lineNum">     597 </span><span class="lineNoCov">          0 :                         if (!sa)</span>
+<span class="lineNum">     598 </span><span class="lineNoCov">          0 :                                 g_assert_not_reached ();</span>
+<span class="lineNum">     599 </span><span class="lineNoCov">          0 :                         system_security_assembly = mono_assembly_get_image (sa);</span>
+<span class="lineNum">     600 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     601 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     602 </span>            : 
+<span class="lineNum">     603 </span><span class="lineNoCov">          0 :         klass = mono_class_load_from_name (system_security_assembly,</span>
+<span class="lineNum">     604 </span>            :                                                                   &quot;System.Security.Cryptography&quot;, &quot;ProtectedMemory&quot;);
+<span class="lineNum">     605 </span><span class="lineNoCov">          0 :         method = mono_class_get_method_from_name (klass, encrypt ? &quot;Protect&quot; : &quot;Unprotect&quot;, 2);</span>
+<span class="lineNum">     606 </span><span class="lineNoCov">          0 :         params [0] = data;</span>
+<span class="lineNum">     607 </span><span class="lineNoCov">          0 :         params [1] = scope; /* MemoryProtectionScope.SameProcess */</span>
+<span class="lineNum">     608 </span>            : 
+<span class="lineNum">     609 </span><span class="lineNoCov">          0 :         mono_runtime_invoke_checked (method, NULL, params, error);</span>
+<span class="lineNum">     610 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

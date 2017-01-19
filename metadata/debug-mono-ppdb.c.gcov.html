@@ -1,0 +1,673 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/debug-mono-ppdb.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - debug-mono-ppdb.c<span style="font-size: 80%;"> (source / <a href="debug-mono-ppdb.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">270</td>
+            <td class="headerCovTableEntry">309</td>
+            <td class="headerCovTableEntryMed">87.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * debug-mono-ppdb.c: Support for the portable PDB symbol
+<span class="lineNum">       3 </span>            :  * file format
+<span class="lineNum">       4 </span>            :  *
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Author:
+<span class="lineNum">       7 </span>            :  *      Mono Project (http://www.mono-project.com)
+<span class="lineNum">       8 </span>            :  *
+<span class="lineNum">       9 </span>            :  * Copyright 2015 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/metadata/metadata.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/tabledefs.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/metadata/tokentype.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;mono/metadata/mono-debug.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/metadata/debug-mono-symfile.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;mono/metadata/mono-debug-debugger.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;mono/metadata/mono-endian.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/metadata/metadata-internals.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;mono/metadata/class-internals.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;mono/metadata/cil-coff.h&gt;
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : #include &quot;debug-mono-ppdb.h&quot;
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : struct _MonoPPDBFile {
+<span class="lineNum">      33 </span>            :         MonoImage *image;
+<span class="lineNum">      34 </span>            :         GHashTable *doc_hash;
+<span class="lineNum">      35 </span>            :         GHashTable *method_hash;
+<span class="lineNum">      36 </span>            : };
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span>            : /* IMAGE_DEBUG_DIRECTORY structure */
+<span class="lineNum">      39 </span>            : typedef struct
+<span class="lineNum">      40 </span>            : {
+<span class="lineNum">      41 </span>            :         gint32 characteristics;
+<span class="lineNum">      42 </span>            :         gint32 time_date_stamp;
+<span class="lineNum">      43 </span>            :         gint16 major_version;
+<span class="lineNum">      44 </span>            :         gint16 minor_version;
+<span class="lineNum">      45 </span>            :         gint32 type;
+<span class="lineNum">      46 </span>            :         gint32 size_of_data;
+<span class="lineNum">      47 </span>            :         gint32 address;
+<span class="lineNum">      48 </span>            :         gint32 pointer;
+<span class="lineNum">      49 </span>            : }  ImageDebugDirectory;
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : typedef struct {
+<span class="lineNum">      52 </span>            :         gint32 signature;
+<span class="lineNum">      53 </span>            :         guint8 guid [16];
+<span class="lineNum">      54 </span>            :         gint32 age;
+<span class="lineNum">      55 </span>            : } CodeviewDebugDirectory;
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : typedef struct {
+<span class="lineNum">      58 </span>            :         guint8 guid [20];
+<span class="lineNum">      59 </span>            :         guint32 entry_point;
+<span class="lineNum">      60 </span>            :         guint64 referenced_tables;
+<span class="lineNum">      61 </span>            : } PdbStreamHeader;
+<a name="62"><span class="lineNum">      62 </span>            : </a>
+<span class="lineNum">      63 </span>            : static gboolean
+<span class="lineNum">      64 </span>            : get_pe_debug_guid (MonoImage *image, guint8 *out_guid, gint32 *out_age, gint32 *out_timestamp)
+<span class="lineNum">      65 </span>            : {
+<span class="lineNum">      66 </span>            :         MonoPEDirEntry *debug_dir_entry;
+<span class="lineNum">      67 </span>            :         ImageDebugDirectory *debug_dir;
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span><span class="lineCov">        167 :         debug_dir_entry = &amp;((MonoCLIImageInfo*)image-&gt;image_info)-&gt;cli_header.datadir.pe_debug;</span>
+<span class="lineNum">      70 </span><span class="lineCov">        167 :         if (!debug_dir_entry-&gt;size)</span>
+<span class="lineNum">      71 </span><span class="lineCov">          6 :                 return FALSE;</span>
+<span class="lineNum">      72 </span>            : 
+<span class="lineNum">      73 </span><span class="lineCov">        161 :         int offset = mono_cli_rva_image_map (image, debug_dir_entry-&gt;rva);</span>
+<span class="lineNum">      74 </span><span class="lineCov">        161 :         debug_dir = (ImageDebugDirectory*)(image-&gt;raw_data + offset);</span>
+<span class="lineNum">      75 </span><span class="lineCov">        203 :         if (debug_dir-&gt;type == 2 &amp;&amp; debug_dir-&gt;major_version == 0x100 &amp;&amp; debug_dir-&gt;minor_version == 0x504d) {</span>
+<span class="lineNum">      76 </span>            :                 /* This is a 'CODEVIEW' debug directory */
+<span class="lineNum">      77 </span><span class="lineCov">         10 :                 CodeviewDebugDirectory *dir = (CodeviewDebugDirectory*)(image-&gt;raw_data + debug_dir-&gt;pointer);</span>
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span><span class="lineCov">         10 :                 if (dir-&gt;signature == 0x53445352) {</span>
+<span class="lineNum">      80 </span><span class="lineCov">         10 :                         memcpy (out_guid, dir-&gt;guid, 16);</span>
+<span class="lineNum">      81 </span><span class="lineCov">         10 :                         *out_age = dir-&gt;age;</span>
+<span class="lineNum">      82 </span><span class="lineCov">         10 :                         *out_timestamp = debug_dir-&gt;time_date_stamp;</span>
+<span class="lineNum">      83 </span><span class="lineCov">         10 :                         return TRUE;</span>
+<span class="lineNum">      84 </span>            :                 }
+<span class="lineNum">      85 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      86 </span><span class="lineCov">        151 :         return FALSE;</span>
+<span class="lineNum">      87 </span><span class="lineCov">        167 : }</span>
+<a name="88"><span class="lineNum">      88 </span>            : </a>
+<span class="lineNum">      89 </span>            : static void
+<span class="lineNum">      90 </span>            : doc_free (gpointer key)
+<span class="lineNum">      91 </span>            : {
+<span class="lineNum">      92 </span><span class="lineCov">       1253 :         MonoDebugSourceInfo *info = (MonoDebugSourceInfo *)key;</span>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineCov">       1253 :         g_free (info-&gt;source_file);</span>
+<span class="lineNum">      95 </span><span class="lineCov">       1253 :         g_free (info);</span>
+<span class="lineNum">      96 </span><span class="lineCov">       1253 : }</span>
+<a name="97"><span class="lineNum">      97 </span>            : </a>
+<span class="lineNum">      98 </span>            : MonoPPDBFile*
+<span class="lineNum">      99 </span>            : mono_ppdb_load_file (MonoImage *image, const guint8 *raw_contents, int size)
+<span class="lineNum">     100 </span>            : {
+<span class="lineNum">     101 </span><span class="lineCov">        167 :         MonoImage *ppdb_image = NULL;</span>
+<span class="lineNum">     102 </span>            :         const char *filename;
+<span class="lineNum">     103 </span>            :         char *s, *ppdb_filename;
+<span class="lineNum">     104 </span>            :         MonoImageOpenStatus status;
+<span class="lineNum">     105 </span>            :         guint8 pe_guid [16];
+<span class="lineNum">     106 </span>            :         gint32 pe_age;
+<span class="lineNum">     107 </span>            :         gint32 pe_timestamp;
+<span class="lineNum">     108 </span>            :         MonoPPDBFile *ppdb;
+<span class="lineNum">     109 </span>            : 
+<span class="lineNum">     110 </span><span class="lineCov">        167 :         if (!get_pe_debug_guid (image, pe_guid, &amp;pe_age, &amp;pe_timestamp))</span>
+<span class="lineNum">     111 </span><span class="lineCov">        157 :                 return NULL;</span>
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span><span class="lineCov">         10 :         if (raw_contents) {</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :                 if (size &gt; 4 &amp;&amp; strncmp ((char*)raw_contents, &quot;BSJB&quot;, 4) == 0)</span>
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :                         ppdb_image = mono_image_open_from_data_internal ((char*)raw_contents, size, TRUE, &amp;status, FALSE, TRUE, NULL);</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     117 </span>            :                 /* ppdb files drop the .exe/.dll extension */
+<span class="lineNum">     118 </span><span class="lineCov">         10 :                 filename = mono_image_get_filename (image);</span>
+<span class="lineNum">     119 </span><span class="lineCov">         28 :                 if (strlen (filename) &gt; 4 &amp;&amp; (!strcmp (filename + strlen (filename) - 4, &quot;.exe&quot;) || !strcmp (filename + strlen (filename) - 4, &quot;.dll&quot;))) {</span>
+<span class="lineNum">     120 </span><span class="lineCov">         10 :                         s = g_strdup (filename);</span>
+<span class="lineNum">     121 </span><span class="lineCov">         10 :                         s [strlen (filename) - 4] = '\0';</span>
+<span class="lineNum">     122 </span><span class="lineCov">         10 :                         ppdb_filename = g_strdup_printf (&quot;%s.pdb&quot;, s);</span>
+<span class="lineNum">     123 </span><span class="lineCov">         10 :                         g_free (s);</span>
+<span class="lineNum">     124 </span><span class="lineCov">         10 :                 } else {</span>
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :                         ppdb_filename = g_strdup_printf (&quot;%s.pdb&quot;, filename);</span>
+<span class="lineNum">     126 </span>            :                 }
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span><span class="lineCov">         10 :                 ppdb_image = mono_image_open_metadata_only (ppdb_filename, &amp;status);</span>
+<span class="lineNum">     129 </span><span class="lineCov">         10 :                 if (!ppdb_image)</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :                         g_free (ppdb_filename);</span>
+<span class="lineNum">     131 </span>            :         }
+<span class="lineNum">     132 </span><span class="lineCov">         10 :         if (!ppdb_image)</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span>            :         /*
+<span class="lineNum">     136 </span>            :          * Check that the images match.
+<span class="lineNum">     137 </span>            :          * The same id is stored in the Debug Directory of the PE file, and in the
+<span class="lineNum">     138 </span>            :          * #Pdb stream in the ppdb file.
+<span class="lineNum">     139 </span>            :          */
+<span class="lineNum">     140 </span><span class="lineCov">         10 :         PdbStreamHeader *pdb_stream = (PdbStreamHeader*)ppdb_image-&gt;heap_pdb.data;</span>
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span><span class="lineCov">         30 :         g_assert (pdb_stream);</span>
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span>            :         /* The pdb id is a concentation of the pe guid and the timestamp */
+<span class="lineNum">     145 </span><span class="lineCov">         20 :         if (memcmp (pe_guid, pdb_stream-&gt;guid, 16) != 0 || memcmp (&amp;pe_timestamp, pdb_stream-&gt;guid + 16, 4) != 0) {</span>
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :                 g_warning (&quot;Symbol file %s doesn't match image %s&quot;, ppdb_image-&gt;name,</span>
+<span class="lineNum">     147 </span>            :                                    image-&gt;name);
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :                 mono_image_close (ppdb_image);</span>
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     150 </span>            :         }
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span><span class="lineCov">         10 :         ppdb = g_new0 (MonoPPDBFile, 1);</span>
+<span class="lineNum">     153 </span><span class="lineCov">         10 :         ppdb-&gt;image = ppdb_image;</span>
+<span class="lineNum">     154 </span><span class="lineCov">         10 :         ppdb-&gt;doc_hash = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify) doc_free);</span>
+<span class="lineNum">     155 </span><span class="lineCov">         10 :         ppdb-&gt;method_hash = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify) g_free);</span>
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span><span class="lineCov">         10 :         return ppdb;</span>
+<span class="lineNum">     158 </span><span class="lineCov">        167 : }</span>
+<a name="159"><span class="lineNum">     159 </span>            : </a>
+<span class="lineNum">     160 </span>            : void
+<span class="lineNum">     161 </span>            : mono_ppdb_close (MonoDebugHandle *handle)
+<span class="lineNum">     162 </span>            : {
+<span class="lineNum">     163 </span><span class="lineCov">         10 :         MonoPPDBFile *ppdb = handle-&gt;ppdb;</span>
+<span class="lineNum">     164 </span>            : 
+<span class="lineNum">     165 </span><span class="lineCov">         10 :         mono_image_close (ppdb-&gt;image);</span>
+<span class="lineNum">     166 </span><span class="lineCov">         10 :         g_hash_table_destroy (ppdb-&gt;doc_hash);</span>
+<span class="lineNum">     167 </span><span class="lineCov">         10 :         g_hash_table_destroy (ppdb-&gt;method_hash);</span>
+<span class="lineNum">     168 </span><span class="lineCov">         10 :         g_free (ppdb);</span>
+<span class="lineNum">     169 </span><span class="lineCov">         10 : }</span>
+<a name="170"><span class="lineNum">     170 </span>            : </a>
+<span class="lineNum">     171 </span>            : MonoDebugMethodInfo *
+<span class="lineNum">     172 </span>            : mono_ppdb_lookup_method (MonoDebugHandle *handle, MonoMethod *method)
+<span class="lineNum">     173 </span>            : {
+<span class="lineNum">     174 </span>            :         MonoDebugMethodInfo *minfo;
+<span class="lineNum">     175 </span><span class="lineCov">     291428 :         MonoPPDBFile *ppdb = handle-&gt;ppdb;</span>
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineCov">     291428 :         if (handle-&gt;image != mono_class_get_image (mono_method_get_class (method)))</span>
+<span class="lineNum">     178 </span><span class="lineCov">     162368 :                 return NULL;</span>
+<span class="lineNum">     179 </span>            : 
+<span class="lineNum">     180 </span><span class="lineCov">     129060 :         mono_debugger_lock ();</span>
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span><span class="lineCov">     129060 :         minfo = (MonoDebugMethodInfo *)g_hash_table_lookup (ppdb-&gt;method_hash, method);</span>
+<span class="lineNum">     183 </span><span class="lineCov">     129060 :         if (minfo) {</span>
+<span class="lineNum">     184 </span><span class="lineCov">      96945 :                 mono_debugger_unlock ();</span>
+<span class="lineNum">     185 </span><span class="lineCov">      96945 :                 return minfo;</span>
+<span class="lineNum">     186 </span>            :         }
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span><span class="lineCov">      32115 :         minfo = g_new0 (MonoDebugMethodInfo, 1);</span>
+<span class="lineNum">     189 </span><span class="lineCov">      32115 :         minfo-&gt;index = 0;</span>
+<span class="lineNum">     190 </span><span class="lineCov">      32115 :         minfo-&gt;method = method;</span>
+<span class="lineNum">     191 </span><span class="lineCov">      32115 :         minfo-&gt;handle = handle;</span>
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span><span class="lineCov">      32115 :         g_hash_table_insert (ppdb-&gt;method_hash, method, minfo);</span>
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span><span class="lineCov">      32115 :         mono_debugger_unlock ();</span>
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span><span class="lineCov">      32115 :         return minfo;</span>
+<span class="lineNum">     198 </span><span class="lineCov">     291428 : }</span>
+<a name="199"><span class="lineNum">     199 </span>            : </a>
+<span class="lineNum">     200 </span>            : static MonoDebugSourceInfo*
+<span class="lineNum">     201 </span>            : get_docinfo (MonoPPDBFile *ppdb, MonoImage *image, int docidx)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span><span class="lineCov">      32104 :         MonoTableInfo *tables = image-&gt;tables;</span>
+<span class="lineNum">     204 </span>            :         guint32 cols [MONO_DOCUMENT_SIZE];
+<span class="lineNum">     205 </span>            :         const char *ptr;
+<span class="lineNum">     206 </span>            :         const char *start;
+<span class="lineNum">     207 </span>            :         const char *part_ptr;
+<span class="lineNum">     208 </span>            :         int size, part_size, partidx, nparts;
+<span class="lineNum">     209 </span>            :         char sep;
+<span class="lineNum">     210 </span>            :         GString *s;
+<span class="lineNum">     211 </span>            :         MonoDebugSourceInfo *res, *cached;
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span><span class="lineCov">      32104 :         mono_debugger_lock ();</span>
+<span class="lineNum">     214 </span><span class="lineCov">      32104 :         cached = (MonoDebugSourceInfo *)g_hash_table_lookup (ppdb-&gt;doc_hash, GUINT_TO_POINTER (docidx));</span>
+<span class="lineNum">     215 </span><span class="lineCov">      32104 :         mono_debugger_unlock ();</span>
+<span class="lineNum">     216 </span><span class="lineCov">      32104 :         if (cached)</span>
+<span class="lineNum">     217 </span><span class="lineCov">      30851 :                 return cached;</span>
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span><span class="lineCov">       1253 :         mono_metadata_decode_row (&amp;tables [MONO_TABLE_DOCUMENT], docidx-1, cols, MONO_DOCUMENT_SIZE);</span>
+<span class="lineNum">     220 </span>            : 
+<span class="lineNum">     221 </span><span class="lineCov">       1253 :         ptr = mono_metadata_blob_heap (image, cols [MONO_DOCUMENT_NAME]);</span>
+<span class="lineNum">     222 </span><span class="lineCov">       1253 :         size = mono_metadata_decode_blob_size (ptr, &amp;ptr);</span>
+<span class="lineNum">     223 </span><span class="lineCov">       1253 :         start = ptr;</span>
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span>            :         // FIXME: UTF8
+<span class="lineNum">     226 </span><span class="lineCov">       1253 :         sep = ptr [0];</span>
+<span class="lineNum">     227 </span><span class="lineCov">       1253 :         ptr ++;</span>
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span><span class="lineCov">       1253 :         s = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     230 </span>            : 
+<span class="lineNum">     231 </span><span class="lineCov">       1253 :         nparts = 0;</span>
+<span class="lineNum">     232 </span><span class="lineCov">      29702 :         while (ptr &lt; start + size) {</span>
+<span class="lineNum">     233 </span><span class="lineCov">      13598 :                 partidx = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     234 </span><span class="lineCov">      13598 :                 if (nparts)</span>
+<span class="lineNum">     235 </span><span class="lineCov">      12345 :                         g_string_append_c (s, sep);</span>
+<span class="lineNum">     236 </span><span class="lineCov">      13598 :                 if (partidx) {</span>
+<span class="lineNum">     237 </span><span class="lineCov">      12345 :                         part_ptr = mono_metadata_blob_heap (image, partidx);</span>
+<span class="lineNum">     238 </span><span class="lineCov">      12345 :                         part_size = mono_metadata_decode_blob_size (part_ptr, &amp;part_ptr);</span>
+<span class="lineNum">     239 </span>            : 
+<span class="lineNum">     240 </span>            :                         // FIXME: UTF8
+<span class="lineNum">     241 </span><span class="lineCov">      12345 :                         g_string_append_len (s, part_ptr, part_size);</span>
+<span class="lineNum">     242 </span><span class="lineCov">      12345 :                 }</span>
+<span class="lineNum">     243 </span><span class="lineCov">      13598 :                 nparts ++;</span>
+<span class="lineNum">     244 </span>            :         }
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">       1253 :         res = g_new0 (MonoDebugSourceInfo, 1);</span>
+<span class="lineNum">     247 </span><span class="lineCov">       1253 :         res-&gt;source_file = g_string_free (s, FALSE);</span>
+<span class="lineNum">     248 </span><span class="lineCov">       1253 :         res-&gt;guid = NULL;</span>
+<span class="lineNum">     249 </span><span class="lineCov">       1253 :         res-&gt;hash = (guint8*)mono_metadata_blob_heap (image, cols [MONO_DOCUMENT_HASH]);</span>
+<span class="lineNum">     250 </span>            : 
+<span class="lineNum">     251 </span><span class="lineCov">       1253 :         mono_debugger_lock ();</span>
+<span class="lineNum">     252 </span><span class="lineCov">       1253 :         cached = (MonoDebugSourceInfo *)g_hash_table_lookup (ppdb-&gt;doc_hash, GUINT_TO_POINTER (docidx));</span>
+<span class="lineNum">     253 </span><span class="lineCov">       1253 :         if (!cached) {</span>
+<span class="lineNum">     254 </span><span class="lineCov">       1253 :                 g_hash_table_insert (ppdb-&gt;doc_hash, GUINT_TO_POINTER (docidx), res);</span>
+<span class="lineNum">     255 </span><span class="lineCov">       1253 :         } else {</span>
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :                 doc_free (res);</span>
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :                 res = cached;</span>
+<span class="lineNum">     258 </span>            :         }
+<span class="lineNum">     259 </span><span class="lineCov">       1253 :         mono_debugger_unlock ();</span>
+<span class="lineNum">     260 </span><span class="lineCov">       1253 :         return res;</span>
+<span class="lineNum">     261 </span><span class="lineCov">      32104 : }</span>
+<a name="262"><span class="lineNum">     262 </span>            : </a>
+<span class="lineNum">     263 </span>            : static char*
+<span class="lineNum">     264 </span>            : get_docname (MonoPPDBFile *ppdb, MonoImage *image, int docidx)
+<span class="lineNum">     265 </span>            : {
+<span class="lineNum">     266 </span>            :         MonoDebugSourceInfo *info;
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span><span class="lineCov">        616 :         info = get_docinfo (ppdb, image, docidx);</span>
+<span class="lineNum">     269 </span><span class="lineCov">        616 :         return g_strdup (info-&gt;source_file);</span>
+<span class="lineNum">     270 </span>            : }
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span>            : /**
+<span class="lineNum">     273 </span>            :  * mono_ppdb_lookup_location:
+<span class="lineNum">     274 </span>            :  * @minfo: A `MonoDebugMethodInfo' which can be retrieved by
+<span class="lineNum">     275 </span>            :  *         mono_debug_lookup_method().
+<span class="lineNum">     276 </span>            :  * @offset: IL offset within the corresponding method's CIL code.
+<span class="lineNum">     277 </span>            :  *
+<span class="lineNum">     278 </span>            :  * This function is similar to mono_debug_lookup_location(), but we
+<span class="lineNum">     279 </span>            :  * already looked up the method and also already did the
+<span class="lineNum">     280 </span>            :  * `native address -&gt; IL offset' mapping.
+<a name="281"><span class="lineNum">     281 </span>            :  */</a>
+<span class="lineNum">     282 </span>            : MonoDebugSourceLocation *
+<span class="lineNum">     283 </span>            : mono_ppdb_lookup_location (MonoDebugMethodInfo *minfo, uint32_t offset)
+<span class="lineNum">     284 </span>            : {
+<span class="lineNum">     285 </span><span class="lineCov">        616 :         MonoPPDBFile *ppdb = minfo-&gt;handle-&gt;ppdb;</span>
+<span class="lineNum">     286 </span><span class="lineCov">        616 :         MonoImage *image = ppdb-&gt;image;</span>
+<span class="lineNum">     287 </span><span class="lineCov">        616 :         MonoMethod *method = minfo-&gt;method;</span>
+<span class="lineNum">     288 </span><span class="lineCov">        616 :         MonoTableInfo *tables = image-&gt;tables;</span>
+<span class="lineNum">     289 </span>            :         guint32 cols [MONO_METHODBODY_SIZE];
+<span class="lineNum">     290 </span>            :         const char *ptr;
+<span class="lineNum">     291 </span>            :         const char *end;
+<span class="lineNum">     292 </span>            :         char *docname;
+<span class="lineNum">     293 </span>            :         int idx, size, docidx, iloffset, delta_il, delta_lines, delta_cols, start_line, start_col, adv_line, adv_col;
+<span class="lineNum">     294 </span><span class="lineCov">        616 :         gboolean first = TRUE, first_non_hidden = TRUE;</span>
+<span class="lineNum">     295 </span>            :         MonoDebugSourceLocation *location;
+<span class="lineNum">     296 </span>            : 
+<span class="lineNum">     297 </span><span class="lineCov">        616 :         if (!method-&gt;token)</span>
+<span class="lineNum">     298 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     299 </span>            : 
+<span class="lineNum">     300 </span><span class="lineCov">        616 :         idx = mono_metadata_token_index (method-&gt;token);</span>
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span><span class="lineCov">        616 :         mono_metadata_decode_row (&amp;tables [MONO_TABLE_METHODBODY], idx-1, cols, MONO_METHODBODY_SIZE);</span>
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span><span class="lineCov">        616 :         docidx = cols [MONO_METHODBODY_DOCUMENT];</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineCov">        616 :         if (!cols [MONO_METHODBODY_SEQ_POINTS])</span>
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     308 </span><span class="lineCov">        616 :         ptr = mono_metadata_blob_heap (image, cols [MONO_METHODBODY_SEQ_POINTS]);</span>
+<span class="lineNum">     309 </span><span class="lineCov">        616 :         size = mono_metadata_decode_blob_size (ptr, &amp;ptr);</span>
+<span class="lineNum">     310 </span><span class="lineCov">        616 :         end = ptr + size;</span>
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span>            :         /* Header */
+<span class="lineNum">     313 </span>            :         /* LocalSignature */
+<span class="lineNum">     314 </span><span class="lineCov">        616 :         mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     315 </span><span class="lineCov">        616 :         if (docidx == 0)</span>
+<span class="lineNum">     316 </span><span class="lineNoCov">          0 :                 docidx = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     317 </span><span class="lineCov">        616 :         docname = get_docname (ppdb, image, docidx);</span>
+<span class="lineNum">     318 </span>            : 
+<span class="lineNum">     319 </span><span class="lineCov">        616 :         iloffset = 0;</span>
+<span class="lineNum">     320 </span><span class="lineCov">        616 :         start_line = 0;</span>
+<span class="lineNum">     321 </span><span class="lineCov">        616 :         start_col = 0;</span>
+<span class="lineNum">     322 </span><span class="lineCov">      11242 :         while (ptr &lt; end) {</span>
+<span class="lineNum">     323 </span><span class="lineCov">       5544 :                 delta_il = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     324 </span><span class="lineCov">      10472 :                 if (!first &amp;&amp; delta_il == 0) {</span>
+<span class="lineNum">     325 </span>            :                         /* document-record */
+<span class="lineNum">     326 </span><span class="lineNoCov">          0 :                         docidx = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     327 </span><span class="lineNoCov">          0 :                         docname = get_docname (ppdb, image, docidx);</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     329 </span>            :                 }
+<span class="lineNum">     330 </span><span class="lineCov">      10472 :                 if (!first &amp;&amp; iloffset + delta_il &gt; offset)</span>
+<span class="lineNum">     331 </span><span class="lineCov">        462 :                         break;</span>
+<span class="lineNum">     332 </span><span class="lineCov">       5082 :                 iloffset += delta_il;</span>
+<span class="lineNum">     333 </span><span class="lineCov">       5082 :                 first = FALSE;</span>
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span><span class="lineCov">       5082 :                 delta_lines = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     336 </span><span class="lineCov">       5082 :                 if (delta_lines == 0)</span>
+<span class="lineNum">     337 </span><span class="lineCov">       5082 :                         delta_cols = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     338 </span>            :                 else
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                         delta_cols = mono_metadata_decode_signed_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     340 </span><span class="lineCov">      10164 :                 if (delta_lines == 0 &amp;&amp; delta_cols == 0)</span>
+<span class="lineNum">     341 </span>            :                         /* hidden-sequence-point-record */
+<span class="lineNum">     342 </span><span class="lineCov">        154 :                         continue;</span>
+<span class="lineNum">     343 </span><span class="lineCov">       4928 :                 if (first_non_hidden) {</span>
+<span class="lineNum">     344 </span><span class="lineCov">        616 :                         start_line = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     345 </span><span class="lineCov">        616 :                         start_col = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     346 </span><span class="lineCov">        616 :                 } else {</span>
+<span class="lineNum">     347 </span><span class="lineCov">       4312 :                         adv_line = mono_metadata_decode_signed_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     348 </span><span class="lineCov">       4312 :                         adv_col = mono_metadata_decode_signed_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     349 </span><span class="lineCov">       4312 :                         start_line += adv_line;</span>
+<span class="lineNum">     350 </span><span class="lineCov">       4312 :                         start_col += adv_col;</span>
+<span class="lineNum">     351 </span>            :                 }
+<span class="lineNum">     352 </span><span class="lineCov">       4928 :                 first_non_hidden = FALSE;</span>
+<span class="lineNum">     353 </span>            :         }
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span><span class="lineCov">        616 :         location = g_new0 (MonoDebugSourceLocation, 1);</span>
+<span class="lineNum">     356 </span><span class="lineCov">        616 :         location-&gt;source_file = docname;</span>
+<span class="lineNum">     357 </span><span class="lineCov">        616 :         location-&gt;row = start_line;</span>
+<span class="lineNum">     358 </span><span class="lineCov">        616 :         location-&gt;il_offset = iloffset;</span>
+<span class="lineNum">     359 </span>            : 
+<span class="lineNum">     360 </span><span class="lineCov">        616 :         return location;</span>
+<span class="lineNum">     361 </span><span class="lineCov">        616 : }</span>
+<a name="362"><span class="lineNum">     362 </span>            : </a>
+<span class="lineNum">     363 </span>            : void
+<span class="lineNum">     364 </span>            : mono_ppdb_get_seq_points (MonoDebugMethodInfo *minfo, char **source_file, GPtrArray **source_file_list, int **source_files, MonoSymSeqPoint **seq_points, int *n_seq_points)
+<span class="lineNum">     365 </span>            : {
+<span class="lineNum">     366 </span><span class="lineCov">      32111 :         MonoPPDBFile *ppdb = minfo-&gt;handle-&gt;ppdb;</span>
+<span class="lineNum">     367 </span><span class="lineCov">      32111 :         MonoImage *image = ppdb-&gt;image;</span>
+<span class="lineNum">     368 </span><span class="lineCov">      32111 :         MonoMethod *method = minfo-&gt;method;</span>
+<span class="lineNum">     369 </span><span class="lineCov">      32111 :         MonoTableInfo *tables = image-&gt;tables;</span>
+<span class="lineNum">     370 </span>            :         guint32 cols [MONO_METHODBODY_SIZE];
+<span class="lineNum">     371 </span>            :         const char *ptr;
+<span class="lineNum">     372 </span>            :         const char *end;
+<span class="lineNum">     373 </span>            :         MonoDebugSourceInfo *docinfo;
+<span class="lineNum">     374 </span>            :         int i, method_idx, size, docidx, iloffset, delta_il, delta_lines, delta_cols, start_line, start_col, adv_line, adv_col;
+<span class="lineNum">     375 </span><span class="lineCov">      32111 :         gboolean first = TRUE, first_non_hidden = TRUE;</span>
+<span class="lineNum">     376 </span>            :         GArray *sps;
+<span class="lineNum">     377 </span>            :         MonoSymSeqPoint sp;
+<span class="lineNum">     378 </span><span class="lineCov">      32111 :         GPtrArray *sfiles = NULL;</span>
+<span class="lineNum">     379 </span><span class="lineCov">      32111 :         GPtrArray *sindexes = NULL;</span>
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span><span class="lineCov">      32111 :         if (source_file)</span>
+<span class="lineNum">     382 </span><span class="lineNoCov">          0 :                 *source_file = NULL;</span>
+<span class="lineNum">     383 </span><span class="lineCov">      32111 :         if (source_file_list)</span>
+<span class="lineNum">     384 </span><span class="lineCov">      32111 :                 *source_file_list = NULL;</span>
+<span class="lineNum">     385 </span><span class="lineCov">      32111 :         if (source_files)</span>
+<span class="lineNum">     386 </span><span class="lineNoCov">          0 :                 *source_files = NULL;</span>
+<span class="lineNum">     387 </span><span class="lineCov">      32111 :         if (seq_points)</span>
+<span class="lineNum">     388 </span><span class="lineNoCov">          0 :                 *seq_points = NULL;</span>
+<span class="lineNum">     389 </span><span class="lineCov">      32111 :         if (n_seq_points)</span>
+<span class="lineNum">     390 </span><span class="lineNoCov">          0 :                 *n_seq_points = 0;</span>
+<span class="lineNum">     391 </span>            : 
+<span class="lineNum">     392 </span><span class="lineCov">      32111 :         if (source_file_list)</span>
+<span class="lineNum">     393 </span><span class="lineCov">      32111 :                 *source_file_list = sfiles = g_ptr_array_new ();</span>
+<span class="lineNum">     394 </span><span class="lineCov">      32111 :         if (source_files)</span>
+<span class="lineNum">     395 </span><span class="lineNoCov">          0 :                 sindexes = g_ptr_array_new ();</span>
+<span class="lineNum">     396 </span>            : 
+<span class="lineNum">     397 </span><span class="lineCov">      32111 :         if (!method-&gt;token)</span>
+<span class="lineNum">     398 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     399 </span>            : 
+<span class="lineNum">     400 </span><span class="lineCov">      32111 :         method_idx = mono_metadata_token_index (method-&gt;token);</span>
+<span class="lineNum">     401 </span>            : 
+<span class="lineNum">     402 </span><span class="lineCov">      32111 :         mono_metadata_decode_row (&amp;tables [MONO_TABLE_METHODBODY], method_idx-1, cols, MONO_METHODBODY_SIZE);</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineCov">      32111 :         docidx = cols [MONO_METHODBODY_DOCUMENT];</span>
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span><span class="lineCov">      32111 :         if (!cols [MONO_METHODBODY_SEQ_POINTS])</span>
+<span class="lineNum">     407 </span><span class="lineCov">        628 :                 return;</span>
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span><span class="lineCov">      31483 :         ptr = mono_metadata_blob_heap (image, cols [MONO_METHODBODY_SEQ_POINTS]);</span>
+<span class="lineNum">     410 </span><span class="lineCov">      31483 :         size = mono_metadata_decode_blob_size (ptr, &amp;ptr);</span>
+<span class="lineNum">     411 </span><span class="lineCov">      31483 :         end = ptr + size;</span>
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span><span class="lineCov">      31483 :         sps = g_array_new (FALSE, TRUE, sizeof (MonoSymSeqPoint));</span>
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span>            :         /* Header */
+<span class="lineNum">     416 </span>            :         /* LocalSignature */
+<span class="lineNum">     417 </span><span class="lineCov">      31483 :         mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     418 </span><span class="lineCov">      31483 :         if (docidx == 0)</span>
+<span class="lineNum">     419 </span><span class="lineCov">          4 :                 docidx = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     420 </span><span class="lineCov">      31483 :         docinfo = get_docinfo (ppdb, image, docidx);</span>
+<span class="lineNum">     421 </span>            : 
+<span class="lineNum">     422 </span><span class="lineCov">      31483 :         if (sfiles)</span>
+<span class="lineNum">     423 </span><span class="lineCov">      31483 :                 g_ptr_array_add (sfiles, docinfo);</span>
+<span class="lineNum">     424 </span>            : 
+<span class="lineNum">     425 </span><span class="lineCov">      31483 :         iloffset = 0;</span>
+<span class="lineNum">     426 </span><span class="lineCov">      31483 :         start_line = 0;</span>
+<span class="lineNum">     427 </span><span class="lineCov">      31483 :         start_col = 0;</span>
+<span class="lineNum">     428 </span><span class="lineCov">     414536 :         while (ptr &lt; end) {</span>
+<span class="lineNum">     429 </span><span class="lineCov">     178859 :                 delta_il = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     430 </span><span class="lineCov">     326235 :                 if (!first &amp;&amp; delta_il == 0) {</span>
+<span class="lineNum">     431 </span>            :                         /* subsequent-document-record */
+<span class="lineNum">     432 </span><span class="lineCov">          5 :                         docidx = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     433 </span><span class="lineCov">          5 :                         docinfo = get_docinfo (ppdb, image, docidx);</span>
+<span class="lineNum">     434 </span><span class="lineCov">          5 :                         if (sfiles)</span>
+<span class="lineNum">     435 </span><span class="lineCov">          5 :                                 g_ptr_array_add (sfiles, docinfo);</span>
+<span class="lineNum">     436 </span><span class="lineCov">          5 :                         continue;</span>
+<span class="lineNum">     437 </span>            :                 }
+<span class="lineNum">     438 </span><span class="lineCov">     178854 :                 iloffset += delta_il;</span>
+<span class="lineNum">     439 </span><span class="lineCov">     178854 :                 first = FALSE;</span>
+<span class="lineNum">     440 </span>            : 
+<span class="lineNum">     441 </span><span class="lineCov">     178854 :                 delta_lines = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     442 </span><span class="lineCov">     178854 :                 if (delta_lines == 0)</span>
+<span class="lineNum">     443 </span><span class="lineCov">     175209 :                         delta_cols = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     444 </span>            :                 else
+<span class="lineNum">     445 </span><span class="lineCov">       3645 :                         delta_cols = mono_metadata_decode_signed_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     446 </span>            : 
+<span class="lineNum">     447 </span><span class="lineCov">     354063 :                 if (delta_lines == 0 &amp;&amp; delta_cols == 0) {</span>
+<span class="lineNum">     448 </span>            :                         /* Hidden sequence point */
+<span class="lineNum">     449 </span><span class="lineCov">       6143 :                         continue;</span>
+<span class="lineNum">     450 </span>            :                 }
+<span class="lineNum">     451 </span>            : 
+<span class="lineNum">     452 </span><span class="lineCov">     172711 :                 if (first_non_hidden) {</span>
+<span class="lineNum">     453 </span><span class="lineCov">      31483 :                         start_line = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     454 </span><span class="lineCov">      31483 :                         start_col = mono_metadata_decode_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     455 </span><span class="lineCov">      31483 :                 } else {</span>
+<span class="lineNum">     456 </span><span class="lineCov">     141228 :                         adv_line = mono_metadata_decode_signed_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     457 </span><span class="lineCov">     141228 :                         adv_col = mono_metadata_decode_signed_value (ptr, &amp;ptr);</span>
+<span class="lineNum">     458 </span><span class="lineCov">     141228 :                         start_line += adv_line;</span>
+<span class="lineNum">     459 </span><span class="lineCov">     141228 :                         start_col += adv_col;</span>
+<span class="lineNum">     460 </span>            :                 }
+<span class="lineNum">     461 </span><span class="lineCov">     172711 :                 first_non_hidden = FALSE;</span>
+<span class="lineNum">     462 </span>            : 
+<span class="lineNum">     463 </span><span class="lineCov">     172711 :                 memset (&amp;sp, 0, sizeof (sp));</span>
+<span class="lineNum">     464 </span><span class="lineCov">     172711 :                 sp.il_offset = iloffset;</span>
+<span class="lineNum">     465 </span><span class="lineCov">     172711 :                 sp.line = start_line;</span>
+<span class="lineNum">     466 </span><span class="lineCov">     172711 :                 sp.column = start_col;</span>
+<span class="lineNum">     467 </span><span class="lineCov">     172711 :                 sp.end_line = start_line + delta_lines;</span>
+<span class="lineNum">     468 </span><span class="lineCov">     172711 :                 sp.end_column = start_col + delta_cols;</span>
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span><span class="lineCov">     172711 :                 g_array_append_val (sps, sp);</span>
+<span class="lineNum">     471 </span><span class="lineCov">     172711 :                 if (source_files)</span>
+<span class="lineNum">     472 </span><span class="lineNoCov">          0 :                         g_ptr_array_add (sindexes, GUINT_TO_POINTER (sfiles-&gt;len - 1));</span>
+<span class="lineNum">     473 </span>            :         }
+<span class="lineNum">     474 </span>            : 
+<span class="lineNum">     475 </span><span class="lineCov">      31483 :         if (n_seq_points) {</span>
+<span class="lineNum">     476 </span><span class="lineNoCov">          0 :                 *n_seq_points = sps-&gt;len;</span>
+<span class="lineNum">     477 </span><span class="lineNoCov">          0 :                 g_assert (seq_points);</span>
+<span class="lineNum">     478 </span><span class="lineNoCov">          0 :                 *seq_points = g_new (MonoSymSeqPoint, sps-&gt;len);</span>
+<span class="lineNum">     479 </span><span class="lineNoCov">          0 :                 memcpy (*seq_points, sps-&gt;data, sps-&gt;len * sizeof (MonoSymSeqPoint));</span>
+<span class="lineNum">     480 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     481 </span>            : 
+<span class="lineNum">     482 </span><span class="lineCov">      31483 :         if (source_file)</span>
+<span class="lineNum">     483 </span><span class="lineNoCov">          0 :                 *source_file = g_strdup (((MonoDebugSourceInfo*)g_ptr_array_index (sfiles, 0))-&gt;source_file);</span>
+<span class="lineNum">     484 </span><span class="lineCov">      31483 :         if (source_files) {</span>
+<span class="lineNum">     485 </span><span class="lineNoCov">          0 :                 *source_files = g_new (int, sps-&gt;len);</span>
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; sps-&gt;len; ++i)</span>
+<span class="lineNum">     487 </span><span class="lineNoCov">          0 :                         (*source_files)[i] = GPOINTER_TO_INT (g_ptr_array_index (sindexes, i));</span>
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :                 g_ptr_array_free (sindexes, TRUE);</span>
+<span class="lineNum">     489 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     490 </span>            : 
+<span class="lineNum">     491 </span><span class="lineCov">      31483 :         g_array_free (sps, TRUE);</span>
+<span class="lineNum">     492 </span><span class="lineCov">      63594 : }</span>
+<a name="493"><span class="lineNum">     493 </span>            : </a>
+<span class="lineNum">     494 </span>            : MonoDebugLocalsInfo*
+<span class="lineNum">     495 </span>            : mono_ppdb_lookup_locals (MonoDebugMethodInfo *minfo)
+<span class="lineNum">     496 </span>            : {
+<span class="lineNum">     497 </span><span class="lineCov">      32111 :         MonoPPDBFile *ppdb = minfo-&gt;handle-&gt;ppdb;</span>
+<span class="lineNum">     498 </span><span class="lineCov">      32111 :         MonoImage *image = ppdb-&gt;image;</span>
+<span class="lineNum">     499 </span><span class="lineCov">      32111 :         MonoTableInfo *tables = image-&gt;tables;</span>
+<span class="lineNum">     500 </span><span class="lineCov">      32111 :         MonoMethod *method = minfo-&gt;method;</span>
+<span class="lineNum">     501 </span>            :         guint32 cols [MONO_LOCALSCOPE_SIZE];
+<span class="lineNum">     502 </span>            :         guint32 locals_cols [MONO_LOCALVARIABLE_SIZE];
+<span class="lineNum">     503 </span>            :         int i, lindex, sindex, method_idx, start_scope_idx, scope_idx, locals_idx, locals_end_idx, nscopes;
+<span class="lineNum">     504 </span>            :         MonoDebugLocalsInfo *res;
+<span class="lineNum">     505 </span>            :         MonoMethodSignature *sig;
+<span class="lineNum">     506 </span>            : 
+<span class="lineNum">     507 </span><span class="lineCov">      32111 :         if (!method-&gt;token)</span>
+<span class="lineNum">     508 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     509 </span>            : 
+<span class="lineNum">     510 </span><span class="lineCov">      32111 :         sig = mono_method_signature (method);</span>
+<span class="lineNum">     511 </span><span class="lineCov">      32111 :         if (!sig)</span>
+<span class="lineNum">     512 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     513 </span>            : 
+<span class="lineNum">     514 </span><span class="lineCov">      32111 :         method_idx = mono_metadata_token_index (method-&gt;token);</span>
+<span class="lineNum">     515 </span>            : 
+<span class="lineNum">     516 </span><span class="lineCov">      32111 :         start_scope_idx = mono_metadata_localscope_from_methoddef (image, method_idx);</span>
+<span class="lineNum">     517 </span>            : 
+<span class="lineNum">     518 </span><span class="lineCov">      32111 :         if (!start_scope_idx)</span>
+<span class="lineNum">     519 </span><span class="lineCov">        591 :                 return NULL;</span>
+<span class="lineNum">     520 </span>            : 
+<span class="lineNum">     521 </span>            :         /* Compute number of locals and scopes */
+<span class="lineNum">     522 </span><span class="lineCov">      31520 :         scope_idx = start_scope_idx;</span>
+<span class="lineNum">     523 </span><span class="lineCov">      31520 :         mono_metadata_decode_row (&amp;tables [MONO_TABLE_LOCALSCOPE], scope_idx-1, cols, MONO_LOCALSCOPE_SIZE);</span>
+<span class="lineNum">     524 </span><span class="lineCov">      31520 :         locals_idx = cols [MONO_LOCALSCOPE_VARIABLELIST];</span>
+<span class="lineNum">     525 </span>            : 
+<span class="lineNum">     526 </span>            :         // https://github.com/dotnet/roslyn/blob/2ae8d5fed96ab3f1164031f9b4ac827f53289159/docs/specs/PortablePdb-Metadata.md#LocalScopeTable
+<span class="lineNum">     527 </span>            :         //
+<span class="lineNum">     528 </span>            :         // The variableList attribute in the pdb metadata table is a contiguous array that starts at a
+<span class="lineNum">     529 </span>            :         // given offset (locals_idx) above and
+<span class="lineNum">     530 </span>            :         //
+<span class="lineNum">     531 </span>            :         // &quot;&quot;&quot;
+<span class="lineNum">     532 </span>            :         // continues to the smaller of:
+<span class="lineNum">     533 </span>            :         //
+<span class="lineNum">     534 </span>            :         // the last row of the LocalVariable table
+<span class="lineNum">     535 </span>            :         // the next run of LocalVariables, found by inspecting the VariableList of the next row in this LocalScope table.
+<span class="lineNum">     536 </span>            :         // &quot;&quot;&quot;
+<span class="lineNum">     537 </span>            :         // this endpoint becomes locals_end_idx below
+<span class="lineNum">     538 </span>            : 
+<span class="lineNum">     539 </span>            :         // March to the last scope that is in this method
+<span class="lineNum">     540 </span><span class="lineCov">     140116 :         while (scope_idx &lt;= tables [MONO_TABLE_LOCALSCOPE].rows) {</span>
+<span class="lineNum">     541 </span><span class="lineCov">      70056 :                 mono_metadata_decode_row (&amp;tables [MONO_TABLE_LOCALSCOPE], scope_idx-1, cols, MONO_LOCALSCOPE_SIZE);</span>
+<span class="lineNum">     542 </span><span class="lineCov">      70056 :                 if (cols [MONO_LOCALSCOPE_METHOD] != method_idx)</span>
+<span class="lineNum">     543 </span><span class="lineCov">      31518 :                         break;</span>
+<span class="lineNum">     544 </span><span class="lineCov">      38538 :                 scope_idx ++;</span>
+<span class="lineNum">     545 </span>            :         }
+<span class="lineNum">     546 </span>            :         // The number of scopes is the difference in the indices
+<span class="lineNum">     547 </span>            :         // for the first and last scopes
+<span class="lineNum">     548 </span><span class="lineCov">      31520 :         nscopes = scope_idx - start_scope_idx;</span>
+<span class="lineNum">     549 </span>            : 
+<span class="lineNum">     550 </span>            :         // Ends with &quot;the last row of the LocalVariable table&quot;
+<span class="lineNum">     551 </span>            :         // this happens if the above loop marched one past the end
+<span class="lineNum">     552 </span>            :         // of the rows
+<span class="lineNum">     553 </span><span class="lineCov">      31520 :         if (scope_idx &gt; tables [MONO_TABLE_LOCALSCOPE].rows) {</span>
+<span class="lineNum">     554 </span><span class="lineCov">          2 :                 locals_end_idx = tables [MONO_TABLE_LOCALVARIABLE].rows + 1;</span>
+<span class="lineNum">     555 </span><span class="lineCov">          2 :         } else {</span>
+<span class="lineNum">     556 </span>            :                 // Ends with &quot;the next run of LocalVariables,
+<span class="lineNum">     557 </span>            :                 // found by inspecting the VariableList of the next row in this LocalScope table.&quot;
+<span class="lineNum">     558 </span><span class="lineCov">      31518 :                 locals_end_idx = cols [MONO_LOCALSCOPE_VARIABLELIST];</span>
+<span class="lineNum">     559 </span>            :         }
+<span class="lineNum">     560 </span>            : 
+<span class="lineNum">     561 </span><span class="lineCov">      31520 :         res = g_new0 (MonoDebugLocalsInfo, 1);</span>
+<span class="lineNum">     562 </span><span class="lineCov">      31520 :         res-&gt;num_blocks = nscopes;</span>
+<span class="lineNum">     563 </span><span class="lineCov">      31520 :         res-&gt;code_blocks = g_new0 (MonoDebugCodeBlock, res-&gt;num_blocks);</span>
+<span class="lineNum">     564 </span><span class="lineCov">      31520 :         res-&gt;num_locals = locals_end_idx - locals_idx;</span>
+<span class="lineNum">     565 </span><span class="lineCov">      31520 :         res-&gt;locals = g_new0 (MonoDebugLocalVar, res-&gt;num_locals);</span>
+<span class="lineNum">     566 </span>            : 
+<span class="lineNum">     567 </span><span class="lineCov">      31520 :         lindex = 0;</span>
+<span class="lineNum">     568 </span><span class="lineCov">     140116 :         for (sindex = 0; sindex &lt; nscopes; ++sindex) {</span>
+<span class="lineNum">     569 </span><span class="lineCov">      38538 :                 scope_idx = start_scope_idx + sindex;</span>
+<span class="lineNum">     570 </span><span class="lineCov">      38538 :                 mono_metadata_decode_row (&amp;tables [MONO_TABLE_LOCALSCOPE], scope_idx-1, cols, MONO_LOCALSCOPE_SIZE);</span>
+<span class="lineNum">     571 </span>            : 
+<span class="lineNum">     572 </span><span class="lineCov">      38538 :                 locals_idx = cols [MONO_LOCALSCOPE_VARIABLELIST];</span>
+<span class="lineNum">     573 </span><span class="lineCov">      38538 :                 if (scope_idx == tables [MONO_TABLE_LOCALSCOPE].rows) {</span>
+<span class="lineNum">     574 </span><span class="lineCov">          2 :                         locals_end_idx = tables [MONO_TABLE_LOCALVARIABLE].rows + 1;</span>
+<span class="lineNum">     575 </span><span class="lineCov">          2 :                 } else {</span>
+<span class="lineNum">     576 </span><span class="lineCov">      38536 :                         locals_end_idx = mono_metadata_decode_row_col (&amp;tables [MONO_TABLE_LOCALSCOPE], scope_idx-1 + 1, MONO_LOCALSCOPE_VARIABLELIST);</span>
+<span class="lineNum">     577 </span>            :                 }
+<span class="lineNum">     578 </span>            : 
+<span class="lineNum">     579 </span><span class="lineCov">      38538 :                 res-&gt;code_blocks [sindex].start_offset = cols [MONO_LOCALSCOPE_STARTOFFSET];</span>
+<span class="lineNum">     580 </span><span class="lineCov">      38538 :                 res-&gt;code_blocks [sindex].end_offset = cols [MONO_LOCALSCOPE_STARTOFFSET] + cols [MONO_LOCALSCOPE_LENGTH];</span>
+<span class="lineNum">     581 </span>            : 
+<span class="lineNum">     582 </span>            :                 //printf (&quot;Scope: %s %d %d %d-%d\n&quot;, mono_method_full_name (method, 1), cols [MONO_LOCALSCOPE_STARTOFFSET], cols [MONO_LOCALSCOPE_LENGTH], locals_idx, locals_end_idx);
+<span class="lineNum">     583 </span>            : 
+<span class="lineNum">     584 </span><span class="lineCov">     115702 :                 for (i = locals_idx; i &lt; locals_end_idx; ++i) {</span>
+<span class="lineNum">     585 </span><span class="lineCov">      19313 :                         mono_metadata_decode_row (&amp;tables [MONO_TABLE_LOCALVARIABLE], i - 1, locals_cols, MONO_LOCALVARIABLE_SIZE);</span>
+<span class="lineNum">     586 </span>            : 
+<span class="lineNum">     587 </span><span class="lineCov">      19313 :                         res-&gt;locals [lindex].name = g_strdup (mono_metadata_string_heap (image, locals_cols [MONO_LOCALVARIABLE_NAME]));</span>
+<span class="lineNum">     588 </span><span class="lineCov">      19313 :                         res-&gt;locals [lindex].index = locals_cols [MONO_LOCALVARIABLE_INDEX];</span>
+<span class="lineNum">     589 </span><span class="lineCov">      19313 :                         res-&gt;locals [lindex].block = &amp;res-&gt;code_blocks [sindex];</span>
+<span class="lineNum">     590 </span><span class="lineCov">      19313 :                         lindex ++;</span>
+<span class="lineNum">     591 </span>            : 
+<span class="lineNum">     592 </span>            :                         //printf (&quot;\t %s %d\n&quot;, mono_metadata_string_heap (image, locals_cols [MONO_LOCALVARIABLE_NAME]), locals_cols [MONO_LOCALVARIABLE_INDEX]);
+<span class="lineNum">     593 </span><span class="lineCov">      19313 :                 }</span>
+<span class="lineNum">     594 </span><span class="lineCov">      38538 :         }</span>
+<span class="lineNum">     595 </span>            : 
+<span class="lineNum">     596 </span><span class="lineCov">      31520 :         return res;</span>
+<span class="lineNum">     597 </span><span class="lineCov">      32111 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

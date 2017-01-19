@@ -1,0 +1,352 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - /Users/vkargov/work/mono2/eglib/src/gstring.c</title>
+  <link rel="stylesheet" type="text/css" href="../../../../../../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../../../../../../index.html">top level</a> - <a href="index.html">Users/vkargov/work/mono2/eglib/src</a> - gstring.c<span style="font-size: 80%;"> (source / <a href="gstring.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">68</td>
+            <td class="headerCovTableEntry">115</td>
+            <td class="headerCovTableEntryLo">59.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntry">16</td>
+            <td class="headerCovTableEntryLo">62.5 %</td>
+          </tr>
+          <tr><td><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * String functions
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Miguel de Icaza (miguel@novell.com)
+<span class="lineNum">       6 </span>            :  *   Aaron Bockover (abockover@novell.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * (C) 2006 Novell, Inc.
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * Permission is hereby granted, free of charge, to any person obtaining
+<span class="lineNum">      11 </span>            :  * a copy of this software and associated documentation files (the
+<span class="lineNum">      12 </span>            :  * &quot;Software&quot;), to deal in the Software without restriction, including
+<span class="lineNum">      13 </span>            :  * without limitation the rights to use, copy, modify, merge, publish,
+<span class="lineNum">      14 </span>            :  * distribute, sublicense, and/or sell copies of the Software, and to
+<span class="lineNum">      15 </span>            :  * permit persons to whom the Software is furnished to do so, subject to
+<span class="lineNum">      16 </span>            :  * the following conditions:
+<span class="lineNum">      17 </span>            :  *
+<span class="lineNum">      18 </span>            :  * The above copyright notice and this permission notice shall be
+<span class="lineNum">      19 </span>            :  * included in all copies or substantial portions of the Software.
+<span class="lineNum">      20 </span>            :  *
+<span class="lineNum">      21 </span>            :  * THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+<span class="lineNum">      22 </span>            :  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+<span class="lineNum">      23 </span>            :  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+<span class="lineNum">      24 </span>            :  * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+<span class="lineNum">      25 </span>            :  * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+<span class="lineNum">      26 </span>            :  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+<span class="lineNum">      27 </span>            :  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+<span class="lineNum">      28 </span>            :  */
+<span class="lineNum">      29 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : #define GROW_IF_NECESSARY(s,l) { \
+<span class="lineNum">      33 </span>            :         if(s-&gt;len + l &gt;= s-&gt;allocated_len) { \
+<span class="lineNum">      34 </span>            :                 s-&gt;allocated_len = (s-&gt;allocated_len + l + 16) * 2; \
+<span class="lineNum">      35 </span>            :                 s-&gt;str = g_realloc(s-&gt;str, s-&gt;allocated_len); \
+<span class="lineNum">      36 </span>            :         } \
+<span class="lineNum">      37 </span>            : }
+<a name="38"><span class="lineNum">      38 </span>            : </a>
+<span class="lineNum">      39 </span>            : GString *
+<span class="lineNum">      40 </span>            : g_string_new_len (const gchar *init, gssize len)
+<span class="lineNum">      41 </span>            : {
+<span class="lineNum">      42 </span><span class="lineCov">  326506394 :         GString *ret = g_new (GString, 1);</span>
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span><span class="lineCov">  326506394 :         if (init == NULL)</span>
+<span class="lineNum">      45 </span><span class="lineCov">  271332617 :                 ret-&gt;len = 0;</span>
+<span class="lineNum">      46 </span>            :         else
+<span class="lineNum">      47 </span><span class="lineCov">  165521563 :                 ret-&gt;len = len &lt; 0 ? strlen(init) : len;</span>
+<span class="lineNum">      48 </span><span class="lineCov">  979511127 :         ret-&gt;allocated_len = MAX(ret-&gt;len + 1, 16);</span>
+<span class="lineNum">      49 </span><span class="lineCov">  326506708 :         ret-&gt;str = g_malloc(ret-&gt;allocated_len);</span>
+<span class="lineNum">      50 </span><span class="lineCov">  326506708 :         if (init)</span>
+<span class="lineNum">      51 </span><span class="lineCov">   55173893 :                 memcpy(ret-&gt;str, init, ret-&gt;len);</span>
+<span class="lineNum">      52 </span><span class="lineCov">  326503942 :         ret-&gt;str[ret-&gt;len] = 0;</span>
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span><span class="lineCov">  326503942 :         return ret;</span>
+<span class="lineNum">      55 </span>            : }
+<a name="56"><span class="lineNum">      56 </span>            : </a>
+<span class="lineNum">      57 </span>            : GString *
+<span class="lineNum">      58 </span>            : g_string_new (const gchar *init)
+<span class="lineNum">      59 </span>            : {
+<span class="lineNum">      60 </span><span class="lineCov">  326495405 :         return g_string_new_len(init, -1);</span>
+<span class="lineNum">      61 </span>            : }
+<a name="62"><span class="lineNum">      62 </span>            : </a>
+<span class="lineNum">      63 </span>            : GString *
+<span class="lineNum">      64 </span>            : g_string_sized_new (gsize default_size)
+<span class="lineNum">      65 </span>            : {
+<span class="lineNum">      66 </span><span class="lineCov">    1372567 :         GString *ret = g_new (GString, 1);</span>
+<span class="lineNum">      67 </span>            : 
+<span class="lineNum">      68 </span><span class="lineCov">    1372567 :         ret-&gt;str = g_malloc (default_size);</span>
+<span class="lineNum">      69 </span><span class="lineCov">    1372567 :         ret-&gt;str [0] = 0;</span>
+<span class="lineNum">      70 </span><span class="lineCov">    1372567 :         ret-&gt;len = 0;</span>
+<span class="lineNum">      71 </span><span class="lineCov">    1372567 :         ret-&gt;allocated_len = default_size;</span>
+<span class="lineNum">      72 </span>            : 
+<span class="lineNum">      73 </span><span class="lineCov">    1372567 :         return ret;</span>
+<span class="lineNum">      74 </span>            : }
+<a name="75"><span class="lineNum">      75 </span>            : </a>
+<span class="lineNum">      76 </span>            : gchar *
+<span class="lineNum">      77 </span>            : g_string_free (GString *string, gboolean free_segment)
+<span class="lineNum">      78 </span>            : {
+<span class="lineNum">      79 </span>            :         gchar *data;
+<span class="lineNum">      80 </span>            :         
+<span class="lineNum">      81 </span><span class="lineCov">  983608640 :         g_return_val_if_fail (string != NULL, NULL);</span>
+<span class="lineNum">      82 </span>            : 
+<span class="lineNum">      83 </span><span class="lineCov">  327879123 :         data = string-&gt;str;</span>
+<span class="lineNum">      84 </span><span class="lineCov">  327879123 :         g_free(string);</span>
+<span class="lineNum">      85 </span>            :         
+<span class="lineNum">      86 </span><span class="lineCov">  327879123 :         if(!free_segment) {</span>
+<span class="lineNum">      87 </span><span class="lineCov">   56537663 :                 return data;</span>
+<span class="lineNum">      88 </span>            :         }
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span><span class="lineCov">  271341574 :         g_free(data);</span>
+<span class="lineNum">      91 </span><span class="lineCov">  271341574 :         return NULL;</span>
+<span class="lineNum">      92 </span><span class="lineCov">  327869278 : }</span>
+<a name="93"><span class="lineNum">      93 </span>            : </a>
+<span class="lineNum">      94 </span>            : GString *
+<span class="lineNum">      95 </span>            : g_string_append_len (GString *string, const gchar *val, gssize len)
+<span class="lineNum">      96 </span>            : {
+<span class="lineNum">      97 </span><span class="lineCov"> 2890251334 :         g_return_val_if_fail(string != NULL, NULL);</span>
+<span class="lineNum">      98 </span><span class="lineCov"> 2890262159 :         g_return_val_if_fail(val != NULL, string);</span>
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span><span class="lineCov">  963425582 :         if(len &lt; 0) {</span>
+<span class="lineNum">     101 </span><span class="lineCov">  954219688 :                 len = strlen(val);</span>
+<span class="lineNum">     102 </span><span class="lineCov">  954219688 :         }</span>
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineCov"> 1256802815 :         GROW_IF_NECESSARY(string, len);</span>
+<span class="lineNum">     105 </span><span class="lineCov">  963369759 :         memcpy(string-&gt;str + string-&gt;len, val, len);</span>
+<span class="lineNum">     106 </span><span class="lineCov">  963369759 :         string-&gt;len += len;</span>
+<span class="lineNum">     107 </span><span class="lineCov">  963369759 :         string-&gt;str[string-&gt;len] = 0;</span>
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span><span class="lineCov">  963369759 :         return string;</span>
+<span class="lineNum">     110 </span><span class="lineCov">  963388707 : }</span>
+<a name="111"><span class="lineNum">     111 </span>            : </a>
+<span class="lineNum">     112 </span>            : GString *
+<span class="lineNum">     113 </span>            : g_string_append (GString *string, const gchar *val)
+<span class="lineNum">     114 </span>            : {
+<span class="lineNum">     115 </span><span class="lineCov"> 2862648291 :         g_return_val_if_fail(string != NULL, NULL);</span>
+<span class="lineNum">     116 </span><span class="lineCov"> 2862646990 :         g_return_val_if_fail(val != NULL, string);</span>
+<span class="lineNum">     117 </span>            : 
+<span class="lineNum">     118 </span><span class="lineCov">  954216130 :         return g_string_append_len(string, val, -1);</span>
+<span class="lineNum">     119 </span><span class="lineCov">  954174415 : }</span>
+<a name="120"><span class="lineNum">     120 </span>            : </a>
+<span class="lineNum">     121 </span>            : GString *
+<span class="lineNum">     122 </span>            : g_string_append_c (GString *string, gchar c)
+<span class="lineNum">     123 </span>            : {
+<span class="lineNum">     124 </span><span class="lineCov">  201072345 :         g_return_val_if_fail(string != NULL, NULL);</span>
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span><span class="lineCov">   68486861 :         GROW_IF_NECESSARY(string, 1);</span>
+<span class="lineNum">     127 </span>            :         
+<span class="lineNum">     128 </span><span class="lineCov">   67024191 :         string-&gt;str[string-&gt;len] = c;</span>
+<span class="lineNum">     129 </span><span class="lineCov">   67024191 :         string-&gt;str[string-&gt;len + 1] = 0;</span>
+<span class="lineNum">     130 </span><span class="lineCov">   67024191 :         string-&gt;len++;</span>
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineCov">   67024191 :         return string;</span>
+<span class="lineNum">     133 </span><span class="lineCov">   67024153 : }</span>
+<a name="134"><span class="lineNum">     134 </span>            : </a>
+<span class="lineNum">     135 </span>            : GString *
+<span class="lineNum">     136 </span>            : g_string_append_unichar (GString *string, gunichar c)
+<span class="lineNum">     137 </span>            : {
+<span class="lineNum">     138 </span>            :         gchar utf8[6];
+<span class="lineNum">     139 </span>            :         gint len;
+<span class="lineNum">     140 </span>            :         
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (string != NULL, NULL);</span>
+<span class="lineNum">     142 </span>            :         
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :         if ((len = g_unichar_to_utf8 (c, utf8)) &lt;= 0)</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :                 return string;</span>
+<span class="lineNum">     145 </span>            :         
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :         return g_string_append_len (string, utf8, len);</span>
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 : }</span>
+<a name="148"><span class="lineNum">     148 </span>            : </a>
+<span class="lineNum">     149 </span>            : GString *
+<span class="lineNum">     150 </span>            : g_string_prepend (GString *string, const gchar *val)
+<span class="lineNum">     151 </span>            : {
+<span class="lineNum">     152 </span>            :         gssize len;
+<span class="lineNum">     153 </span>            :         
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (string != NULL, string);</span>
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (val != NULL, string);</span>
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :         len = strlen (val);</span>
+<span class="lineNum">     158 </span>            :         
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :         GROW_IF_NECESSARY(string, len); </span>
+<span class="lineNum">     160 </span><span class="lineNoCov">          0 :         memmove(string-&gt;str + len, string-&gt;str, string-&gt;len + 1);</span>
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         memcpy(string-&gt;str, val, len);</span>
+<span class="lineNum">     162 </span>            : 
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :         return string;</span>
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 : }</span>
+<a name="165"><span class="lineNum">     165 </span>            : </a>
+<span class="lineNum">     166 </span>            : GString *
+<span class="lineNum">     167 </span>            : g_string_insert (GString *string, gssize pos, const gchar *val)
+<span class="lineNum">     168 </span>            : {
+<span class="lineNum">     169 </span>            :         gssize len;
+<span class="lineNum">     170 </span>            :         
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (string != NULL, string);</span>
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (val != NULL, string);</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (pos &lt;= string-&gt;len, string);</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :         len = strlen (val);</span>
+<span class="lineNum">     176 </span>            :         
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :         GROW_IF_NECESSARY(string, len); </span>
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 :         memmove(string-&gt;str + pos + len, string-&gt;str + pos, string-&gt;len - pos - len + 1);</span>
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :         memcpy(string-&gt;str + pos, val, len);</span>
+<span class="lineNum">     180 </span>            : 
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :         return string;</span>
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 : }</span>
+<a name="183"><span class="lineNum">     183 </span>            : </a>
+<span class="lineNum">     184 </span>            : void
+<span class="lineNum">     185 </span>            : g_string_append_printf (GString *string, const gchar *format, ...)
+<span class="lineNum">     186 </span>            : {
+<span class="lineNum">     187 </span>            :         char *ret;
+<span class="lineNum">     188 </span>            :         va_list args;
+<span class="lineNum">     189 </span>            :         
+<span class="lineNum">     190 </span><span class="lineCov"> 2466215226 :         g_return_if_fail (string != NULL);</span>
+<span class="lineNum">     191 </span><span class="lineCov"> 2466225303 :         g_return_if_fail (format != NULL);</span>
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span><span class="lineCov">  822076425 :         va_start (args, format);</span>
+<span class="lineNum">     194 </span><span class="lineCov">  822076425 :         ret = g_strdup_vprintf (format, args);</span>
+<span class="lineNum">     195 </span><span class="lineCov">  822076425 :         va_end (args);</span>
+<span class="lineNum">     196 </span><span class="lineCov">  822076425 :         g_string_append (string, ret);</span>
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span><span class="lineCov">  822076425 :         g_free (ret);</span>
+<span class="lineNum">     199 </span><span class="lineCov"> 1644217623 : }</span>
+<a name="200"><span class="lineNum">     200 </span>            : </a>
+<span class="lineNum">     201 </span>            : void
+<span class="lineNum">     202 </span>            : g_string_append_vprintf (GString *string, const gchar *format, va_list args)
+<span class="lineNum">     203 </span>            : {
+<span class="lineNum">     204 </span>            :         char *ret;
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :         g_return_if_fail (string != NULL);</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :         g_return_if_fail (format != NULL);</span>
+<span class="lineNum">     208 </span>            : 
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :         ret = g_strdup_vprintf (format, args);</span>
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :         g_string_append (string, ret);</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :         g_free (ret);</span>
+<span class="lineNum">     212 </span><span class="lineNoCov">          0 : }</span>
+<a name="213"><span class="lineNum">     213 </span>            : </a>
+<span class="lineNum">     214 </span>            : void
+<span class="lineNum">     215 </span>            : g_string_printf (GString *string, const gchar *format, ...)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span>            :         va_list args;
+<span class="lineNum">     218 </span>            :         
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :         g_return_if_fail (string != NULL);</span>
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :         g_return_if_fail (format != NULL);</span>
+<span class="lineNum">     221 </span>            : 
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :         g_free (string-&gt;str);</span>
+<span class="lineNum">     223 </span>            :         
+<span class="lineNum">     224 </span><span class="lineNoCov">          0 :         va_start (args, format);</span>
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :         string-&gt;str = g_strdup_vprintf (format, args);</span>
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :         va_end (args);</span>
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :         string-&gt;len = strlen (string-&gt;str);</span>
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :         string-&gt;allocated_len = string-&gt;len+1;</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 : }</span>
+<a name="231"><span class="lineNum">     231 </span>            : </a>
+<span class="lineNum">     232 </span>            : GString *
+<span class="lineNum">     233 </span>            : g_string_truncate (GString *string, gsize len)
+<span class="lineNum">     234 </span>            : {
+<span class="lineNum">     235 </span><span class="lineCov">       2169 :         g_return_val_if_fail (string != NULL, string);</span>
+<span class="lineNum">     236 </span>            : 
+<span class="lineNum">     237 </span>            :         /* Silent return */
+<span class="lineNum">     238 </span><span class="lineCov">        723 :         if (len &gt;= string-&gt;len)</span>
+<span class="lineNum">     239 </span><span class="lineCov">        633 :                 return string;</span>
+<span class="lineNum">     240 </span>            :         
+<span class="lineNum">     241 </span><span class="lineCov">         90 :         string-&gt;len = len;</span>
+<span class="lineNum">     242 </span><span class="lineCov">         90 :         string-&gt;str[len] = 0;</span>
+<span class="lineNum">     243 </span><span class="lineCov">         90 :         return string;</span>
+<span class="lineNum">     244 </span><span class="lineCov">        723 : }</span>
+<a name="245"><span class="lineNum">     245 </span>            : </a>
+<span class="lineNum">     246 </span>            : GString *
+<span class="lineNum">     247 </span>            : g_string_set_size (GString *string, gsize len)
+<span class="lineNum">     248 </span>            : {
+<span class="lineNum">     249 </span><span class="lineCov">     398091 :         g_return_val_if_fail (string != NULL, string);</span>
+<span class="lineNum">     250 </span>            : 
+<span class="lineNum">     251 </span><span class="lineCov">     158184 :         GROW_IF_NECESSARY(string, len);</span>
+<span class="lineNum">     252 </span>            :         
+<span class="lineNum">     253 </span><span class="lineCov">     132697 :         string-&gt;len = len;</span>
+<span class="lineNum">     254 </span><span class="lineCov">     132697 :         string-&gt;str[len] = 0;</span>
+<span class="lineNum">     255 </span><span class="lineCov">     132697 :         return string;</span>
+<span class="lineNum">     256 </span><span class="lineCov">     132697 : }</span>
+<a name="257"><span class="lineNum">     257 </span>            : </a>
+<span class="lineNum">     258 </span>            : GString *
+<span class="lineNum">     259 </span>            : g_string_erase (GString *string, gssize pos, gssize len)
+<span class="lineNum">     260 </span>            : {
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (string != NULL, string);</span>
+<span class="lineNum">     262 </span>            : 
+<span class="lineNum">     263 </span>            :         /* Silent return */
+<span class="lineNum">     264 </span><span class="lineNoCov">          0 :         if (pos &gt;= string-&gt;len)</span>
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :                 return string;</span>
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :         if (len == -1 || (pos + len) &gt;= string-&gt;len) {</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :                 string-&gt;str[pos] = 0;</span>
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     270 </span>            :         else {
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                 memmove (string-&gt;str + pos, string-&gt;str + pos + len, string-&gt;len - (pos + len) + 1);</span>
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :                 string-&gt;len -= len;</span>
+<span class="lineNum">     273 </span>            :         }
+<span class="lineNum">     274 </span>            : 
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :         return string;</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

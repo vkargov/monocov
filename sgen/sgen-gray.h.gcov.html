@@ -1,0 +1,280 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-gray.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-gray.h<span style="font-size: 80%;"> (source / <a href="sgen-gray.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">18</td>
+            <td class="headerCovTableEntry">18</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-gray.h: Gray queue management.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       5 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : #ifndef __MONO_SGEN_GRAY_H__
+<span class="lineNum">      10 </span>            : #define __MONO_SGEN_GRAY_H__
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &quot;mono/sgen/sgen-protocol.h&quot;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : /*
+<span class="lineNum">      15 </span>            :  * This gray queue has to be as optimized as possible, because it is in the core of
+<span class="lineNum">      16 </span>            :  * the mark/copy phase of the garbage collector. The memory access has then to be as
+<span class="lineNum">      17 </span>            :  * cache friendly as possible. That's why we use a cursor based implementation.
+<span class="lineNum">      18 </span>            :  * 
+<span class="lineNum">      19 </span>            :  * This simply consist in maintaining a pointer to the current element in the
+<span class="lineNum">      20 </span>            :  * queue. In addition to using this cursor, we use a simple linked list of arrays,
+<span class="lineNum">      21 </span>            :  * called sections, so that we have the cache friendliness of arrays without having
+<span class="lineNum">      22 </span>            :  * the cost of memory reallocation of a dynaic array, not the cost of memory
+<span class="lineNum">      23 </span>            :  * indirection of a linked list.
+<span class="lineNum">      24 </span>            :  * 
+<span class="lineNum">      25 </span>            :  * This implementation also allows the dequeuing of a whole section at a time. This is
+<span class="lineNum">      26 </span>            :  * for example used in the parallel GC because it would be too costly to take one element 
+<span class="lineNum">      27 </span>            :  * at a time. This imply the main constraint that, because we don't carry the cursor
+<span class="lineNum">      28 </span>            :  * with the section, we still have to store the index of the last element. This is done 
+<span class="lineNum">      29 </span>            :  * through the 'size' field on the section, which default value is it's maximum value
+<span class="lineNum">      30 </span>            :  * SGEN_GRAY_QUEUE_SECTION_SIZE. This field is updated in multiple cases :
+<span class="lineNum">      31 </span>            :  *  - section allocation : default value
+<span class="lineNum">      32 </span>            :  *  - object push : default value if we fill the current queue first
+<span class="lineNum">      33 </span>            :  *  - section dequeue : position of the cursor in the dequeued section
+<span class="lineNum">      34 </span>            :  *  - section enqueue : position of the cursor in the previously first section in the queue
+<span class="lineNum">      35 </span>            :  * 
+<span class="lineNum">      36 </span>            :  * The previous implementation was an index based access where we would store the index
+<span class="lineNum">      37 </span>            :  * of the last element in the section. This was less efficient because we would have
+<span class="lineNum">      38 </span>            :  * to make 1 memory access for the index value, 1 for the base address of the objects
+<span class="lineNum">      39 </span>            :  * array and another 1 for the actual value in the array.
+<span class="lineNum">      40 </span>            :  */
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : /* SGEN_GRAY_QUEUE_HEADER_SIZE is number of machine words */
+<span class="lineNum">      43 </span>            : #ifdef SGEN_CHECK_GRAY_OBJECT_SECTIONS
+<span class="lineNum">      44 </span>            : #define SGEN_GRAY_QUEUE_HEADER_SIZE     4
+<span class="lineNum">      45 </span>            : #else
+<span class="lineNum">      46 </span>            : #define SGEN_GRAY_QUEUE_HEADER_SIZE     2
+<span class="lineNum">      47 </span>            : #endif
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span>            : #define SGEN_GRAY_QUEUE_SECTION_SIZE    (128 - SGEN_GRAY_QUEUE_HEADER_SIZE)
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : #ifdef SGEN_CHECK_GRAY_OBJECT_SECTIONS
+<span class="lineNum">      52 </span>            : typedef enum {
+<span class="lineNum">      53 </span>            :         GRAY_QUEUE_SECTION_STATE_FLOATING,
+<span class="lineNum">      54 </span>            :         GRAY_QUEUE_SECTION_STATE_ENQUEUED,
+<span class="lineNum">      55 </span>            :         GRAY_QUEUE_SECTION_STATE_FREE_LIST,
+<span class="lineNum">      56 </span>            :         GRAY_QUEUE_SECTION_STATE_FREED
+<span class="lineNum">      57 </span>            : } GrayQueueSectionState;
+<span class="lineNum">      58 </span>            : #endif
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : typedef struct _GrayQueueEntry GrayQueueEntry;
+<span class="lineNum">      61 </span>            : struct _GrayQueueEntry {
+<span class="lineNum">      62 </span>            :         GCObject *obj;
+<span class="lineNum">      63 </span>            :         SgenDescriptor desc;
+<span class="lineNum">      64 </span>            : };
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span>            : #define SGEN_GRAY_QUEUE_ENTRY(obj,desc) { (obj), (desc) }
+<span class="lineNum">      67 </span>            : 
+<span class="lineNum">      68 </span>            : /*
+<span class="lineNum">      69 </span>            :  * This is a stack now instead of a queue, so the most recently added items are removed
+<span class="lineNum">      70 </span>            :  * first, improving cache locality, and keeping the stack size manageable.
+<span class="lineNum">      71 </span>            :  */
+<span class="lineNum">      72 </span>            : typedef struct _GrayQueueSection GrayQueueSection;
+<span class="lineNum">      73 </span>            : struct _GrayQueueSection {
+<span class="lineNum">      74 </span>            : #ifdef SGEN_CHECK_GRAY_OBJECT_SECTIONS
+<span class="lineNum">      75 </span>            :         /*
+<span class="lineNum">      76 </span>            :          * The dummy is here so that the state doesn't get overwritten
+<span class="lineNum">      77 </span>            :          * by the internal allocator once the section is freed.
+<span class="lineNum">      78 </span>            :          */
+<span class="lineNum">      79 </span>            :         int dummy;
+<span class="lineNum">      80 </span>            :         GrayQueueSectionState state;
+<span class="lineNum">      81 </span>            : #endif
+<span class="lineNum">      82 </span>            :         int size;
+<span class="lineNum">      83 </span>            :         GrayQueueSection *next;
+<span class="lineNum">      84 </span>            :         GrayQueueEntry entries [SGEN_GRAY_QUEUE_SECTION_SIZE];
+<span class="lineNum">      85 </span>            : };
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span>            : typedef struct _SgenGrayQueue SgenGrayQueue;
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : typedef void (*GrayQueueAllocPrepareFunc) (SgenGrayQueue*);
+<span class="lineNum">      90 </span>            : typedef void (*GrayQueueEnqueueCheckFunc) (GCObject*);
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span>            : struct _SgenGrayQueue {
+<span class="lineNum">      93 </span>            :         GrayQueueEntry *cursor;
+<span class="lineNum">      94 </span>            :         GrayQueueSection *first;
+<span class="lineNum">      95 </span>            :         GrayQueueSection *free_list;
+<span class="lineNum">      96 </span>            :         GrayQueueAllocPrepareFunc alloc_prepare_func;
+<span class="lineNum">      97 </span>            : #ifdef SGEN_CHECK_GRAY_OBJECT_ENQUEUE
+<span class="lineNum">      98 </span>            :         GrayQueueEnqueueCheckFunc enqueue_check_func;
+<span class="lineNum">      99 </span>            : #endif
+<span class="lineNum">     100 </span>            : };
+<span class="lineNum">     101 </span>            : 
+<span class="lineNum">     102 </span>            : typedef struct _SgenSectionGrayQueue SgenSectionGrayQueue;
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span>            : struct _SgenSectionGrayQueue {
+<span class="lineNum">     105 </span>            :         GrayQueueSection *first;
+<span class="lineNum">     106 </span>            :         gboolean locked;
+<span class="lineNum">     107 </span>            :         mono_mutex_t lock;
+<span class="lineNum">     108 </span>            : #ifdef SGEN_CHECK_GRAY_OBJECT_ENQUEUE
+<span class="lineNum">     109 </span>            :         GrayQueueEnqueueCheckFunc enqueue_check_func;
+<span class="lineNum">     110 </span>            : #endif
+<span class="lineNum">     111 </span>            : };
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span>            : #define GRAY_LAST_CURSOR_POSITION(s) ((s)-&gt;entries + SGEN_GRAY_QUEUE_SECTION_SIZE - 1)
+<span class="lineNum">     114 </span>            : #define GRAY_FIRST_CURSOR_POSITION(s) ((s)-&gt;entries)
+<span class="lineNum">     115 </span>            : 
+<span class="lineNum">     116 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     117 </span>            : extern guint64 stat_gray_queue_section_alloc;
+<span class="lineNum">     118 </span>            : extern guint64 stat_gray_queue_section_free;
+<span class="lineNum">     119 </span>            : extern guint64 stat_gray_queue_enqueue_fast_path;
+<span class="lineNum">     120 </span>            : extern guint64 stat_gray_queue_dequeue_fast_path;
+<span class="lineNum">     121 </span>            : extern guint64 stat_gray_queue_enqueue_slow_path;
+<span class="lineNum">     122 </span>            : extern guint64 stat_gray_queue_dequeue_slow_path;
+<span class="lineNum">     123 </span>            : #endif
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span>            : void sgen_init_gray_queues (void);
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span>            : void sgen_gray_object_enqueue (SgenGrayQueue *queue, GCObject *obj, SgenDescriptor desc);
+<span class="lineNum">     128 </span>            : GrayQueueEntry sgen_gray_object_dequeue (SgenGrayQueue *queue);
+<span class="lineNum">     129 </span>            : GrayQueueSection* sgen_gray_object_dequeue_section (SgenGrayQueue *queue);
+<span class="lineNum">     130 </span>            : void sgen_gray_object_enqueue_section (SgenGrayQueue *queue, GrayQueueSection *section);
+<span class="lineNum">     131 </span>            : void sgen_gray_object_queue_trim_free_list (SgenGrayQueue *queue);
+<span class="lineNum">     132 </span>            : void sgen_gray_object_queue_init (SgenGrayQueue *queue, GrayQueueEnqueueCheckFunc enqueue_check_func, gboolean reuse_free_list);
+<span class="lineNum">     133 </span>            : void sgen_gray_object_queue_dispose (SgenGrayQueue *queue);
+<span class="lineNum">     134 </span>            : void sgen_gray_queue_set_alloc_prepare (SgenGrayQueue *queue, GrayQueueAllocPrepareFunc alloc_prepare_func);
+<span class="lineNum">     135 </span>            : void sgen_gray_object_queue_deinit (SgenGrayQueue *queue);
+<span class="lineNum">     136 </span>            : void sgen_gray_object_alloc_queue_section (SgenGrayQueue *queue);
+<span class="lineNum">     137 </span>            : void sgen_gray_object_free_queue_section (GrayQueueSection *section);
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span>            : void sgen_section_gray_queue_init (SgenSectionGrayQueue *queue, gboolean locked,
+<span class="lineNum">     140 </span>            :                 GrayQueueEnqueueCheckFunc enqueue_check_func);
+<span class="lineNum">     141 </span>            : gboolean sgen_section_gray_queue_is_empty (SgenSectionGrayQueue *queue);
+<span class="lineNum">     142 </span>            : GrayQueueSection* sgen_section_gray_queue_dequeue (SgenSectionGrayQueue *queue);
+<span class="lineNum">     143 </span>            : void sgen_section_gray_queue_enqueue (SgenSectionGrayQueue *queue, GrayQueueSection *section);
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span>            : gboolean sgen_gray_object_fill_prefetch (SgenGrayQueue *queue);
+<a name="146"><span class="lineNum">     146 </span>            : </a>
+<span class="lineNum">     147 </span>            : static inline gboolean
+<span class="lineNum">     148 </span>            : sgen_gray_object_queue_is_empty (SgenGrayQueue *queue)
+<span class="lineNum">     149 </span>            : {
+<span class="lineNum">     150 </span><span class="lineCov">    9850168 :         return queue-&gt;first == NULL;</span>
+<span class="lineNum">     151 </span>            : }
+<a name="152"><span class="lineNum">     152 </span>            : </a>
+<span class="lineNum">     153 </span>            : static inline MONO_ALWAYS_INLINE void
+<span class="lineNum">     154 </span>            : GRAY_OBJECT_ENQUEUE (SgenGrayQueue *queue, GCObject *obj, SgenDescriptor desc)
+<span class="lineNum">     155 </span>            : {
+<span class="lineNum">     156 </span>            : #if SGEN_MAX_DEBUG_LEVEL &gt;= 9
+<span class="lineNum">     157 </span>            :         sgen_gray_object_enqueue (queue, obj, desc);
+<span class="lineNum">     158 </span>            : #else
+<span class="lineNum">     159 </span><span class="lineCov">  852852638 :         if (G_UNLIKELY (!queue-&gt;first || queue-&gt;cursor == GRAY_LAST_CURSOR_POSITION (queue-&gt;first))) {</span>
+<span class="lineNum">     160 </span><span class="lineCov">    2327963 :                 sgen_gray_object_enqueue (queue, obj, desc);</span>
+<span class="lineNum">     161 </span><span class="lineCov">    2327963 :         } else {</span>
+<span class="lineNum">     162 </span><span class="lineCov">  282027310 :                 GrayQueueEntry entry = SGEN_GRAY_QUEUE_ENTRY (obj, desc);</span>
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span>            :                 HEAVY_STAT (stat_gray_queue_enqueue_fast_path ++);
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span><span class="lineCov">  282027310 :                 *++queue-&gt;cursor = entry;</span>
+<span class="lineNum">     167 </span>            : #ifdef SGEN_HEAVY_BINARY_PROTOCOL
+<span class="lineNum">     168 </span>            :                 binary_protocol_gray_enqueue (queue, queue-&gt;cursor, obj);
+<span class="lineNum">     169 </span>            : #endif
+<span class="lineNum">     170 </span>            :         }
+<span class="lineNum">     171 </span>            : #endif
+<span class="lineNum">     172 </span><span class="lineCov">  284355273 : }</span>
+<a name="173"><span class="lineNum">     173 </span>            : </a>
+<span class="lineNum">     174 </span>            : static inline MONO_ALWAYS_INLINE void
+<span class="lineNum">     175 </span>            : GRAY_OBJECT_DEQUEUE (SgenGrayQueue *queue, GCObject** obj, SgenDescriptor *desc)
+<span class="lineNum">     176 </span>            : {
+<span class="lineNum">     177 </span>            :         GrayQueueEntry entry;
+<span class="lineNum">     178 </span>            : #if SGEN_MAX_DEBUG_LEVEL &gt;= 9
+<span class="lineNum">     179 </span>            :         entry = sgen_gray_object_dequeue (queue);
+<span class="lineNum">     180 </span>            :         *obj = entry.obj;
+<span class="lineNum">     181 </span>            :         *desc = entry.desc;
+<span class="lineNum">     182 </span>            : #else
+<span class="lineNum">     183 </span><span class="lineCov">  285688739 :         if (!queue-&gt;first) {</span>
+<span class="lineNum">     184 </span>            :                 HEAVY_STAT (stat_gray_queue_dequeue_fast_path ++);
+<span class="lineNum">     185 </span>            : 
+<span class="lineNum">     186 </span><span class="lineCov">    1333466 :                 *obj = NULL;</span>
+<span class="lineNum">     187 </span><span class="lineCov">  285688739 :         } else if (G_UNLIKELY (queue-&gt;cursor == GRAY_FIRST_CURSOR_POSITION (queue-&gt;first))) {</span>
+<span class="lineNum">     188 </span><span class="lineCov">    2327963 :                 entry = sgen_gray_object_dequeue (queue);</span>
+<span class="lineNum">     189 </span><span class="lineCov">    2327963 :                 *obj = entry.obj;</span>
+<span class="lineNum">     190 </span><span class="lineCov">    2327963 :                 *desc = entry.desc;</span>
+<span class="lineNum">     191 </span><span class="lineCov">    2327963 :         } else {</span>
+<span class="lineNum">     192 </span>            :                 HEAVY_STAT (stat_gray_queue_dequeue_fast_path ++);
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span><span class="lineCov">  282027310 :                 entry = *queue-&gt;cursor--;</span>
+<span class="lineNum">     195 </span><span class="lineCov">  282027310 :                 *obj = entry.obj;</span>
+<span class="lineNum">     196 </span><span class="lineCov">  282027310 :                 *desc = entry.desc;</span>
+<span class="lineNum">     197 </span>            : #ifdef SGEN_HEAVY_BINARY_PROTOCOL
+<span class="lineNum">     198 </span>            :                 binary_protocol_gray_dequeue (queue, queue-&gt;cursor + 1, *obj);
+<span class="lineNum">     199 </span>            : #endif
+<span class="lineNum">     200 </span>            :         }
+<span class="lineNum">     201 </span>            : #endif
+<span class="lineNum">     202 </span><span class="lineCov">  285688739 : }</span>
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

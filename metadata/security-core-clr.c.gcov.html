@@ -1,0 +1,1205 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/security-core-clr.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - security-core-clr.c<span style="font-size: 80%;"> (source / <a href="security-core-clr.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntry">361</td>
+            <td class="headerCovTableEntryLo">2.2 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">39</td>
+            <td class="headerCovTableEntryLo">5.1 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * security-core-clr.c: CoreCLR security
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *      Mark Probst &lt;mark.probst@gmail.com&gt;
+<span class="lineNum">       6 </span>            :  *      Sebastien Pouliot  &lt;sebastien@ximian.com&gt;
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright 2007-2010 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;mono/metadata/class-internals.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;mono/metadata/security-manager.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;mono/metadata/assembly.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;mono/metadata/appdomain.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;mono/metadata/verify-internals.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;mono/metadata/object.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/metadata/exception.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/utils/mono-logger-internals.h&gt;
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : #include &quot;security-core-clr.h&quot;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : gboolean mono_security_core_clr_test = FALSE;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : static MonoSecurityCoreCLROptions security_core_clr_options = MONO_SECURITY_CORE_CLR_OPTIONS_DEFAULT;
+<span class="lineNum">      27 </span>            : 
+<span class="lineNum">      28 </span>            : /**
+<span class="lineNum">      29 </span>            :  * mono_security_core_clr_set_options:
+<span class="lineNum">      30 </span>            :  * @options: the new options for the coreclr system to use
+<span class="lineNum">      31 </span>            :  *
+<span class="lineNum">      32 </span>            :  * By default, the CoreCLRs security model forbids execution trough reflection of methods not visible from the calling code.
+<span class="lineNum">      33 </span>            :  * Even if the method being called is not in a platform assembly. For non moonlight CoreCLR users this restriction does not
+<span class="lineNum">      34 </span>            :  * make a lot of sense, since the author could have just changed the non platform assembly to allow the method to be called.
+<span class="lineNum">      35 </span>            :  * This function allows specific relaxations from the default behaviour to be set.
+<span class="lineNum">      36 </span>            :  *
+<span class="lineNum">      37 </span>            :  * Use MONO_SECURITY_CORE_CLR_OPTIONS_DEFAULT for the default coreclr coreclr behaviour as used in Moonlight.
+<span class="lineNum">      38 </span>            :  *
+<span class="lineNum">      39 </span>            :  * Use MONO_SECURITY_CORE_CLR_OPTIONS_RELAX_REFLECTION to allow transparent code to execute methods and access 
+<span class="lineNum">      40 </span>            :  * fields that are not in platformcode, even if those methods and fields are private or otherwise not visible to the calling code.
+<span class="lineNum">      41 </span>            :  *
+<span class="lineNum">      42 </span>            :  * Use MONO_SECURITY_CORE_CLR_OPTIONS_RELAX_DELEGATE to allow delegates to be created that point at methods that are not in
+<span class="lineNum">      43 </span>            :  * platformcode even if those methods and fields are private or otherwise not visible to the calling code.
+<span class="lineNum">      44 </span>            :  *
+<a name="45"><span class="lineNum">      45 </span>            :  */</a>
+<span class="lineNum">      46 </span>            : void
+<span class="lineNum">      47 </span>            : mono_security_core_clr_set_options (MonoSecurityCoreCLROptions options) {
+<span class="lineNum">      48 </span><span class="lineNoCov">          0 :         security_core_clr_options = options;</span>
+<span class="lineNum">      49 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : /**
+<span class="lineNum">      52 </span>            :  * mono_security_core_clr_get_options:
+<span class="lineNum">      53 </span>            :  *
+<span class="lineNum">      54 </span>            :  * Retrieves the current options used by the coreclr system.
+<span class="lineNum">      55 </span>            :  */
+<a name="56"><span class="lineNum">      56 </span>            : </a>
+<span class="lineNum">      57 </span>            : MonoSecurityCoreCLROptions
+<span class="lineNum">      58 </span>            : mono_security_core_clr_get_options ()
+<span class="lineNum">      59 </span>            : {
+<span class="lineNum">      60 </span><span class="lineNoCov">          0 :         return security_core_clr_options;</span>
+<span class="lineNum">      61 </span>            : }
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span>            : /*
+<span class="lineNum">      64 </span>            :  * default_platform_check:
+<span class="lineNum">      65 </span>            :  *
+<span class="lineNum">      66 </span>            :  *      Default platform check. Always TRUE for current corlib (minimum 
+<span class="lineNum">      67 </span>            :  *      trust-able subset) otherwise return FALSE. Any real CoreCLR host
+<span class="lineNum">      68 </span>            :  *      should provide its own callback to define platform code (i.e.
+<span class="lineNum">      69 </span>            :  *      this default is meant for test only).
+<a name="70"><span class="lineNum">      70 </span>            :  */</a>
+<span class="lineNum">      71 </span>            : static gboolean
+<span class="lineNum">      72 </span>            : default_platform_check (const char *image_name)
+<span class="lineNum">      73 </span>            : {
+<span class="lineNum">      74 </span><span class="lineCov">      45530 :         if (mono_defaults.corlib) {</span>
+<span class="lineNum">      75 </span><span class="lineCov">      38960 :                 return (strcmp (mono_defaults.corlib-&gt;name, image_name) == 0);</span>
+<span class="lineNum">      76 </span>            :         } else {
+<span class="lineNum">      77 </span>            :                 /* this can get called even before we load corlib (e.g. the EXE itself) */
+<span class="lineNum">      78 </span><span class="lineCov">       6572 :                 const char *corlib = &quot;mscorlib.dll&quot;;</span>
+<span class="lineNum">      79 </span><span class="lineCov">       6572 :                 int ilen = strlen (image_name);</span>
+<span class="lineNum">      80 </span><span class="lineCov">       6572 :                 int clen = strlen (corlib);</span>
+<span class="lineNum">      81 </span><span class="lineCov">      19716 :                 return ((ilen &gt;= clen) &amp;&amp; (strcmp (&quot;mscorlib.dll&quot;, image_name + ilen - clen) == 0));</span>
+<span class="lineNum">      82 </span>            :         }
+<span class="lineNum">      83 </span><span class="lineCov">      45528 : }</span>
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span>            : static MonoCoreClrPlatformCB platform_callback = default_platform_check;
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span>            : /*
+<span class="lineNum">      88 </span>            :  * mono_security_core_clr_determine_platform_image:
+<span class="lineNum">      89 </span>            :  *
+<span class="lineNum">      90 </span>            :  *  Call the supplied callback (from mono_security_set_core_clr_platform_callback) 
+<span class="lineNum">      91 </span>            :  *  to determine if this image represents platform code.
+<a name="92"><span class="lineNum">      92 </span>            :  */</a>
+<span class="lineNum">      93 </span>            : gboolean
+<span class="lineNum">      94 </span>            : mono_security_core_clr_determine_platform_image (MonoImage *image)
+<span class="lineNum">      95 </span>            : {
+<span class="lineNum">      96 </span><span class="lineCov">      45527 :         return platform_callback (image-&gt;name);</span>
+<span class="lineNum">      97 </span>            : }
+<span class="lineNum">      98 </span>            : 
+<span class="lineNum">      99 </span>            : /*
+<span class="lineNum">     100 </span>            :  * mono_security_set_core_clr_platform_callback:
+<span class="lineNum">     101 </span>            :  *
+<span class="lineNum">     102 </span>            :  *  Set the callback function that will be used to determine if an image
+<span class="lineNum">     103 </span>            :  *  is part, or not, of the platform code.
+<a name="104"><span class="lineNum">     104 </span>            :  */</a>
+<span class="lineNum">     105 </span>            : void
+<span class="lineNum">     106 </span>            : mono_security_set_core_clr_platform_callback (MonoCoreClrPlatformCB callback)
+<span class="lineNum">     107 </span>            : {
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :         platform_callback = callback;</span>
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span>            : /*
+<span class="lineNum">     112 </span>            :  * mono_security_core_clr_is_platform_image:
+<span class="lineNum">     113 </span>            :  *
+<span class="lineNum">     114 </span>            :  *   Return the (cached) boolean value indicating if this image represent platform code
+<a name="115"><span class="lineNum">     115 </span>            :  */</a>
+<span class="lineNum">     116 </span>            : gboolean
+<span class="lineNum">     117 </span>            : mono_security_core_clr_is_platform_image (MonoImage *image)
+<span class="lineNum">     118 </span>            : {
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :         return image-&gt;core_clr_platform_code;</span>
+<span class="lineNum">     120 </span>            : }
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span>            : /* Note: The above functions are outside this guard so that the public API isn't affected. */
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span>            : #ifndef DISABLE_SECURITY
+<a name="125"><span class="lineNum">     125 </span>            : </a>
+<a name="126"><span class="lineNum">     126 </span>            : /* Class lazy loading functions */</a>
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 : static GENERATE_GET_CLASS_WITH_CACHE (security_critical, System.Security, SecurityCriticalAttribute)</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 : static GENERATE_GET_CLASS_WITH_CACHE (security_safe_critical, System.Security, SecuritySafeCriticalAttribute)</span>
+<a name="129"><span class="lineNum">     129 </span>            : </a>
+<span class="lineNum">     130 </span>            : static MonoClass*
+<span class="lineNum">     131 </span>            : security_critical_attribute (void)
+<span class="lineNum">     132 </span>            : {
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :         return mono_class_get_security_critical_class ();</span>
+<span class="lineNum">     134 </span>            : }
+<a name="135"><span class="lineNum">     135 </span>            : </a>
+<span class="lineNum">     136 </span>            : static MonoClass*
+<span class="lineNum">     137 </span>            : security_safe_critical_attribute (void)
+<span class="lineNum">     138 </span>            : {
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :         return mono_class_get_security_safe_critical_class ();</span>
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span>            : }
+<span class="lineNum">     142 </span>            : 
+<a name="143"><span class="lineNum">     143 </span>            : /* sometime we get a NULL (not found) caller (e.g. get_reflection_caller) */</a>
+<span class="lineNum">     144 </span>            : static char*
+<span class="lineNum">     145 </span>            : get_method_full_name (MonoMethod * method)
+<span class="lineNum">     146 </span>            : {
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :         return method ? mono_method_full_name (method, TRUE) : g_strdup (&quot;'no caller found'&quot;);</span>
+<span class="lineNum">     148 </span>            : }
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span>            : /*
+<span class="lineNum">     151 </span>            :  * set_type_load_exception_type
+<span class="lineNum">     152 </span>            :  *
+<span class="lineNum">     153 </span>            :  *      Set MONO_EXCEPTION_TYPE_LOAD on the specified 'class' and provide
+<span class="lineNum">     154 </span>            :  *      a descriptive message for the exception. This message is also, 
+<span class="lineNum">     155 </span>            :  *      optionally, being logged (export MONO_LOG_MASK=&quot;security&quot;) for
+<span class="lineNum">     156 </span>            :  *      debugging purposes.
+<a name="157"><span class="lineNum">     157 </span>            :  */</a>
+<span class="lineNum">     158 </span>            : static void
+<span class="lineNum">     159 </span>            : set_type_load_exception_type (const char *format, MonoClass *klass)
+<span class="lineNum">     160 </span>            : {
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         char *type_name = mono_type_get_full_name (klass);</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         char *parent_name = mono_type_get_full_name (klass-&gt;parent);</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :         char *message = mono_image_strdup_printf (klass-&gt;image, format, type_name, parent_name);</span>
+<span class="lineNum">     164 </span>            : 
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :         g_free (parent_name);</span>
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :         g_free (type_name);</span>
+<span class="lineNum">     167 </span>            :         
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_WARNING, MONO_TRACE_SECURITY, &quot;%s&quot;, message);</span>
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :         mono_class_set_type_load_failure (klass, &quot;%s&quot;, message);</span>
+<span class="lineNum">     170 </span>            :         // note: do not free string given to mono_class_set_failure
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span>            : /*
+<span class="lineNum">     174 </span>            :  * set_type_load_exception_methods
+<span class="lineNum">     175 </span>            :  *
+<span class="lineNum">     176 </span>            :  *      Set MONO_EXCEPTION_TYPE_LOAD on the 'override' class and provide
+<span class="lineNum">     177 </span>            :  *      a descriptive message for the exception. This message is also, 
+<span class="lineNum">     178 </span>            :  *      optionally, being logged (export MONO_LOG_MASK=&quot;security&quot;) for
+<span class="lineNum">     179 </span>            :  *      debugging purposes.
+<a name="180"><span class="lineNum">     180 </span>            :  */</a>
+<span class="lineNum">     181 </span>            : static void
+<span class="lineNum">     182 </span>            : set_type_load_exception_methods (const char *format, MonoMethod *override, MonoMethod *base)
+<span class="lineNum">     183 </span>            : {
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :         char *method_name = get_method_full_name (override);</span>
+<span class="lineNum">     185 </span><span class="lineNoCov">          0 :         char *base_name = get_method_full_name (base);</span>
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :         char *message = mono_image_strdup_printf (override-&gt;klass-&gt;image, format, method_name, base_name);</span>
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :         g_free (base_name);</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :         g_free (method_name);</span>
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_WARNING, MONO_TRACE_SECURITY, &quot;%s&quot;, message);</span>
+<span class="lineNum">     192 </span><span class="lineNoCov">          0 :         mono_class_set_type_load_failure (override-&gt;klass, &quot;%s&quot;, message);</span>
+<span class="lineNum">     193 </span>            :         // note: do not free string given to mono_class_set_failure
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     195 </span>            : 
+<span class="lineNum">     196 </span>            : /* MonoClass is not fully initialized (inited is not yet == 1) when we 
+<span class="lineNum">     197 </span>            :  * check the inheritance rules so we need to look for the default ctor
+<span class="lineNum">     198 </span>            :  * ourselve to avoid recursion (and aborting)
+<a name="199"><span class="lineNum">     199 </span>            :  */</a>
+<span class="lineNum">     200 </span>            : static MonoMethod*
+<span class="lineNum">     201 </span>            : get_default_ctor (MonoClass *klass)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span>            :         int i;
+<span class="lineNum">     204 </span>            : 
+<span class="lineNum">     205 </span><span class="lineNoCov">          0 :         mono_class_setup_methods (klass);</span>
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :         if (!klass-&gt;methods)</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     208 </span>            : 
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :         int mcount = mono_class_get_method_count (klass);</span>
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; mcount; ++i) {</span>
+<span class="lineNum">     211 </span>            :                 MonoMethodSignature *sig;
+<span class="lineNum">     212 </span><span class="lineNoCov">          0 :                 MonoMethod *method = klass-&gt;methods [i];</span>
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                 if (!method)</span>
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     216 </span>            : 
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :                 if ((method-&gt;flags &amp; METHOD_ATTRIBUTE_SPECIAL_NAME) == 0)</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :                 if ((method-&gt;name[0] != '.') || strcmp (&quot;.ctor&quot;, method-&gt;name))</span>
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :                 sig = mono_method_signature (method);</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :                 if (sig &amp;&amp; (sig-&gt;param_count == 0))</span>
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :                         return method;</span>
+<span class="lineNum">     224 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span>            : /*
+<span class="lineNum">     230 </span>            :  * mono_security_core_clr_check_inheritance:
+<span class="lineNum">     231 </span>            :  *
+<span class="lineNum">     232 </span>            :  *      Determine if the specified class can inherit from its parent using 
+<span class="lineNum">     233 </span>            :  *      the CoreCLR inheritance rules.
+<span class="lineNum">     234 </span>            :  *
+<span class="lineNum">     235 </span>            :  *      Base Type       Allow Derived Type
+<span class="lineNum">     236 </span>            :  *      ------------    ------------------
+<span class="lineNum">     237 </span>            :  *      Transparent     Transparent, SafeCritical, Critical
+<span class="lineNum">     238 </span>            :  *      SafeCritical    SafeCritical, Critical
+<span class="lineNum">     239 </span>            :  *      Critical        Critical
+<span class="lineNum">     240 </span>            :  *
+<span class="lineNum">     241 </span>            :  *      Reference: http://msdn.microsoft.com/en-us/magazine/cc765416.aspx#id0190030
+<span class="lineNum">     242 </span>            :  *
+<span class="lineNum">     243 </span>            :  *      Furthermore a class MUST have a default constructor if its base 
+<span class="lineNum">     244 </span>            :  *      class has a non-transparent, public or protected, default constructor. 
+<span class="lineNum">     245 </span>            :  *      The same inheritance rule applies to both default constructors.
+<span class="lineNum">     246 </span>            :  *
+<span class="lineNum">     247 </span>            :  *      Reference: message from a SecurityException in SL4RC
+<span class="lineNum">     248 </span>            :  *      Reference: fxcop CA2132 rule
+<a name="249"><span class="lineNum">     249 </span>            :  */</a>
+<span class="lineNum">     250 </span>            : void
+<span class="lineNum">     251 </span>            : mono_security_core_clr_check_inheritance (MonoClass *klass)
+<span class="lineNum">     252 </span>            : {
+<span class="lineNum">     253 </span>            :         MonoSecurityCoreCLRLevel class_level, parent_level;
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :         MonoClass *parent = klass-&gt;parent;</span>
+<span class="lineNum">     255 </span>            : 
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :         if (!parent)</span>
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     258 </span>            : 
+<span class="lineNum">     259 </span><span class="lineNoCov">          0 :         class_level = mono_security_core_clr_class_level (klass);</span>
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :         parent_level = mono_security_core_clr_class_level (parent);</span>
+<span class="lineNum">     261 </span>            : 
+<span class="lineNum">     262 </span><span class="lineNoCov">          0 :         if (class_level &lt; parent_level) {</span>
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :                 set_type_load_exception_type (</span>
+<span class="lineNum">     264 </span>            :                         &quot;Inheritance failure for type %s. Parent class %s is more restricted.&quot;,
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :                         klass);</span>
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :                 MonoMethod *parent_ctor = get_default_ctor (parent);</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :                 if (parent_ctor &amp;&amp; ((parent_ctor-&gt;flags &amp; METHOD_ATTRIBUTE_PUBLIC) != 0)) {</span>
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :                         class_level = mono_security_core_clr_method_level (get_default_ctor (klass), FALSE);</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :                         parent_level = mono_security_core_clr_method_level (parent_ctor, FALSE);</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                         if (class_level &lt; parent_level) {</span>
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :                                 set_type_load_exception_type (</span>
+<span class="lineNum">     273 </span>            :                                         &quot;Inheritance failure for type %s. Default constructor security mismatch with %s.&quot;,
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                                         klass);</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     277 </span>            :         }
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     279 </span>            : 
+<span class="lineNum">     280 </span>            : /*
+<span class="lineNum">     281 </span>            :  * mono_security_core_clr_check_override:
+<span class="lineNum">     282 </span>            :  *
+<span class="lineNum">     283 </span>            :  *      Determine if the specified override can &quot;legally&quot; override the 
+<span class="lineNum">     284 </span>            :  *      specified base method using the CoreCLR inheritance rules.
+<span class="lineNum">     285 </span>            :  *
+<span class="lineNum">     286 </span>            :  *      Base (virtual/interface)        Allowed override
+<span class="lineNum">     287 </span>            :  *      ------------------------        -------------------------
+<span class="lineNum">     288 </span>            :  *      Transparent                     Transparent, SafeCritical
+<span class="lineNum">     289 </span>            :  *      SafeCritical                    Transparent, SafeCritical
+<span class="lineNum">     290 </span>            :  *      Critical                        Critical
+<span class="lineNum">     291 </span>            :  *
+<span class="lineNum">     292 </span>            :  *      Reference: http://msdn.microsoft.com/en-us/magazine/cc765416.aspx#id0190030
+<a name="293"><span class="lineNum">     293 </span>            :  */</a>
+<span class="lineNum">     294 </span>            : void
+<span class="lineNum">     295 </span>            : mono_security_core_clr_check_override (MonoClass *klass, MonoMethod *override, MonoMethod *base)
+<span class="lineNum">     296 </span>            : {
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :         MonoSecurityCoreCLRLevel base_level = mono_security_core_clr_method_level (base, FALSE);</span>
+<span class="lineNum">     298 </span><span class="lineNoCov">          0 :         MonoSecurityCoreCLRLevel override_level = mono_security_core_clr_method_level (override, FALSE);</span>
+<span class="lineNum">     299 </span>            :         /* if the base method is decorated with [SecurityCritical] then the overrided method MUST be too */
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :         if (base_level == MONO_SECURITY_CORE_CLR_CRITICAL) {</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :                 if (override_level != MONO_SECURITY_CORE_CLR_CRITICAL) {</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :                         set_type_load_exception_methods (</span>
+<span class="lineNum">     303 </span>            :                                 &quot;Override failure for %s over %s. Override MUST be [SecurityCritical].&quot;,
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :                                 override, base);</span>
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     306 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     307 </span>            :                 /* base is [SecuritySafeCritical] or [SecurityTransparent], override MUST NOT be [SecurityCritical] */
+<span class="lineNum">     308 </span><span class="lineNoCov">          0 :                 if (override_level == MONO_SECURITY_CORE_CLR_CRITICAL) {</span>
+<span class="lineNum">     309 </span><span class="lineNoCov">          0 :                         set_type_load_exception_methods (</span>
+<span class="lineNum">     310 </span>            :                                 &quot;Override failure for %s over %s. Override must NOT be [SecurityCritical].&quot;, 
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :                                 override, base);</span>
+<span class="lineNum">     312 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     313 </span>            :         }
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     315 </span>            : 
+<span class="lineNum">     316 </span>            : /*
+<span class="lineNum">     317 </span>            :  * get_caller_no_reflection_related:
+<span class="lineNum">     318 </span>            :  *
+<span class="lineNum">     319 </span>            :  *      Find the first managed caller that is either:
+<span class="lineNum">     320 </span>            :  *      (a) located outside the platform code assemblies; or
+<span class="lineNum">     321 </span>            :  *      (b) not related to reflection and delegates
+<span class="lineNum">     322 </span>            :  *
+<span class="lineNum">     323 </span>            :  *      Returns TRUE to stop the stackwalk, FALSE to continue to the next frame.
+<a name="324"><span class="lineNum">     324 </span>            :  */</a>
+<span class="lineNum">     325 </span>            : static gboolean
+<span class="lineNum">     326 </span>            : get_caller_no_reflection_related (MonoMethod *m, gint32 no, gint32 ilo, gboolean managed, gpointer data)
+<span class="lineNum">     327 </span>            : {
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :         MonoMethod **dest = (MonoMethod **)data;</span>
+<span class="lineNum">     329 </span>            :         const char *ns;
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span>            :         /* skip unmanaged frames */
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :         if (!managed)</span>
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span><span class="lineNoCov">          0 :         if (m-&gt;wrapper_type != MONO_WRAPPER_NONE)</span>
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     337 </span>            : 
+<span class="lineNum">     338 </span>            :         /* quick out (any namespace not starting with an 'S' */
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :         ns = m-&gt;klass-&gt;name_space;</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 :         if (!ns || (*ns != 'S')) {</span>
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :                 *dest = m;</span>
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     343 </span>            :         }
+<span class="lineNum">     344 </span>            : 
+<span class="lineNum">     345 </span>            :         /* stop if the method is not part of platform code */
+<span class="lineNum">     346 </span><span class="lineNoCov">          0 :         if (!mono_security_core_clr_is_platform_image (m-&gt;klass-&gt;image)) {</span>
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :                 *dest = m;</span>
+<span class="lineNum">     348 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     349 </span>            :         }
+<span class="lineNum">     350 </span>            : 
+<span class="lineNum">     351 </span>            :         /* any number of calls inside System.Reflection are allowed */
+<span class="lineNum">     352 </span><span class="lineNoCov">          0 :         if (strcmp (ns, &quot;System.Reflection&quot;) == 0)</span>
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span>            :         /* any number of calls inside System.Reflection are allowed */
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :         if (strcmp (ns, &quot;System.Reflection.Emit&quot;) == 0)</span>
+<span class="lineNum">     357 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     358 </span>            : 
+<span class="lineNum">     359 </span>            :         /* calls from System.Delegate are also possible and allowed */
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 :         if (strcmp (ns, &quot;System&quot;) == 0) {</span>
+<span class="lineNum">     361 </span><span class="lineNoCov">          0 :                 const char *kname = m-&gt;klass-&gt;name;</span>
+<span class="lineNum">     362 </span><span class="lineNoCov">          0 :                 if ((*kname == 'A') &amp;&amp; (strcmp (kname, &quot;Activator&quot;) == 0))</span>
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span>            :                 /* unlike most Invoke* cases InvokeMember is not inside System.Reflection[.Emit] but is SecuritySafeCritical */
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 :                 if (((*kname == 'T') &amp;&amp; (strcmp (kname, &quot;Type&quot;) == 0)) || </span>
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :                         ((*kname == 'R') &amp;&amp; (strcmp (kname, &quot;RuntimeType&quot;)) == 0)) {</span>
+<span class="lineNum">     368 </span>            : 
+<span class="lineNum">     369 </span>            :                         /* if calling InvokeMember then we can't stop the stackwalk here and need to look at the caller */
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :                         if (strcmp (m-&gt;name, &quot;InvokeMember&quot;) == 0)</span>
+<span class="lineNum">     371 </span><span class="lineNoCov">          0 :                                 return FALSE;</span>
+<span class="lineNum">     372 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     373 </span>            : 
+<span class="lineNum">     374 </span>            :                 /* the security check on the delegate is made at creation time, not at invoke time */
+<span class="lineNum">     375 </span><span class="lineNoCov">          0 :                 if (((*kname == 'D') &amp;&amp; (strcmp (kname, &quot;Delegate&quot;) == 0)) || </span>
+<span class="lineNum">     376 </span><span class="lineNoCov">          0 :                         ((*kname == 'M') &amp;&amp; (strcmp (kname, &quot;MulticastDelegate&quot;)) == 0)) {</span>
+<span class="lineNum">     377 </span>            : 
+<span class="lineNum">     378 </span>            :                         /* if we're invoking then we can stop our stack walk */
+<span class="lineNum">     379 </span><span class="lineNoCov">          0 :                         if (strcmp (m-&gt;name, &quot;DynamicInvoke&quot;) != 0)</span>
+<span class="lineNum">     380 </span><span class="lineNoCov">          0 :                                 return FALSE;</span>
+<span class="lineNum">     381 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     382 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     383 </span>            : 
+<span class="lineNum">     384 </span><span class="lineNoCov">          0 :         if (m == *dest) {</span>
+<span class="lineNum">     385 </span><span class="lineNoCov">          0 :                 *dest = NULL;</span>
+<span class="lineNum">     386 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     387 </span>            :         }
+<span class="lineNum">     388 </span>            : 
+<span class="lineNum">     389 </span><span class="lineNoCov">          0 :         *dest = m;</span>
+<span class="lineNum">     390 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     391 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span>            : /*
+<span class="lineNum">     394 </span>            :  * get_reflection_caller:
+<span class="lineNum">     395 </span>            :  * 
+<span class="lineNum">     396 </span>            :  *      Walk to the first managed method outside:
+<span class="lineNum">     397 </span>            :  *      - System.Reflection* namespaces
+<span class="lineNum">     398 </span>            :  *      - System.[Multicast]Delegate or Activator type
+<span class="lineNum">     399 </span>            :  *      - platform code
+<span class="lineNum">     400 </span>            :  *      and return a pointer to its MonoMethod.
+<span class="lineNum">     401 </span>            :  *
+<span class="lineNum">     402 </span>            :  *      This is required since CoreCLR checks needs to be done on this &quot;real&quot; caller.
+<a name="403"><span class="lineNum">     403 </span>            :  */</a>
+<span class="lineNum">     404 </span>            : static MonoMethod*
+<span class="lineNum">     405 </span>            : get_reflection_caller (void)
+<span class="lineNum">     406 </span>            : {
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :         MonoMethod *m = NULL;</span>
+<span class="lineNum">     408 </span><span class="lineNoCov">          0 :         mono_stack_walk_no_il (get_caller_no_reflection_related, &amp;m);</span>
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :         if (G_UNLIKELY (!m)) {</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_WARNING, MONO_TRACE_SECURITY, &quot;No caller outside reflection was found&quot;);</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     412 </span><span class="lineNoCov">          0 :         return m;</span>
+<span class="lineNum">     413 </span>            : }
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span>            : typedef struct {
+<span class="lineNum">     416 </span>            :         int depth;
+<span class="lineNum">     417 </span>            :         MonoMethod *caller;
+<span class="lineNum">     418 </span>            : } ElevatedTrustCookie;
+<span class="lineNum">     419 </span>            : 
+<span class="lineNum">     420 </span>            : /*
+<span class="lineNum">     421 </span>            :  * get_caller_of_elevated_trust_code
+<span class="lineNum">     422 </span>            :  *
+<span class="lineNum">     423 </span>            :  *      Stack walk to find who is calling code requiring Elevated Trust.
+<span class="lineNum">     424 </span>            :  *      If a critical method is found then the caller is platform code
+<span class="lineNum">     425 </span>            :  *      and has elevated trust, otherwise (transparent) a check needs to
+<span class="lineNum">     426 </span>            :  *      be done (on the managed side) to determine if the application is
+<span class="lineNum">     427 </span>            :  *      running with elevated permissions.
+<a name="428"><span class="lineNum">     428 </span>            :  */</a>
+<span class="lineNum">     429 </span>            : static gboolean
+<span class="lineNum">     430 </span>            : get_caller_of_elevated_trust_code (MonoMethod *m, gint32 no, gint32 ilo, gboolean managed, gpointer data)
+<span class="lineNum">     431 </span>            : {
+<span class="lineNum">     432 </span><span class="lineNoCov">          0 :         ElevatedTrustCookie *cookie = (ElevatedTrustCookie *)data;</span>
+<span class="lineNum">     433 </span>            : 
+<span class="lineNum">     434 </span>            :         /* skip unmanaged frames and wrappers */
+<span class="lineNum">     435 </span><span class="lineNoCov">          0 :         if (!managed || (m-&gt;wrapper_type != MONO_WRAPPER_NONE))</span>
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     437 </span>            : 
+<span class="lineNum">     438 </span>            :         /* end stack walk if we find ourselves outside platform code (we won't find critical code anymore) */
+<span class="lineNum">     439 </span><span class="lineNoCov">          0 :         if (!mono_security_core_clr_is_platform_image (m-&gt;klass-&gt;image)) {</span>
+<span class="lineNum">     440 </span><span class="lineNoCov">          0 :                 cookie-&gt;caller = m;</span>
+<span class="lineNum">     441 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     442 </span>            :         }
+<span class="lineNum">     443 </span>            : 
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :         switch (cookie-&gt;depth) {</span>
+<span class="lineNum">     445 </span>            :         /* while depth == 0 look for SecurityManager::[Check|Ensure]ElevatedPermissions */
+<span class="lineNum">     446 </span>            :         case 0:
+<span class="lineNum">     447 </span><span class="lineNoCov">          0 :                 if (strcmp (m-&gt;klass-&gt;name_space, &quot;System.Security&quot;))</span>
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     449 </span><span class="lineNoCov">          0 :                 if (strcmp (m-&gt;klass-&gt;name, &quot;SecurityManager&quot;))</span>
+<span class="lineNum">     450 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     451 </span><span class="lineNoCov">          0 :                 if ((strcmp (m-&gt;name, &quot;EnsureElevatedPermissions&quot;)) &amp;&amp; strcmp (m-&gt;name, &quot;CheckElevatedPermissions&quot;))</span>
+<span class="lineNum">     452 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     453 </span><span class="lineNoCov">          0 :                 cookie-&gt;depth = 1;</span>
+<span class="lineNum">     454 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     455 </span>            :         /* while depth == 1 look for the caller to SecurityManager::[Check|Ensure]ElevatedPermissions */
+<span class="lineNum">     456 </span>            :         case 1:
+<span class="lineNum">     457 </span>            :                 /* this frame is [SecuritySafeCritical] because it calls [SecurityCritical] [Check|Ensure]ElevatedPermissions */
+<span class="lineNum">     458 </span>            :                 /* the next frame will contain the caller(s) we want to check */
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 :                 cookie-&gt;depth = 2;</span>
+<span class="lineNum">     460 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     461 </span>            :         /* while depth &gt;= 2 look for [safe]critical caller, end stack walk if we find it  */
+<span class="lineNum">     462 </span>            :         default:
+<span class="lineNum">     463 </span><span class="lineNoCov">          0 :                 cookie-&gt;depth++;</span>
+<span class="lineNum">     464 </span>            :                 /* if the caller is transparent then we continue the stack walk */
+<span class="lineNum">     465 </span><span class="lineNoCov">          0 :                 if (mono_security_core_clr_method_level (m, TRUE) == MONO_SECURITY_CORE_CLR_TRANSPARENT)</span>
+<span class="lineNum">     466 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     467 </span>            : 
+<span class="lineNum">     468 </span>            :                 /* Security[Safe]Critical code is always allowed to call elevated-trust code */
+<span class="lineNum">     469 </span><span class="lineNoCov">          0 :                 cookie-&gt;caller = m;</span>
+<span class="lineNum">     470 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     471 </span>            :         }
+<span class="lineNum">     472 </span>            : 
+<span class="lineNum">     473 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     474 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     475 </span>            : 
+<span class="lineNum">     476 </span>            : /*
+<span class="lineNum">     477 </span>            :  * mono_security_core_clr_require_elevated_permissions:
+<span class="lineNum">     478 </span>            :  *
+<span class="lineNum">     479 </span>            :  *      Return TRUE if the caller of the current method (the code who 
+<span class="lineNum">     480 </span>            :  *      called SecurityManager.get_RequiresElevatedPermissions) needs
+<span class="lineNum">     481 </span>            :  *      elevated trust to perform an action.
+<span class="lineNum">     482 </span>            :  *
+<span class="lineNum">     483 </span>            :  *      A stack walk is done to find the callers. If one of the callers
+<span class="lineNum">     484 </span>            :  *      is either [SecurityCritical] or [SecuritySafeCritical] then the
+<span class="lineNum">     485 </span>            :  *      action is needed for platform code (i.e. no restriction). 
+<span class="lineNum">     486 </span>            :  *      Otherwise (transparent) the requested action needs elevated trust
+<a name="487"><span class="lineNum">     487 </span>            :  */</a>
+<span class="lineNum">     488 </span>            : gboolean
+<span class="lineNum">     489 </span>            : mono_security_core_clr_require_elevated_permissions (void)
+<span class="lineNum">     490 </span>            : {
+<span class="lineNum">     491 </span>            :         ElevatedTrustCookie cookie;
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :         cookie.depth = 0;</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 :         cookie.caller = NULL;</span>
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :         mono_stack_walk_no_il (get_caller_of_elevated_trust_code, &amp;cookie);</span>
+<span class="lineNum">     495 </span>            : 
+<span class="lineNum">     496 </span>            :         /* return TRUE if the stack walk did not reach far enough or did not find callers */
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :         if (!cookie.caller || cookie.depth &lt; 3)</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     499 </span>            : 
+<span class="lineNum">     500 </span>            :         /* return TRUE if the caller is transparent, i.e. if elevated trust is required to continue executing the method */
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 :         return (mono_security_core_clr_method_level (cookie.caller, TRUE) == MONO_SECURITY_CORE_CLR_TRANSPARENT);</span>
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     503 </span>            : 
+<span class="lineNum">     504 </span>            : 
+<span class="lineNum">     505 </span>            : /*
+<span class="lineNum">     506 </span>            :  * check_field_access:
+<span class="lineNum">     507 </span>            :  *
+<span class="lineNum">     508 </span>            :  *      Return TRUE if the caller method can access the specified field, FALSE otherwise.
+<a name="509"><span class="lineNum">     509 </span>            :  */</a>
+<span class="lineNum">     510 </span>            : static gboolean
+<span class="lineNum">     511 </span>            : check_field_access (MonoMethod *caller, MonoClassField *field)
+<span class="lineNum">     512 </span>            : {
+<span class="lineNum">     513 </span>            :         /* if get_reflection_caller returns NULL then we assume the caller has NO privilege */
+<span class="lineNum">     514 </span><span class="lineNoCov">          0 :         if (caller) {</span>
+<span class="lineNum">     515 </span>            :                 MonoError error;
+<span class="lineNum">     516 </span>            :                 MonoClass *klass;
+<span class="lineNum">     517 </span>            : 
+<span class="lineNum">     518 </span>            :                 /* this check can occur before the field's type is resolved (and that can fail) */
+<span class="lineNum">     519 </span><span class="lineNoCov">          0 :                 mono_field_get_type_checked (field, &amp;error);</span>
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :                 if (!mono_error_ok (&amp;error)) {</span>
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 :                         mono_error_cleanup (&amp;error);</span>
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     523 </span>            :                 }
+<span class="lineNum">     524 </span>            : 
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :                 klass = (mono_field_get_flags (field) &amp; FIELD_ATTRIBUTE_STATIC) ? NULL : mono_field_get_parent (field);</span>
+<span class="lineNum">     526 </span><span class="lineNoCov">          0 :                 return mono_method_can_access_field_full (caller, field, klass);</span>
+<span class="lineNum">     527 </span>            :         }
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     529 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     530 </span>            : 
+<span class="lineNum">     531 </span>            : /*
+<span class="lineNum">     532 </span>            :  * check_method_access:
+<span class="lineNum">     533 </span>            :  *
+<span class="lineNum">     534 </span>            :  *      Return TRUE if the caller method can access the specified callee method, FALSE otherwise.
+<a name="535"><span class="lineNum">     535 </span>            :  */</a>
+<span class="lineNum">     536 </span>            : static gboolean
+<span class="lineNum">     537 </span>            : check_method_access (MonoMethod *caller, MonoMethod *callee)
+<span class="lineNum">     538 </span>            : {
+<span class="lineNum">     539 </span>            :         /* if get_reflection_caller returns NULL then we assume the caller has NO privilege */
+<span class="lineNum">     540 </span><span class="lineNoCov">          0 :         if (caller) {</span>
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :                 MonoClass *klass = (callee-&gt;flags &amp; METHOD_ATTRIBUTE_STATIC) ? NULL : callee-&gt;klass;</span>
+<span class="lineNum">     542 </span><span class="lineNoCov">          0 :                 return mono_method_can_access_method_full (caller, callee, klass);</span>
+<span class="lineNum">     543 </span>            :         }
+<span class="lineNum">     544 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     546 </span>            : 
+<span class="lineNum">     547 </span>            : /*
+<span class="lineNum">     548 </span>            :  * get_argument_exception
+<span class="lineNum">     549 </span>            :  *
+<span class="lineNum">     550 </span>            :  *      Helper function to create an MonoException (ArgumentException in
+<span class="lineNum">     551 </span>            :  *      managed-land) and provide a descriptive message for it. This 
+<span class="lineNum">     552 </span>            :  *      message is also, optionally, being logged (export 
+<span class="lineNum">     553 </span>            :  *      MONO_LOG_MASK=&quot;security&quot;) for debugging purposes.
+<a name="554"><span class="lineNum">     554 </span>            :  */</a>
+<span class="lineNum">     555 </span>            : static MonoException*
+<span class="lineNum">     556 </span>            : get_argument_exception (const char *format, MonoMethod *caller, MonoMethod *callee)
+<span class="lineNum">     557 </span>            : {
+<span class="lineNum">     558 </span>            :         MonoException *ex;
+<span class="lineNum">     559 </span><span class="lineNoCov">          0 :         char *caller_name = get_method_full_name (caller);</span>
+<span class="lineNum">     560 </span><span class="lineNoCov">          0 :         char *callee_name = get_method_full_name (callee);</span>
+<span class="lineNum">     561 </span><span class="lineNoCov">          0 :         char *message = g_strdup_printf (format, caller_name, callee_name);</span>
+<span class="lineNum">     562 </span><span class="lineNoCov">          0 :         g_free (callee_name);</span>
+<span class="lineNum">     563 </span><span class="lineNoCov">          0 :         g_free (caller_name);</span>
+<span class="lineNum">     564 </span>            : 
+<span class="lineNum">     565 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_WARNING, MONO_TRACE_SECURITY, &quot;%s&quot;, message);</span>
+<span class="lineNum">     566 </span><span class="lineNoCov">          0 :         ex = mono_get_exception_argument (&quot;method&quot;, message);</span>
+<span class="lineNum">     567 </span><span class="lineNoCov">          0 :         g_free (message);</span>
+<span class="lineNum">     568 </span>            : 
+<span class="lineNum">     569 </span><span class="lineNoCov">          0 :         return ex;</span>
+<span class="lineNum">     570 </span>            : }
+<span class="lineNum">     571 </span>            : 
+<span class="lineNum">     572 </span>            : /*
+<span class="lineNum">     573 </span>            :  * get_field_access_exception
+<span class="lineNum">     574 </span>            :  *
+<span class="lineNum">     575 </span>            :  *      Helper function to create an MonoException (FieldAccessException
+<span class="lineNum">     576 </span>            :  *      in managed-land) and provide a descriptive message for it. This
+<span class="lineNum">     577 </span>            :  *      message is also, optionally, being logged (export 
+<span class="lineNum">     578 </span>            :  *      MONO_LOG_MASK=&quot;security&quot;) for debugging purposes.
+<a name="579"><span class="lineNum">     579 </span>            :  */</a>
+<span class="lineNum">     580 </span>            : static MonoException*
+<span class="lineNum">     581 </span>            : get_field_access_exception (const char *format, MonoMethod *caller, MonoClassField *field)
+<span class="lineNum">     582 </span>            : {
+<span class="lineNum">     583 </span>            :         MonoException *ex;
+<span class="lineNum">     584 </span><span class="lineNoCov">          0 :         char *caller_name = get_method_full_name (caller);</span>
+<span class="lineNum">     585 </span><span class="lineNoCov">          0 :         char *field_name = mono_field_full_name (field);</span>
+<span class="lineNum">     586 </span><span class="lineNoCov">          0 :         char *message = g_strdup_printf (format, caller_name, field_name);</span>
+<span class="lineNum">     587 </span><span class="lineNoCov">          0 :         g_free (field_name);</span>
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 :         g_free (caller_name);</span>
+<span class="lineNum">     589 </span>            : 
+<span class="lineNum">     590 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_WARNING, MONO_TRACE_SECURITY, &quot;%s&quot;, message);</span>
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 :         ex = mono_get_exception_field_access_msg (message);</span>
+<span class="lineNum">     592 </span><span class="lineNoCov">          0 :         g_free (message);</span>
+<span class="lineNum">     593 </span>            : 
+<span class="lineNum">     594 </span><span class="lineNoCov">          0 :         return ex;</span>
+<span class="lineNum">     595 </span>            : }
+<span class="lineNum">     596 </span>            : 
+<span class="lineNum">     597 </span>            : /*
+<span class="lineNum">     598 </span>            :  * get_method_access_exception
+<span class="lineNum">     599 </span>            :  *
+<span class="lineNum">     600 </span>            :  *      Helper function to create an MonoException (MethodAccessException
+<span class="lineNum">     601 </span>            :  *      in managed-land) and provide a descriptive message for it. This
+<span class="lineNum">     602 </span>            :  *      message is also, optionally, being logged (export 
+<span class="lineNum">     603 </span>            :  *      MONO_LOG_MASK=&quot;security&quot;) for debugging purposes.
+<a name="604"><span class="lineNum">     604 </span>            :  */</a>
+<span class="lineNum">     605 </span>            : static MonoException*
+<span class="lineNum">     606 </span>            : get_method_access_exception (const char *format, MonoMethod *caller, MonoMethod *callee)
+<span class="lineNum">     607 </span>            : {
+<span class="lineNum">     608 </span>            :         MonoException *ex;
+<span class="lineNum">     609 </span><span class="lineNoCov">          0 :         char *caller_name = get_method_full_name (caller);</span>
+<span class="lineNum">     610 </span><span class="lineNoCov">          0 :         char *callee_name = get_method_full_name (callee);</span>
+<span class="lineNum">     611 </span><span class="lineNoCov">          0 :         char *message = g_strdup_printf (format, caller_name, callee_name);</span>
+<span class="lineNum">     612 </span><span class="lineNoCov">          0 :         g_free (callee_name);</span>
+<span class="lineNum">     613 </span><span class="lineNoCov">          0 :         g_free (caller_name);</span>
+<span class="lineNum">     614 </span>            : 
+<span class="lineNum">     615 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_WARNING, MONO_TRACE_SECURITY, &quot;%s&quot;, message);</span>
+<span class="lineNum">     616 </span><span class="lineNoCov">          0 :         ex = mono_get_exception_method_access_msg (message);</span>
+<span class="lineNum">     617 </span><span class="lineNoCov">          0 :         g_free (message);</span>
+<span class="lineNum">     618 </span>            : 
+<span class="lineNum">     619 </span><span class="lineNoCov">          0 :         return ex;</span>
+<span class="lineNum">     620 </span>            : }
+<span class="lineNum">     621 </span>            : 
+<span class="lineNum">     622 </span>            : /*
+<span class="lineNum">     623 </span>            :  * mono_security_core_clr_ensure_reflection_access_field:
+<span class="lineNum">     624 </span>            :  *
+<span class="lineNum">     625 </span>            :  *      Ensure that the specified field can be used with reflection since 
+<span class="lineNum">     626 </span>            :  *      Transparent code cannot access to Critical fields and can only use
+<span class="lineNum">     627 </span>            :  *      them if they are visible from it's point of view.
+<span class="lineNum">     628 </span>            :  *
+<span class="lineNum">     629 </span>            :  *      Returns TRUE if acess is allowed.  Otherwise returns FALSE and sets @error to a FieldAccessException if the field is cannot be accessed.
+<a name="630"><span class="lineNum">     630 </span>            :  */</a>
+<span class="lineNum">     631 </span>            : gboolean
+<span class="lineNum">     632 </span>            : mono_security_core_clr_ensure_reflection_access_field (MonoClassField *field, MonoError *error)
+<span class="lineNum">     633 </span>            : {
+<span class="lineNum">     634 </span><span class="lineNoCov">          0 :         mono_error_init (error);</span>
+<span class="lineNum">     635 </span><span class="lineNoCov">          0 :         MonoMethod *caller = get_reflection_caller ();</span>
+<span class="lineNum">     636 </span>            :         /* CoreCLR restrictions applies to Transparent code/caller */
+<span class="lineNum">     637 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_method_level (caller, TRUE) != MONO_SECURITY_CORE_CLR_TRANSPARENT)</span>
+<span class="lineNum">     638 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     639 </span>            : 
+<span class="lineNum">     640 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_get_options () &amp; MONO_SECURITY_CORE_CLR_OPTIONS_RELAX_REFLECTION) {</span>
+<span class="lineNum">     641 </span><span class="lineNoCov">          0 :                 if (!mono_security_core_clr_is_platform_image (mono_field_get_parent(field)-&gt;image))</span>
+<span class="lineNum">     642 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     643 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     644 </span>            : 
+<span class="lineNum">     645 </span>            :         /* Transparent code cannot [get|set]value on Critical fields */
+<span class="lineNum">     646 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_class_level (mono_field_get_parent (field)) == MONO_SECURITY_CORE_CLR_CRITICAL) {</span>
+<span class="lineNum">     647 </span><span class="lineNoCov">          0 :                 mono_error_set_exception_instance (error, get_field_access_exception (</span>
+<span class="lineNum">     648 </span>            :                         &quot;Transparent method %s cannot get or set Critical field %s.&quot;, 
+<span class="lineNum">     649 </span><span class="lineNoCov">          0 :                         caller, field));</span>
+<span class="lineNum">     650 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     651 </span>            :         }
+<span class="lineNum">     652 </span>            : 
+<span class="lineNum">     653 </span>            :         /* also it cannot access a fields that is not visible from it's (caller) point of view */
+<span class="lineNum">     654 </span><span class="lineNoCov">          0 :         if (!check_field_access (caller, field)) {</span>
+<span class="lineNum">     655 </span><span class="lineNoCov">          0 :                 mono_error_set_exception_instance (error, get_field_access_exception (</span>
+<span class="lineNum">     656 </span>            :                         &quot;Transparent method %s cannot get or set private/internal field %s.&quot;, 
+<span class="lineNum">     657 </span><span class="lineNoCov">          0 :                         caller, field));</span>
+<span class="lineNum">     658 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     659 </span>            :         }
+<span class="lineNum">     660 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     661 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     662 </span>            : 
+<span class="lineNum">     663 </span>            : /*
+<span class="lineNum">     664 </span>            :  * mono_security_core_clr_ensure_reflection_access_method:
+<span class="lineNum">     665 </span>            :  *
+<span class="lineNum">     666 </span>            :  *      Ensure that the specified method can be used with reflection since
+<span class="lineNum">     667 </span>            :  *      Transparent code cannot call Critical methods and can only call them
+<span class="lineNum">     668 </span>            :  *      if they are visible from it's point of view.
+<span class="lineNum">     669 </span>            :  *
+<span class="lineNum">     670 </span>            :  *      If access is allowed returns TRUE.  Returns FALSE and sets @error to a MethodAccessException if the field is cannot be accessed.
+<a name="671"><span class="lineNum">     671 </span>            :  */</a>
+<span class="lineNum">     672 </span>            : gboolean
+<span class="lineNum">     673 </span>            : mono_security_core_clr_ensure_reflection_access_method (MonoMethod *method, MonoError *error)
+<span class="lineNum">     674 </span>            : {
+<span class="lineNum">     675 </span><span class="lineNoCov">          0 :         mono_error_init (error);</span>
+<span class="lineNum">     676 </span><span class="lineNoCov">          0 :         MonoMethod *caller = get_reflection_caller ();</span>
+<span class="lineNum">     677 </span>            :         /* CoreCLR restrictions applies to Transparent code/caller */
+<span class="lineNum">     678 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_method_level (caller, TRUE) != MONO_SECURITY_CORE_CLR_TRANSPARENT)</span>
+<span class="lineNum">     679 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     680 </span>            : 
+<span class="lineNum">     681 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_get_options () &amp; MONO_SECURITY_CORE_CLR_OPTIONS_RELAX_REFLECTION) {</span>
+<span class="lineNum">     682 </span><span class="lineNoCov">          0 :                 if (!mono_security_core_clr_is_platform_image (method-&gt;klass-&gt;image))</span>
+<span class="lineNum">     683 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     684 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     685 </span>            : 
+<span class="lineNum">     686 </span>            :         /* Transparent code cannot invoke, even using reflection, Critical code */
+<span class="lineNum">     687 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_method_level (method, TRUE) == MONO_SECURITY_CORE_CLR_CRITICAL) {</span>
+<span class="lineNum">     688 </span><span class="lineNoCov">          0 :                 mono_error_set_exception_instance (error, get_method_access_exception (</span>
+<span class="lineNum">     689 </span>            :                         &quot;Transparent method %s cannot invoke Critical method %s.&quot;, 
+<span class="lineNum">     690 </span><span class="lineNoCov">          0 :                         caller, method));</span>
+<span class="lineNum">     691 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     692 </span>            :         }
+<span class="lineNum">     693 </span>            : 
+<span class="lineNum">     694 </span>            :         /* also it cannot invoke a method that is not visible from it's (caller) point of view */
+<span class="lineNum">     695 </span><span class="lineNoCov">          0 :         if (!check_method_access (caller, method)) {</span>
+<span class="lineNum">     696 </span><span class="lineNoCov">          0 :                 mono_error_set_exception_instance (error, get_method_access_exception (</span>
+<span class="lineNum">     697 </span>            :                         &quot;Transparent method %s cannot invoke private/internal method %s.&quot;, 
+<span class="lineNum">     698 </span><span class="lineNoCov">          0 :                         caller, method));</span>
+<span class="lineNum">     699 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     700 </span>            :         }
+<span class="lineNum">     701 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     702 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     703 </span>            : 
+<span class="lineNum">     704 </span>            : /*
+<span class="lineNum">     705 </span>            :  * can_avoid_corlib_reflection_delegate_optimization:
+<span class="lineNum">     706 </span>            :  *
+<span class="lineNum">     707 </span>            :  *      Mono's mscorlib use delegates to optimize PropertyInfo and EventInfo
+<span class="lineNum">     708 </span>            :  *      reflection calls. This requires either a bunch of additional, and not
+<span class="lineNum">     709 </span>            :  *      really required, [SecuritySafeCritical] in the class libraries or 
+<span class="lineNum">     710 </span>            :  *      (like this) a way to skip them. As a bonus we also avoid the stack
+<span class="lineNum">     711 </span>            :  *      walk to find the caller.
+<span class="lineNum">     712 </span>            :  *
+<span class="lineNum">     713 </span>            :  *      Return TRUE if we can skip this &quot;internal&quot; delegate creation, FALSE
+<span class="lineNum">     714 </span>            :  *      otherwise.
+<a name="715"><span class="lineNum">     715 </span>            :  */</a>
+<span class="lineNum">     716 </span>            : static gboolean
+<span class="lineNum">     717 </span>            : can_avoid_corlib_reflection_delegate_optimization (MonoMethod *method)
+<span class="lineNum">     718 </span>            : {
+<span class="lineNum">     719 </span><span class="lineNoCov">          0 :         if (!mono_security_core_clr_is_platform_image (method-&gt;klass-&gt;image))</span>
+<span class="lineNum">     720 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     721 </span>            : 
+<span class="lineNum">     722 </span><span class="lineNoCov">          0 :         if (strcmp (method-&gt;klass-&gt;name_space, &quot;System.Reflection&quot;) != 0)</span>
+<span class="lineNum">     723 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     724 </span>            : 
+<span class="lineNum">     725 </span><span class="lineNoCov">          0 :         if (strcmp (method-&gt;klass-&gt;name, &quot;MonoProperty&quot;) == 0) {</span>
+<span class="lineNum">     726 </span><span class="lineNoCov">          0 :                 if ((strcmp (method-&gt;name, &quot;GetterAdapterFrame&quot;) == 0) || strcmp (method-&gt;name, &quot;StaticGetterAdapterFrame&quot;) == 0)</span>
+<span class="lineNum">     727 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     728 </span><span class="lineNoCov">          0 :         } else if (strcmp (method-&gt;klass-&gt;name, &quot;EventInfo&quot;) == 0) {</span>
+<span class="lineNum">     729 </span><span class="lineNoCov">          0 :                 if ((strcmp (method-&gt;name, &quot;AddEventFrame&quot;) == 0) || strcmp (method-&gt;name, &quot;StaticAddEventAdapterFrame&quot;) == 0)</span>
+<span class="lineNum">     730 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     731 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     732 </span>            : 
+<span class="lineNum">     733 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     734 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     735 </span>            : 
+<span class="lineNum">     736 </span>            : /*
+<span class="lineNum">     737 </span>            :  * mono_security_core_clr_ensure_delegate_creation:
+<span class="lineNum">     738 </span>            :  *
+<span class="lineNum">     739 </span>            :  *      Return TRUE if a delegate can be created on the specified
+<span class="lineNum">     740 </span>            :  *      method.  CoreCLR can also affect the binding, this function may
+<span class="lineNum">     741 </span>            :  *      return (FALSE) and set @error to an ArgumentException.
+<span class="lineNum">     742 </span>            :  *
+<span class="lineNum">     743 </span>            :  *      @error is set to a MethodAccessException if the specified method is not
+<span class="lineNum">     744 </span>            :  *      visible from the caller point of view.
+<a name="745"><span class="lineNum">     745 </span>            :  */</a>
+<span class="lineNum">     746 </span>            : gboolean
+<span class="lineNum">     747 </span>            : mono_security_core_clr_ensure_delegate_creation (MonoMethod *method, MonoError *error)
+<span class="lineNum">     748 </span>            : {
+<span class="lineNum">     749 </span>            :         MonoMethod *caller;
+<span class="lineNum">     750 </span>            : 
+<span class="lineNum">     751 </span><span class="lineNoCov">          0 :         mono_error_init (error);</span>
+<span class="lineNum">     752 </span>            : 
+<span class="lineNum">     753 </span>            :         /* note: mscorlib creates delegates to avoid reflection (optimization), we ignore those cases */
+<span class="lineNum">     754 </span><span class="lineNoCov">          0 :         if (can_avoid_corlib_reflection_delegate_optimization (method))</span>
+<span class="lineNum">     755 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     756 </span>            : 
+<span class="lineNum">     757 </span><span class="lineNoCov">          0 :         caller = get_reflection_caller ();</span>
+<span class="lineNum">     758 </span>            :         /* if the &quot;real&quot; caller is not Transparent then it do can anything */
+<span class="lineNum">     759 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_method_level (caller, TRUE) != MONO_SECURITY_CORE_CLR_TRANSPARENT)</span>
+<span class="lineNum">     760 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     761 </span>            : 
+<span class="lineNum">     762 </span>            :         /* otherwise it (as a Transparent caller) cannot create a delegate on a Critical method... */
+<span class="lineNum">     763 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_method_level (method, TRUE) == MONO_SECURITY_CORE_CLR_CRITICAL) {</span>
+<span class="lineNum">     764 </span><span class="lineNoCov">          0 :                 mono_error_set_exception_instance (error, get_argument_exception (</span>
+<span class="lineNum">     765 </span>            :                         &quot;Transparent method %s cannot create a delegate on Critical method %s.&quot;, 
+<span class="lineNum">     766 </span><span class="lineNoCov">          0 :                         caller, method));</span>
+<span class="lineNum">     767 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     768 </span>            :         }
+<span class="lineNum">     769 </span>            : 
+<span class="lineNum">     770 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_get_options () &amp; MONO_SECURITY_CORE_CLR_OPTIONS_RELAX_DELEGATE) {</span>
+<span class="lineNum">     771 </span><span class="lineNoCov">          0 :                 if (!mono_security_core_clr_is_platform_image (method-&gt;klass-&gt;image))</span>
+<span class="lineNum">     772 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     773 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     774 </span>            : 
+<span class="lineNum">     775 </span>            :         /* also it cannot create the delegate on a method that is not visible from it's (caller) point of view */
+<span class="lineNum">     776 </span><span class="lineNoCov">          0 :         if (!check_method_access (caller, method)) {</span>
+<span class="lineNum">     777 </span><span class="lineNoCov">          0 :                 mono_error_set_exception_instance (error, get_method_access_exception (</span>
+<span class="lineNum">     778 </span>            :                         &quot;Transparent method %s cannot create a delegate on private/internal method %s.&quot;, 
+<span class="lineNum">     779 </span><span class="lineNoCov">          0 :                         caller, method));</span>
+<span class="lineNum">     780 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     781 </span>            :         }
+<span class="lineNum">     782 </span>            : 
+<span class="lineNum">     783 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     784 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     785 </span>            : 
+<span class="lineNum">     786 </span>            : /*
+<span class="lineNum">     787 </span>            :  * mono_security_core_clr_ensure_dynamic_method_resolved_object:
+<span class="lineNum">     788 </span>            :  *
+<span class="lineNum">     789 </span>            :  *      Called from mono_reflection_create_dynamic_method (reflection.c) to add some extra checks required for CoreCLR.
+<span class="lineNum">     790 </span>            :  *      Dynamic methods needs to check to see if the objects being used (e.g. methods, fields) comes from platform code
+<span class="lineNum">     791 </span>            :  *      and do an accessibility check in this case. Otherwise (i.e. user/application code) can be used without this extra
+<span class="lineNum">     792 </span>            :  *      accessbility check.
+<a name="793"><span class="lineNum">     793 </span>            :  */</a>
+<span class="lineNum">     794 </span>            : MonoException*
+<span class="lineNum">     795 </span>            : mono_security_core_clr_ensure_dynamic_method_resolved_object (gpointer ref, MonoClass *handle_class)
+<span class="lineNum">     796 </span>            : {
+<span class="lineNum">     797 </span>            :         /* XXX find/create test cases for other handle_class XXX */
+<span class="lineNum">     798 </span><span class="lineNoCov">          0 :         if (handle_class == mono_defaults.fieldhandle_class) {</span>
+<span class="lineNum">     799 </span><span class="lineNoCov">          0 :                 MonoClassField *field = (MonoClassField*) ref;</span>
+<span class="lineNum">     800 </span><span class="lineNoCov">          0 :                 MonoClass *klass = mono_field_get_parent (field);</span>
+<span class="lineNum">     801 </span>            :                 /* fields coming from platform code have extra protection (accessibility check) */
+<span class="lineNum">     802 </span><span class="lineNoCov">          0 :                 if (mono_security_core_clr_is_platform_image (klass-&gt;image)) {</span>
+<span class="lineNum">     803 </span><span class="lineNoCov">          0 :                         MonoMethod *caller = get_reflection_caller ();</span>
+<span class="lineNum">     804 </span>            :                         /* XXX Critical code probably can do this / need some test cases (safer off otherwise) XXX */
+<span class="lineNum">     805 </span><span class="lineNoCov">          0 :                         if (!check_field_access (caller, field)) {</span>
+<span class="lineNum">     806 </span><span class="lineNoCov">          0 :                                 return get_field_access_exception (</span>
+<span class="lineNum">     807 </span>            :                                         &quot;Dynamic method %s cannot create access private/internal field %s.&quot;, 
+<span class="lineNum">     808 </span><span class="lineNoCov">          0 :                                         caller, field);</span>
+<span class="lineNum">     809 </span>            :                         }
+<span class="lineNum">     810 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     811 </span><span class="lineNoCov">          0 :         } else if (handle_class == mono_defaults.methodhandle_class) {</span>
+<span class="lineNum">     812 </span><span class="lineNoCov">          0 :                 MonoMethod *method = (MonoMethod*) ref;</span>
+<span class="lineNum">     813 </span>            :                 /* methods coming from platform code have extra protection (accessibility check) */
+<span class="lineNum">     814 </span><span class="lineNoCov">          0 :                 if (mono_security_core_clr_is_platform_image (method-&gt;klass-&gt;image)) {</span>
+<span class="lineNum">     815 </span><span class="lineNoCov">          0 :                         MonoMethod *caller = get_reflection_caller ();</span>
+<span class="lineNum">     816 </span>            :                         /* XXX Critical code probably can do this / need some test cases (safer off otherwise) XXX */
+<span class="lineNum">     817 </span><span class="lineNoCov">          0 :                         if (!check_method_access (caller, method)) {</span>
+<span class="lineNum">     818 </span><span class="lineNoCov">          0 :                                 return get_method_access_exception (</span>
+<span class="lineNum">     819 </span>            :                                         &quot;Dynamic method %s cannot create access private/internal method %s.&quot;, 
+<span class="lineNum">     820 </span><span class="lineNoCov">          0 :                                         caller, method);</span>
+<span class="lineNum">     821 </span>            :                         }
+<span class="lineNum">     822 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     823 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     824 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     825 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     826 </span>            : 
+<span class="lineNum">     827 </span>            : /*
+<span class="lineNum">     828 </span>            :  * mono_security_core_clr_can_access_internals
+<span class="lineNum">     829 </span>            :  *
+<span class="lineNum">     830 </span>            :  *      Check if we allow [InternalsVisibleTo] to work between two images.
+<a name="831"><span class="lineNum">     831 </span>            :  */</a>
+<span class="lineNum">     832 </span>            : gboolean
+<span class="lineNum">     833 </span>            : mono_security_core_clr_can_access_internals (MonoImage *accessing, MonoImage* accessed)
+<span class="lineNum">     834 </span>            : {
+<span class="lineNum">     835 </span>            :         /* are we trying to access internals of a platform assembly ? if not this is acceptable */
+<span class="lineNum">     836 </span><span class="lineNoCov">          0 :         if (!mono_security_core_clr_is_platform_image (accessed))</span>
+<span class="lineNum">     837 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     838 </span>            : 
+<span class="lineNum">     839 </span>            :         /* we can't let everyone with the right name and public key token access the internals of platform code.
+<span class="lineNum">     840 </span>            :          * (Silverlight can rely on the strongname signature of the assemblies, but Mono does not verify them)
+<span class="lineNum">     841 </span>            :          * However platform code is fully trusted so it can access the internals of other platform code assemblies */
+<span class="lineNum">     842 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_is_platform_image (accessing))</span>
+<span class="lineNum">     843 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     844 </span>            : 
+<span class="lineNum">     845 </span>            :         /* catch-22: System.Xml needs access to mscorlib's internals (e.g. ArrayList) but is not considered platform code.
+<span class="lineNum">     846 </span>            :          * Promoting it to platform code would create another issue since (both Mono/Moonlight or MS version of) 
+<span class="lineNum">     847 </span>            :          * System.Xml.Linq.dll (an SDK, not platform, assembly) needs access to System.Xml.dll internals (either ). 
+<span class="lineNum">     848 </span>            :          * The solution is to trust, even transparent code, in the plugin directory to access platform code internals */
+<span class="lineNum">     849 </span><span class="lineNoCov">          0 :         if (!accessed-&gt;assembly-&gt;basedir || !accessing-&gt;assembly-&gt;basedir)</span>
+<span class="lineNum">     850 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     851 </span><span class="lineNoCov">          0 :         return (strcmp (accessed-&gt;assembly-&gt;basedir, accessing-&gt;assembly-&gt;basedir) == 0);</span>
+<span class="lineNum">     852 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     853 </span>            : 
+<span class="lineNum">     854 </span>            : /*
+<span class="lineNum">     855 </span>            :  * mono_security_core_clr_is_field_access_allowed
+<span class="lineNum">     856 </span>            :  *
+<span class="lineNum">     857 </span>            :  *      Return a MonoException (FieldccessException in managed-land) if
+<span class="lineNum">     858 </span>            :  *      the access from &quot;caller&quot; to &quot;field&quot; is not valid under CoreCLR -
+<span class="lineNum">     859 </span>            :  *      i.e. a [SecurityTransparent] method calling a [SecurityCritical]
+<span class="lineNum">     860 </span>            :  *      field.
+<a name="861"><span class="lineNum">     861 </span>            :  */</a>
+<span class="lineNum">     862 </span>            : MonoException*
+<span class="lineNum">     863 </span>            : mono_security_core_clr_is_field_access_allowed (MonoMethod *caller, MonoClassField *field)
+<span class="lineNum">     864 </span>            : {
+<span class="lineNum">     865 </span>            :         /* there's no restriction to access Transparent or SafeCritical fields, so we only check calls to Critical methods */
+<span class="lineNum">     866 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_class_level (mono_field_get_parent (field)) != MONO_SECURITY_CORE_CLR_CRITICAL)</span>
+<span class="lineNum">     867 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     868 </span>            : 
+<span class="lineNum">     869 </span>            :         /* caller is Critical! only SafeCritical and Critical callers can access the field, so we throw if caller is Transparent */
+<span class="lineNum">     870 </span><span class="lineNoCov">          0 :         if (!caller || (mono_security_core_clr_method_level (caller, TRUE) != MONO_SECURITY_CORE_CLR_TRANSPARENT))</span>
+<span class="lineNum">     871 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     872 </span>            : 
+<span class="lineNum">     873 </span><span class="lineNoCov">          0 :         return get_field_access_exception (</span>
+<span class="lineNum">     874 </span>            :                 &quot;Transparent method %s cannot call use Critical field %s.&quot;, 
+<span class="lineNum">     875 </span><span class="lineNoCov">          0 :                 caller, field);</span>
+<span class="lineNum">     876 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     877 </span>            : 
+<span class="lineNum">     878 </span>            : /*
+<span class="lineNum">     879 </span>            :  * mono_security_core_clr_is_call_allowed
+<span class="lineNum">     880 </span>            :  *
+<span class="lineNum">     881 </span>            :  *      Return a MonoException (MethodAccessException in managed-land) if
+<span class="lineNum">     882 </span>            :  *      the call from &quot;caller&quot; to &quot;callee&quot; is not valid under CoreCLR -
+<span class="lineNum">     883 </span>            :  *      i.e. a [SecurityTransparent] method calling a [SecurityCritical]
+<span class="lineNum">     884 </span>            :  *      method.
+<a name="885"><span class="lineNum">     885 </span>            :  */</a>
+<span class="lineNum">     886 </span>            : MonoException*
+<span class="lineNum">     887 </span>            : mono_security_core_clr_is_call_allowed (MonoMethod *caller, MonoMethod *callee)
+<span class="lineNum">     888 </span>            : {
+<span class="lineNum">     889 </span>            :         /* there's no restriction to call Transparent or SafeCritical code, so we only check calls to Critical methods */
+<span class="lineNum">     890 </span><span class="lineNoCov">          0 :         if (mono_security_core_clr_method_level (callee, TRUE) != MONO_SECURITY_CORE_CLR_CRITICAL)</span>
+<span class="lineNum">     891 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     892 </span>            : 
+<span class="lineNum">     893 </span>            :         /* callee is Critical! only SafeCritical and Critical callers can call it, so we throw if the caller is Transparent */
+<span class="lineNum">     894 </span><span class="lineNoCov">          0 :         if (!caller || (mono_security_core_clr_method_level (caller, TRUE) != MONO_SECURITY_CORE_CLR_TRANSPARENT))</span>
+<span class="lineNum">     895 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     896 </span>            : 
+<span class="lineNum">     897 </span><span class="lineNoCov">          0 :         return get_method_access_exception (</span>
+<span class="lineNum">     898 </span>            :                 &quot;Transparent method %s cannot call Critical method %s.&quot;, 
+<span class="lineNum">     899 </span><span class="lineNoCov">          0 :                 caller, callee);</span>
+<span class="lineNum">     900 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     901 </span>            : 
+<span class="lineNum">     902 </span>            : /*
+<span class="lineNum">     903 </span>            :  * mono_security_core_clr_level_from_cinfo:
+<span class="lineNum">     904 </span>            :  *
+<span class="lineNum">     905 </span>            :  *      Return the MonoSecurityCoreCLRLevel that match the attribute located
+<span class="lineNum">     906 </span>            :  *      in the specified custom attributes. If no attribute is present it 
+<span class="lineNum">     907 </span>            :  *      defaults to MONO_SECURITY_CORE_CLR_TRANSPARENT, which is the default
+<span class="lineNum">     908 </span>            :  *      level for all code under the CoreCLR.
+<a name="909"><span class="lineNum">     909 </span>            :  */</a>
+<span class="lineNum">     910 </span>            : static MonoSecurityCoreCLRLevel
+<span class="lineNum">     911 </span>            : mono_security_core_clr_level_from_cinfo (MonoCustomAttrInfo *cinfo, MonoImage *image)
+<span class="lineNum">     912 </span>            : {
+<span class="lineNum">     913 </span><span class="lineNoCov">          0 :         int level = MONO_SECURITY_CORE_CLR_TRANSPARENT;</span>
+<span class="lineNum">     914 </span>            : 
+<span class="lineNum">     915 </span><span class="lineNoCov">          0 :         if (cinfo &amp;&amp; mono_custom_attrs_has_attr (cinfo, security_safe_critical_attribute ()))</span>
+<span class="lineNum">     916 </span><span class="lineNoCov">          0 :                 level = MONO_SECURITY_CORE_CLR_SAFE_CRITICAL;</span>
+<span class="lineNum">     917 </span><span class="lineNoCov">          0 :         if (cinfo &amp;&amp; mono_custom_attrs_has_attr (cinfo, security_critical_attribute ()))</span>
+<span class="lineNum">     918 </span><span class="lineNoCov">          0 :                 level = MONO_SECURITY_CORE_CLR_CRITICAL;</span>
+<span class="lineNum">     919 </span>            : 
+<span class="lineNum">     920 </span><span class="lineNoCov">          0 :         return (MonoSecurityCoreCLRLevel)level;</span>
+<span class="lineNum">     921 </span>            : }
+<span class="lineNum">     922 </span>            : 
+<span class="lineNum">     923 </span>            : /*
+<span class="lineNum">     924 </span>            :  * mono_security_core_clr_class_level_no_platform_check:
+<span class="lineNum">     925 </span>            :  *
+<span class="lineNum">     926 </span>            :  *      Return the MonoSecurityCoreCLRLevel for the specified class, without 
+<span class="lineNum">     927 </span>            :  *      checking for platform code. This help us avoid multiple redundant 
+<span class="lineNum">     928 </span>            :  *      checks, e.g.
+<span class="lineNum">     929 </span>            :  *      - a check for the method and one for the class;
+<span class="lineNum">     930 </span>            :  *      - a check for the class and outer class(es) ...
+<a name="931"><span class="lineNum">     931 </span>            :  */</a>
+<span class="lineNum">     932 </span>            : static MonoSecurityCoreCLRLevel
+<span class="lineNum">     933 </span>            : mono_security_core_clr_class_level_no_platform_check (MonoClass *klass)
+<span class="lineNum">     934 </span>            : {
+<span class="lineNum">     935 </span><span class="lineNoCov">          0 :         MonoSecurityCoreCLRLevel level = MONO_SECURITY_CORE_CLR_TRANSPARENT;</span>
+<span class="lineNum">     936 </span><span class="lineNoCov">          0 :         MonoCustomAttrInfo *cinfo = mono_custom_attrs_from_class (klass);</span>
+<span class="lineNum">     937 </span><span class="lineNoCov">          0 :         if (cinfo) {</span>
+<span class="lineNum">     938 </span><span class="lineNoCov">          0 :                 level = mono_security_core_clr_level_from_cinfo (cinfo, klass-&gt;image);</span>
+<span class="lineNum">     939 </span><span class="lineNoCov">          0 :                 mono_custom_attrs_free (cinfo);</span>
+<span class="lineNum">     940 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     941 </span>            : 
+<span class="lineNum">     942 </span><span class="lineNoCov">          0 :         if (level == MONO_SECURITY_CORE_CLR_TRANSPARENT &amp;&amp; klass-&gt;nested_in)</span>
+<span class="lineNum">     943 </span><span class="lineNoCov">          0 :                 level = mono_security_core_clr_class_level_no_platform_check (klass-&gt;nested_in);</span>
+<span class="lineNum">     944 </span>            : 
+<span class="lineNum">     945 </span><span class="lineNoCov">          0 :         return level;</span>
+<span class="lineNum">     946 </span>            : }
+<span class="lineNum">     947 </span>            : 
+<span class="lineNum">     948 </span>            : /*
+<span class="lineNum">     949 </span>            :  * mono_security_core_clr_class_level:
+<span class="lineNum">     950 </span>            :  *
+<span class="lineNum">     951 </span>            :  *      Return the MonoSecurityCoreCLRLevel for the specified class.
+<a name="952"><span class="lineNum">     952 </span>            :  */</a>
+<span class="lineNum">     953 </span>            : MonoSecurityCoreCLRLevel
+<span class="lineNum">     954 </span>            : mono_security_core_clr_class_level (MonoClass *klass)
+<span class="lineNum">     955 </span>            : {
+<span class="lineNum">     956 </span>            :         /* non-platform code is always Transparent - whatever the attributes says */
+<span class="lineNum">     957 </span><span class="lineNoCov">          0 :         if (!mono_security_core_clr_test &amp;&amp; !mono_security_core_clr_is_platform_image (klass-&gt;image))</span>
+<span class="lineNum">     958 </span><span class="lineNoCov">          0 :                 return MONO_SECURITY_CORE_CLR_TRANSPARENT;</span>
+<span class="lineNum">     959 </span>            : 
+<span class="lineNum">     960 </span><span class="lineNoCov">          0 :         return mono_security_core_clr_class_level_no_platform_check (klass);</span>
+<span class="lineNum">     961 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     962 </span>            : 
+<span class="lineNum">     963 </span>            : /*
+<span class="lineNum">     964 </span>            :  * mono_security_core_clr_field_level:
+<span class="lineNum">     965 </span>            :  *
+<span class="lineNum">     966 </span>            :  *      Return the MonoSecurityCoreCLRLevel for the specified field.
+<span class="lineNum">     967 </span>            :  *      If with_class_level is TRUE then the type (class) will also be
+<span class="lineNum">     968 </span>            :  *      checked, otherwise this will only report the information about
+<span class="lineNum">     969 </span>            :  *      the field itself.
+<a name="970"><span class="lineNum">     970 </span>            :  */</a>
+<span class="lineNum">     971 </span>            : MonoSecurityCoreCLRLevel
+<span class="lineNum">     972 </span>            : mono_security_core_clr_field_level (MonoClassField *field, gboolean with_class_level)
+<span class="lineNum">     973 </span>            : {
+<span class="lineNum">     974 </span>            :         MonoCustomAttrInfo *cinfo;
+<span class="lineNum">     975 </span><span class="lineNoCov">          0 :         MonoSecurityCoreCLRLevel level = MONO_SECURITY_CORE_CLR_TRANSPARENT;</span>
+<span class="lineNum">     976 </span>            : 
+<span class="lineNum">     977 </span>            :         /* if get_reflection_caller returns NULL then we assume the caller has NO privilege */
+<span class="lineNum">     978 </span><span class="lineNoCov">          0 :         if (!field)</span>
+<span class="lineNum">     979 </span><span class="lineNoCov">          0 :                 return level;</span>
+<span class="lineNum">     980 </span>            : 
+<span class="lineNum">     981 </span>            :         /* non-platform code is always Transparent - whatever the attributes says */
+<span class="lineNum">     982 </span><span class="lineNoCov">          0 :         if (!mono_security_core_clr_test &amp;&amp; !mono_security_core_clr_is_platform_image (field-&gt;parent-&gt;image))</span>
+<span class="lineNum">     983 </span><span class="lineNoCov">          0 :                 return level;</span>
+<span class="lineNum">     984 </span>            : 
+<span class="lineNum">     985 </span><span class="lineNoCov">          0 :         cinfo = mono_custom_attrs_from_field (field-&gt;parent, field);</span>
+<span class="lineNum">     986 </span><span class="lineNoCov">          0 :         if (cinfo) {</span>
+<span class="lineNum">     987 </span><span class="lineNoCov">          0 :                 level = mono_security_core_clr_level_from_cinfo (cinfo, field-&gt;parent-&gt;image);</span>
+<span class="lineNum">     988 </span><span class="lineNoCov">          0 :                 mono_custom_attrs_free (cinfo);</span>
+<span class="lineNum">     989 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     990 </span>            : 
+<span class="lineNum">     991 </span><span class="lineNoCov">          0 :         if (with_class_level &amp;&amp; level == MONO_SECURITY_CORE_CLR_TRANSPARENT)</span>
+<span class="lineNum">     992 </span><span class="lineNoCov">          0 :                 level = mono_security_core_clr_class_level (field-&gt;parent);</span>
+<span class="lineNum">     993 </span>            : 
+<span class="lineNum">     994 </span><span class="lineNoCov">          0 :         return level;</span>
+<span class="lineNum">     995 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     996 </span>            : 
+<span class="lineNum">     997 </span>            : /*
+<span class="lineNum">     998 </span>            :  * mono_security_core_clr_method_level:
+<span class="lineNum">     999 </span>            :  *
+<span class="lineNum">    1000 </span>            :  *      Return the MonoSecurityCoreCLRLevel for the specified method.
+<span class="lineNum">    1001 </span>            :  *      If with_class_level is TRUE then the type (class) will also be
+<span class="lineNum">    1002 </span>            :  *      checked, otherwise this will only report the information about
+<span class="lineNum">    1003 </span>            :  *      the method itself.
+<a name="1004"><span class="lineNum">    1004 </span>            :  */</a>
+<span class="lineNum">    1005 </span>            : MonoSecurityCoreCLRLevel
+<span class="lineNum">    1006 </span>            : mono_security_core_clr_method_level (MonoMethod *method, gboolean with_class_level)
+<span class="lineNum">    1007 </span>            : {
+<span class="lineNum">    1008 </span>            :         MonoCustomAttrInfo *cinfo;
+<span class="lineNum">    1009 </span><span class="lineNoCov">          0 :         MonoSecurityCoreCLRLevel level = MONO_SECURITY_CORE_CLR_TRANSPARENT;</span>
+<span class="lineNum">    1010 </span>            : 
+<span class="lineNum">    1011 </span>            :         /* if get_reflection_caller returns NULL then we assume the caller has NO privilege */
+<span class="lineNum">    1012 </span><span class="lineNoCov">          0 :         if (!method)</span>
+<span class="lineNum">    1013 </span><span class="lineNoCov">          0 :                 return level;</span>
+<span class="lineNum">    1014 </span>            : 
+<span class="lineNum">    1015 </span>            :         /* non-platform code is always Transparent - whatever the attributes says */
+<span class="lineNum">    1016 </span><span class="lineNoCov">          0 :         if (!mono_security_core_clr_test &amp;&amp; !mono_security_core_clr_is_platform_image (method-&gt;klass-&gt;image))</span>
+<span class="lineNum">    1017 </span><span class="lineNoCov">          0 :                 return level;</span>
+<span class="lineNum">    1018 </span>            : 
+<span class="lineNum">    1019 </span><span class="lineNoCov">          0 :         cinfo = mono_custom_attrs_from_method (method);</span>
+<span class="lineNum">    1020 </span><span class="lineNoCov">          0 :         if (cinfo) {</span>
+<span class="lineNum">    1021 </span><span class="lineNoCov">          0 :                 level = mono_security_core_clr_level_from_cinfo (cinfo, method-&gt;klass-&gt;image);</span>
+<span class="lineNum">    1022 </span><span class="lineNoCov">          0 :                 mono_custom_attrs_free (cinfo);</span>
+<span class="lineNum">    1023 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1024 </span>            : 
+<span class="lineNum">    1025 </span><span class="lineNoCov">          0 :         if (with_class_level &amp;&amp; level == MONO_SECURITY_CORE_CLR_TRANSPARENT)</span>
+<span class="lineNum">    1026 </span><span class="lineNoCov">          0 :                 level = mono_security_core_clr_class_level (method-&gt;klass);</span>
+<span class="lineNum">    1027 </span>            : 
+<span class="lineNum">    1028 </span><span class="lineNoCov">          0 :         return level;</span>
+<span class="lineNum">    1029 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1030 </span>            : 
+<span class="lineNum">    1031 </span>            : /*
+<span class="lineNum">    1032 </span>            :  * mono_security_enable_core_clr:
+<span class="lineNum">    1033 </span>            :  *
+<span class="lineNum">    1034 </span>            :  *   Enable the verifier and the CoreCLR security model
+<a name="1035"><span class="lineNum">    1035 </span>            :  */</a>
+<span class="lineNum">    1036 </span>            : void
+<span class="lineNum">    1037 </span>            : mono_security_enable_core_clr ()
+<span class="lineNum">    1038 </span>            : {
+<span class="lineNum">    1039 </span><span class="lineNoCov">          0 :         mono_verifier_set_mode (MONO_VERIFIER_MODE_VERIFIABLE);</span>
+<span class="lineNum">    1040 </span><span class="lineNoCov">          0 :         mono_security_set_mode (MONO_SECURITY_MODE_CORE_CLR);</span>
+<span class="lineNum">    1041 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1042 </span>            : 
+<span class="lineNum">    1043 </span>            : #else
+<span class="lineNum">    1044 </span>            : 
+<span class="lineNum">    1045 </span>            : void
+<span class="lineNum">    1046 </span>            : mono_security_core_clr_check_inheritance (MonoClass *klass)
+<span class="lineNum">    1047 </span>            : {
+<span class="lineNum">    1048 </span>            : }
+<span class="lineNum">    1049 </span>            : 
+<span class="lineNum">    1050 </span>            : void
+<span class="lineNum">    1051 </span>            : mono_security_core_clr_check_override (MonoClass *klass, MonoMethod *override, MonoMethod *base)
+<span class="lineNum">    1052 </span>            : {
+<span class="lineNum">    1053 </span>            : }
+<span class="lineNum">    1054 </span>            : 
+<span class="lineNum">    1055 </span>            : gboolean
+<span class="lineNum">    1056 </span>            : mono_security_core_clr_require_elevated_permissions (void)
+<span class="lineNum">    1057 </span>            : {
+<span class="lineNum">    1058 </span>            :         return FALSE;
+<span class="lineNum">    1059 </span>            : }
+<span class="lineNum">    1060 </span>            : 
+<span class="lineNum">    1061 </span>            : gboolean
+<span class="lineNum">    1062 </span>            : mono_security_core_clr_ensure_reflection_access_field (MonoClassField *field, MonoError *error)
+<span class="lineNum">    1063 </span>            : {
+<span class="lineNum">    1064 </span>            :         mono_error_init (error);
+<span class="lineNum">    1065 </span>            :         return TRUE;
+<span class="lineNum">    1066 </span>            : }
+<span class="lineNum">    1067 </span>            : 
+<span class="lineNum">    1068 </span>            : gboolean
+<span class="lineNum">    1069 </span>            : mono_security_core_clr_ensure_reflection_access_method (MonoMethod *method, MonoError *error)
+<span class="lineNum">    1070 </span>            : {
+<span class="lineNum">    1071 </span>            :         mono_error_init (error);
+<span class="lineNum">    1072 </span>            :         return TRUE;
+<span class="lineNum">    1073 </span>            : }
+<span class="lineNum">    1074 </span>            : 
+<span class="lineNum">    1075 </span>            : gboolean
+<span class="lineNum">    1076 </span>            : mono_security_core_clr_ensure_delegate_creation (MonoMethod *method, MonoError *error)
+<span class="lineNum">    1077 </span>            : {
+<span class="lineNum">    1078 </span>            :         mono_error_init (error);
+<span class="lineNum">    1079 </span>            :         return TRUE;
+<span class="lineNum">    1080 </span>            : }
+<span class="lineNum">    1081 </span>            : 
+<span class="lineNum">    1082 </span>            : MonoException*
+<span class="lineNum">    1083 </span>            : mono_security_core_clr_ensure_dynamic_method_resolved_object (gpointer ref, MonoClass *handle_class)
+<span class="lineNum">    1084 </span>            : {
+<span class="lineNum">    1085 </span>            :         return NULL;
+<span class="lineNum">    1086 </span>            : }
+<span class="lineNum">    1087 </span>            : 
+<span class="lineNum">    1088 </span>            : gboolean
+<span class="lineNum">    1089 </span>            : mono_security_core_clr_can_access_internals (MonoImage *accessing, MonoImage* accessed)
+<span class="lineNum">    1090 </span>            : {
+<span class="lineNum">    1091 </span>            :         return TRUE;
+<span class="lineNum">    1092 </span>            : }
+<span class="lineNum">    1093 </span>            : 
+<span class="lineNum">    1094 </span>            : MonoException*
+<span class="lineNum">    1095 </span>            : mono_security_core_clr_is_field_access_allowed (MonoMethod *caller, MonoClassField *field)
+<span class="lineNum">    1096 </span>            : {
+<span class="lineNum">    1097 </span>            :         return NULL;
+<span class="lineNum">    1098 </span>            : }
+<span class="lineNum">    1099 </span>            : 
+<span class="lineNum">    1100 </span>            : MonoException*
+<span class="lineNum">    1101 </span>            : mono_security_core_clr_is_call_allowed (MonoMethod *caller, MonoMethod *callee)
+<span class="lineNum">    1102 </span>            : {
+<span class="lineNum">    1103 </span>            :         return NULL;
+<span class="lineNum">    1104 </span>            : }
+<span class="lineNum">    1105 </span>            : 
+<span class="lineNum">    1106 </span>            : MonoSecurityCoreCLRLevel
+<span class="lineNum">    1107 </span>            : mono_security_core_clr_class_level (MonoClass *klass)
+<span class="lineNum">    1108 </span>            : {
+<span class="lineNum">    1109 </span>            :         return MONO_SECURITY_CORE_CLR_TRANSPARENT;
+<span class="lineNum">    1110 </span>            : }
+<span class="lineNum">    1111 </span>            : 
+<span class="lineNum">    1112 </span>            : MonoSecurityCoreCLRLevel
+<span class="lineNum">    1113 </span>            : mono_security_core_clr_field_level (MonoClassField *field, gboolean with_class_level)
+<span class="lineNum">    1114 </span>            : {
+<span class="lineNum">    1115 </span>            :         return MONO_SECURITY_CORE_CLR_TRANSPARENT;
+<span class="lineNum">    1116 </span>            : }
+<span class="lineNum">    1117 </span>            : 
+<span class="lineNum">    1118 </span>            : MonoSecurityCoreCLRLevel
+<span class="lineNum">    1119 </span>            : mono_security_core_clr_method_level (MonoMethod *method, gboolean with_class_level)
+<span class="lineNum">    1120 </span>            : {
+<span class="lineNum">    1121 </span>            :         return MONO_SECURITY_CORE_CLR_TRANSPARENT;
+<span class="lineNum">    1122 </span>            : }
+<span class="lineNum">    1123 </span>            : 
+<span class="lineNum">    1124 </span>            : void
+<span class="lineNum">    1125 </span>            : mono_security_enable_core_clr ()
+<span class="lineNum">    1126 </span>            : {
+<span class="lineNum">    1127 </span>            : }
+<span class="lineNum">    1128 </span>            : 
+<span class="lineNum">    1129 </span>            : #endif /* DISABLE_SECURITY */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

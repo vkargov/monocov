@@ -1,0 +1,270 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-logger-internals.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-logger-internals.h<span style="font-size: 80%;"> (source / <a href="mono-logger-internals.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">12</td>
+            <td class="headerCovTableEntry">13</td>
+            <td class="headerCovTableEntryHi">92.3 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : #ifndef __MONO_LOGGER_INTERNAL_H__</a>
+<span class="lineNum">       2 </span>            : #define __MONO_LOGGER_INTERNAL_H__
+<span class="lineNum">       3 </span>            : 
+<span class="lineNum">       4 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">       5 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">       6 </span>            : #include &quot;mono-logger.h&quot;
+<span class="lineNum">       7 </span>            : 
+<span class="lineNum">       8 </span>            : G_BEGIN_DECLS
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : typedef enum {
+<span class="lineNum">      11 </span>            :         MONO_TRACE_ASSEMBLY             = (1&lt;&lt;0),
+<span class="lineNum">      12 </span>            :         MONO_TRACE_TYPE                 = (1&lt;&lt;1),
+<span class="lineNum">      13 </span>            :         MONO_TRACE_DLLIMPORT            = (1&lt;&lt;2),
+<span class="lineNum">      14 </span>            :         MONO_TRACE_GC                   = (1&lt;&lt;3),
+<span class="lineNum">      15 </span>            :         MONO_TRACE_CONFIG               = (1&lt;&lt;4),
+<span class="lineNum">      16 </span>            :         MONO_TRACE_AOT                  = (1&lt;&lt;5),
+<span class="lineNum">      17 </span>            :         MONO_TRACE_SECURITY             = (1&lt;&lt;6),
+<span class="lineNum">      18 </span>            :         MONO_TRACE_THREADPOOL           = (1&lt;&lt;7),
+<span class="lineNum">      19 </span>            :         MONO_TRACE_IO_THREADPOOL        = (1&lt;&lt;8),
+<span class="lineNum">      20 </span>            :         MONO_TRACE_IO_LAYER             = (1&lt;&lt;9),
+<span class="lineNum">      21 </span>            :         MONO_TRACE_W32HANDLE    = (1&lt;&lt;10),
+<span class="lineNum">      22 </span>            :         MONO_TRACE_ALL                  = MONO_TRACE_ASSEMBLY |
+<span class="lineNum">      23 </span>            :                                           MONO_TRACE_TYPE |
+<span class="lineNum">      24 </span>            :                                           MONO_TRACE_DLLIMPORT |
+<span class="lineNum">      25 </span>            :                                           MONO_TRACE_GC |
+<span class="lineNum">      26 </span>            :                                           MONO_TRACE_CONFIG |
+<span class="lineNum">      27 </span>            :                                           MONO_TRACE_AOT |
+<span class="lineNum">      28 </span>            :                                           MONO_TRACE_SECURITY |
+<span class="lineNum">      29 </span>            :                                           MONO_TRACE_THREADPOOL |
+<span class="lineNum">      30 </span>            :                                           MONO_TRACE_IO_THREADPOOL |
+<span class="lineNum">      31 </span>            :                                           MONO_TRACE_IO_LAYER |
+<span class="lineNum">      32 </span>            :                                           MONO_TRACE_W32HANDLE
+<span class="lineNum">      33 </span>            : } MonoTraceMask;
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span>            : extern GLogLevelFlags mono_internal_current_level;
+<span class="lineNum">      36 </span>            : extern MonoTraceMask mono_internal_current_mask;
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span>            : void 
+<span class="lineNum">      39 </span>            : mono_trace_init (void);
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span>            : void 
+<span class="lineNum">      42 </span>            : mono_trace_cleanup (void);
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span>            : void 
+<span class="lineNum">      45 </span>            : mono_tracev_inner (GLogLevelFlags level, MonoTraceMask mask, const char *format, va_list args);
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : void 
+<span class="lineNum">      48 </span>            : mono_trace_set_level (GLogLevelFlags level);
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span>            : void 
+<span class="lineNum">      51 </span>            : mono_trace_set_mask (MonoTraceMask mask);
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : void 
+<span class="lineNum">      54 </span>            : mono_trace_push (GLogLevelFlags level, MonoTraceMask mask);
+<span class="lineNum">      55 </span>            : 
+<span class="lineNum">      56 </span>            : void 
+<span class="lineNum">      57 </span>            : mono_trace_pop (void);
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span>            : gboolean
+<span class="lineNum">      60 </span>            : mono_trace_is_traced (GLogLevelFlags level, MonoTraceMask mask);
+<a name="61"><span class="lineNum">      61 </span>            : </a>
+<span class="lineNum">      62 </span>            : G_GNUC_UNUSED static void
+<span class="lineNum">      63 </span>            : mono_tracev (GLogLevelFlags level, MonoTraceMask mask, const char *format, va_list args)
+<span class="lineNum">      64 </span>            : {
+<span class="lineNum">      65 </span><span class="lineCov">        120 :         if(G_UNLIKELY (level &lt;= mono_internal_current_level &amp;&amp; mask &amp; mono_internal_current_mask))</span>
+<span class="lineNum">      66 </span><span class="lineNoCov">          0 :                 mono_tracev_inner (level, mask, format, args);</span>
+<span class="lineNum">      67 </span><span class="lineCov">         60 : }</span>
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span>            : /**
+<span class="lineNum">      70 </span>            :  * mono_trace:
+<span class="lineNum">      71 </span>            :  *
+<span class="lineNum">      72 </span>            :  *      @level: Verbose level of the specified message
+<span class="lineNum">      73 </span>            :  *      @mask: Type of the specified message
+<span class="lineNum">      74 </span>            :  *
+<span class="lineNum">      75 </span>            :  * Traces a new message, depending on the current logging level
+<span class="lineNum">      76 </span>            :  * and trace mask.
+<a name="77"><span class="lineNum">      77 </span>            :  */</a>
+<span class="lineNum">      78 </span>            : G_GNUC_UNUSED MONO_ATTR_FORMAT_PRINTF(3,4) static void
+<span class="lineNum">      79 </span>            : mono_trace (GLogLevelFlags level, MonoTraceMask mask, const char *format, ...)
+<span class="lineNum">      80 </span>            : {
+<span class="lineNum">      81 </span><span class="lineCov">   37299651 :         if(G_UNLIKELY (level &lt;= mono_internal_current_level &amp;&amp; mask &amp; mono_internal_current_mask)) {</span>
+<span class="lineNum">      82 </span>            :                 va_list args;
+<span class="lineNum">      83 </span><span class="lineCov">       3285 :                 va_start (args, format);</span>
+<span class="lineNum">      84 </span><span class="lineCov">       3285 :                 mono_tracev_inner (level, mask, format, args);</span>
+<span class="lineNum">      85 </span><span class="lineCov">       3285 :                 va_end (args);</span>
+<span class="lineNum">      86 </span><span class="lineCov">       3285 :         }</span>
+<span class="lineNum">      87 </span><span class="lineCov">   18649090 : }</span>
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : #ifdef G_HAVE_ISO_VARARGS
+<span class="lineNum">      90 </span>            : #define mono_trace_error(...)   mono_trace(G_LOG_LEVEL_ERROR, \
+<span class="lineNum">      91 </span>            :                                                                                         __VA_ARGS__)
+<span class="lineNum">      92 </span>            : #define mono_trace_warning(...) mono_trace(G_LOG_LEVEL_WARNING, \
+<span class="lineNum">      93 </span>            :                                                                                         __VA_ARGS__)
+<span class="lineNum">      94 </span>            : #define mono_trace_message(...) mono_trace(G_LOG_LEVEL_MESSAGE, \
+<span class="lineNum">      95 </span>            :                                                                                         __VA_ARGS__)
+<span class="lineNum">      96 </span>            : #elif defined(G_HAVE_GNUC_VARARGS)
+<span class="lineNum">      97 </span>            : #define mono_trace_error(format...)     mono_trace(G_LOG_LEVEL_ERROR, \
+<span class="lineNum">      98 </span>            :                                                                                         format)
+<span class="lineNum">      99 </span>            : #define mono_trace_warning(format...) mono_trace(G_LOG_LEVEL_WARNING, \
+<span class="lineNum">     100 </span>            :                                                                                         format)
+<span class="lineNum">     101 </span>            : #define mono_trace_message(format...) mono_trace(G_LOG_LEVEL_MESSAGE, \
+<span class="lineNum">     102 </span>            :                                                                                         format)
+<span class="lineNum">     103 </span>            : #else /* no varargs macros */
+<span class="lineNum">     104 </span>            : G_GNUC_UNUSED static void
+<span class="lineNum">     105 </span>            : mono_trace_error(MonoTraceMask mask, const char *format, ...)
+<span class="lineNum">     106 </span>            : {
+<span class="lineNum">     107 </span>            :         va_list args;
+<span class="lineNum">     108 </span>            :         va_start (args, format);
+<span class="lineNum">     109 </span>            :         mono_tracev(G_LOG_LEVEL_ERROR, mask, format, args);
+<span class="lineNum">     110 </span>            :         va_end (args);
+<span class="lineNum">     111 </span>            : }
+<a name="112"><span class="lineNum">     112 </span>            : </a>
+<span class="lineNum">     113 </span>            : G_GNUC_UNUSED static void
+<span class="lineNum">     114 </span>            : mono_trace_warning(MonoTraceMask mask, const char *format, ...)
+<span class="lineNum">     115 </span>            : {
+<span class="lineNum">     116 </span>            :         va_list args;
+<span class="lineNum">     117 </span><span class="lineCov">         60 :         va_start (args, format);</span>
+<span class="lineNum">     118 </span><span class="lineCov">         60 :         mono_tracev(G_LOG_LEVEL_WARNING, mask, format, args);</span>
+<span class="lineNum">     119 </span><span class="lineCov">         60 :         va_end (args);</span>
+<span class="lineNum">     120 </span><span class="lineCov">         60 : }</span>
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span>            : G_GNUC_UNUSED static void
+<span class="lineNum">     123 </span>            : mono_trace_message(MonoTraceMask mask, const char *format, ...)
+<span class="lineNum">     124 </span>            : {
+<span class="lineNum">     125 </span>            :         va_list args;
+<span class="lineNum">     126 </span>            :         va_start (args, format);
+<span class="lineNum">     127 </span>            :         mono_tracev(G_LOG_LEVEL_MESSAGE, mask, format, args);
+<span class="lineNum">     128 </span>            :         va_end (args);
+<span class="lineNum">     129 </span>            : }
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span>            : #endif /* !__GNUC__ */
+<span class="lineNum">     132 </span>            : 
+<span class="lineNum">     133 </span>            : #if defined (PLATFORM_ANDROID) || (defined (TARGET_IOS) &amp;&amp; defined (TARGET_IOS))
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span>            : #define mono_gc_printf(gc_log_file, format, ...) g_log (&quot;mono-gc&quot;, G_LOG_LEVEL_MESSAGE, format, ##__VA_ARGS__)
+<span class="lineNum">     136 </span>            : #define mono_runtime_printf(format, ...) g_log (&quot;mono-rt&quot;, G_LOG_LEVEL_MESSAGE, format &quot;\n&quot;, ##__VA_ARGS__)
+<span class="lineNum">     137 </span>            : #define mono_runtime_printf_err(format, ...) g_log (&quot;mono-rt&quot;, G_LOG_LEVEL_CRITICAL, format &quot;\n&quot;, ##__VA_ARGS__)
+<span class="lineNum">     138 </span>            : #define mono_runtime_stdout_fflush() do { } while (0)
+<span class="lineNum">     139 </span>            : 
+<span class="lineNum">     140 </span>            : #else
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span>            : #define mono_gc_printf(gc_log_file, format, ...) do {   \
+<span class="lineNum">     143 </span>            :         fprintf (gc_log_file, format, ##__VA_ARGS__);   \
+<span class="lineNum">     144 </span>            :         fflush (gc_log_file);   \
+<span class="lineNum">     145 </span>            : } while (0)
+<span class="lineNum">     146 </span>            : 
+<span class="lineNum">     147 </span>            : #define mono_runtime_printf(format, ...) fprintf (stdout, format &quot;\n&quot;, ##__VA_ARGS__)
+<span class="lineNum">     148 </span>            : #define mono_runtime_printf_err(format, ...) fprintf (stderr, format &quot;\n&quot;, ##__VA_ARGS__)
+<span class="lineNum">     149 </span>            : #define mono_runtime_stdout_fflush() do { fflush (stdout); } while (0)
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span>            : #endif
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span>            : /* Internal logging API */
+<span class="lineNum">     154 </span>            : typedef void (*MonoLoggerOpen) (const char *, void *);
+<span class="lineNum">     155 </span>            : typedef void (*MonoLoggerWrite) (const char *, GLogLevelFlags, mono_bool, const char *);
+<span class="lineNum">     156 </span>            : typedef void (*MonoLoggerClose) (void);
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span>            : typedef struct _MonoLogCallParm_ {
+<span class="lineNum">     159 </span>            :         MonoLoggerOpen  opener;         /* Routine to open logging */
+<span class="lineNum">     160 </span>            :         MonoLoggerWrite writer;         /* Routine to write log data */
+<span class="lineNum">     161 </span>            :         MonoLoggerClose closer;         /* Routine to close logging */
+<span class="lineNum">     162 </span>            :         char            *dest;          /* Log destination */
+<span class="lineNum">     163 </span>            :         void            *user_data;     /* User data from legacy handler */
+<span class="lineNum">     164 </span>            :         mono_bool       header;         /* Whether we want pid/time/date in log message */
+<span class="lineNum">     165 </span>            : } MonoLogCallParm;
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span>            : void mono_trace_set_log_handler_internal (MonoLogCallParm *callback, void *user_data);
+<span class="lineNum">     168 </span>            : void mono_trace_set_logdest_string (const char *value);
+<span class="lineNum">     169 </span>            : void mono_trace_set_logheader_string (const char *value);
+<span class="lineNum">     170 </span>            : 
+<span class="lineNum">     171 </span>            : void mono_log_open_syslog (const char *, void *);
+<span class="lineNum">     172 </span>            : void mono_log_write_syslog (const char *, GLogLevelFlags, mono_bool, const char *);
+<span class="lineNum">     173 </span>            : void mono_log_close_syslog (void);
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span>            : void mono_log_open_logfile (const char *, void *);
+<span class="lineNum">     176 </span>            : void mono_log_write_logfile (const char *, GLogLevelFlags, mono_bool, const char *);
+<span class="lineNum">     177 </span>            : void mono_log_close_logfile (void);
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span>            : #if PLATFORM_ANDROID
+<span class="lineNum">     180 </span>            : void mono_log_open_logcat (const char *path, void *userData);
+<span class="lineNum">     181 </span>            : void mono_log_write_logcat (const char *log_domain, GLogLevelFlags level, mono_bool hdr, const char *message);
+<span class="lineNum">     182 </span>            : void mono_log_close_logcat (void);
+<span class="lineNum">     183 </span>            : #endif
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span>            : #if defined(HOST_IOS)
+<span class="lineNum">     186 </span>            : void mono_log_open_asl (const char *path, void *userData);
+<span class="lineNum">     187 </span>            : void mono_log_write_asl (const char *log_domain, GLogLevelFlags level, mono_bool hdr, const char *message);
+<span class="lineNum">     188 </span>            : void mono_log_close_asl (void);
+<span class="lineNum">     189 </span>            : 
+<span class="lineNum">     190 </span>            : #endif
+<span class="lineNum">     191 </span>            : 
+<span class="lineNum">     192 </span>            : G_END_DECLS
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span>            : #endif /* __MONO_LOGGER_INTERNAL_H__ */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

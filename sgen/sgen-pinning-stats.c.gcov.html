@@ -1,0 +1,325 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-pinning-stats.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-pinning-stats.c<span style="font-size: 80%;"> (source / <a href="sgen-pinning-stats.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">34</td>
+            <td class="headerCovTableEntry">111</td>
+            <td class="headerCovTableEntryLo">30.6 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntry">12</td>
+            <td class="headerCovTableEntryLo">50.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * Copyright 2001-2003 Ximian, Inc
+<span class="lineNum">       3 </span>            :  * Copyright 2003-2010 Novell, Inc.
+<span class="lineNum">       4 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       5 </span>            :  * 
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      10 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &quot;mono/sgen/sgen-gc.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;mono/sgen/sgen-pinning.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;mono/sgen/sgen-hash-table.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/sgen/sgen-client.h&quot;
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : typedef struct _PinStatAddress PinStatAddress;
+<span class="lineNum">      20 </span>            : struct _PinStatAddress {
+<span class="lineNum">      21 </span>            :         char *addr;
+<span class="lineNum">      22 </span>            :         int pin_types;
+<span class="lineNum">      23 </span>            :         PinStatAddress *left;
+<span class="lineNum">      24 </span>            :         PinStatAddress *right;
+<span class="lineNum">      25 </span>            : };
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : typedef struct {
+<span class="lineNum">      28 </span>            :         size_t num_pins [PIN_TYPE_MAX];
+<span class="lineNum">      29 </span>            : } PinnedClassEntry;
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : typedef struct {
+<span class="lineNum">      32 </span>            :         gulong num_remsets;
+<span class="lineNum">      33 </span>            : } GlobalRemsetClassEntry;
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span>            : static gboolean do_pin_stats = FALSE;
+<span class="lineNum">      36 </span>            : 
+<span class="lineNum">      37 </span>            : static PinStatAddress *pin_stat_addresses = NULL;
+<span class="lineNum">      38 </span>            : static size_t pinned_byte_counts [PIN_TYPE_MAX];
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : static size_t pinned_bytes_in_generation [GENERATION_MAX];
+<span class="lineNum">      41 </span>            : static int pinned_objects_in_generation [GENERATION_MAX];
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : static SgenPointerQueue pinned_objects = SGEN_POINTER_QUEUE_INIT (INTERNAL_MEM_STATISTICS);
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            : static SgenHashTable pinned_class_hash_table = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_STATISTICS, INTERNAL_MEM_STAT_PINNED_CLASS, sizeof (PinnedClassEntry), g_str_hash, g_str_equal);
+<span class="lineNum">      46 </span>            : static SgenHashTable global_remset_class_hash_table = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_STATISTICS, INTERNAL_MEM_STAT_REMSET_CLASS, sizeof (GlobalRemsetClassEntry), g_str_hash, g_str_equal);
+<a name="47"><span class="lineNum">      47 </span>            : </a>
+<span class="lineNum">      48 </span>            : void
+<span class="lineNum">      49 </span>            : sgen_pin_stats_enable (void)
+<span class="lineNum">      50 </span>            : {
+<span class="lineNum">      51 </span><span class="lineNoCov">          0 :         do_pin_stats = TRUE;</span>
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 : }</span>
+<a name="53"><span class="lineNum">      53 </span>            : </a>
+<span class="lineNum">      54 </span>            : static void
+<span class="lineNum">      55 </span>            : pin_stats_tree_free (PinStatAddress *node)
+<span class="lineNum">      56 </span>            : {
+<span class="lineNum">      57 </span><span class="lineCov">     189965 :         if (!node)</span>
+<span class="lineNum">      58 </span><span class="lineCov">     189965 :                 return;</span>
+<span class="lineNum">      59 </span><span class="lineNoCov">          0 :         pin_stats_tree_free (node-&gt;left);</span>
+<span class="lineNum">      60 </span><span class="lineNoCov">          0 :         pin_stats_tree_free (node-&gt;right);</span>
+<span class="lineNum">      61 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (node, sizeof (PinStatAddress), INTERNAL_MEM_STATISTICS);</span>
+<span class="lineNum">      62 </span><span class="lineCov">     189965 : }</span>
+<a name="63"><span class="lineNum">      63 </span>            : </a>
+<span class="lineNum">      64 </span>            : void
+<span class="lineNum">      65 </span>            : sgen_pin_stats_reset (void)
+<span class="lineNum">      66 </span>            : {
+<span class="lineNum">      67 </span>            :         int i;
+<span class="lineNum">      68 </span><span class="lineCov">     189965 :         pin_stats_tree_free (pin_stat_addresses);</span>
+<span class="lineNum">      69 </span><span class="lineCov">     189965 :         pin_stat_addresses = NULL;</span>
+<span class="lineNum">      70 </span><span class="lineCov">    1519720 :         for (i = 0; i &lt; PIN_TYPE_MAX; ++i)</span>
+<span class="lineNum">      71 </span><span class="lineCov">     569895 :                 pinned_byte_counts [i] = 0;</span>
+<span class="lineNum">      72 </span><span class="lineCov">    1139790 :         for (i = 0; i &lt; GENERATION_MAX; ++i) {</span>
+<span class="lineNum">      73 </span><span class="lineCov">     379930 :                 pinned_bytes_in_generation [i] = 0;</span>
+<span class="lineNum">      74 </span><span class="lineCov">     379930 :                 pinned_objects_in_generation [i] = 0;</span>
+<span class="lineNum">      75 </span><span class="lineCov">     379930 :         }</span>
+<span class="lineNum">      76 </span><span class="lineCov">     189965 :         sgen_pointer_queue_clear (&amp;pinned_objects);</span>
+<span class="lineNum">      77 </span><span class="lineCov">     189965 :         sgen_hash_table_clean (&amp;pinned_class_hash_table);</span>
+<span class="lineNum">      78 </span><span class="lineCov">     189965 :         sgen_hash_table_clean (&amp;global_remset_class_hash_table);</span>
+<span class="lineNum">      79 </span><span class="lineCov">     189965 : }</span>
+<a name="80"><span class="lineNum">      80 </span>            : </a>
+<span class="lineNum">      81 </span>            : void
+<span class="lineNum">      82 </span>            : sgen_pin_stats_register_address (char *addr, int pin_type)
+<span class="lineNum">      83 </span>            : {
+<span class="lineNum">      84 </span><span class="lineCov">   26069320 :         PinStatAddress **node_ptr = &amp;pin_stat_addresses;</span>
+<span class="lineNum">      85 </span>            :         PinStatAddress *node;
+<span class="lineNum">      86 </span><span class="lineCov">   26069320 :         int pin_type_bit = 1 &lt;&lt; pin_type;</span>
+<span class="lineNum">      87 </span>            : 
+<span class="lineNum">      88 </span><span class="lineCov">   26069320 :         if (!do_pin_stats)</span>
+<span class="lineNum">      89 </span><span class="lineCov">   26069320 :                 return;</span>
+<span class="lineNum">      90 </span><span class="lineNoCov">          0 :         while (*node_ptr) {</span>
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 :                 node = *node_ptr;</span>
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :                 if (addr == node-&gt;addr) {</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :                         node-&gt;pin_types |= pin_type_bit;</span>
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">      95 </span>            :                 }
+<span class="lineNum">      96 </span><span class="lineNoCov">          0 :                 if (addr &lt; node-&gt;addr)</span>
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :                         node_ptr = &amp;node-&gt;left;</span>
+<span class="lineNum">      98 </span>            :                 else
+<span class="lineNum">      99 </span><span class="lineNoCov">          0 :                         node_ptr = &amp;node-&gt;right;</span>
+<span class="lineNum">     100 </span>            :         }
+<span class="lineNum">     101 </span>            : 
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :         node = (PinStatAddress *)sgen_alloc_internal_dynamic (sizeof (PinStatAddress), INTERNAL_MEM_STATISTICS, TRUE);</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :         node-&gt;addr = addr;</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         node-&gt;pin_types = pin_type_bit;</span>
+<span class="lineNum">     105 </span><span class="lineNoCov">          0 :         node-&gt;left = node-&gt;right = NULL;</span>
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span><span class="lineNoCov">          0 :         *node_ptr = node;</span>
+<span class="lineNum">     108 </span><span class="lineCov">   26069320 : }</span>
+<a name="109"><span class="lineNum">     109 </span>            : </a>
+<span class="lineNum">     110 </span>            : static void
+<span class="lineNum">     111 </span>            : pin_stats_count_object_from_tree (GCObject *object, size_t size, PinStatAddress *node, int *pin_types)
+<span class="lineNum">     112 </span>            : {
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :         char *obj = (char*)object;</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :         if (!node)</span>
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :         if (node-&gt;addr &gt;= obj &amp;&amp; node-&gt;addr &lt; obj + size) {</span>
+<span class="lineNum">     117 </span>            :                 int i;
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; PIN_TYPE_MAX; ++i) {</span>
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :                         int pin_bit = 1 &lt;&lt; i;</span>
+<span class="lineNum">     120 </span><span class="lineNoCov">          0 :                         if (!(*pin_types &amp; pin_bit) &amp;&amp; (node-&gt;pin_types &amp; pin_bit)) {</span>
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :                                 pinned_byte_counts [i] += size;</span>
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 :                                 *pin_types |= pin_bit;</span>
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :         if (obj &lt; node-&gt;addr)</span>
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :                 pin_stats_count_object_from_tree (object, size, node-&gt;left, pin_types);</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 :         if (obj + size - 1 &gt; node-&gt;addr)</span>
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :                 pin_stats_count_object_from_tree (object, size, node-&gt;right, pin_types);</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 : }</span>
+<a name="131"><span class="lineNum">     131 </span>            : </a>
+<span class="lineNum">     132 </span>            : static gpointer
+<span class="lineNum">     133 </span>            : lookup_vtable_entry (SgenHashTable *hash_table, GCVTable vtable, gpointer empty_entry)
+<span class="lineNum">     134 </span>            : {
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :         char *name = g_strdup_printf (&quot;%s.%s&quot;, sgen_client_vtable_get_namespace (vtable), sgen_client_vtable_get_name (vtable));</span>
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         gpointer entry = sgen_hash_table_lookup (hash_table, name);</span>
+<span class="lineNum">     137 </span>            : 
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :         if (entry) {</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :                 g_free (name);</span>
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :                 sgen_hash_table_replace (hash_table, name, empty_entry, NULL);</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                 entry = sgen_hash_table_lookup (hash_table, name);</span>
+<span class="lineNum">     143 </span>            :         }
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :         return entry;</span>
+<span class="lineNum">     146 </span>            : }
+<a name="147"><span class="lineNum">     147 </span>            : </a>
+<span class="lineNum">     148 </span>            : static void
+<span class="lineNum">     149 </span>            : register_vtable (GCVTable vtable, int pin_types)
+<span class="lineNum">     150 </span>            : {
+<span class="lineNum">     151 </span>            :         PinnedClassEntry empty_entry;
+<span class="lineNum">     152 </span>            :         PinnedClassEntry *entry;
+<span class="lineNum">     153 </span>            :         int i;
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :         memset (&amp;empty_entry, 0, sizeof (PinnedClassEntry));</span>
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :         entry = (PinnedClassEntry *)lookup_vtable_entry (&amp;pinned_class_hash_table, vtable, &amp;empty_entry);</span>
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; PIN_TYPE_MAX; ++i) {</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :                 if (pin_types &amp; (1 &lt;&lt; i))</span>
+<span class="lineNum">     160 </span><span class="lineNoCov">          0 :                         ++entry-&gt;num_pins [i];</span>
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 : }</span>
+<a name="163"><span class="lineNum">     163 </span>            : </a>
+<span class="lineNum">     164 </span>            : void
+<span class="lineNum">     165 </span>            : sgen_pin_stats_register_object (GCObject *obj, int generation)
+<span class="lineNum">     166 </span>            : {
+<span class="lineNum">     167 </span><span class="lineCov">    4455719 :         int pin_types = 0;</span>
+<span class="lineNum">     168 </span><span class="lineCov">    4455719 :         size_t size = 0;</span>
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span><span class="lineCov">    4455719 :         if (binary_protocol_is_enabled ()) {</span>
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :                 size = sgen_safe_object_get_size (obj);</span>
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :                 pinned_bytes_in_generation [generation] += size;</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :                 ++pinned_objects_in_generation [generation];</span>
+<span class="lineNum">     174 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     175 </span>            : 
+<span class="lineNum">     176 </span><span class="lineCov">    4455719 :         if (!do_pin_stats)</span>
+<span class="lineNum">     177 </span><span class="lineCov">    4455719 :                 return;</span>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :         if (!size)</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :                 size = sgen_safe_object_get_size (obj);</span>
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :         pin_stats_count_object_from_tree (obj, size, pin_stat_addresses, &amp;pin_types);</span>
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :         sgen_pointer_queue_add (&amp;pinned_objects, obj);</span>
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span><span class="lineNoCov">          0 :         if (pin_types)</span>
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :                 register_vtable (SGEN_LOAD_VTABLE (obj), pin_types);</span>
+<span class="lineNum">     187 </span><span class="lineCov">    4455719 : }</span>
+<a name="188"><span class="lineNum">     188 </span>            : </a>
+<span class="lineNum">     189 </span>            : void
+<span class="lineNum">     190 </span>            : sgen_pin_stats_register_global_remset (GCObject *obj)
+<span class="lineNum">     191 </span>            : {
+<span class="lineNum">     192 </span>            :         GlobalRemsetClassEntry empty_entry;
+<span class="lineNum">     193 </span>            :         GlobalRemsetClassEntry *entry;
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span><span class="lineCov">   21184849 :         if (!do_pin_stats)</span>
+<span class="lineNum">     196 </span><span class="lineCov">   21184849 :                 return;</span>
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :         memset (&amp;empty_entry, 0, sizeof (GlobalRemsetClassEntry));</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :         entry = (GlobalRemsetClassEntry *)lookup_vtable_entry (&amp;global_remset_class_hash_table, SGEN_LOAD_VTABLE (obj), &amp;empty_entry);</span>
+<span class="lineNum">     200 </span>            : 
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :         ++entry-&gt;num_remsets;</span>
+<span class="lineNum">     202 </span><span class="lineCov">   21184849 : }</span>
+<a name="203"><span class="lineNum">     203 </span>            : </a>
+<span class="lineNum">     204 </span>            : void
+<span class="lineNum">     205 </span>            : sgen_pin_stats_report (void)
+<span class="lineNum">     206 </span>            : {
+<span class="lineNum">     207 </span>            :         char *name;
+<span class="lineNum">     208 </span>            :         PinnedClassEntry *pinned_entry;
+<span class="lineNum">     209 </span>            :         GlobalRemsetClassEntry *remset_entry;
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineCov">     386474 :         binary_protocol_pin_stats (pinned_objects_in_generation [GENERATION_NURSERY], pinned_bytes_in_generation [GENERATION_NURSERY],</span>
+<span class="lineNum">     212 </span><span class="lineCov">     193237 :                         pinned_objects_in_generation [GENERATION_OLD], pinned_bytes_in_generation [GENERATION_OLD]);</span>
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span><span class="lineCov">     193237 :         if (!do_pin_stats)</span>
+<span class="lineNum">     215 </span><span class="lineCov">     193237 :                 return;</span>
+<span class="lineNum">     216 </span>            : 
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :         mono_gc_printf (gc_debug_file, &quot;\n%-50s  %10s  %10s  %10s\n&quot;, &quot;Class&quot;, &quot;Stack&quot;, &quot;Static&quot;, &quot;Other&quot;);</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :         SGEN_HASH_TABLE_FOREACH (&amp;pinned_class_hash_table, char *, name, PinnedClassEntry *, pinned_entry) {</span>
+<span class="lineNum">     219 </span>            :                 int i;
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :                 mono_gc_printf (gc_debug_file, &quot;%-50s&quot;, name);</span>
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; PIN_TYPE_MAX; ++i)</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :                         mono_gc_printf (gc_debug_file, &quot;  %10ld&quot;, pinned_entry-&gt;num_pins [i]);</span>
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :                 mono_gc_printf (gc_debug_file, &quot;\n&quot;);</span>
+<span class="lineNum">     224 </span><span class="lineNoCov">          0 :         } SGEN_HASH_TABLE_FOREACH_END;</span>
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :         mono_gc_printf (gc_debug_file, &quot;\n%-50s  %10s\n&quot;, &quot;Class&quot;, &quot;#Remsets&quot;);</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :         SGEN_HASH_TABLE_FOREACH (&amp;global_remset_class_hash_table, char *, name, GlobalRemsetClassEntry *, remset_entry) {</span>
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :                 mono_gc_printf (gc_debug_file, &quot;%-50s  %10ld\n&quot;, name, remset_entry-&gt;num_remsets);</span>
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :         } SGEN_HASH_TABLE_FOREACH_END;</span>
+<span class="lineNum">     230 </span>            : 
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :         mono_gc_printf (gc_debug_file, &quot;\nTotal bytes pinned from stack: %ld  static: %ld  other: %ld\n&quot;,</span>
+<span class="lineNum">     232 </span>            :                         pinned_byte_counts [PIN_TYPE_STACK],
+<span class="lineNum">     233 </span>            :                         pinned_byte_counts [PIN_TYPE_STATIC_DATA],
+<span class="lineNum">     234 </span>            :                         pinned_byte_counts [PIN_TYPE_OTHER]);
+<span class="lineNum">     235 </span><span class="lineCov">     193237 : }</span>
+<a name="236"><span class="lineNum">     236 </span>            : </a>
+<span class="lineNum">     237 </span>            : size_t
+<span class="lineNum">     238 </span>            : sgen_pin_stats_get_pinned_byte_count (int pin_type)
+<span class="lineNum">     239 </span>            : {
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :         return pinned_byte_counts [pin_type];</span>
+<span class="lineNum">     241 </span>            : }
+<a name="242"><span class="lineNum">     242 </span>            : </a>
+<span class="lineNum">     243 </span>            : SgenPointerQueue*
+<span class="lineNum">     244 </span>            : sgen_pin_stats_get_object_list (void)
+<span class="lineNum">     245 </span>            : {
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :         return &amp;pinned_objects;</span>
+<span class="lineNum">     247 </span>            : }
+<span class="lineNum">     248 </span>            : 
+<span class="lineNum">     249 </span>            : #endif /* HAVE_SGEN_GC */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

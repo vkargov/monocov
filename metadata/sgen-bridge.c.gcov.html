@@ -1,0 +1,796 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/sgen-bridge.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - sgen-bridge.c<span style="font-size: 80%;"> (source / <a href="sgen-bridge.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntry">324</td>
+            <td class="headerCovTableEntryLo">2.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">33</td>
+            <td class="headerCovTableEntryLo">6.1 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-bridge.c: Simple generational GC.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright 2011 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       5 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       6 </span>            :  * Copyright 2001-2003 Ximian, Inc
+<span class="lineNum">       7 </span>            :  * Copyright 2003-2010 Novell, Inc.
+<span class="lineNum">       8 </span>            :  *
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #include &quot;sgen/sgen-gc.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;sgen-bridge-internals.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;sgen/sgen-hash-table.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;sgen/sgen-qsort.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;utils/mono-logger-internals.h&quot;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : typedef enum {
+<span class="lineNum">      25 </span>            :         BRIDGE_PROCESSOR_INVALID,
+<span class="lineNum">      26 </span>            :         BRIDGE_PROCESSOR_OLD,
+<span class="lineNum">      27 </span>            :         BRIDGE_PROCESSOR_NEW,
+<span class="lineNum">      28 </span>            :         BRIDGE_PROCESSOR_TARJAN,
+<span class="lineNum">      29 </span>            :         BRIDGE_PROCESSOR_DEFAULT = BRIDGE_PROCESSOR_TARJAN
+<span class="lineNum">      30 </span>            : } BridgeProcessorSelection;
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : // Bridge processor type pending / in use
+<span class="lineNum">      33 </span>            : static BridgeProcessorSelection bridge_processor_selection = BRIDGE_PROCESSOR_DEFAULT;
+<span class="lineNum">      34 </span>            : // Most recently requested callbacks
+<span class="lineNum">      35 </span>            : static MonoGCBridgeCallbacks pending_bridge_callbacks;
+<span class="lineNum">      36 </span>            : // Configuration to be passed to bridge processor after init
+<span class="lineNum">      37 </span>            : static SgenBridgeProcessorConfig bridge_processor_config;
+<span class="lineNum">      38 </span>            : // Currently-in-use callbacks
+<span class="lineNum">      39 </span>            : MonoGCBridgeCallbacks bridge_callbacks;
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span>            : // Bridge processor state
+<span class="lineNum">      42 </span>            : static SgenBridgeProcessor bridge_processor;
+<span class="lineNum">      43 </span>            : // This is used for a special debug feature
+<span class="lineNum">      44 </span>            : static SgenBridgeProcessor compare_to_bridge_processor;
+<span class="lineNum">      45 </span>            : 
+<span class="lineNum">      46 </span>            : volatile gboolean bridge_processing_in_progress = FALSE;
+<span class="lineNum">      47 </span>            : 
+<a name="48"><span class="lineNum">      48 </span>            : // FIXME: The current usage pattern for this function is unsafe. Bridge processing could start immediately after unlock</a>
+<span class="lineNum">      49 </span>            : void
+<span class="lineNum">      50 </span>            : mono_gc_wait_for_bridge_processing (void)
+<span class="lineNum">      51 </span>            : {
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 :         if (!bridge_processing_in_progress)</span>
+<span class="lineNum">      53 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_GC, &quot;GC_BRIDGE waiting for bridge processing to finish&quot;);</span>
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span><span class="lineNoCov">          0 :         sgen_gc_lock ();</span>
+<span class="lineNum">      58 </span><span class="lineNoCov">          0 :         sgen_gc_unlock ();</span>
+<span class="lineNum">      59 </span><span class="lineNoCov">          0 : }</span>
+<a name="60"><span class="lineNum">      60 </span>            : </a>
+<span class="lineNum">      61 </span>            : void
+<span class="lineNum">      62 </span>            : mono_gc_register_bridge_callbacks (MonoGCBridgeCallbacks *callbacks)
+<span class="lineNum">      63 </span>            : {
+<span class="lineNum">      64 </span><span class="lineNoCov">          0 :         if (callbacks-&gt;bridge_version != SGEN_BRIDGE_VERSION)</span>
+<span class="lineNum">      65 </span><span class="lineNoCov">          0 :                 g_error (&quot;Invalid bridge callback version. Expected %d but got %d\n&quot;, SGEN_BRIDGE_VERSION, callbacks-&gt;bridge_version);</span>
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            :         // Defer assigning to bridge_callbacks until we have the gc lock.
+<span class="lineNum">      68 </span>            :         // Note: This line is unsafe if we are on a separate thread from the one the runtime was initialized on.
+<span class="lineNum">      69 </span><span class="lineNoCov">          0 :         pending_bridge_callbacks = *callbacks;</span>
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span>            :         // If sgen has started, will assign bridge callbacks and init bridge
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :         sgen_init_bridge ();</span>
+<span class="lineNum">      73 </span><span class="lineNoCov">          0 : }</span>
+<a name="74"><span class="lineNum">      74 </span>            : </a>
+<span class="lineNum">      75 </span>            : static BridgeProcessorSelection
+<span class="lineNum">      76 </span>            : bridge_processor_name (const char *name)
+<span class="lineNum">      77 </span>            : {
+<span class="lineNum">      78 </span><span class="lineNoCov">          0 :         if (!strcmp (&quot;old&quot;, name)) {</span>
+<span class="lineNum">      79 </span><span class="lineNoCov">          0 :                 return BRIDGE_PROCESSOR_OLD;</span>
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :         } else if (!strcmp (&quot;new&quot;, name)) {</span>
+<span class="lineNum">      81 </span><span class="lineNoCov">          0 :                 return BRIDGE_PROCESSOR_NEW;</span>
+<span class="lineNum">      82 </span><span class="lineNoCov">          0 :         } else if (!strcmp (&quot;tarjan&quot;, name)) {</span>
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 :                 return BRIDGE_PROCESSOR_TARJAN;</span>
+<span class="lineNum">      84 </span>            :         } else {
+<span class="lineNum">      85 </span><span class="lineNoCov">          0 :                 return BRIDGE_PROCESSOR_INVALID;</span>
+<span class="lineNum">      86 </span>            :         }
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 : }</span>
+<a name="88"><span class="lineNum">      88 </span>            : </a>
+<span class="lineNum">      89 </span>            : static gboolean
+<span class="lineNum">      90 </span>            : bridge_processor_started ()
+<span class="lineNum">      91 </span>            : {
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :         return bridge_processor.reset_data != NULL;</span>
+<span class="lineNum">      93 </span>            : }
+<span class="lineNum">      94 </span>            : 
+<a name="95"><span class="lineNum">      95 </span>            : // Initialize a single bridge processor</a>
+<span class="lineNum">      96 </span>            : static void
+<span class="lineNum">      97 </span>            : init_bridge_processor (SgenBridgeProcessor *processor, BridgeProcessorSelection selection)
+<span class="lineNum">      98 </span>            : {
+<span class="lineNum">      99 </span><span class="lineNoCov">          0 :         memset (processor, 0, sizeof (SgenBridgeProcessor));</span>
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :         switch (selection) {</span>
+<span class="lineNum">     102 </span>            :                 case BRIDGE_PROCESSOR_OLD:
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :                         sgen_old_bridge_init (processor);</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     105 </span>            :                 case BRIDGE_PROCESSOR_NEW:
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :                         sgen_new_bridge_init (processor);</span>
+<span class="lineNum">     107 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     108 </span>            :                 case BRIDGE_PROCESSOR_TARJAN:
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :                         sgen_tarjan_bridge_init (processor);</span>
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     111 </span>            :                 default:
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     115 </span>            : 
+<span class="lineNum">     116 </span>            : /*
+<span class="lineNum">     117 </span>            :  * Initializing the sgen bridge consists of setting the bridge callbacks,
+<span class="lineNum">     118 </span>            :  * and initializing the bridge processor. Init should follow these rules:
+<span class="lineNum">     119 </span>            :  *
+<span class="lineNum">     120 </span>            :  *   - Init happens only after sgen is initialized (because we don't
+<span class="lineNum">     121 </span>            :  *     know which bridge processor to initialize until then, and also
+<span class="lineNum">     122 </span>            :  *     to allow bridge processor init to interact with sgen if it wants)
+<span class="lineNum">     123 </span>            :  *
+<span class="lineNum">     124 </span>            :  *   - Init happens only after mono_gc_register_bridge_callbacks is called
+<span class="lineNum">     125 </span>            :  *
+<span class="lineNum">     126 </span>            :  *   - Init should not happen concurrently with a GC (because a GC will
+<span class="lineNum">     127 </span>            :  *     call sgen_need_bridge_processing at various times)
+<span class="lineNum">     128 </span>            :  *
+<span class="lineNum">     129 </span>            :  *   - Initializing the bridge processor should happen only once
+<span class="lineNum">     130 </span>            :  *
+<span class="lineNum">     131 </span>            :  * We call sgen_init_bridge when the callbacks are set, and also when sgen
+<span class="lineNum">     132 </span>            :  * is done initing. Actual initialization then only occurs if it is ready.
+<a name="133"><span class="lineNum">     133 </span>            :  */</a>
+<span class="lineNum">     134 </span>            : void
+<span class="lineNum">     135 </span>            : sgen_init_bridge ()
+<span class="lineNum">     136 </span>            : {
+<span class="lineNum">     137 </span><span class="lineCov">       3285 :         if (sgen_gc_initialized ()) {</span>
+<span class="lineNum">     138 </span>            :                 // This lock is not initialized until the GC is
+<span class="lineNum">     139 </span><span class="lineCov">       3285 :                 sgen_gc_lock ();</span>
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span><span class="lineCov">       3285 :                 bridge_callbacks = pending_bridge_callbacks;</span>
+<span class="lineNum">     142 </span>            : 
+<span class="lineNum">     143 </span>            :                 // If a bridge was registered but there is no bridge processor yet
+<span class="lineNum">     144 </span><span class="lineCov">       3285 :                 if (bridge_callbacks.cross_references &amp;&amp; !bridge_processor_started ()) {</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :                         init_bridge_processor (&amp;bridge_processor, bridge_processor_selection);</span>
+<span class="lineNum">     146 </span>            : 
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :                         if (bridge_processor.set_config)</span>
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :                                 bridge_processor.set_config (&amp;bridge_processor_config);</span>
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span>            :                         // Config is no longer needed so free its memory
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 :                         free (bridge_processor_config.dump_prefix);</span>
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :                         bridge_processor_config.dump_prefix = NULL;</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span><span class="lineCov">       3285 :                 sgen_gc_unlock ();</span>
+<span class="lineNum">     156 </span><span class="lineCov">       3285 :         }</span>
+<span class="lineNum">     157 </span><span class="lineCov">       3285 : }</span>
+<a name="158"><span class="lineNum">     158 </span>            : </a>
+<span class="lineNum">     159 </span>            : void
+<span class="lineNum">     160 </span>            : sgen_set_bridge_implementation (const char *name)
+<span class="lineNum">     161 </span>            : {
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         BridgeProcessorSelection selection = bridge_processor_name (name);</span>
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :         if (selection == BRIDGE_PROCESSOR_INVALID)</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :                 g_warning (&quot;Invalid value for bridge processor implementation, valid values are: 'new', 'old' and 'tarjan'.&quot;);</span>
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :         else if (bridge_processor_started ())</span>
+<span class="lineNum">     167 </span><span class="lineNoCov">          0 :                 g_warning (&quot;Cannot set bridge processor implementation once bridge has already started&quot;);</span>
+<span class="lineNum">     168 </span>            :         else
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :                 bridge_processor_selection = selection;</span>
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 : }</span>
+<a name="171"><span class="lineNum">     171 </span>            : </a>
+<span class="lineNum">     172 </span>            : gboolean
+<span class="lineNum">     173 </span>            : sgen_is_bridge_object (GCObject *obj)
+<span class="lineNum">     174 </span>            : {
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :         if ((obj-&gt;vtable-&gt;gc_bits &amp; SGEN_GC_BIT_BRIDGE_OBJECT) != SGEN_GC_BIT_BRIDGE_OBJECT)</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :         return bridge_callbacks.is_bridge_object (obj);</span>
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 : }</span>
+<a name="179"><span class="lineNum">     179 </span>            : </a>
+<span class="lineNum">     180 </span>            : gboolean
+<span class="lineNum">     181 </span>            : sgen_need_bridge_processing (void)
+<span class="lineNum">     182 </span>            : {
+<span class="lineNum">     183 </span><span class="lineCov">    5444863 :         return bridge_callbacks.cross_references != NULL;</span>
+<span class="lineNum">     184 </span>            : }
+<a name="185"><span class="lineNum">     185 </span>            : </a>
+<span class="lineNum">     186 </span>            : static gboolean
+<span class="lineNum">     187 </span>            : compare_bridge_processors (void)
+<span class="lineNum">     188 </span>            : {
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :         return compare_to_bridge_processor.reset_data != NULL;</span>
+<span class="lineNum">     190 </span>            : }
+<span class="lineNum">     191 </span>            : 
+<a name="192"><span class="lineNum">     192 </span>            : /* Dispatch wrappers */</a>
+<span class="lineNum">     193 </span>            : void
+<span class="lineNum">     194 </span>            : sgen_bridge_reset_data (void)
+<span class="lineNum">     195 </span>            : {
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :         bridge_processor.reset_data ();</span>
+<span class="lineNum">     197 </span><span class="lineNoCov">          0 :         if (compare_bridge_processors ())</span>
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                 compare_to_bridge_processor.reset_data ();</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 : }</span>
+<a name="200"><span class="lineNum">     200 </span>            : </a>
+<span class="lineNum">     201 </span>            : void
+<span class="lineNum">     202 </span>            : sgen_bridge_processing_stw_step (void)
+<span class="lineNum">     203 </span>            : {
+<span class="lineNum">     204 </span>            :         /*
+<span class="lineNum">     205 </span>            :          * bridge_processing_in_progress must be set with the world
+<span class="lineNum">     206 </span>            :          * stopped.  If not there would be race conditions.
+<span class="lineNum">     207 </span>            :          */
+<span class="lineNum">     208 </span><span class="lineNoCov">          0 :         bridge_processing_in_progress = TRUE;</span>
+<span class="lineNum">     209 </span>            : 
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :         bridge_processor.processing_stw_step ();</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :         if (compare_bridge_processors ())</span>
+<span class="lineNum">     212 </span><span class="lineNoCov">          0 :                 compare_to_bridge_processor.processing_stw_step ();</span>
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 : }</span>
+<a name="214"><span class="lineNum">     214 </span>            : </a>
+<span class="lineNum">     215 </span>            : static gboolean
+<span class="lineNum">     216 </span>            : is_bridge_object_dead (GCObject *obj, void *data)
+<span class="lineNum">     217 </span>            : {
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :         SgenHashTable *table = (SgenHashTable *)data;</span>
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :         unsigned char *value = (unsigned char *)sgen_hash_table_lookup (table, obj);</span>
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :         if (!value)</span>
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :         return !*value;</span>
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 : }</span>
+<a name="224"><span class="lineNum">     224 </span>            : </a>
+<span class="lineNum">     225 </span>            : static void
+<span class="lineNum">     226 </span>            : null_weak_links_to_dead_objects (SgenBridgeProcessor *processor, int generation)
+<span class="lineNum">     227 </span>            : {
+<span class="lineNum">     228 </span>            :         int i, j;
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :         int num_sccs = processor-&gt;num_sccs;</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :         MonoGCBridgeSCC **api_sccs = processor-&gt;api_sccs;</span>
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :         SgenHashTable alive_hash = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_BRIDGE_ALIVE_HASH_TABLE, INTERNAL_MEM_BRIDGE_ALIVE_HASH_TABLE_ENTRY, 1, mono_aligned_addr_hash, NULL);</span>
+<span class="lineNum">     232 </span>            : 
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; num_sccs; ++i) {</span>
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :                 unsigned char alive = api_sccs [i]-&gt;is_alive ? 1 : 0;</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                 for (j = 0; j &lt; api_sccs [i]-&gt;num_objs; ++j) {</span>
+<span class="lineNum">     236 </span>            :                         /* Build hash table for nulling weak links. */
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :                         sgen_hash_table_replace (&amp;alive_hash, api_sccs [i]-&gt;objs [j], &amp;alive, NULL);</span>
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span>            :                         /* Release for finalization those objects we no longer care. */
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :                         if (!api_sccs [i]-&gt;is_alive)</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                                 sgen_mark_bridge_object (api_sccs [i]-&gt;objs [j]);</span>
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span>            :         /* Null weak links to dead objects. */
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :         sgen_null_links_if (is_bridge_object_dead, &amp;alive_hash, GENERATION_NURSERY, FALSE);</span>
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :         sgen_null_links_if (is_bridge_object_dead, &amp;alive_hash, GENERATION_NURSERY, TRUE);</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :         if (generation == GENERATION_OLD) {</span>
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :                 sgen_null_links_if (is_bridge_object_dead, &amp;alive_hash, GENERATION_OLD, FALSE);</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                 sgen_null_links_if (is_bridge_object_dead, &amp;alive_hash, GENERATION_OLD, TRUE);</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     252 </span>            : 
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :         sgen_hash_table_clean (&amp;alive_hash);</span>
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 : }</span>
+<a name="255"><span class="lineNum">     255 </span>            : </a>
+<span class="lineNum">     256 </span>            : static void
+<span class="lineNum">     257 </span>            : free_callback_data (SgenBridgeProcessor *processor)
+<span class="lineNum">     258 </span>            : {
+<span class="lineNum">     259 </span>            :         int i;
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :         int num_sccs = processor-&gt;num_sccs;</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :         int num_xrefs = processor-&gt;num_xrefs;</span>
+<span class="lineNum">     262 </span><span class="lineNoCov">          0 :         MonoGCBridgeSCC **api_sccs = processor-&gt;api_sccs;</span>
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :         MonoGCBridgeXRef *api_xrefs = processor-&gt;api_xrefs;</span>
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; num_sccs; ++i) {</span>
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :                 sgen_free_internal_dynamic (api_sccs [i],</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :                                 sizeof (MonoGCBridgeSCC) + sizeof (MonoObject*) * api_sccs [i]-&gt;num_objs,</span>
+<span class="lineNum">     268 </span>            :                                 INTERNAL_MEM_BRIDGE_DATA);
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (api_sccs, sizeof (MonoGCBridgeSCC*) * num_sccs, INTERNAL_MEM_BRIDGE_DATA);</span>
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (api_xrefs, sizeof (MonoGCBridgeXRef) * num_xrefs, INTERNAL_MEM_BRIDGE_DATA);</span>
+<span class="lineNum">     273 </span>            : 
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :         processor-&gt;num_sccs = 0;</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :         processor-&gt;api_sccs = NULL;</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :         processor-&gt;num_xrefs = 0;</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :         processor-&gt;api_xrefs = NULL;</span>
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 : }</span>
+<a name="279"><span class="lineNum">     279 </span>            : </a>
+<span class="lineNum">     280 </span>            : static int
+<span class="lineNum">     281 </span>            : compare_xrefs (const void *a_ptr, const void *b_ptr)
+<span class="lineNum">     282 </span>            : {
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :         const MonoGCBridgeXRef *a = (const MonoGCBridgeXRef *)a_ptr;</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :         const MonoGCBridgeXRef *b = (const MonoGCBridgeXRef *)b_ptr;</span>
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :         if (a-&gt;src_scc_index &lt; b-&gt;src_scc_index)</span>
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :                 return -1;</span>
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :         if (a-&gt;src_scc_index &gt; b-&gt;src_scc_index)</span>
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :                 return 1;</span>
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :         if (a-&gt;dst_scc_index &lt; b-&gt;dst_scc_index)</span>
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :                 return -1;</span>
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :         if (a-&gt;dst_scc_index &gt; b-&gt;dst_scc_index)</span>
+<span class="lineNum">     294 </span><span class="lineNoCov">          0 :                 return 1;</span>
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :         return 0;</span>
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span>            : /*
+<span class="lineNum">     300 </span>            : static void
+<span class="lineNum">     301 </span>            : dump_processor_state (SgenBridgeProcessor *p)
+<span class="lineNum">     302 </span>            : {
+<span class="lineNum">     303 </span>            :         int i;
+<span class="lineNum">     304 </span>            : 
+<span class="lineNum">     305 </span>            :         printf (&quot;------\n&quot;);
+<span class="lineNum">     306 </span>            :         printf (&quot;SCCS %d\n&quot;, p-&gt;num_sccs);
+<span class="lineNum">     307 </span>            :         for (i = 0; i &lt; p-&gt;num_sccs; ++i) {
+<span class="lineNum">     308 </span>            :                 int j;
+<span class="lineNum">     309 </span>            :                 MonoGCBridgeSCC *scc = p-&gt;api_sccs [i];
+<span class="lineNum">     310 </span>            :                 printf (&quot;\tSCC %d:&quot;, i);
+<span class="lineNum">     311 </span>            :                 for (j = 0; j &lt; scc-&gt;num_objs; ++j) {
+<span class="lineNum">     312 </span>            :                         MonoObject *obj = scc-&gt;objs [j];
+<span class="lineNum">     313 </span>            :                         printf (&quot; %p&quot;, obj);
+<span class="lineNum">     314 </span>            :                 }
+<span class="lineNum">     315 </span>            :                 printf (&quot;\n&quot;);
+<span class="lineNum">     316 </span>            :         }
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span>            :         printf (&quot;XREFS %d\n&quot;, p-&gt;num_xrefs);
+<span class="lineNum">     319 </span>            :         for (i = 0; i &lt; p-&gt;num_xrefs; ++i)
+<span class="lineNum">     320 </span>            :                 printf (&quot;\t%d -&gt; %d\n&quot;, p-&gt;api_xrefs [i].src_scc_index, p-&gt;api_xrefs [i].dst_scc_index);
+<span class="lineNum">     321 </span>            : 
+<span class="lineNum">     322 </span>            :         printf (&quot;-------\n&quot;);
+<span class="lineNum">     323 </span>            : }
+<span class="lineNum">     324 </span>            : */
+<a name="325"><span class="lineNum">     325 </span>            : </a>
+<span class="lineNum">     326 </span>            : static gboolean
+<span class="lineNum">     327 </span>            : sgen_compare_bridge_processor_results (SgenBridgeProcessor *a, SgenBridgeProcessor *b)
+<span class="lineNum">     328 </span>            : {
+<span class="lineNum">     329 </span>            :         int i;
+<span class="lineNum">     330 </span><span class="lineNoCov">          0 :         SgenHashTable obj_to_a_scc = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_BRIDGE_DEBUG, INTERNAL_MEM_BRIDGE_DEBUG, sizeof (int), mono_aligned_addr_hash, NULL);</span>
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :         SgenHashTable b_scc_to_a_scc = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_BRIDGE_DEBUG, INTERNAL_MEM_BRIDGE_DEBUG, sizeof (int), g_direct_hash, NULL);</span>
+<span class="lineNum">     332 </span>            :         MonoGCBridgeXRef *a_xrefs, *b_xrefs;
+<span class="lineNum">     333 </span>            :         size_t xrefs_alloc_size;
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span>            :         // dump_processor_state (a);
+<span class="lineNum">     336 </span>            :         // dump_processor_state (b);
+<span class="lineNum">     337 </span>            : 
+<span class="lineNum">     338 </span><span class="lineNoCov">          0 :         if (a-&gt;num_sccs != b-&gt;num_sccs)</span>
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                 g_error (&quot;SCCS count expected %d but got %d&quot;, a-&gt;num_sccs, b-&gt;num_sccs);</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 :         if (a-&gt;num_xrefs != b-&gt;num_xrefs)</span>
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :                 g_error (&quot;SCCS count expected %d but got %d&quot;, a-&gt;num_xrefs, b-&gt;num_xrefs);</span>
+<span class="lineNum">     342 </span>            : 
+<span class="lineNum">     343 </span>            :         /*
+<span class="lineNum">     344 </span>            :          * First we build a hash of each object in `a` to its respective SCC index within
+<span class="lineNum">     345 </span>            :          * `a`.  Along the way we also assert that no object is more than one SCC.
+<span class="lineNum">     346 </span>            :          */
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; a-&gt;num_sccs; ++i) {</span>
+<span class="lineNum">     348 </span>            :                 int j;
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                 MonoGCBridgeSCC *scc = a-&gt;api_sccs [i];</span>
+<span class="lineNum">     350 </span>            : 
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                 g_assert (scc-&gt;num_objs &gt; 0);</span>
+<span class="lineNum">     352 </span>            : 
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :                 for (j = 0; j &lt; scc-&gt;num_objs; ++j) {</span>
+<span class="lineNum">     354 </span><span class="lineNoCov">          0 :                         GCObject *obj = scc-&gt;objs [j];</span>
+<span class="lineNum">     355 </span><span class="lineNoCov">          0 :                         gboolean new_entry = sgen_hash_table_replace (&amp;obj_to_a_scc, obj, &amp;i, NULL);</span>
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :                         g_assert (new_entry);</span>
+<span class="lineNum">     357 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     359 </span>            : 
+<span class="lineNum">     360 </span>            :         /*
+<span class="lineNum">     361 </span>            :          * Now we check whether each of the objects in `b` are in `a`, and whether the SCCs
+<span class="lineNum">     362 </span>            :          * of `b` contain the same sets of objects as those of `a`.
+<span class="lineNum">     363 </span>            :          *
+<span class="lineNum">     364 </span>            :          * While we're doing this, build a hash table to map from `b` SCC indexes to `a` SCC
+<span class="lineNum">     365 </span>            :          * indexes.
+<span class="lineNum">     366 </span>            :          */
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; b-&gt;num_sccs; ++i) {</span>
+<span class="lineNum">     368 </span><span class="lineNoCov">          0 :                 MonoGCBridgeSCC *scc = b-&gt;api_sccs [i];</span>
+<span class="lineNum">     369 </span>            :                 MonoGCBridgeSCC *a_scc;
+<span class="lineNum">     370 </span>            :                 int *a_scc_index_ptr;
+<span class="lineNum">     371 </span>            :                 int a_scc_index;
+<span class="lineNum">     372 </span>            :                 int j;
+<span class="lineNum">     373 </span>            :                 gboolean new_entry;
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span><span class="lineNoCov">          0 :                 g_assert (scc-&gt;num_objs &gt; 0);</span>
+<span class="lineNum">     376 </span><span class="lineNoCov">          0 :                 a_scc_index_ptr = (int *)sgen_hash_table_lookup (&amp;obj_to_a_scc, scc-&gt;objs [0]);</span>
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :                 g_assert (a_scc_index_ptr);</span>
+<span class="lineNum">     378 </span><span class="lineNoCov">          0 :                 a_scc_index = *a_scc_index_ptr;</span>
+<span class="lineNum">     379 </span>            : 
+<span class="lineNum">     380 </span>            :                 //g_print (&quot;A SCC %d -&gt; B SCC %d\n&quot;, a_scc_index, i);
+<span class="lineNum">     381 </span>            : 
+<span class="lineNum">     382 </span><span class="lineNoCov">          0 :                 a_scc = a-&gt;api_sccs [a_scc_index];</span>
+<span class="lineNum">     383 </span><span class="lineNoCov">          0 :                 g_assert (a_scc-&gt;num_objs == scc-&gt;num_objs);</span>
+<span class="lineNum">     384 </span>            : 
+<span class="lineNum">     385 </span><span class="lineNoCov">          0 :                 for (j = 1; j &lt; scc-&gt;num_objs; ++j) {</span>
+<span class="lineNum">     386 </span><span class="lineNoCov">          0 :                         a_scc_index_ptr = (int *)sgen_hash_table_lookup (&amp;obj_to_a_scc, scc-&gt;objs [j]);</span>
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :                         g_assert (a_scc_index_ptr);</span>
+<span class="lineNum">     388 </span><span class="lineNoCov">          0 :                         g_assert (*a_scc_index_ptr == a_scc_index);</span>
+<span class="lineNum">     389 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     390 </span>            : 
+<span class="lineNum">     391 </span><span class="lineNoCov">          0 :                 new_entry = sgen_hash_table_replace (&amp;b_scc_to_a_scc, GINT_TO_POINTER (i), &amp;a_scc_index, NULL);</span>
+<span class="lineNum">     392 </span><span class="lineNoCov">          0 :                 g_assert (new_entry);</span>
+<span class="lineNum">     393 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     394 </span>            : 
+<span class="lineNum">     395 </span>            :         /*
+<span class="lineNum">     396 </span>            :          * Finally, check that we have the same xrefs.  We do this by making copies of both
+<span class="lineNum">     397 </span>            :          * xref arrays, and replacing the SCC indexes in the copy for `b` with the
+<span class="lineNum">     398 </span>            :          * corresponding indexes in `a`.  Then we sort both arrays and assert that they're
+<span class="lineNum">     399 </span>            :          * the same.
+<span class="lineNum">     400 </span>            :          *
+<span class="lineNum">     401 </span>            :          * At the same time, check that no xref is self-referential and that there are no
+<span class="lineNum">     402 </span>            :          * duplicate ones.
+<span class="lineNum">     403 </span>            :          */
+<span class="lineNum">     404 </span>            : 
+<span class="lineNum">     405 </span><span class="lineNoCov">          0 :         xrefs_alloc_size = a-&gt;num_xrefs * sizeof (MonoGCBridgeXRef);</span>
+<span class="lineNum">     406 </span><span class="lineNoCov">          0 :         a_xrefs = (MonoGCBridgeXRef *)sgen_alloc_internal_dynamic (xrefs_alloc_size, INTERNAL_MEM_BRIDGE_DEBUG, TRUE);</span>
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :         b_xrefs = (MonoGCBridgeXRef *)sgen_alloc_internal_dynamic (xrefs_alloc_size, INTERNAL_MEM_BRIDGE_DEBUG, TRUE);</span>
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :         memcpy (a_xrefs, a-&gt;api_xrefs, xrefs_alloc_size);</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; b-&gt;num_xrefs; ++i) {</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :                 MonoGCBridgeXRef *xref = &amp;b-&gt;api_xrefs [i];</span>
+<span class="lineNum">     412 </span>            :                 int *scc_index_ptr;
+<span class="lineNum">     413 </span>            : 
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :                 g_assert (xref-&gt;src_scc_index != xref-&gt;dst_scc_index);</span>
+<span class="lineNum">     415 </span>            : 
+<span class="lineNum">     416 </span><span class="lineNoCov">          0 :                 scc_index_ptr = (int *)sgen_hash_table_lookup (&amp;b_scc_to_a_scc, GINT_TO_POINTER (xref-&gt;src_scc_index));</span>
+<span class="lineNum">     417 </span><span class="lineNoCov">          0 :                 g_assert (scc_index_ptr);</span>
+<span class="lineNum">     418 </span><span class="lineNoCov">          0 :                 b_xrefs [i].src_scc_index = *scc_index_ptr;</span>
+<span class="lineNum">     419 </span>            : 
+<span class="lineNum">     420 </span><span class="lineNoCov">          0 :                 scc_index_ptr = (int *)sgen_hash_table_lookup (&amp;b_scc_to_a_scc, GINT_TO_POINTER (xref-&gt;dst_scc_index));</span>
+<span class="lineNum">     421 </span><span class="lineNoCov">          0 :                 g_assert (scc_index_ptr);</span>
+<span class="lineNum">     422 </span><span class="lineNoCov">          0 :                 b_xrefs [i].dst_scc_index = *scc_index_ptr;</span>
+<span class="lineNum">     423 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     424 </span>            : 
+<span class="lineNum">     425 </span><span class="lineNoCov">          0 :         qsort (a_xrefs, a-&gt;num_xrefs, sizeof (MonoGCBridgeXRef), compare_xrefs);</span>
+<span class="lineNum">     426 </span><span class="lineNoCov">          0 :         qsort (b_xrefs, a-&gt;num_xrefs, sizeof (MonoGCBridgeXRef), compare_xrefs);</span>
+<span class="lineNum">     427 </span>            : 
+<span class="lineNum">     428 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; a-&gt;num_xrefs; ++i) {</span>
+<span class="lineNum">     429 </span><span class="lineNoCov">          0 :                 g_assert (a_xrefs [i].src_scc_index == b_xrefs [i].src_scc_index);</span>
+<span class="lineNum">     430 </span><span class="lineNoCov">          0 :                 g_assert (a_xrefs [i].dst_scc_index == b_xrefs [i].dst_scc_index);</span>
+<span class="lineNum">     431 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     432 </span>            : 
+<span class="lineNum">     433 </span><span class="lineNoCov">          0 :         sgen_hash_table_clean (&amp;obj_to_a_scc);</span>
+<span class="lineNum">     434 </span><span class="lineNoCov">          0 :         sgen_hash_table_clean (&amp;b_scc_to_a_scc);</span>
+<span class="lineNum">     435 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (a_xrefs, xrefs_alloc_size, INTERNAL_MEM_BRIDGE_DEBUG);</span>
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (b_xrefs, xrefs_alloc_size, INTERNAL_MEM_BRIDGE_DEBUG);</span>
+<span class="lineNum">     437 </span>            : 
+<span class="lineNum">     438 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     439 </span>            : }
+<a name="440"><span class="lineNum">     440 </span>            : </a>
+<span class="lineNum">     441 </span>            : void
+<span class="lineNum">     442 </span>            : sgen_bridge_processing_finish (int generation)
+<span class="lineNum">     443 </span>            : {
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :         bridge_processor.processing_build_callback_data (generation);</span>
+<span class="lineNum">     445 </span><span class="lineNoCov">          0 :         if (compare_bridge_processors ())</span>
+<span class="lineNum">     446 </span><span class="lineNoCov">          0 :                 compare_to_bridge_processor.processing_build_callback_data (generation);</span>
+<span class="lineNum">     447 </span>            : 
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :         if (bridge_processor.num_sccs == 0) {</span>
+<span class="lineNum">     449 </span><span class="lineNoCov">          0 :                 g_assert (bridge_processor.num_xrefs == 0);</span>
+<span class="lineNum">     450 </span><span class="lineNoCov">          0 :                 goto after_callback;</span>
+<span class="lineNum">     451 </span>            :         }
+<span class="lineNum">     452 </span>            : 
+<span class="lineNum">     453 </span><span class="lineNoCov">          0 :         bridge_callbacks.cross_references (bridge_processor.num_sccs, bridge_processor.api_sccs,</span>
+<span class="lineNum">     454 </span><span class="lineNoCov">          0 :                         bridge_processor.num_xrefs, bridge_processor.api_xrefs);</span>
+<span class="lineNum">     455 </span>            : 
+<span class="lineNum">     456 </span><span class="lineNoCov">          0 :         if (compare_bridge_processors ())</span>
+<span class="lineNum">     457 </span><span class="lineNoCov">          0 :                 sgen_compare_bridge_processor_results (&amp;bridge_processor, &amp;compare_to_bridge_processor);</span>
+<span class="lineNum">     458 </span>            : 
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 :         null_weak_links_to_dead_objects (&amp;bridge_processor, generation);</span>
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span><span class="lineNoCov">          0 :         free_callback_data (&amp;bridge_processor);</span>
+<span class="lineNum">     462 </span><span class="lineNoCov">          0 :         if (compare_bridge_processors ())</span>
+<span class="lineNum">     463 </span><span class="lineNoCov">          0 :                 free_callback_data (&amp;compare_to_bridge_processor);</span>
+<span class="lineNum">     464 </span>            : 
+<span class="lineNum">     465 </span>            :  after_callback:
+<span class="lineNum">     466 </span><span class="lineNoCov">          0 :         bridge_processor.processing_after_callback (generation);</span>
+<span class="lineNum">     467 </span><span class="lineNoCov">          0 :         if (compare_bridge_processors ())</span>
+<span class="lineNum">     468 </span><span class="lineNoCov">          0 :                 compare_to_bridge_processor.processing_after_callback (generation);</span>
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_GC, &quot;GC_BRIDGE: Complete, was running for %.2fms&quot;, mono_time_since_last_stw () / 10000.0f);</span>
+<span class="lineNum">     471 </span>            : 
+<span class="lineNum">     472 </span><span class="lineNoCov">          0 :         bridge_processing_in_progress = FALSE;</span>
+<span class="lineNum">     473 </span><span class="lineNoCov">          0 : }</span>
+<a name="474"><span class="lineNum">     474 </span>            : </a>
+<span class="lineNum">     475 </span>            : MonoGCBridgeObjectKind
+<span class="lineNum">     476 </span>            : sgen_bridge_class_kind (MonoClass *klass)
+<span class="lineNum">     477 </span>            : {
+<span class="lineNum">     478 </span><span class="lineNoCov">          0 :         return bridge_processor.class_kind (klass);</span>
+<span class="lineNum">     479 </span>            : }
+<a name="480"><span class="lineNum">     480 </span>            : </a>
+<span class="lineNum">     481 </span>            : void
+<span class="lineNum">     482 </span>            : sgen_bridge_register_finalized_object (GCObject *obj)
+<span class="lineNum">     483 </span>            : {
+<span class="lineNum">     484 </span><span class="lineNoCov">          0 :         bridge_processor.register_finalized_object (obj);</span>
+<span class="lineNum">     485 </span><span class="lineNoCov">          0 :         if (compare_bridge_processors ())</span>
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :                 compare_to_bridge_processor.register_finalized_object (obj);</span>
+<span class="lineNum">     487 </span><span class="lineNoCov">          0 : }</span>
+<a name="488"><span class="lineNum">     488 </span>            : </a>
+<span class="lineNum">     489 </span>            : void
+<span class="lineNum">     490 </span>            : sgen_bridge_describe_pointer (GCObject *obj)
+<span class="lineNum">     491 </span>            : {
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :         if (bridge_processor.describe_pointer)</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 :                 bridge_processor.describe_pointer (obj);</span>
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 : }</span>
+<a name="495"><span class="lineNum">     495 </span>            : </a>
+<span class="lineNum">     496 </span>            : static void
+<span class="lineNum">     497 </span>            : set_dump_prefix (const char *prefix)
+<span class="lineNum">     498 </span>            : {
+<span class="lineNum">     499 </span><span class="lineNoCov">          0 :         if (bridge_processor_config.dump_prefix)</span>
+<span class="lineNum">     500 </span><span class="lineNoCov">          0 :                 free (bridge_processor_config.dump_prefix);</span>
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 :         bridge_processor_config.dump_prefix = strdup (prefix);</span>
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     503 </span>            : 
+<span class="lineNum">     504 </span>            : /* Test support code */
+<span class="lineNum">     505 </span>            : static const char *bridge_class;
+<a name="506"><span class="lineNum">     506 </span>            : </a>
+<span class="lineNum">     507 </span>            : static MonoGCBridgeObjectKind
+<span class="lineNum">     508 </span>            : bridge_test_bridge_class_kind (MonoClass *klass)
+<span class="lineNum">     509 </span>            : {
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :         if (!strcmp (bridge_class, klass-&gt;name))</span>
+<span class="lineNum">     511 </span><span class="lineNoCov">          0 :                 return GC_BRIDGE_TRANSPARENT_BRIDGE_CLASS;</span>
+<span class="lineNum">     512 </span><span class="lineNoCov">          0 :         return GC_BRIDGE_TRANSPARENT_CLASS;</span>
+<span class="lineNum">     513 </span><span class="lineNoCov">          0 : }</span>
+<a name="514"><span class="lineNum">     514 </span>            : </a>
+<span class="lineNum">     515 </span>            : static gboolean
+<span class="lineNum">     516 </span>            : bridge_test_is_bridge_object (MonoObject *object)
+<span class="lineNum">     517 </span>            : {
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     519 </span>            : }
+<a name="520"><span class="lineNum">     520 </span>            : </a>
+<span class="lineNum">     521 </span>            : static void
+<span class="lineNum">     522 </span>            : bridge_test_cross_reference (int num_sccs, MonoGCBridgeSCC **sccs, int num_xrefs, MonoGCBridgeXRef *xrefs)
+<span class="lineNum">     523 </span>            : {
+<span class="lineNum">     524 </span>            :         int i;
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; num_sccs; ++i) {</span>
+<span class="lineNum">     526 </span>            :                 int j;
+<span class="lineNum">     527 </span>            :         //      g_print (&quot;--- SCC %d\n&quot;, i);
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :                 for (j = 0; j &lt; sccs [i]-&gt;num_objs; ++j) {</span>
+<span class="lineNum">     529 </span>            :         //              g_print (&quot;  %s\n&quot;, sgen_safe_name (sccs [i]-&gt;objs [j]));
+<span class="lineNum">     530 </span><span class="lineNoCov">          0 :                         if (i &amp; 1) /*retain half of the bridged objects */</span>
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :                                 sccs [i]-&gt;is_alive = TRUE;</span>
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     533 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; num_xrefs; ++i) {</span>
+<span class="lineNum">     535 </span><span class="lineNoCov">          0 :                 g_assert (xrefs [i].src_scc_index &gt;= 0 &amp;&amp; xrefs [i].src_scc_index &lt; num_sccs);</span>
+<span class="lineNum">     536 </span><span class="lineNoCov">          0 :                 g_assert (xrefs [i].dst_scc_index &gt;= 0 &amp;&amp; xrefs [i].dst_scc_index &lt; num_sccs);</span>
+<span class="lineNum">     537 </span>            :         //      g_print (&quot;%d -&gt; %d\n&quot;, xrefs [i].src_scc_index, xrefs [i].dst_scc_index);
+<span class="lineNum">     538 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     539 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     540 </span>            : 
+<span class="lineNum">     541 </span>            : static MonoClassField *mono_bridge_test_field;
+<span class="lineNum">     542 </span>            : 
+<span class="lineNum">     543 </span>            : enum {
+<span class="lineNum">     544 </span>            :         BRIDGE_DEAD,
+<span class="lineNum">     545 </span>            :         BRIDGE_ROOT,
+<span class="lineNum">     546 </span>            :         BRIDGE_SAME_SCC,
+<span class="lineNum">     547 </span>            :         BRIDGE_XREF,
+<span class="lineNum">     548 </span>            : };
+<a name="549"><span class="lineNum">     549 </span>            : </a>
+<span class="lineNum">     550 </span>            : static gboolean
+<span class="lineNum">     551 </span>            : test_scc (MonoGCBridgeSCC *scc, int i)
+<span class="lineNum">     552 </span>            : {
+<span class="lineNum">     553 </span><span class="lineNoCov">          0 :         int status = BRIDGE_DEAD;</span>
+<span class="lineNum">     554 </span><span class="lineNoCov">          0 :         mono_field_get_value (scc-&gt;objs [i], mono_bridge_test_field, &amp;status);</span>
+<span class="lineNum">     555 </span><span class="lineNoCov">          0 :         return status &gt; 0;</span>
+<span class="lineNum">     556 </span>            : }
+<a name="557"><span class="lineNum">     557 </span>            : </a>
+<span class="lineNum">     558 </span>            : static void
+<span class="lineNum">     559 </span>            : mark_scc (MonoGCBridgeSCC *scc, int value)
+<span class="lineNum">     560 </span>            : {
+<span class="lineNum">     561 </span>            :         int i;
+<span class="lineNum">     562 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; scc-&gt;num_objs; ++i) {</span>
+<span class="lineNum">     563 </span><span class="lineNoCov">          0 :                 if (!test_scc (scc, i)) {</span>
+<span class="lineNum">     564 </span><span class="lineNoCov">          0 :                         int status = value;</span>
+<span class="lineNum">     565 </span><span class="lineNoCov">          0 :                         mono_field_set_value (scc-&gt;objs [i], mono_bridge_test_field, &amp;status);</span>
+<span class="lineNum">     566 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     567 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     568 </span><span class="lineNoCov">          0 : }</span>
+<a name="569"><span class="lineNum">     569 </span>            : </a>
+<span class="lineNum">     570 </span>            : static void
+<span class="lineNum">     571 </span>            : bridge_test_cross_reference2 (int num_sccs, MonoGCBridgeSCC **sccs, int num_xrefs, MonoGCBridgeXRef *xrefs)
+<span class="lineNum">     572 </span>            : {
+<span class="lineNum">     573 </span>            :         int i;
+<span class="lineNum">     574 </span>            :         gboolean modified;
+<span class="lineNum">     575 </span>            : 
+<span class="lineNum">     576 </span><span class="lineNoCov">          0 :         if (!mono_bridge_test_field) {</span>
+<span class="lineNum">     577 </span><span class="lineNoCov">          0 :                 mono_bridge_test_field = mono_class_get_field_from_name (mono_object_get_class (sccs[0]-&gt;objs [0]), &quot;__test&quot;);</span>
+<span class="lineNum">     578 </span><span class="lineNoCov">          0 :                 g_assert (mono_bridge_test_field);</span>
+<span class="lineNum">     579 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     580 </span>            : 
+<span class="lineNum">     581 </span>            :         /*We mark all objects in a scc with live objects as reachable by scc*/
+<span class="lineNum">     582 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; num_sccs; ++i) {</span>
+<span class="lineNum">     583 </span>            :                 int j;
+<span class="lineNum">     584 </span><span class="lineNoCov">          0 :                 gboolean live = FALSE;</span>
+<span class="lineNum">     585 </span><span class="lineNoCov">          0 :                 for (j = 0; j &lt; sccs [i]-&gt;num_objs; ++j) {</span>
+<span class="lineNum">     586 </span><span class="lineNoCov">          0 :                         if (test_scc (sccs [i], j)) {</span>
+<span class="lineNum">     587 </span><span class="lineNoCov">          0 :                                 live = TRUE;</span>
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     589 </span>            :                         }
+<span class="lineNum">     590 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 :                 if (!live)</span>
+<span class="lineNum">     592 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     593 </span><span class="lineNoCov">          0 :                 for (j = 0; j &lt; sccs [i]-&gt;num_objs; ++j) {</span>
+<span class="lineNum">     594 </span><span class="lineNoCov">          0 :                         if (!test_scc (sccs [i], j)) {</span>
+<span class="lineNum">     595 </span><span class="lineNoCov">          0 :                                 int status = BRIDGE_SAME_SCC;</span>
+<span class="lineNum">     596 </span><span class="lineNoCov">          0 :                                 mono_field_set_value (sccs [i]-&gt;objs [j], mono_bridge_test_field, &amp;status);</span>
+<span class="lineNum">     597 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     598 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     599 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     600 </span>            : 
+<span class="lineNum">     601 </span>            :         /*Now we mark the transitive closure of reachable objects from the xrefs*/
+<span class="lineNum">     602 </span><span class="lineNoCov">          0 :         modified = TRUE;</span>
+<span class="lineNum">     603 </span><span class="lineNoCov">          0 :         while (modified) {</span>
+<span class="lineNum">     604 </span><span class="lineNoCov">          0 :                 modified = FALSE;</span>
+<span class="lineNum">     605 </span>            :                 /* Mark all objects that are brought to life due to xrefs*/
+<span class="lineNum">     606 </span><span class="lineNoCov">          0 :                 for (i = 0; i &lt; num_xrefs; ++i) {</span>
+<span class="lineNum">     607 </span><span class="lineNoCov">          0 :                         MonoGCBridgeXRef ref = xrefs [i];</span>
+<span class="lineNum">     608 </span><span class="lineNoCov">          0 :                         if (test_scc (sccs [ref.src_scc_index], 0) &amp;&amp; !test_scc (sccs [ref.dst_scc_index], 0)) {</span>
+<span class="lineNum">     609 </span><span class="lineNoCov">          0 :                                 modified = TRUE;</span>
+<span class="lineNum">     610 </span><span class="lineNoCov">          0 :                                 mark_scc (sccs [ref.dst_scc_index], BRIDGE_XREF);</span>
+<span class="lineNum">     611 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     612 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     613 </span>            :         }
+<span class="lineNum">     614 </span>            : 
+<span class="lineNum">     615 </span>            :         /* keep everything in memory, all we want to do is test persistence */
+<span class="lineNum">     616 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; num_sccs; ++i)</span>
+<span class="lineNum">     617 </span><span class="lineNoCov">          0 :                 sccs [i]-&gt;is_alive = TRUE;</span>
+<span class="lineNum">     618 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     619 </span>            : 
+<a name="620"><span class="lineNum">     620 </span>            : /* This bridge keeps all peers with __test &gt; 0 */</a>
+<span class="lineNum">     621 </span>            : static void
+<span class="lineNum">     622 </span>            : bridge_test_positive_status (int num_sccs, MonoGCBridgeSCC **sccs, int num_xrefs, MonoGCBridgeXRef *xrefs)
+<span class="lineNum">     623 </span>            : {
+<span class="lineNum">     624 </span>            :         int i;
+<span class="lineNum">     625 </span>            : 
+<span class="lineNum">     626 </span><span class="lineNoCov">          0 :         if (!mono_bridge_test_field) {</span>
+<span class="lineNum">     627 </span><span class="lineNoCov">          0 :                 mono_bridge_test_field = mono_class_get_field_from_name (mono_object_get_class (sccs[0]-&gt;objs [0]), &quot;__test&quot;);</span>
+<span class="lineNum">     628 </span><span class="lineNoCov">          0 :                 g_assert (mono_bridge_test_field);</span>
+<span class="lineNum">     629 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     630 </span>            : 
+<span class="lineNum">     631 </span>            :         /*We mark all objects in a scc with live objects as reachable by scc*/
+<span class="lineNum">     632 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; num_sccs; ++i) {</span>
+<span class="lineNum">     633 </span>            :                 int j;
+<span class="lineNum">     634 </span><span class="lineNoCov">          0 :                 for (j = 0; j &lt; sccs [i]-&gt;num_objs; ++j) {</span>
+<span class="lineNum">     635 </span><span class="lineNoCov">          0 :                         if (test_scc (sccs [i], j)) {</span>
+<span class="lineNum">     636 </span><span class="lineNoCov">          0 :                                 sccs [i]-&gt;is_alive = TRUE;</span>
+<span class="lineNum">     637 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     638 </span>            :                         }
+<span class="lineNum">     639 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     640 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     641 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     642 </span>            : 
+<a name="643"><span class="lineNum">     643 </span>            : </a>
+<span class="lineNum">     644 </span>            : static void
+<span class="lineNum">     645 </span>            : register_test_bridge_callbacks (const char *bridge_class_name)
+<span class="lineNum">     646 </span>            : {
+<span class="lineNum">     647 </span>            :         MonoGCBridgeCallbacks callbacks;
+<span class="lineNum">     648 </span><span class="lineNoCov">          0 :         callbacks.bridge_version = SGEN_BRIDGE_VERSION;</span>
+<span class="lineNum">     649 </span><span class="lineNoCov">          0 :         callbacks.bridge_class_kind = bridge_test_bridge_class_kind;</span>
+<span class="lineNum">     650 </span><span class="lineNoCov">          0 :         callbacks.is_bridge_object = bridge_test_is_bridge_object;</span>
+<span class="lineNum">     651 </span>            : 
+<span class="lineNum">     652 </span><span class="lineNoCov">          0 :         switch (bridge_class_name [0]) {</span>
+<span class="lineNum">     653 </span>            :         case '2':
+<span class="lineNum">     654 </span><span class="lineNoCov">          0 :                 bridge_class = bridge_class_name + 1;</span>
+<span class="lineNum">     655 </span><span class="lineNoCov">          0 :                 callbacks.cross_references = bridge_test_cross_reference2;</span>
+<span class="lineNum">     656 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     657 </span>            :         case '3':
+<span class="lineNum">     658 </span><span class="lineNoCov">          0 :                 bridge_class = bridge_class_name + 1;</span>
+<span class="lineNum">     659 </span><span class="lineNoCov">          0 :                 callbacks.cross_references = bridge_test_positive_status;</span>
+<span class="lineNum">     660 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     661 </span>            :         default:
+<span class="lineNum">     662 </span><span class="lineNoCov">          0 :                 bridge_class = bridge_class_name;</span>
+<span class="lineNum">     663 </span><span class="lineNoCov">          0 :                 callbacks.cross_references = bridge_test_cross_reference;</span>
+<span class="lineNum">     664 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     665 </span><span class="lineNoCov">          0 :         mono_gc_register_bridge_callbacks (&amp;callbacks);</span>
+<span class="lineNum">     666 </span><span class="lineNoCov">          0 : }</span>
+<a name="667"><span class="lineNum">     667 </span>            : </a>
+<span class="lineNum">     668 </span>            : gboolean
+<span class="lineNum">     669 </span>            : sgen_bridge_handle_gc_param (const char *opt)
+<span class="lineNum">     670 </span>            : {
+<span class="lineNum">     671 </span><span class="lineNoCov">          0 :         g_assert (!bridge_processor_started ());</span>
+<span class="lineNum">     672 </span>            : 
+<span class="lineNum">     673 </span><span class="lineNoCov">          0 :         if (!strcmp (opt, &quot;bridge-require-precise-merge&quot;)) {</span>
+<span class="lineNum">     674 </span><span class="lineNoCov">          0 :                 bridge_processor_config.scc_precise_merge = TRUE;</span>
+<span class="lineNum">     675 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     676 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     677 </span>            :         }
+<span class="lineNum">     678 </span>            : 
+<span class="lineNum">     679 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     680 </span><span class="lineNoCov">          0 : }</span>
+<a name="681"><span class="lineNum">     681 </span>            : </a>
+<span class="lineNum">     682 </span>            : gboolean
+<span class="lineNum">     683 </span>            : sgen_bridge_handle_gc_debug (const char *opt)
+<span class="lineNum">     684 </span>            : {
+<span class="lineNum">     685 </span><span class="lineNoCov">          0 :         g_assert (!bridge_processor_started ());</span>
+<span class="lineNum">     686 </span>            : 
+<span class="lineNum">     687 </span><span class="lineNoCov">          0 :         if (g_str_has_prefix (opt, &quot;bridge=&quot;)) {</span>
+<span class="lineNum">     688 </span><span class="lineNoCov">          0 :                 opt = strchr (opt, '=') + 1;</span>
+<span class="lineNum">     689 </span><span class="lineNoCov">          0 :                 register_test_bridge_callbacks (g_strdup (opt));</span>
+<span class="lineNum">     690 </span><span class="lineNoCov">          0 :         } else if (!strcmp (opt, &quot;enable-bridge-accounting&quot;)) {</span>
+<span class="lineNum">     691 </span><span class="lineNoCov">          0 :                 bridge_processor_config.accounting = TRUE;</span>
+<span class="lineNum">     692 </span><span class="lineNoCov">          0 :         } else if (g_str_has_prefix (opt, &quot;bridge-dump=&quot;)) {</span>
+<span class="lineNum">     693 </span><span class="lineNoCov">          0 :                 char *prefix = strchr (opt, '=') + 1;</span>
+<span class="lineNum">     694 </span><span class="lineNoCov">          0 :                 set_dump_prefix(prefix);</span>
+<span class="lineNum">     695 </span><span class="lineNoCov">          0 :         } else if (g_str_has_prefix (opt, &quot;bridge-compare-to=&quot;)) {</span>
+<span class="lineNum">     696 </span><span class="lineNoCov">          0 :                 const char *name = strchr (opt, '=') + 1;</span>
+<span class="lineNum">     697 </span><span class="lineNoCov">          0 :                 BridgeProcessorSelection selection = bridge_processor_name (name);</span>
+<span class="lineNum">     698 </span>            : 
+<span class="lineNum">     699 </span><span class="lineNoCov">          0 :                 if (selection != BRIDGE_PROCESSOR_INVALID) {</span>
+<span class="lineNum">     700 </span>            :                         // Compare processor doesn't get config
+<span class="lineNum">     701 </span><span class="lineNoCov">          0 :                         init_bridge_processor (&amp;compare_to_bridge_processor, selection);</span>
+<span class="lineNum">     702 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     703 </span><span class="lineNoCov">          0 :                         g_warning (&quot;Invalid bridge implementation to compare against - ignoring.&quot;);</span>
+<span class="lineNum">     704 </span>            :                 }
+<span class="lineNum">     705 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     706 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     707 </span>            :         }
+<span class="lineNum">     708 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     709 </span><span class="lineNoCov">          0 : }</span>
+<a name="710"><span class="lineNum">     710 </span>            : </a>
+<span class="lineNum">     711 </span>            : void
+<span class="lineNum">     712 </span>            : sgen_bridge_print_gc_debug_usage (void)
+<span class="lineNum">     713 </span>            : {
+<span class="lineNum">     714 </span><span class="lineNoCov">          0 :         fprintf (stderr, &quot;  bridge=&lt;class-name&gt;\n&quot;);</span>
+<span class="lineNum">     715 </span><span class="lineNoCov">          0 :         fprintf (stderr, &quot;  enable-bridge-accounting\n&quot;);</span>
+<span class="lineNum">     716 </span><span class="lineNoCov">          0 :         fprintf (stderr, &quot;  bridge-dump=&lt;filename-prefix&gt;\n&quot;);</span>
+<span class="lineNum">     717 </span><span class="lineNoCov">          0 :         fprintf (stderr, &quot;  bridge-compare-to=&lt;implementation&gt;\n&quot;);</span>
+<span class="lineNum">     718 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     719 </span>            : 
+<span class="lineNum">     720 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

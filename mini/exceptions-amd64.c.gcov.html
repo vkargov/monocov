@@ -1,0 +1,1341 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/exceptions-amd64.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - exceptions-amd64.c<span style="font-size: 80%;"> (source / <a href="exceptions-amd64.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">244</td>
+            <td class="headerCovTableEntry">317</td>
+            <td class="headerCovTableEntryMed">77.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">18</td>
+            <td class="headerCovTableEntry">23</td>
+            <td class="headerCovTableEntryMed">78.3 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * exceptions-amd64.c: exception support for AMD64
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *   Dietmar Maurer (dietmar@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2001 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  * Copyright 2011 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : #ifdef HAVE_SIGNAL_H
+<span class="lineNum">      18 </span>            : #include &lt;signal.h&gt;
+<span class="lineNum">      19 </span>            : #endif
+<span class="lineNum">      20 </span>            : #ifdef HAVE_UCONTEXT_H
+<span class="lineNum">      21 </span>            : #include &lt;ucontext.h&gt;
+<span class="lineNum">      22 </span>            : #endif
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #include &lt;mono/arch/amd64/amd64-codegen.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;mono/metadata/abi-details.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/metadata/appdomain.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;mono/metadata/tabledefs.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;mono/metadata/threads.h&gt;
+<span class="lineNum">      29 </span>            : #include &lt;mono/metadata/threads-types.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      31 </span>            : #include &lt;mono/metadata/exception.h&gt;
+<span class="lineNum">      32 </span>            : #include &lt;mono/metadata/gc-internals.h&gt;
+<span class="lineNum">      33 </span>            : #include &lt;mono/metadata/mono-debug.h&gt;
+<span class="lineNum">      34 </span>            : #include &lt;mono/utils/mono-mmap.h&gt;
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      37 </span>            : #include &quot;mini-amd64.h&quot;
+<span class="lineNum">      38 </span>            : #include &quot;tasklets.h&quot;
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : #define ALIGN_TO(val,align) (((val) + ((align) - 1)) &amp; ~((align) - 1))
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">      43 </span>            : static MonoW32ExceptionHandler fpe_handler;
+<span class="lineNum">      44 </span>            : static MonoW32ExceptionHandler ill_handler;
+<span class="lineNum">      45 </span>            : static MonoW32ExceptionHandler segv_handler;
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : LPTOP_LEVEL_EXCEPTION_FILTER mono_old_win_toplevel_exception_filter;
+<span class="lineNum">      48 </span>            : void *mono_win_vectored_exception_handle;
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span>            : #define W32_SEH_HANDLE_EX(_ex) \
+<span class="lineNum">      51 </span>            :         if (_ex##_handler) _ex##_handler(0, ep, ctx)
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : static LONG CALLBACK seh_unhandled_exception_filter(EXCEPTION_POINTERS* ep)
+<span class="lineNum">      54 </span>            : {
+<span class="lineNum">      55 </span>            : #ifndef MONO_CROSS_COMPILE
+<span class="lineNum">      56 </span>            :         if (mono_old_win_toplevel_exception_filter) {
+<span class="lineNum">      57 </span>            :                 return (*mono_old_win_toplevel_exception_filter)(ep);
+<span class="lineNum">      58 </span>            :         }
+<span class="lineNum">      59 </span>            : #endif
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span>            :         mono_handle_native_crash (&quot;SIGSEGV&quot;, NULL, NULL);
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span>            :         return EXCEPTION_CONTINUE_SEARCH;
+<span class="lineNum">      64 </span>            : }
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span>            : /*
+<span class="lineNum">      67 </span>            :  * Unhandled Exception Filter
+<span class="lineNum">      68 </span>            :  * Top-level per-process exception handler.
+<span class="lineNum">      69 </span>            :  */
+<span class="lineNum">      70 </span>            : static LONG CALLBACK seh_vectored_exception_handler(EXCEPTION_POINTERS* ep)
+<span class="lineNum">      71 </span>            : {
+<span class="lineNum">      72 </span>            :         EXCEPTION_RECORD* er;
+<span class="lineNum">      73 </span>            :         CONTEXT* ctx;
+<span class="lineNum">      74 </span>            :         LONG res;
+<span class="lineNum">      75 </span>            :         MonoJitTlsData *jit_tls = mono_tls_get_jit_tls ();
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span>            :         /* If the thread is not managed by the runtime return early */
+<span class="lineNum">      78 </span>            :         if (!jit_tls)
+<span class="lineNum">      79 </span>            :                 return EXCEPTION_CONTINUE_SEARCH;
+<span class="lineNum">      80 </span>            : 
+<span class="lineNum">      81 </span>            :         jit_tls-&gt;mono_win_chained_exception_needs_run = FALSE;
+<span class="lineNum">      82 </span>            :         res = EXCEPTION_CONTINUE_EXECUTION;
+<span class="lineNum">      83 </span>            : 
+<span class="lineNum">      84 </span>            :         er = ep-&gt;ExceptionRecord;
+<span class="lineNum">      85 </span>            :         ctx = ep-&gt;ContextRecord;
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span>            :         switch (er-&gt;ExceptionCode) {
+<span class="lineNum">      88 </span>            :         case EXCEPTION_ACCESS_VIOLATION:
+<span class="lineNum">      89 </span>            :                 W32_SEH_HANDLE_EX(segv);
+<span class="lineNum">      90 </span>            :                 break;
+<span class="lineNum">      91 </span>            :         case EXCEPTION_ILLEGAL_INSTRUCTION:
+<span class="lineNum">      92 </span>            :                 W32_SEH_HANDLE_EX(ill);
+<span class="lineNum">      93 </span>            :                 break;
+<span class="lineNum">      94 </span>            :         case EXCEPTION_INT_DIVIDE_BY_ZERO:
+<span class="lineNum">      95 </span>            :         case EXCEPTION_INT_OVERFLOW:
+<span class="lineNum">      96 </span>            :         case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+<span class="lineNum">      97 </span>            :         case EXCEPTION_FLT_OVERFLOW:
+<span class="lineNum">      98 </span>            :         case EXCEPTION_FLT_UNDERFLOW:
+<span class="lineNum">      99 </span>            :         case EXCEPTION_FLT_INEXACT_RESULT:
+<span class="lineNum">     100 </span>            :                 W32_SEH_HANDLE_EX(fpe);
+<span class="lineNum">     101 </span>            :                 break;
+<span class="lineNum">     102 </span>            :         default:
+<span class="lineNum">     103 </span>            :                 jit_tls-&gt;mono_win_chained_exception_needs_run = TRUE;
+<span class="lineNum">     104 </span>            :                 break;
+<span class="lineNum">     105 </span>            :         }
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span>            :         if (jit_tls-&gt;mono_win_chained_exception_needs_run) {
+<span class="lineNum">     108 </span>            :                 /* Don't copy context back if we chained exception
+<span class="lineNum">     109 </span>            :                 * as the handler may have modfied the EXCEPTION_POINTERS
+<span class="lineNum">     110 </span>            :                 * directly. We don't pass sigcontext to chained handlers.
+<span class="lineNum">     111 </span>            :                 * Return continue search so the UnhandledExceptionFilter
+<span class="lineNum">     112 </span>            :                 * can correctly chain the exception.
+<span class="lineNum">     113 </span>            :                 */
+<span class="lineNum">     114 </span>            :                 res = EXCEPTION_CONTINUE_SEARCH;
+<span class="lineNum">     115 </span>            :         }
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span>            :         return res;
+<span class="lineNum">     118 </span>            : }
+<span class="lineNum">     119 </span>            : 
+<span class="lineNum">     120 </span>            : void win32_seh_init()
+<span class="lineNum">     121 </span>            : {
+<span class="lineNum">     122 </span>            :         mono_old_win_toplevel_exception_filter = SetUnhandledExceptionFilter(seh_unhandled_exception_filter);
+<span class="lineNum">     123 </span>            :         mono_win_vectored_exception_handle = AddVectoredExceptionHandler (1, seh_vectored_exception_handler);
+<span class="lineNum">     124 </span>            : }
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span>            : void win32_seh_cleanup()
+<span class="lineNum">     127 </span>            : {
+<span class="lineNum">     128 </span>            :         guint32 ret = 0;
+<span class="lineNum">     129 </span>            : 
+<span class="lineNum">     130 </span>            :         if (mono_old_win_toplevel_exception_filter) SetUnhandledExceptionFilter(mono_old_win_toplevel_exception_filter);
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span>            :         ret = RemoveVectoredExceptionHandler (mono_win_vectored_exception_handle);
+<span class="lineNum">     133 </span>            :         g_assert (ret);
+<span class="lineNum">     134 </span>            : }
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span>            : void win32_seh_set_handler(int type, MonoW32ExceptionHandler handler)
+<span class="lineNum">     137 </span>            : {
+<span class="lineNum">     138 </span>            :         switch (type) {
+<span class="lineNum">     139 </span>            :         case SIGFPE:
+<span class="lineNum">     140 </span>            :                 fpe_handler = handler;
+<span class="lineNum">     141 </span>            :                 break;
+<span class="lineNum">     142 </span>            :         case SIGILL:
+<span class="lineNum">     143 </span>            :                 ill_handler = handler;
+<span class="lineNum">     144 </span>            :                 break;
+<span class="lineNum">     145 </span>            :         case SIGSEGV:
+<span class="lineNum">     146 </span>            :                 segv_handler = handler;
+<span class="lineNum">     147 </span>            :                 break;
+<span class="lineNum">     148 </span>            :         default:
+<span class="lineNum">     149 </span>            :                 break;
+<span class="lineNum">     150 </span>            :         }
+<span class="lineNum">     151 </span>            : }
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span>            : #endif /* TARGET_WIN32 */
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     156 </span>            : /*
+<span class="lineNum">     157 </span>            :  * mono_arch_get_restore_context:
+<span class="lineNum">     158 </span>            :  *
+<span class="lineNum">     159 </span>            :  * Returns a pointer to a method which restores a previously saved sigcontext.
+<a name="160"><span class="lineNum">     160 </span>            :  */</a>
+<span class="lineNum">     161 </span>            : gpointer
+<span class="lineNum">     162 </span>            : mono_arch_get_restore_context (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     163 </span>            : {
+<span class="lineNum">     164 </span><span class="lineCov">       3285 :         guint8 *start = NULL;</span>
+<span class="lineNum">     165 </span>            :         guint8 *code;
+<span class="lineNum">     166 </span><span class="lineCov">       3285 :         MonoJumpInfo *ji = NULL;</span>
+<span class="lineNum">     167 </span><span class="lineCov">       3285 :         GSList *unwind_ops = NULL;</span>
+<span class="lineNum">     168 </span>            :         int i, gregs_offset;
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span>            :         /* restore_contect (MonoContext *ctx) */
+<span class="lineNum">     171 </span>            : 
+<span class="lineNum">     172 </span><span class="lineCov">       3285 :         start = code = (guint8 *)mono_global_codeman_reserve (256);</span>
+<span class="lineNum">     173 </span>            : 
+<span class="lineNum">     174 </span><span class="lineCov">      32850 :         amd64_mov_reg_reg (code, AMD64_R11, AMD64_ARG_REG1, 8);</span>
+<span class="lineNum">     175 </span>            : 
+<span class="lineNum">     176 </span>            :         /* Restore all registers except %rip and %r11 */
+<span class="lineNum">     177 </span><span class="lineCov">       3285 :         gregs_offset = MONO_STRUCT_OFFSET (MonoContext, gregs);</span>
+<span class="lineNum">     178 </span><span class="lineCov">     118260 :         for (i = 0; i &lt; AMD64_NREG; ++i) {</span>
+<span class="lineNum">     179 </span><span class="lineCov">     285795 :                 if (i != AMD64_RIP &amp;&amp; i != AMD64_RSP &amp;&amp; i != AMD64_R8 &amp;&amp; i != AMD64_R9 &amp;&amp; i != AMD64_R10 &amp;&amp; i != AMD64_R11)</span>
+<span class="lineNum">     180 </span><span class="lineCov">     814680 :                         amd64_mov_reg_membase (code, i, AMD64_R11, gregs_offset + (i * 8), 8);</span>
+<span class="lineNum">     181 </span><span class="lineCov">      55845 :         }</span>
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span>            :         /*
+<span class="lineNum">     184 </span>            :          * The context resides on the stack, in the stack frame of the
+<span class="lineNum">     185 </span>            :          * caller of this function.  The stack pointer that we need to
+<span class="lineNum">     186 </span>            :          * restore is potentially many stack frames higher up, so the
+<span class="lineNum">     187 </span>            :          * distance between them can easily be more than the red zone
+<span class="lineNum">     188 </span>            :          * size.  Hence the stack pointer can be restored only after
+<span class="lineNum">     189 </span>            :          * we have finished loading everything from the context.
+<span class="lineNum">     190 </span>            :          */
+<span class="lineNum">     191 </span><span class="lineCov">      72270 :         amd64_mov_reg_membase (code, AMD64_R8, AMD64_R11,  gregs_offset + (AMD64_RSP * 8), 8);</span>
+<span class="lineNum">     192 </span><span class="lineCov">      68985 :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_R11,  gregs_offset + (AMD64_RIP * 8), 8);</span>
+<span class="lineNum">     193 </span><span class="lineCov">      32850 :         amd64_mov_reg_reg (code, AMD64_RSP, AMD64_R8, 8);</span>
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span>            :         /* jump to the saved IP */
+<span class="lineNum">     196 </span><span class="lineCov">      39420 :         amd64_jump_reg (code, AMD64_R11);</span>
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span><span class="lineCov">       3285 :         mono_arch_flush_icache (start, code - start);</span>
+<span class="lineNum">     199 </span><span class="lineCov">       3285 :         mono_profiler_code_buffer_new (start, code - start, MONO_PROFILER_CODE_BUFFER_EXCEPTION_HANDLING, NULL);</span>
+<span class="lineNum">     200 </span>            : 
+<span class="lineNum">     201 </span><span class="lineCov">       3285 :         if (info)</span>
+<span class="lineNum">     202 </span><span class="lineCov">       3285 :                 *info = mono_tramp_info_create (&quot;restore_context&quot;, start, code - start, ji, unwind_ops);</span>
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span><span class="lineCov">       3285 :         return start;</span>
+<span class="lineNum">     205 </span>            : }
+<span class="lineNum">     206 </span>            : 
+<span class="lineNum">     207 </span>            : /*
+<span class="lineNum">     208 </span>            :  * mono_arch_get_call_filter:
+<span class="lineNum">     209 </span>            :  *
+<span class="lineNum">     210 </span>            :  * Returns a pointer to a method which calls an exception filter. We
+<span class="lineNum">     211 </span>            :  * also use this function to call finally handlers (we pass NULL as 
+<span class="lineNum">     212 </span>            :  * @exc object in this case).
+<a name="213"><span class="lineNum">     213 </span>            :  */</a>
+<span class="lineNum">     214 </span>            : gpointer
+<span class="lineNum">     215 </span>            : mono_arch_get_call_filter (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span>            :         guint8 *start;
+<span class="lineNum">     218 </span>            :         int i, gregs_offset;
+<span class="lineNum">     219 </span>            :         guint8 *code;
+<span class="lineNum">     220 </span>            :         guint32 pos;
+<span class="lineNum">     221 </span><span class="lineCov">       3285 :         MonoJumpInfo *ji = NULL;</span>
+<span class="lineNum">     222 </span><span class="lineCov">       3285 :         GSList *unwind_ops = NULL;</span>
+<span class="lineNum">     223 </span><span class="lineCov">       3285 :         const guint kMaxCodeSize = 128;</span>
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span><span class="lineCov">       3285 :         start = code = (guint8 *)mono_global_codeman_reserve (kMaxCodeSize);</span>
+<span class="lineNum">     226 </span>            : 
+<span class="lineNum">     227 </span>            :         /* call_filter (MonoContext *ctx, unsigned long eip) */
+<span class="lineNum">     228 </span><span class="lineCov">       3285 :         code = start;</span>
+<span class="lineNum">     229 </span>            : 
+<span class="lineNum">     230 </span>            :         /* Alloc new frame */
+<span class="lineNum">     231 </span><span class="lineCov">      16425 :         amd64_push_reg (code, AMD64_RBP);</span>
+<span class="lineNum">     232 </span><span class="lineCov">      32850 :         amd64_mov_reg_reg (code, AMD64_RBP, AMD64_RSP, 8);</span>
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span>            :         /* Save callee saved regs */
+<span class="lineNum">     235 </span><span class="lineCov">       3285 :         pos = 0;</span>
+<span class="lineNum">     236 </span><span class="lineCov">     118260 :         for (i = 0; i &lt; AMD64_NREG; ++i)</span>
+<span class="lineNum">     237 </span><span class="lineCov">     111690 :                 if (AMD64_IS_CALLEE_SAVED_REG (i)) {</span>
+<span class="lineNum">     238 </span><span class="lineCov">     111690 :                         amd64_push_reg (code, i);</span>
+<span class="lineNum">     239 </span><span class="lineCov">      19710 :                         pos += 8;</span>
+<span class="lineNum">     240 </span><span class="lineCov">      19710 :                 }</span>
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span>            :         /* Save EBP */
+<span class="lineNum">     243 </span><span class="lineCov">       3285 :         pos += 8;</span>
+<span class="lineNum">     244 </span><span class="lineCov">      16425 :         amd64_push_reg (code, AMD64_RBP);</span>
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span>            :         /* Make stack misaligned, the call will make it aligned again */
+<span class="lineNum">     247 </span><span class="lineCov">       3285 :         if (! (pos &amp; 8))</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :                 amd64_alu_reg_imm (code, X86_SUB, AMD64_RSP, 8);</span>
+<span class="lineNum">     249 </span>            : 
+<span class="lineNum">     250 </span><span class="lineCov">       3285 :         gregs_offset = MONO_STRUCT_OFFSET (MonoContext, gregs);</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span>            :         /* set new EBP */
+<span class="lineNum">     253 </span><span class="lineCov">      72270 :         amd64_mov_reg_membase (code, AMD64_RBP, AMD64_ARG_REG1, gregs_offset + (AMD64_RBP * 8), 8);</span>
+<span class="lineNum">     254 </span>            :         /* load callee saved regs */
+<span class="lineNum">     255 </span><span class="lineCov">     118260 :         for (i = 0; i &lt; AMD64_NREG; ++i) {</span>
+<span class="lineNum">     256 </span><span class="lineCov">      75555 :                 if (AMD64_IS_CALLEE_SAVED_REG (i) &amp;&amp; i != AMD64_RBP)</span>
+<span class="lineNum">     257 </span><span class="lineCov">     377775 :                         amd64_mov_reg_membase (code, i, AMD64_ARG_REG1, gregs_offset + (i * 8), 8);</span>
+<span class="lineNum">     258 </span><span class="lineCov">      55845 :         }</span>
+<span class="lineNum">     259 </span>            :         /* load exc register */
+<span class="lineNum">     260 </span><span class="lineCov">      55845 :         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_ARG_REG1,  gregs_offset + (AMD64_RAX * 8), 8);</span>
+<span class="lineNum">     261 </span>            : 
+<span class="lineNum">     262 </span>            :         /* call the handler */
+<span class="lineNum">     263 </span><span class="lineCov">      29565 :         amd64_call_reg (code, AMD64_ARG_REG2);</span>
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineCov">       3285 :         if (! (pos &amp; 8))</span>
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :                 amd64_alu_reg_imm (code, X86_ADD, AMD64_RSP, 8);</span>
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span>            :         /* restore RBP */
+<span class="lineNum">     269 </span><span class="lineCov">      16425 :         amd64_pop_reg (code, AMD64_RBP);</span>
+<span class="lineNum">     270 </span>            : 
+<span class="lineNum">     271 </span>            :         /* Restore callee saved regs */
+<span class="lineNum">     272 </span><span class="lineCov">     124830 :         for (i = AMD64_NREG; i &gt;= 0; --i)</span>
+<span class="lineNum">     273 </span><span class="lineCov">     118260 :                 if (AMD64_IS_CALLEE_SAVED_REG (i))</span>
+<span class="lineNum">     274 </span><span class="lineCov">     131400 :                         amd64_pop_reg (code, i);</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span><span class="lineCov">       6570 :         amd64_leave (code);</span>
+<span class="lineNum">     277 </span><span class="lineCov">       6570 :         amd64_ret (code);</span>
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span><span class="lineCov">       9855 :         g_assert ((code - start) &lt; kMaxCodeSize);</span>
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span><span class="lineCov">       3285 :         mono_arch_flush_icache (start, code - start);</span>
+<span class="lineNum">     282 </span><span class="lineCov">       3285 :         mono_profiler_code_buffer_new (start, code - start, MONO_PROFILER_CODE_BUFFER_EXCEPTION_HANDLING, NULL);</span>
+<span class="lineNum">     283 </span>            : 
+<span class="lineNum">     284 </span><span class="lineCov">       3285 :         if (info)</span>
+<span class="lineNum">     285 </span><span class="lineCov">       3285 :                 *info = mono_tramp_info_create (&quot;call_filter&quot;, start, code - start, ji, unwind_ops);</span>
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span><span class="lineCov">       3285 :         return start;</span>
+<span class="lineNum">     288 </span>            : }
+<span class="lineNum">     289 </span>            : #endif /* !DISABLE_JIT */
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span>            : /* 
+<span class="lineNum">     292 </span>            :  * The first few arguments are dummy, to force the other arguments to be passed on
+<span class="lineNum">     293 </span>            :  * the stack, this avoids overwriting the argument registers in the throw trampoline.
+<a name="294"><span class="lineNum">     294 </span>            :  */</a>
+<span class="lineNum">     295 </span>            : void
+<span class="lineNum">     296 </span>            : mono_amd64_throw_exception (guint64 dummy1, guint64 dummy2, guint64 dummy3, guint64 dummy4,
+<span class="lineNum">     297 </span>            :                                                         guint64 dummy5, guint64 dummy6,
+<span class="lineNum">     298 </span>            :                                                         MonoContext *mctx, MonoObject *exc, gboolean rethrow)
+<span class="lineNum">     299 </span>            : {
+<span class="lineNum">     300 </span>            :         MonoError error;
+<span class="lineNum">     301 </span>            :         MonoContext ctx;
+<span class="lineNum">     302 </span>            : 
+<span class="lineNum">     303 </span>            :         /* mctx is on the caller's stack */
+<span class="lineNum">     304 </span><span class="lineCov">     334130 :         memcpy (&amp;ctx, mctx, sizeof (MonoContext));</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineCov">     334130 :         if (mono_object_isinst_checked (exc, mono_defaults.exception_class, &amp;error)) {</span>
+<span class="lineNum">     307 </span><span class="lineCov">     334008 :                 MonoException *mono_ex = (MonoException*)exc;</span>
+<span class="lineNum">     308 </span><span class="lineCov">     334008 :                 if (!rethrow) {</span>
+<span class="lineNum">     309 </span><span class="lineCov">     333791 :                         mono_ex-&gt;stack_trace = NULL;</span>
+<span class="lineNum">     310 </span><span class="lineCov">     333791 :                         mono_ex-&gt;trace_ips = NULL;</span>
+<span class="lineNum">     311 </span><span class="lineCov">     333791 :                 }</span>
+<span class="lineNum">     312 </span><span class="lineCov">     334008 :         }</span>
+<span class="lineNum">     313 </span><span class="lineCov">     334130 :         mono_error_assert_ok (&amp;error);</span>
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span>            :         /* adjust eip so that it point into the call instruction */
+<span class="lineNum">     316 </span><span class="lineCov">     334130 :         ctx.gregs [AMD64_RIP] --;</span>
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span><span class="lineCov">     334130 :         mono_handle_exception (&amp;ctx, exc);</span>
+<span class="lineNum">     319 </span><span class="lineCov">     334130 :         mono_restore_context (&amp;ctx);</span>
+<span class="lineNum">     320 </span><span class="lineCov">     668260 :         g_assert_not_reached ();</span>
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 : }</span>
+<a name="322"><span class="lineNum">     322 </span>            : </a>
+<span class="lineNum">     323 </span>            : void
+<span class="lineNum">     324 </span>            : mono_amd64_throw_corlib_exception (guint64 dummy1, guint64 dummy2, guint64 dummy3, guint64 dummy4,
+<span class="lineNum">     325 </span>            :                                                                    guint64 dummy5, guint64 dummy6,
+<span class="lineNum">     326 </span>            :                                                                    MonoContext *mctx, guint32 ex_token_index, gint64 pc_offset)
+<span class="lineNum">     327 </span>            : {
+<span class="lineNum">     328 </span><span class="lineCov">       9286 :         guint32 ex_token = MONO_TOKEN_TYPE_DEF | ex_token_index;</span>
+<span class="lineNum">     329 </span>            :         MonoException *ex;
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span><span class="lineCov">       9286 :         ex = mono_exception_from_token (mono_defaults.exception_class-&gt;image, ex_token);</span>
+<span class="lineNum">     332 </span>            : 
+<span class="lineNum">     333 </span><span class="lineCov">       9286 :         mctx-&gt;gregs [AMD64_RIP] -= pc_offset;</span>
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span>            :         /* Negate the ip adjustment done in mono_amd64_throw_exception () */
+<span class="lineNum">     336 </span><span class="lineCov">       9286 :         mctx-&gt;gregs [AMD64_RIP] += 1;</span>
+<span class="lineNum">     337 </span>            : 
+<span class="lineNum">     338 </span><span class="lineCov">       9286 :         mono_amd64_throw_exception (dummy1, dummy2, dummy3, dummy4, dummy5, dummy6, mctx, (MonoObject*)ex, FALSE);</span>
+<span class="lineNum">     339 </span><span class="lineCov">       9286 : }</span>
+<a name="340"><span class="lineNum">     340 </span>            : </a>
+<span class="lineNum">     341 </span>            : void
+<span class="lineNum">     342 </span>            : mono_amd64_resume_unwind (guint64 dummy1, guint64 dummy2, guint64 dummy3, guint64 dummy4,
+<span class="lineNum">     343 </span>            :                                                   guint64 dummy5, guint64 dummy6,
+<span class="lineNum">     344 </span>            :                                                   MonoContext *mctx, guint32 dummy7, gint64 dummy8)
+<span class="lineNum">     345 </span>            : {
+<span class="lineNum">     346 </span>            :         /* Only the register parameters are valid */
+<span class="lineNum">     347 </span>            :         MonoContext ctx;
+<span class="lineNum">     348 </span>            : 
+<span class="lineNum">     349 </span>            :         /* mctx is on the caller's stack */
+<span class="lineNum">     350 </span><span class="lineCov">       1035 :         memcpy (&amp;ctx, mctx, sizeof (MonoContext));</span>
+<span class="lineNum">     351 </span>            : 
+<span class="lineNum">     352 </span><span class="lineCov">       1035 :         mono_resume_unwind (&amp;ctx);</span>
+<span class="lineNum">     353 </span><span class="lineCov">       1035 : }</span>
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     356 </span>            : /*
+<span class="lineNum">     357 </span>            :  * get_throw_trampoline:
+<span class="lineNum">     358 </span>            :  *
+<span class="lineNum">     359 </span>            :  *  Generate a call to mono_amd64_throw_exception/
+<span class="lineNum">     360 </span>            :  * mono_amd64_throw_corlib_exception.
+<a name="361"><span class="lineNum">     361 </span>            :  */</a>
+<span class="lineNum">     362 </span>            : static gpointer
+<span class="lineNum">     363 </span>            : get_throw_trampoline (MonoTrampInfo **info, gboolean rethrow, gboolean corlib, gboolean llvm_abs, gboolean resume_unwind, const char *tramp_name, gboolean aot)
+<span class="lineNum">     364 </span>            : {
+<span class="lineNum">     365 </span>            :         guint8* start;
+<span class="lineNum">     366 </span>            :         guint8 *code;
+<span class="lineNum">     367 </span><span class="lineCov">      19710 :         MonoJumpInfo *ji = NULL;</span>
+<span class="lineNum">     368 </span><span class="lineCov">      19710 :         GSList *unwind_ops = NULL;</span>
+<span class="lineNum">     369 </span>            :         int i, stack_size, arg_offsets [16], ctx_offset, regs_offset, dummy_stack_space;
+<span class="lineNum">     370 </span><span class="lineCov">      19710 :         const guint kMaxCodeSize = 256;</span>
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     373 </span>            :         dummy_stack_space = 6 * sizeof(mgreg_t);        /* Windows expects stack space allocated for all 6 dummy args. */
+<span class="lineNum">     374 </span>            : #else
+<span class="lineNum">     375 </span><span class="lineCov">      19710 :         dummy_stack_space = 0;</span>
+<span class="lineNum">     376 </span>            : #endif
+<span class="lineNum">     377 </span>            : 
+<span class="lineNum">     378 </span><span class="lineCov">      19710 :         start = code = (guint8 *)mono_global_codeman_reserve (kMaxCodeSize);</span>
+<span class="lineNum">     379 </span>            : 
+<span class="lineNum">     380 </span>            :         /* The stack is unaligned on entry */
+<span class="lineNum">     381 </span><span class="lineCov">      19710 :         stack_size = ALIGN_TO (sizeof (MonoContext) + 64 + dummy_stack_space, MONO_ARCH_FRAME_ALIGNMENT) + 8;</span>
+<span class="lineNum">     382 </span>            : 
+<span class="lineNum">     383 </span><span class="lineCov">      19710 :         code = start;</span>
+<span class="lineNum">     384 </span>            : 
+<span class="lineNum">     385 </span><span class="lineCov">      19710 :         if (info)</span>
+<span class="lineNum">     386 </span><span class="lineCov">      19710 :                 unwind_ops = mono_arch_get_cie_program ();</span>
+<span class="lineNum">     387 </span>            : 
+<span class="lineNum">     388 </span>            :         /* Alloc frame */
+<span class="lineNum">     389 </span><span class="lineCov">     275940 :         amd64_alu_reg_imm (code, X86_SUB, AMD64_RSP, stack_size);</span>
+<span class="lineNum">     390 </span><span class="lineCov">      19710 :         if (info)</span>
+<span class="lineNum">     391 </span><span class="lineCov">      59130 :                 mono_add_unwind_op_def_cfa_offset (unwind_ops, code, start, stack_size + 8);</span>
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span>            :         /*
+<span class="lineNum">     394 </span>            :          * To hide linux/windows calling convention differences, we pass all arguments on
+<span class="lineNum">     395 </span>            :          * the stack by passing 6 dummy values in registers.
+<span class="lineNum">     396 </span>            :          */
+<span class="lineNum">     397 </span>            : 
+<span class="lineNum">     398 </span><span class="lineCov">      19710 :         arg_offsets [0] = dummy_stack_space + 0;</span>
+<span class="lineNum">     399 </span><span class="lineCov">      19710 :         arg_offsets [1] = dummy_stack_space + sizeof(mgreg_t);</span>
+<span class="lineNum">     400 </span><span class="lineCov">      19710 :         arg_offsets [2] = dummy_stack_space + sizeof(mgreg_t) * 2;</span>
+<span class="lineNum">     401 </span><span class="lineCov">      19710 :         ctx_offset = dummy_stack_space + sizeof(mgreg_t) * 4;</span>
+<span class="lineNum">     402 </span><span class="lineCov">      19710 :         regs_offset = ctx_offset + MONO_STRUCT_OFFSET (MonoContext, gregs);</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span>            :         /* Save registers */
+<span class="lineNum">     405 </span><span class="lineCov">     709560 :         for (i = 0; i &lt; AMD64_NREG; ++i)</span>
+<span class="lineNum">     406 </span><span class="lineCov">     670140 :                 if (i != AMD64_RSP)</span>
+<span class="lineNum">     407 </span><span class="lineCov">    6524010 :                         amd64_mov_membase_reg (code, AMD64_RSP, regs_offset + (i * sizeof(mgreg_t)), i, sizeof(mgreg_t));</span>
+<span class="lineNum">     408 </span>            :         /* Save RSP */
+<span class="lineNum">     409 </span><span class="lineCov">     413910 :         amd64_lea_membase (code, AMD64_RAX, AMD64_RSP, stack_size + sizeof(mgreg_t));</span>
+<span class="lineNum">     410 </span><span class="lineCov">     394200 :         amd64_mov_membase_reg (code, AMD64_RSP, regs_offset + (AMD64_RSP * sizeof(mgreg_t)), X86_EAX, sizeof(mgreg_t));</span>
+<span class="lineNum">     411 </span>            :         /* Save IP */
+<span class="lineNum">     412 </span><span class="lineCov">     453330 :         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_RSP, stack_size, sizeof(mgreg_t));</span>
+<span class="lineNum">     413 </span><span class="lineCov">     374490 :         amd64_mov_membase_reg (code, AMD64_RSP, regs_offset + (AMD64_RIP * sizeof(mgreg_t)), AMD64_RAX, sizeof(mgreg_t));</span>
+<span class="lineNum">     414 </span>            :         /* Set arg1 == ctx */
+<span class="lineNum">     415 </span><span class="lineCov">     433620 :         amd64_lea_membase (code, AMD64_RAX, AMD64_RSP, ctx_offset);</span>
+<span class="lineNum">     416 </span><span class="lineCov">     315360 :         amd64_mov_membase_reg (code, AMD64_RSP, arg_offsets [0], AMD64_RAX, sizeof(mgreg_t));</span>
+<span class="lineNum">     417 </span>            :         /* Set arg2 == exc/ex_token_index */
+<span class="lineNum">     418 </span><span class="lineCov">      19710 :         if (resume_unwind)</span>
+<span class="lineNum">     419 </span><span class="lineCov">      75555 :                 amd64_mov_membase_imm (code, AMD64_RSP, arg_offsets [1], 0, sizeof(mgreg_t));</span>
+<span class="lineNum">     420 </span>            :         else
+<span class="lineNum">     421 </span><span class="lineCov">     328500 :                 amd64_mov_membase_reg (code, AMD64_RSP, arg_offsets [1], AMD64_ARG_REG1, sizeof(mgreg_t));</span>
+<span class="lineNum">     422 </span>            :         /* Set arg3 == rethrow/pc offset */
+<span class="lineNum">     423 </span><span class="lineCov">      19710 :         if (resume_unwind) {</span>
+<span class="lineNum">     424 </span><span class="lineCov">      72270 :                 amd64_mov_membase_imm (code, AMD64_RSP, arg_offsets [2], 0, sizeof(mgreg_t));</span>
+<span class="lineNum">     425 </span><span class="lineCov">      19710 :         } else if (corlib) {</span>
+<span class="lineNum">     426 </span><span class="lineCov">       9855 :                 if (llvm_abs)</span>
+<span class="lineNum">     427 </span>            :                         /*
+<span class="lineNum">     428 </span>            :                          * The caller doesn't pass in a pc/pc offset, instead we simply use the
+<span class="lineNum">     429 </span>            :                          * caller ip. Negate the pc adjustment done in mono_amd64_throw_corlib_exception ().
+<span class="lineNum">     430 </span>            :                          */
+<span class="lineNum">     431 </span><span class="lineCov">      75555 :                         amd64_mov_membase_imm (code, AMD64_RSP, arg_offsets [2], 1, sizeof(mgreg_t));</span>
+<span class="lineNum">     432 </span>            :                 else
+<span class="lineNum">     433 </span><span class="lineCov">     131400 :                         amd64_mov_membase_reg (code, AMD64_RSP, arg_offsets [2], AMD64_ARG_REG2, sizeof(mgreg_t));</span>
+<span class="lineNum">     434 </span><span class="lineCov">       9855 :         } else {</span>
+<span class="lineNum">     435 </span><span class="lineCov">     144540 :                 amd64_mov_membase_imm (code, AMD64_RSP, arg_offsets [2], rethrow, sizeof(mgreg_t));</span>
+<span class="lineNum">     436 </span>            :         }
+<span class="lineNum">     437 </span>            : 
+<span class="lineNum">     438 </span><span class="lineCov">      19710 :         if (aot) {</span>
+<span class="lineNum">     439 </span>            :                 const char *icall_name;
+<span class="lineNum">     440 </span>            : 
+<span class="lineNum">     441 </span><span class="lineNoCov">          0 :                 if (resume_unwind)</span>
+<span class="lineNum">     442 </span><span class="lineNoCov">          0 :                         icall_name = &quot;mono_amd64_resume_unwind&quot;;</span>
+<span class="lineNum">     443 </span><span class="lineNoCov">          0 :                 else if (corlib)</span>
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :                         icall_name = &quot;mono_amd64_throw_corlib_exception&quot;;</span>
+<span class="lineNum">     445 </span>            :                 else
+<span class="lineNum">     446 </span><span class="lineNoCov">          0 :                         icall_name = &quot;mono_amd64_throw_exception&quot;;</span>
+<span class="lineNum">     447 </span><span class="lineNoCov">          0 :                 ji = mono_patch_info_list_prepend (ji, code - start, MONO_PATCH_INFO_JIT_ICALL_ADDR, icall_name);</span>
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :                 amd64_mov_reg_membase (code, AMD64_R11, AMD64_RIP, 0, 8);</span>
+<span class="lineNum">     449 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     450 </span><span class="lineCov">     354780 :                 amd64_mov_reg_imm (code, AMD64_R11, resume_unwind ? ((gpointer)mono_amd64_resume_unwind) : (corlib ? (gpointer)mono_amd64_throw_corlib_exception : (gpointer)mono_amd64_throw_exception));</span>
+<span class="lineNum">     451 </span>            :         }
+<span class="lineNum">     452 </span><span class="lineCov">     197100 :         amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     453 </span><span class="lineCov">      78840 :         amd64_breakpoint (code);</span>
+<span class="lineNum">     454 </span>            : 
+<span class="lineNum">     455 </span><span class="lineCov">      19710 :         mono_arch_flush_icache (start, code - start);</span>
+<span class="lineNum">     456 </span>            : 
+<span class="lineNum">     457 </span><span class="lineCov">      59130 :         g_assert ((code - start) &lt; kMaxCodeSize);</span>
+<span class="lineNum">     458 </span>            : 
+<span class="lineNum">     459 </span><span class="lineCov">      19710 :         mono_profiler_code_buffer_new (start, code - start, MONO_PROFILER_CODE_BUFFER_EXCEPTION_HANDLING, NULL);</span>
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span><span class="lineCov">      19710 :         if (info)</span>
+<span class="lineNum">     462 </span><span class="lineCov">      19710 :                 *info = mono_tramp_info_create (tramp_name, start, code - start, ji, unwind_ops);</span>
+<span class="lineNum">     463 </span>            : 
+<span class="lineNum">     464 </span><span class="lineCov">      19710 :         return start;</span>
+<span class="lineNum">     465 </span>            : }
+<span class="lineNum">     466 </span>            : 
+<span class="lineNum">     467 </span>            : /**
+<span class="lineNum">     468 </span>            :  * mono_arch_get_throw_exception:
+<span class="lineNum">     469 </span>            :  *
+<span class="lineNum">     470 </span>            :  * Returns a function pointer which can be used to raise 
+<span class="lineNum">     471 </span>            :  * exceptions. The returned function has the following 
+<span class="lineNum">     472 </span>            :  * signature: void (*func) (MonoException *exc); 
+<span class="lineNum">     473 </span>            :  *
+<a name="474"><span class="lineNum">     474 </span>            :  */</a>
+<span class="lineNum">     475 </span>            : gpointer
+<span class="lineNum">     476 </span>            : mono_arch_get_throw_exception (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     477 </span>            : {
+<span class="lineNum">     478 </span><span class="lineCov">       3285 :         return get_throw_trampoline (info, FALSE, FALSE, FALSE, FALSE, &quot;throw_exception&quot;, aot);</span>
+<span class="lineNum">     479 </span>            : }
+<a name="480"><span class="lineNum">     480 </span>            : </a>
+<span class="lineNum">     481 </span>            : gpointer 
+<span class="lineNum">     482 </span>            : mono_arch_get_rethrow_exception (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     483 </span>            : {
+<span class="lineNum">     484 </span><span class="lineCov">       3285 :         return get_throw_trampoline (info, TRUE, FALSE, FALSE, FALSE, &quot;rethrow_exception&quot;, aot);</span>
+<span class="lineNum">     485 </span>            : }
+<span class="lineNum">     486 </span>            : 
+<span class="lineNum">     487 </span>            : /**
+<span class="lineNum">     488 </span>            :  * mono_arch_get_throw_corlib_exception:
+<span class="lineNum">     489 </span>            :  *
+<span class="lineNum">     490 </span>            :  * Returns a function pointer which can be used to raise 
+<span class="lineNum">     491 </span>            :  * corlib exceptions. The returned function has the following 
+<span class="lineNum">     492 </span>            :  * signature: void (*func) (guint32 ex_token, guint32 offset); 
+<span class="lineNum">     493 </span>            :  * Here, offset is the offset which needs to be substracted from the caller IP 
+<span class="lineNum">     494 </span>            :  * to get the IP of the throw. Passing the offset has the advantage that it 
+<span class="lineNum">     495 </span>            :  * needs no relocations in the caller.
+<a name="496"><span class="lineNum">     496 </span>            :  */</a>
+<span class="lineNum">     497 </span>            : gpointer 
+<span class="lineNum">     498 </span>            : mono_arch_get_throw_corlib_exception (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     499 </span>            : {
+<span class="lineNum">     500 </span><span class="lineCov">       3285 :         return get_throw_trampoline (info, FALSE, TRUE, FALSE, FALSE, &quot;throw_corlib_exception&quot;, aot);</span>
+<span class="lineNum">     501 </span>            : }
+<span class="lineNum">     502 </span>            : #endif /* !DISABLE_JIT */
+<span class="lineNum">     503 </span>            : 
+<span class="lineNum">     504 </span>            : /*
+<span class="lineNum">     505 </span>            :  * mono_arch_unwind_frame:
+<span class="lineNum">     506 </span>            :  *
+<span class="lineNum">     507 </span>            :  * This function is used to gather information from @ctx, and store it in @frame_info.
+<span class="lineNum">     508 </span>            :  * It unwinds one stack frame, and stores the resulting context into @new_ctx. @lmf
+<span class="lineNum">     509 </span>            :  * is modified if needed.
+<span class="lineNum">     510 </span>            :  * Returns TRUE on success, FALSE otherwise.
+<a name="511"><span class="lineNum">     511 </span>            :  */</a>
+<span class="lineNum">     512 </span>            : gboolean
+<span class="lineNum">     513 </span>            : mono_arch_unwind_frame (MonoDomain *domain, MonoJitTlsData *jit_tls, 
+<span class="lineNum">     514 </span>            :                                                          MonoJitInfo *ji, MonoContext *ctx, 
+<span class="lineNum">     515 </span>            :                                                          MonoContext *new_ctx, MonoLMF **lmf,
+<span class="lineNum">     516 </span>            :                                                          mgreg_t **save_locations,
+<span class="lineNum">     517 </span>            :                                                          StackFrameInfo *frame)
+<span class="lineNum">     518 </span>            : {
+<span class="lineNum">     519 </span><span class="lineCov">    5227353 :         gpointer ip = MONO_CONTEXT_GET_IP (ctx);</span>
+<span class="lineNum">     520 </span>            :         int i;
+<span class="lineNum">     521 </span>            : 
+<span class="lineNum">     522 </span><span class="lineCov">    5227353 :         memset (frame, 0, sizeof (StackFrameInfo));</span>
+<span class="lineNum">     523 </span><span class="lineCov">    5227353 :         frame-&gt;ji = ji;</span>
+<span class="lineNum">     524 </span>            : 
+<span class="lineNum">     525 </span><span class="lineCov">    5227353 :         *new_ctx = *ctx;</span>
+<span class="lineNum">     526 </span>            : 
+<span class="lineNum">     527 </span><span class="lineCov">    5227353 :         if (ji != NULL) {</span>
+<span class="lineNum">     528 </span>            :                 mgreg_t regs [MONO_MAX_IREGS + 1];
+<span class="lineNum">     529 </span>            :                 guint8 *cfa;
+<span class="lineNum">     530 </span>            :                 guint32 unwind_info_len;
+<span class="lineNum">     531 </span>            :                 guint8 *unwind_info;
+<span class="lineNum">     532 </span><span class="lineCov">    4006072 :                 guint8 *epilog = NULL;</span>
+<span class="lineNum">     533 </span>            : 
+<span class="lineNum">     534 </span><span class="lineCov">    4006072 :                 if (ji-&gt;is_trampoline)</span>
+<span class="lineNum">     535 </span><span class="lineNoCov">          0 :                         frame-&gt;type = FRAME_TYPE_TRAMPOLINE;</span>
+<span class="lineNum">     536 </span>            :                 else
+<span class="lineNum">     537 </span><span class="lineCov">    4006073 :                         frame-&gt;type = FRAME_TYPE_MANAGED;</span>
+<span class="lineNum">     538 </span>            : 
+<span class="lineNum">     539 </span><span class="lineCov">    4006068 :                 unwind_info = mono_jinfo_get_unwind_info (ji, &amp;unwind_info_len);</span>
+<span class="lineNum">     540 </span>            : 
+<span class="lineNum">     541 </span><span class="lineCov">    4006068 :                 frame-&gt;unwind_info = unwind_info;</span>
+<span class="lineNum">     542 </span><span class="lineCov">    4006068 :                 frame-&gt;unwind_info_len = unwind_info_len;</span>
+<span class="lineNum">     543 </span>            : 
+<span class="lineNum">     544 </span>            :                 /*
+<span class="lineNum">     545 </span>            :                 printf (&quot;%s %p %p\n&quot;, ji-&gt;d.method-&gt;name, ji-&gt;code_start, ip);
+<span class="lineNum">     546 </span>            :                 mono_print_unwind_info (unwind_info, unwind_info_len);
+<span class="lineNum">     547 </span>            :                 */
+<span class="lineNum">     548 </span>            :                 /* LLVM compiled code doesn't have this info */
+<span class="lineNum">     549 </span><span class="lineCov">    4006068 :                 if (ji-&gt;has_arch_eh_info)</span>
+<span class="lineNum">     550 </span><span class="lineCov">    3837051 :                         epilog = (guint8*)ji-&gt;code_start + ji-&gt;code_size - mono_jinfo_get_epilog_size (ji);</span>
+<span class="lineNum">     551 </span>            :  
+<span class="lineNum">     552 </span><span class="lineCov">  144216894 :                 for (i = 0; i &lt; AMD64_NREG; ++i)</span>
+<span class="lineNum">     553 </span><span class="lineCov">   68102385 :                         regs [i] = new_ctx-&gt;gregs [i];</span>
+<span class="lineNum">     554 </span>            : 
+<span class="lineNum">     555 </span><span class="lineCov">    8012150 :                 mono_unwind_frame (unwind_info, unwind_info_len, (guint8 *)ji-&gt;code_start,</span>
+<span class="lineNum">     556 </span><span class="lineCov">    4006077 :                                                    (guint8*)ji-&gt;code_start + ji-&gt;code_size,</span>
+<span class="lineNum">     557 </span><span class="lineCov">   12018224 :                                                    (guint8 *)ip, epilog ? &amp;epilog : NULL, regs, MONO_MAX_IREGS + 1,</span>
+<span class="lineNum">     558 </span><span class="lineCov">    4006073 :                                                    save_locations, MONO_MAX_IREGS, &amp;cfa);</span>
+<span class="lineNum">     559 </span>            : 
+<span class="lineNum">     560 </span><span class="lineCov">  144217768 :                 for (i = 0; i &lt; AMD64_NREG; ++i)</span>
+<span class="lineNum">     561 </span><span class="lineCov">   68102827 :                         new_ctx-&gt;gregs [i] = regs [i];</span>
+<span class="lineNum">     562 </span>            :  
+<span class="lineNum">     563 </span>            :                 /* The CFA becomes the new SP value */
+<span class="lineNum">     564 </span><span class="lineCov">    4006076 :                 new_ctx-&gt;gregs [AMD64_RSP] = (mgreg_t)cfa;</span>
+<span class="lineNum">     565 </span>            : 
+<span class="lineNum">     566 </span>            :                 /* Adjust IP */
+<span class="lineNum">     567 </span><span class="lineCov">    4006076 :                 new_ctx-&gt;gregs [AMD64_RIP] --;</span>
+<span class="lineNum">     568 </span>            : 
+<span class="lineNum">     569 </span><span class="lineCov">    4006076 :                 return TRUE;</span>
+<span class="lineNum">     570 </span><span class="lineCov">    1221269 :         } else if (*lmf) {</span>
+<span class="lineNum">     571 </span>            :                 guint64 rip;
+<span class="lineNum">     572 </span>            : 
+<span class="lineNum">     573 </span><span class="lineCov">    1221275 :                 if (((guint64)(*lmf)-&gt;previous_lmf) &amp; 2) {</span>
+<span class="lineNum">     574 </span>            :                         /* 
+<span class="lineNum">     575 </span>            :                          * This LMF entry is created by the soft debug code to mark transitions to
+<span class="lineNum">     576 </span>            :                          * managed code done during invokes.
+<span class="lineNum">     577 </span>            :                          */
+<span class="lineNum">     578 </span><span class="lineNoCov">          0 :                         MonoLMFExt *ext = (MonoLMFExt*)(*lmf);</span>
+<span class="lineNum">     579 </span>            : 
+<span class="lineNum">     580 </span><span class="lineNoCov">          0 :                         g_assert (ext-&gt;debugger_invoke);</span>
+<span class="lineNum">     581 </span>            : 
+<span class="lineNum">     582 </span><span class="lineNoCov">          0 :                         memcpy (new_ctx, &amp;ext-&gt;ctx, sizeof (MonoContext));</span>
+<span class="lineNum">     583 </span>            : 
+<span class="lineNum">     584 </span><span class="lineNoCov">          0 :                         *lmf = (MonoLMF *)(((guint64)(*lmf)-&gt;previous_lmf) &amp; ~7);</span>
+<span class="lineNum">     585 </span>            : 
+<span class="lineNum">     586 </span><span class="lineNoCov">          0 :                         frame-&gt;type = FRAME_TYPE_DEBUGGER_INVOKE;</span>
+<span class="lineNum">     587 </span>            : 
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     589 </span>            :                 }
+<span class="lineNum">     590 </span>            : 
+<span class="lineNum">     591 </span><span class="lineCov">    1221275 :                 if (((guint64)(*lmf)-&gt;previous_lmf) &amp; 4) {</span>
+<span class="lineNum">     592 </span><span class="lineCov">     770285 :                         MonoLMFTramp *ext = (MonoLMFTramp*)(*lmf);</span>
+<span class="lineNum">     593 </span>            : 
+<span class="lineNum">     594 </span><span class="lineCov">     770285 :                         rip = (guint64)MONO_CONTEXT_GET_IP (ext-&gt;ctx);</span>
+<span class="lineNum">     595 </span><span class="lineCov">    1221276 :                 } else if (((guint64)(*lmf)-&gt;previous_lmf) &amp; 1) {</span>
+<span class="lineNum">     596 </span>            :                         /* This LMF has the rip field set */
+<span class="lineNum">     597 </span><span class="lineNoCov">          0 :                         rip = (*lmf)-&gt;rip;</span>
+<span class="lineNum">     598 </span><span class="lineCov">     450990 :                 } else if ((*lmf)-&gt;rsp == 0) {</span>
+<span class="lineNum">     599 </span>            :                         /* Top LMF entry */
+<span class="lineNum">     600 </span><span class="lineCov">      17122 :                         return FALSE;</span>
+<span class="lineNum">     601 </span>            :                 } else {
+<span class="lineNum">     602 </span>            :                         /* 
+<span class="lineNum">     603 </span>            :                          * The rsp field is set just before the call which transitioned to native 
+<span class="lineNum">     604 </span>            :                          * code. Obtain the rip from the stack.
+<span class="lineNum">     605 </span>            :                          */
+<span class="lineNum">     606 </span><span class="lineCov">     433869 :                         rip = *(guint64*)((*lmf)-&gt;rsp - sizeof(mgreg_t));</span>
+<span class="lineNum">     607 </span>            :                 }
+<span class="lineNum">     608 </span>            : 
+<span class="lineNum">     609 </span><span class="lineCov">    1204156 :                 ji = mini_jit_info_table_find (domain, (char *)rip, NULL);</span>
+<span class="lineNum">     610 </span>            :                 /*
+<span class="lineNum">     611 </span>            :                  * FIXME: ji == NULL can happen when a managed-to-native wrapper is interrupted
+<span class="lineNum">     612 </span>            :                  * in the soft debugger suspend code, since (*lmf)-&gt;rsp no longer points to the
+<span class="lineNum">     613 </span>            :                  * return address.
+<span class="lineNum">     614 </span>            :                  */
+<span class="lineNum">     615 </span>            :                 //g_assert (ji);
+<span class="lineNum">     616 </span><span class="lineCov">    1204156 :                 if (!ji)</span>
+<span class="lineNum">     617 </span><span class="lineCov">          2 :                         return FALSE;</span>
+<span class="lineNum">     618 </span>            : 
+<span class="lineNum">     619 </span><span class="lineCov">    1204152 :                 frame-&gt;ji = ji;</span>
+<span class="lineNum">     620 </span><span class="lineCov">    1204152 :                 frame-&gt;type = FRAME_TYPE_MANAGED_TO_NATIVE;</span>
+<span class="lineNum">     621 </span>            : 
+<span class="lineNum">     622 </span><span class="lineCov">    1204152 :                 if (((guint64)(*lmf)-&gt;previous_lmf) &amp; 4) {</span>
+<span class="lineNum">     623 </span><span class="lineCov">     770284 :                         MonoLMFTramp *ext = (MonoLMFTramp*)(*lmf);</span>
+<span class="lineNum">     624 </span>            : 
+<span class="lineNum">     625 </span>            :                         /* Trampoline frame */
+<span class="lineNum">     626 </span><span class="lineCov">   27730114 :                         for (i = 0; i &lt; AMD64_NREG; ++i)</span>
+<span class="lineNum">     627 </span><span class="lineCov">   13094766 :                                 new_ctx-&gt;gregs [i] = ext-&gt;ctx-&gt;gregs [i];</span>
+<span class="lineNum">     628 </span>            :                         /* Adjust IP */
+<span class="lineNum">     629 </span><span class="lineCov">     770284 :                         new_ctx-&gt;gregs [AMD64_RIP] --;</span>
+<span class="lineNum">     630 </span><span class="lineCov">     770284 :                 } else {</span>
+<span class="lineNum">     631 </span>            :                         /*
+<span class="lineNum">     632 </span>            :                          * The registers saved in the LMF will be restored using the normal unwind info,
+<span class="lineNum">     633 </span>            :                          * when the wrapper frame is processed.
+<span class="lineNum">     634 </span>            :                          */
+<span class="lineNum">     635 </span>            :                         /* Adjust IP */
+<span class="lineNum">     636 </span><span class="lineCov">     433868 :                         rip --;</span>
+<span class="lineNum">     637 </span><span class="lineCov">     433868 :                         new_ctx-&gt;gregs [AMD64_RIP] = rip;</span>
+<span class="lineNum">     638 </span><span class="lineCov">     433868 :                         new_ctx-&gt;gregs [AMD64_RSP] = (*lmf)-&gt;rsp;</span>
+<span class="lineNum">     639 </span><span class="lineCov">     433868 :                         new_ctx-&gt;gregs [AMD64_RBP] = (*lmf)-&gt;rbp;</span>
+<span class="lineNum">     640 </span><span class="lineCov">   15619242 :                         for (i = 0; i &lt; AMD64_NREG; ++i) {</span>
+<span class="lineNum">     641 </span><span class="lineCov">    9978958 :                                 if (AMD64_IS_CALLEE_SAVED_REG (i) &amp;&amp; i != AMD64_RBP)</span>
+<span class="lineNum">     642 </span><span class="lineCov">    2169338 :                                         new_ctx-&gt;gregs [i] = 0;</span>
+<span class="lineNum">     643 </span><span class="lineCov">    7375752 :                         }</span>
+<span class="lineNum">     644 </span>            :                 }
+<span class="lineNum">     645 </span>            : 
+<span class="lineNum">     646 </span><span class="lineCov">    1204149 :                 *lmf = (MonoLMF *)(((guint64)(*lmf)-&gt;previous_lmf) &amp; ~7);</span>
+<span class="lineNum">     647 </span>            : 
+<span class="lineNum">     648 </span><span class="lineCov">    1204149 :                 return TRUE;</span>
+<span class="lineNum">     649 </span>            :         }
+<span class="lineNum">     650 </span>            : 
+<span class="lineNum">     651 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     652 </span><span class="lineCov">    5227346 : }</span>
+<span class="lineNum">     653 </span>            : 
+<span class="lineNum">     654 </span>            : /*
+<span class="lineNum">     655 </span>            :  * handle_exception:
+<span class="lineNum">     656 </span>            :  *
+<span class="lineNum">     657 </span>            :  *   Called by resuming from a signal handler.
+<a name="658"><span class="lineNum">     658 </span>            :  */</a>
+<span class="lineNum">     659 </span>            : static void
+<span class="lineNum">     660 </span>            : handle_signal_exception (gpointer obj)
+<span class="lineNum">     661 </span>            : {
+<span class="lineNum">     662 </span><span class="lineCov">       1909 :         MonoJitTlsData *jit_tls = (MonoJitTlsData *)mono_tls_get_jit_tls ();</span>
+<span class="lineNum">     663 </span>            :         MonoContext ctx;
+<span class="lineNum">     664 </span>            : 
+<span class="lineNum">     665 </span><span class="lineCov">       1909 :         memcpy (&amp;ctx, &amp;jit_tls-&gt;ex_ctx, sizeof (MonoContext));</span>
+<span class="lineNum">     666 </span>            : 
+<span class="lineNum">     667 </span><span class="lineCov">       1909 :         mono_handle_exception (&amp;ctx, (MonoObject *)obj);</span>
+<span class="lineNum">     668 </span>            : 
+<span class="lineNum">     669 </span><span class="lineCov">       1909 :         mono_restore_context (&amp;ctx);</span>
+<span class="lineNum">     670 </span><span class="lineCov">       1909 : }</span>
+<a name="671"><span class="lineNum">     671 </span>            : </a>
+<span class="lineNum">     672 </span>            : void
+<span class="lineNum">     673 </span>            : mono_arch_setup_async_callback (MonoContext *ctx, void (*async_cb)(void *fun), gpointer user_data)
+<span class="lineNum">     674 </span>            : {
+<span class="lineNum">     675 </span><span class="lineCov">       1909 :         guint64 sp = ctx-&gt;gregs [AMD64_RSP];</span>
+<span class="lineNum">     676 </span>            : 
+<span class="lineNum">     677 </span><span class="lineCov">       1909 :         ctx-&gt;gregs [AMD64_RDI] = (guint64)user_data;</span>
+<span class="lineNum">     678 </span>            : 
+<span class="lineNum">     679 </span>            :         /* Allocate a stack frame below the red zone */
+<span class="lineNum">     680 </span><span class="lineCov">       1909 :         sp -= 128;</span>
+<span class="lineNum">     681 </span>            :         /* The stack should be unaligned */
+<span class="lineNum">     682 </span><span class="lineCov">       1909 :         if ((sp % 16) == 0)</span>
+<span class="lineNum">     683 </span><span class="lineCov">       1909 :                 sp -= 8;</span>
+<span class="lineNum">     684 </span>            : #ifdef __linux__
+<span class="lineNum">     685 </span>            :         /* Preserve the call chain to prevent crashes in the libgcc unwinder (#15969) */
+<span class="lineNum">     686 </span>            :         *(guint64*)sp = ctx-&gt;gregs [AMD64_RIP];
+<span class="lineNum">     687 </span>            : #endif
+<span class="lineNum">     688 </span><span class="lineCov">       1909 :         ctx-&gt;gregs [AMD64_RSP] = sp;</span>
+<span class="lineNum">     689 </span><span class="lineCov">       1909 :         ctx-&gt;gregs [AMD64_RIP] = (guint64)async_cb;</span>
+<span class="lineNum">     690 </span><span class="lineCov">       1909 : }</span>
+<span class="lineNum">     691 </span>            : 
+<span class="lineNum">     692 </span>            : /**
+<span class="lineNum">     693 </span>            :  * mono_arch_handle_exception:
+<span class="lineNum">     694 </span>            :  *
+<span class="lineNum">     695 </span>            :  * @ctx: saved processor state
+<span class="lineNum">     696 </span>            :  * @obj: the exception object
+<a name="697"><span class="lineNum">     697 </span>            :  */</a>
+<span class="lineNum">     698 </span>            : gboolean
+<span class="lineNum">     699 </span>            : mono_arch_handle_exception (void *sigctx, gpointer obj)
+<span class="lineNum">     700 </span>            : {
+<span class="lineNum">     701 </span>            : #if defined(MONO_ARCH_USE_SIGACTION)
+<span class="lineNum">     702 </span>            :         MonoContext mctx;
+<span class="lineNum">     703 </span>            : 
+<span class="lineNum">     704 </span>            :         /*
+<span class="lineNum">     705 </span>            :          * Handling the exception in the signal handler is problematic, since the original
+<span class="lineNum">     706 </span>            :          * signal is disabled, and we could run arbitrary code though the debugger. So
+<span class="lineNum">     707 </span>            :          * resume into the normal stack and do most work there if possible.
+<span class="lineNum">     708 </span>            :          */
+<span class="lineNum">     709 </span><span class="lineCov">       1909 :         MonoJitTlsData *jit_tls = (MonoJitTlsData *)mono_tls_get_jit_tls ();</span>
+<span class="lineNum">     710 </span>            : 
+<span class="lineNum">     711 </span>            :         /* Pass the ctx parameter in TLS */
+<span class="lineNum">     712 </span><span class="lineCov">       1909 :         mono_sigctx_to_monoctx (sigctx, &amp;jit_tls-&gt;ex_ctx);</span>
+<span class="lineNum">     713 </span>            : 
+<span class="lineNum">     714 </span><span class="lineCov">       1909 :         mctx = jit_tls-&gt;ex_ctx;</span>
+<span class="lineNum">     715 </span><span class="lineCov">       1909 :         mono_arch_setup_async_callback (&amp;mctx, handle_signal_exception, obj);</span>
+<span class="lineNum">     716 </span><span class="lineCov">       1909 :         mono_monoctx_to_sigctx (&amp;mctx, sigctx);</span>
+<span class="lineNum">     717 </span>            : 
+<span class="lineNum">     718 </span><span class="lineCov">       1909 :         return TRUE;</span>
+<span class="lineNum">     719 </span>            : #else
+<span class="lineNum">     720 </span>            :         MonoContext mctx;
+<span class="lineNum">     721 </span>            : 
+<span class="lineNum">     722 </span>            :         mono_sigctx_to_monoctx (sigctx, &amp;mctx);
+<span class="lineNum">     723 </span>            : 
+<span class="lineNum">     724 </span>            :         mono_handle_exception (&amp;mctx, obj);
+<span class="lineNum">     725 </span>            : 
+<span class="lineNum">     726 </span>            :         mono_monoctx_to_sigctx (&amp;mctx, sigctx);
+<span class="lineNum">     727 </span>            : 
+<span class="lineNum">     728 </span>            :         return TRUE;
+<span class="lineNum">     729 </span>            : #endif
+<span class="lineNum">     730 </span>            : }
+<a name="731"><span class="lineNum">     731 </span>            : </a>
+<span class="lineNum">     732 </span>            : gpointer
+<span class="lineNum">     733 </span>            : mono_arch_ip_from_context (void *sigctx)
+<span class="lineNum">     734 </span>            : {
+<span class="lineNum">     735 </span>            : #if defined(MONO_ARCH_USE_SIGACTION)
+<span class="lineNum">     736 </span><span class="lineCov">      44313 :         ucontext_t *ctx = (ucontext_t*)sigctx;</span>
+<span class="lineNum">     737 </span>            : 
+<span class="lineNum">     738 </span><span class="lineCov">      44313 :         return (gpointer)UCONTEXT_REG_RIP (ctx);</span>
+<span class="lineNum">     739 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">     740 </span>            :         return ((CONTEXT*)sigctx)-&gt;Rip;
+<span class="lineNum">     741 </span>            : #else
+<span class="lineNum">     742 </span>            :         MonoContext *ctx = sigctx;
+<span class="lineNum">     743 </span>            :         return (gpointer)ctx-&gt;gregs [AMD64_RIP];
+<span class="lineNum">     744 </span>            : #endif  
+<span class="lineNum">     745 </span>            : }
+<a name="746"><span class="lineNum">     746 </span>            : </a>
+<span class="lineNum">     747 </span>            : static void
+<span class="lineNum">     748 </span>            : restore_soft_guard_pages (void)
+<span class="lineNum">     749 </span>            : {
+<span class="lineNum">     750 </span><span class="lineNoCov">          0 :         MonoJitTlsData *jit_tls = (MonoJitTlsData *)mono_tls_get_jit_tls ();</span>
+<span class="lineNum">     751 </span><span class="lineNoCov">          0 :         if (jit_tls-&gt;stack_ovf_guard_base)</span>
+<span class="lineNum">     752 </span><span class="lineNoCov">          0 :                 mono_mprotect (jit_tls-&gt;stack_ovf_guard_base, jit_tls-&gt;stack_ovf_guard_size, MONO_MMAP_NONE);</span>
+<span class="lineNum">     753 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     754 </span>            : 
+<span class="lineNum">     755 </span>            : /* 
+<span class="lineNum">     756 </span>            :  * this function modifies mctx so that when it is restored, it
+<span class="lineNum">     757 </span>            :  * won't execcute starting at mctx.eip, but in a function that
+<span class="lineNum">     758 </span>            :  * will restore the protection on the soft-guard pages and return back to
+<span class="lineNum">     759 </span>            :  * continue at mctx.eip.
+<a name="760"><span class="lineNum">     760 </span>            :  */</a>
+<span class="lineNum">     761 </span>            : static void
+<span class="lineNum">     762 </span>            : prepare_for_guard_pages (MonoContext *mctx)
+<span class="lineNum">     763 </span>            : {
+<span class="lineNum">     764 </span>            :         gpointer *sp;
+<span class="lineNum">     765 </span><span class="lineNoCov">          0 :         sp = (gpointer *)(mctx-&gt;gregs [AMD64_RSP]);</span>
+<span class="lineNum">     766 </span><span class="lineNoCov">          0 :         sp -= 1;</span>
+<span class="lineNum">     767 </span>            :         /* the return addr */
+<span class="lineNum">     768 </span><span class="lineNoCov">          0 :         sp [0] = (gpointer)(mctx-&gt;gregs [AMD64_RIP]);</span>
+<span class="lineNum">     769 </span><span class="lineNoCov">          0 :         mctx-&gt;gregs [AMD64_RIP] = (guint64)restore_soft_guard_pages;</span>
+<span class="lineNum">     770 </span><span class="lineNoCov">          0 :         mctx-&gt;gregs [AMD64_RSP] = (guint64)sp;</span>
+<span class="lineNum">     771 </span><span class="lineNoCov">          0 : }</span>
+<a name="772"><span class="lineNum">     772 </span>            : </a>
+<span class="lineNum">     773 </span>            : static void
+<span class="lineNum">     774 </span>            : altstack_handle_and_restore (MonoContext *ctx, MonoObject *obj, gboolean stack_ovf)
+<span class="lineNum">     775 </span>            : {
+<span class="lineNum">     776 </span>            :         MonoContext mctx;
+<span class="lineNum">     777 </span><span class="lineCov">      41934 :         MonoJitInfo *ji = mini_jit_info_table_find (mono_domain_get (), MONO_CONTEXT_GET_IP (ctx), NULL);</span>
+<span class="lineNum">     778 </span>            : 
+<span class="lineNum">     779 </span><span class="lineCov">      41934 :         if (!ji)</span>
+<span class="lineNum">     780 </span><span class="lineNoCov">          0 :                 mono_handle_native_crash (&quot;SIGSEGV&quot;, NULL, NULL);</span>
+<span class="lineNum">     781 </span>            : 
+<span class="lineNum">     782 </span><span class="lineCov">      41934 :         mctx = *ctx;</span>
+<span class="lineNum">     783 </span>            : 
+<span class="lineNum">     784 </span><span class="lineCov">      41934 :         mono_handle_exception (&amp;mctx, obj);</span>
+<span class="lineNum">     785 </span><span class="lineCov">      41934 :         if (stack_ovf)</span>
+<span class="lineNum">     786 </span><span class="lineNoCov">          0 :                 prepare_for_guard_pages (&amp;mctx);</span>
+<span class="lineNum">     787 </span><span class="lineCov">      41934 :         mono_restore_context (&amp;mctx);</span>
+<span class="lineNum">     788 </span><span class="lineCov">      41934 : }</span>
+<a name="789"><span class="lineNum">     789 </span>            : </a>
+<span class="lineNum">     790 </span>            : void
+<span class="lineNum">     791 </span>            : mono_arch_handle_altstack_exception (void *sigctx, MONO_SIG_HANDLER_INFO_TYPE *siginfo, gpointer fault_addr, gboolean stack_ovf)
+<span class="lineNum">     792 </span>            : {
+<span class="lineNum">     793 </span>            : #if defined(MONO_ARCH_USE_SIGACTION)
+<span class="lineNum">     794 </span><span class="lineCov">      41934 :         MonoException *exc = NULL;</span>
+<span class="lineNum">     795 </span>            :         gpointer *sp;
+<span class="lineNum">     796 </span>            :         int frame_size;
+<span class="lineNum">     797 </span>            :         MonoContext *copied_ctx;
+<span class="lineNum">     798 </span>            : 
+<span class="lineNum">     799 </span><span class="lineCov">      41934 :         if (stack_ovf)</span>
+<span class="lineNum">     800 </span><span class="lineNoCov">          0 :                 exc = mono_domain_get ()-&gt;stack_overflow_ex;</span>
+<span class="lineNum">     801 </span>            : 
+<span class="lineNum">     802 </span>            :         /* setup a call frame on the real stack so that control is returned there
+<span class="lineNum">     803 </span>            :          * and exception handling can continue.
+<span class="lineNum">     804 </span>            :          * The frame looks like:
+<span class="lineNum">     805 </span>            :          *   ucontext struct
+<span class="lineNum">     806 </span>            :          *   ...
+<span class="lineNum">     807 </span>            :          *   return ip
+<span class="lineNum">     808 </span>            :          * 128 is the size of the red zone
+<span class="lineNum">     809 </span>            :          */
+<span class="lineNum">     810 </span><span class="lineCov">      41934 :         frame_size = sizeof (MonoContext) + sizeof (gpointer) * 4 + 128;</span>
+<span class="lineNum">     811 </span><span class="lineCov">      41934 :         frame_size += 15;</span>
+<span class="lineNum">     812 </span><span class="lineCov">      41934 :         frame_size &amp;= ~15;</span>
+<span class="lineNum">     813 </span><span class="lineCov">      41934 :         sp = (gpointer *)(UCONTEXT_REG_RSP (sigctx) &amp; ~15);</span>
+<span class="lineNum">     814 </span><span class="lineCov">      41934 :         sp = (gpointer *)((char*)sp - frame_size);</span>
+<span class="lineNum">     815 </span><span class="lineCov">      41934 :         copied_ctx = (MonoContext*)(sp + 4);</span>
+<span class="lineNum">     816 </span>            :         /* the arguments must be aligned */
+<span class="lineNum">     817 </span><span class="lineCov">      41934 :         sp [-1] = (gpointer)UCONTEXT_REG_RIP (sigctx);</span>
+<span class="lineNum">     818 </span><span class="lineCov">      41934 :         mono_sigctx_to_monoctx (sigctx, copied_ctx);</span>
+<span class="lineNum">     819 </span>            :         /* at the return form the signal handler execution starts in altstack_handle_and_restore() */
+<span class="lineNum">     820 </span><span class="lineCov">      41934 :         UCONTEXT_REG_RIP (sigctx) = (unsigned long)altstack_handle_and_restore;</span>
+<span class="lineNum">     821 </span><span class="lineCov">      41934 :         UCONTEXT_REG_RSP (sigctx) = (unsigned long)(sp - 1);</span>
+<span class="lineNum">     822 </span><span class="lineCov">      41934 :         UCONTEXT_REG_RDI (sigctx) = (unsigned long)(copied_ctx);</span>
+<span class="lineNum">     823 </span><span class="lineCov">      41934 :         UCONTEXT_REG_RSI (sigctx) = (guint64)exc;</span>
+<span class="lineNum">     824 </span><span class="lineCov">      41934 :         UCONTEXT_REG_RDX (sigctx) = stack_ovf;</span>
+<span class="lineNum">     825 </span>            : #endif
+<span class="lineNum">     826 </span><span class="lineCov">      41934 : }</span>
+<a name="827"><span class="lineNum">     827 </span>            : </a>
+<span class="lineNum">     828 </span>            : guint64
+<span class="lineNum">     829 </span>            : mono_amd64_get_original_ip (void)
+<span class="lineNum">     830 </span>            : {
+<span class="lineNum">     831 </span><span class="lineNoCov">          0 :         MonoLMF *lmf = mono_get_lmf ();</span>
+<span class="lineNum">     832 </span>            : 
+<span class="lineNum">     833 </span><span class="lineNoCov">          0 :         g_assert (lmf);</span>
+<span class="lineNum">     834 </span>            : 
+<span class="lineNum">     835 </span>            :         /* Reset the change to previous_lmf */
+<span class="lineNum">     836 </span><span class="lineNoCov">          0 :         lmf-&gt;previous_lmf = (gpointer)((guint64)lmf-&gt;previous_lmf &amp; ~1);</span>
+<span class="lineNum">     837 </span>            : 
+<span class="lineNum">     838 </span><span class="lineNoCov">          0 :         return lmf-&gt;rip;</span>
+<span class="lineNum">     839 </span>            : }
+<span class="lineNum">     840 </span>            : 
+<a name="841"><span class="lineNum">     841 </span>            : #ifndef DISABLE_JIT</a>
+<span class="lineNum">     842 </span>            : GSList*
+<span class="lineNum">     843 </span>            : mono_amd64_get_exception_trampolines (gboolean aot)
+<span class="lineNum">     844 </span>            : {
+<span class="lineNum">     845 </span>            :         MonoTrampInfo *info;
+<span class="lineNum">     846 </span><span class="lineCov">       3285 :         GSList *tramps = NULL;</span>
+<span class="lineNum">     847 </span>            : 
+<span class="lineNum">     848 </span>            :         /* LLVM needs different throw trampolines */
+<span class="lineNum">     849 </span><span class="lineCov">       3285 :         get_throw_trampoline (&amp;info, FALSE, TRUE, FALSE, FALSE, &quot;llvm_throw_corlib_exception_trampoline&quot;, aot);</span>
+<span class="lineNum">     850 </span><span class="lineCov">       3285 :         tramps = g_slist_prepend (tramps, info);</span>
+<span class="lineNum">     851 </span>            : 
+<span class="lineNum">     852 </span><span class="lineCov">       3285 :         get_throw_trampoline (&amp;info, FALSE, TRUE, TRUE, FALSE, &quot;llvm_throw_corlib_exception_abs_trampoline&quot;, aot);</span>
+<span class="lineNum">     853 </span><span class="lineCov">       3285 :         tramps = g_slist_prepend (tramps, info);</span>
+<span class="lineNum">     854 </span>            : 
+<span class="lineNum">     855 </span><span class="lineCov">       3285 :         get_throw_trampoline (&amp;info, FALSE, TRUE, TRUE, TRUE, &quot;llvm_resume_unwind_trampoline&quot;, aot);</span>
+<span class="lineNum">     856 </span><span class="lineCov">       3285 :         tramps = g_slist_prepend (tramps, info);</span>
+<span class="lineNum">     857 </span>            : 
+<span class="lineNum">     858 </span><span class="lineCov">       3285 :         return tramps;</span>
+<span class="lineNum">     859 </span>            : }
+<span class="lineNum">     860 </span>            : #endif /* !DISABLE_JIT */
+<a name="861"><span class="lineNum">     861 </span>            : </a>
+<span class="lineNum">     862 </span>            : void
+<span class="lineNum">     863 </span>            : mono_arch_exceptions_init (void)
+<span class="lineNum">     864 </span>            : {
+<span class="lineNum">     865 </span>            :         GSList *tramps, *l;
+<span class="lineNum">     866 </span>            :         gpointer tramp;
+<span class="lineNum">     867 </span>            : 
+<span class="lineNum">     868 </span><span class="lineCov">       3285 :         if (mono_aot_only) {</span>
+<span class="lineNum">     869 </span><span class="lineNoCov">          0 :                 tramp = mono_aot_get_trampoline (&quot;llvm_throw_corlib_exception_trampoline&quot;);</span>
+<span class="lineNum">     870 </span><span class="lineNoCov">          0 :                 mono_register_jit_icall (tramp, &quot;llvm_throw_corlib_exception_trampoline&quot;, NULL, TRUE);</span>
+<span class="lineNum">     871 </span><span class="lineNoCov">          0 :                 tramp = mono_aot_get_trampoline (&quot;llvm_throw_corlib_exception_abs_trampoline&quot;);</span>
+<span class="lineNum">     872 </span><span class="lineNoCov">          0 :                 mono_register_jit_icall (tramp, &quot;llvm_throw_corlib_exception_abs_trampoline&quot;, NULL, TRUE);</span>
+<span class="lineNum">     873 </span><span class="lineNoCov">          0 :                 tramp = mono_aot_get_trampoline (&quot;llvm_resume_unwind_trampoline&quot;);</span>
+<span class="lineNum">     874 </span><span class="lineNoCov">          0 :                 mono_register_jit_icall (tramp, &quot;llvm_resume_unwind_trampoline&quot;, NULL, TRUE);</span>
+<span class="lineNum">     875 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     876 </span>            :                 /* Call this to avoid initialization races */
+<span class="lineNum">     877 </span><span class="lineCov">       3285 :                 tramps = mono_amd64_get_exception_trampolines (FALSE);</span>
+<span class="lineNum">     878 </span><span class="lineCov">      26280 :                 for (l = tramps; l; l = l-&gt;next) {</span>
+<span class="lineNum">     879 </span><span class="lineCov">       9855 :                         MonoTrampInfo *info = (MonoTrampInfo *)l-&gt;data;</span>
+<span class="lineNum">     880 </span>            : 
+<span class="lineNum">     881 </span><span class="lineCov">       9855 :                         mono_register_jit_icall (info-&gt;code, g_strdup (info-&gt;name), NULL, TRUE);</span>
+<span class="lineNum">     882 </span><span class="lineCov">       9855 :                         mono_tramp_info_register (info, NULL);</span>
+<span class="lineNum">     883 </span><span class="lineCov">       9855 :                 }</span>
+<span class="lineNum">     884 </span><span class="lineCov">       3285 :                 g_slist_free (tramps);</span>
+<span class="lineNum">     885 </span>            :         }
+<span class="lineNum">     886 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     887 </span>            : 
+<span class="lineNum">     888 </span>            : #if defined(TARGET_WIN32) &amp;&amp; !defined(DISABLE_JIT)
+<span class="lineNum">     889 </span>            : 
+<span class="lineNum">     890 </span>            : /*
+<span class="lineNum">     891 </span>            :  * The mono_arch_unwindinfo* methods are used to build and add
+<span class="lineNum">     892 </span>            :  * function table info for each emitted method from mono.  On Winx64
+<span class="lineNum">     893 </span>            :  * the seh handler will not be called if the mono methods are not
+<span class="lineNum">     894 </span>            :  * added to the function table.  
+<span class="lineNum">     895 </span>            :  *
+<span class="lineNum">     896 </span>            :  * We should not need to add non-volatile register info to the 
+<span class="lineNum">     897 </span>            :  * table since mono stores that info elsewhere. (Except for the register 
+<span class="lineNum">     898 </span>            :  * used for the fp.)
+<span class="lineNum">     899 </span>            :  */
+<span class="lineNum">     900 </span>            : 
+<span class="lineNum">     901 </span>            : #define MONO_MAX_UNWIND_CODES 22
+<span class="lineNum">     902 </span>            : 
+<span class="lineNum">     903 </span>            : typedef union _UNWIND_CODE {
+<span class="lineNum">     904 </span>            :     struct {
+<span class="lineNum">     905 </span>            :         guchar CodeOffset;
+<span class="lineNum">     906 </span>            :         guchar UnwindOp : 4;
+<span class="lineNum">     907 </span>            :         guchar OpInfo   : 4;
+<span class="lineNum">     908 </span>            :     };
+<span class="lineNum">     909 </span>            :     gushort FrameOffset;
+<span class="lineNum">     910 </span>            : } UNWIND_CODE, *PUNWIND_CODE;
+<span class="lineNum">     911 </span>            : 
+<span class="lineNum">     912 </span>            : typedef struct _UNWIND_INFO {
+<span class="lineNum">     913 </span>            :         guchar Version       : 3;
+<span class="lineNum">     914 </span>            :         guchar Flags         : 5;
+<span class="lineNum">     915 </span>            :         guchar SizeOfProlog;
+<span class="lineNum">     916 </span>            :         guchar CountOfCodes;
+<span class="lineNum">     917 </span>            :         guchar FrameRegister : 4;
+<span class="lineNum">     918 </span>            :         guchar FrameOffset   : 4;
+<span class="lineNum">     919 </span>            :         /* custom size for mono allowing for mono allowing for*/
+<span class="lineNum">     920 </span>            :         /*UWOP_PUSH_NONVOL ebp offset = 21*/
+<span class="lineNum">     921 </span>            :         /*UWOP_ALLOC_LARGE : requires 2 or 3 offset = 20*/
+<span class="lineNum">     922 </span>            :         /*UWOP_SET_FPREG : requires 2 offset = 17*/
+<span class="lineNum">     923 </span>            :         /*UWOP_PUSH_NONVOL offset = 15-0*/
+<span class="lineNum">     924 </span>            :         UNWIND_CODE UnwindCode[MONO_MAX_UNWIND_CODES]; 
+<span class="lineNum">     925 </span>            : 
+<span class="lineNum">     926 </span>            : /*      UNWIND_CODE MoreUnwindCode[((CountOfCodes + 1) &amp; ~1) - 1];
+<span class="lineNum">     927 </span>            :  *      union {
+<span class="lineNum">     928 </span>            :  *          OPTIONAL ULONG ExceptionHandler;
+<span class="lineNum">     929 </span>            :  *          OPTIONAL ULONG FunctionEntry;
+<span class="lineNum">     930 </span>            :  *      };
+<span class="lineNum">     931 </span>            :  *      OPTIONAL ULONG ExceptionData[]; */
+<span class="lineNum">     932 </span>            : } UNWIND_INFO, *PUNWIND_INFO;
+<span class="lineNum">     933 </span>            : 
+<span class="lineNum">     934 </span>            : typedef struct
+<span class="lineNum">     935 </span>            : {
+<span class="lineNum">     936 </span>            :         RUNTIME_FUNCTION runtimeFunction;
+<span class="lineNum">     937 </span>            :         UNWIND_INFO unwindInfo;
+<span class="lineNum">     938 </span>            : } MonoUnwindInfo, *PMonoUnwindInfo;
+<span class="lineNum">     939 </span>            : 
+<span class="lineNum">     940 </span>            : static void
+<span class="lineNum">     941 </span>            : mono_arch_unwindinfo_create (gpointer* monoui)
+<span class="lineNum">     942 </span>            : {
+<span class="lineNum">     943 </span>            :         PMonoUnwindInfo newunwindinfo;
+<span class="lineNum">     944 </span>            :         *monoui = newunwindinfo = g_new0 (MonoUnwindInfo, 1);
+<span class="lineNum">     945 </span>            :         newunwindinfo-&gt;unwindInfo.Version = 1;
+<span class="lineNum">     946 </span>            : }
+<span class="lineNum">     947 </span>            : 
+<span class="lineNum">     948 </span>            : void
+<span class="lineNum">     949 </span>            : mono_arch_unwindinfo_add_push_nonvol (gpointer* monoui, gpointer codebegin, gpointer nextip, guchar reg )
+<span class="lineNum">     950 </span>            : {
+<span class="lineNum">     951 </span>            :         PMonoUnwindInfo unwindinfo;
+<span class="lineNum">     952 </span>            :         PUNWIND_CODE unwindcode;
+<span class="lineNum">     953 </span>            :         guchar codeindex;
+<span class="lineNum">     954 </span>            :         if (!*monoui)
+<span class="lineNum">     955 </span>            :                 mono_arch_unwindinfo_create (monoui);
+<span class="lineNum">     956 </span>            :         
+<span class="lineNum">     957 </span>            :         unwindinfo = (MonoUnwindInfo*)*monoui;
+<span class="lineNum">     958 </span>            : 
+<span class="lineNum">     959 </span>            :         if (unwindinfo-&gt;unwindInfo.CountOfCodes &gt;= MONO_MAX_UNWIND_CODES)
+<span class="lineNum">     960 </span>            :                 g_error (&quot;Larger allocation needed for the unwind information.&quot;);
+<span class="lineNum">     961 </span>            : 
+<span class="lineNum">     962 </span>            :         codeindex = MONO_MAX_UNWIND_CODES - (++unwindinfo-&gt;unwindInfo.CountOfCodes);
+<span class="lineNum">     963 </span>            :         unwindcode = &amp;unwindinfo-&gt;unwindInfo.UnwindCode[codeindex];
+<span class="lineNum">     964 </span>            :         unwindcode-&gt;UnwindOp = 0; /*UWOP_PUSH_NONVOL*/
+<span class="lineNum">     965 </span>            :         unwindcode-&gt;CodeOffset = (((guchar*)nextip)-((guchar*)codebegin));
+<span class="lineNum">     966 </span>            :         unwindcode-&gt;OpInfo = reg;
+<span class="lineNum">     967 </span>            : 
+<span class="lineNum">     968 </span>            :         if (unwindinfo-&gt;unwindInfo.SizeOfProlog &gt;= unwindcode-&gt;CodeOffset)
+<span class="lineNum">     969 </span>            :                 g_error (&quot;Adding unwind info in wrong order.&quot;);
+<span class="lineNum">     970 </span>            :         
+<span class="lineNum">     971 </span>            :         unwindinfo-&gt;unwindInfo.SizeOfProlog = unwindcode-&gt;CodeOffset;
+<span class="lineNum">     972 </span>            : }
+<span class="lineNum">     973 </span>            : 
+<span class="lineNum">     974 </span>            : void
+<span class="lineNum">     975 </span>            : mono_arch_unwindinfo_add_set_fpreg (gpointer* monoui, gpointer codebegin, gpointer nextip, guchar reg )
+<span class="lineNum">     976 </span>            : {
+<span class="lineNum">     977 </span>            :         PMonoUnwindInfo unwindinfo;
+<span class="lineNum">     978 </span>            :         PUNWIND_CODE unwindcode;
+<span class="lineNum">     979 </span>            :         guchar codeindex;
+<span class="lineNum">     980 </span>            :         if (!*monoui)
+<span class="lineNum">     981 </span>            :                 mono_arch_unwindinfo_create (monoui);
+<span class="lineNum">     982 </span>            :         
+<span class="lineNum">     983 </span>            :         unwindinfo = (MonoUnwindInfo*)*monoui;
+<span class="lineNum">     984 </span>            : 
+<span class="lineNum">     985 </span>            :         if (unwindinfo-&gt;unwindInfo.CountOfCodes + 1 &gt;= MONO_MAX_UNWIND_CODES)
+<span class="lineNum">     986 </span>            :                 g_error (&quot;Larger allocation needed for the unwind information.&quot;);
+<span class="lineNum">     987 </span>            : 
+<span class="lineNum">     988 </span>            :         codeindex = MONO_MAX_UNWIND_CODES - (unwindinfo-&gt;unwindInfo.CountOfCodes += 2);
+<span class="lineNum">     989 </span>            :         unwindcode = &amp;unwindinfo-&gt;unwindInfo.UnwindCode[codeindex];
+<span class="lineNum">     990 </span>            :         unwindcode-&gt;FrameOffset = 0; /*Assuming no frame pointer offset for mono*/
+<span class="lineNum">     991 </span>            :         unwindcode++;
+<span class="lineNum">     992 </span>            :         unwindcode-&gt;UnwindOp = 3; /*UWOP_SET_FPREG*/
+<span class="lineNum">     993 </span>            :         unwindcode-&gt;CodeOffset = (((guchar*)nextip)-((guchar*)codebegin));
+<span class="lineNum">     994 </span>            :         unwindcode-&gt;OpInfo = reg;
+<span class="lineNum">     995 </span>            :         
+<span class="lineNum">     996 </span>            :         unwindinfo-&gt;unwindInfo.FrameRegister = reg;
+<span class="lineNum">     997 </span>            : 
+<span class="lineNum">     998 </span>            :         if (unwindinfo-&gt;unwindInfo.SizeOfProlog &gt;= unwindcode-&gt;CodeOffset)
+<span class="lineNum">     999 </span>            :                 g_error (&quot;Adding unwind info in wrong order.&quot;);
+<span class="lineNum">    1000 </span>            :         
+<span class="lineNum">    1001 </span>            :         unwindinfo-&gt;unwindInfo.SizeOfProlog = unwindcode-&gt;CodeOffset;
+<span class="lineNum">    1002 </span>            : }
+<span class="lineNum">    1003 </span>            : 
+<span class="lineNum">    1004 </span>            : void
+<span class="lineNum">    1005 </span>            : mono_arch_unwindinfo_add_alloc_stack (gpointer* monoui, gpointer codebegin, gpointer nextip, guint size )
+<span class="lineNum">    1006 </span>            : {
+<span class="lineNum">    1007 </span>            :         PMonoUnwindInfo unwindinfo;
+<span class="lineNum">    1008 </span>            :         PUNWIND_CODE unwindcode;
+<span class="lineNum">    1009 </span>            :         guchar codeindex;
+<span class="lineNum">    1010 </span>            :         guchar codesneeded;
+<span class="lineNum">    1011 </span>            :         if (!*monoui)
+<span class="lineNum">    1012 </span>            :                 mono_arch_unwindinfo_create (monoui);
+<span class="lineNum">    1013 </span>            :         
+<span class="lineNum">    1014 </span>            :         unwindinfo = (MonoUnwindInfo*)*monoui;
+<span class="lineNum">    1015 </span>            : 
+<span class="lineNum">    1016 </span>            :         if (size &lt; 0x8)
+<span class="lineNum">    1017 </span>            :                 g_error (&quot;Stack allocation must be equal to or greater than 0x8.&quot;);
+<span class="lineNum">    1018 </span>            :         
+<span class="lineNum">    1019 </span>            :         if (size &lt;= 0x80)
+<span class="lineNum">    1020 </span>            :                 codesneeded = 1;
+<span class="lineNum">    1021 </span>            :         else if (size &lt;= 0x7FFF8)
+<span class="lineNum">    1022 </span>            :                 codesneeded = 2;
+<span class="lineNum">    1023 </span>            :         else
+<span class="lineNum">    1024 </span>            :                 codesneeded = 3;
+<span class="lineNum">    1025 </span>            :         
+<span class="lineNum">    1026 </span>            :         if (unwindinfo-&gt;unwindInfo.CountOfCodes + codesneeded &gt; MONO_MAX_UNWIND_CODES)
+<span class="lineNum">    1027 </span>            :                 g_error (&quot;Larger allocation needed for the unwind information.&quot;);
+<span class="lineNum">    1028 </span>            : 
+<span class="lineNum">    1029 </span>            :         codeindex = MONO_MAX_UNWIND_CODES - (unwindinfo-&gt;unwindInfo.CountOfCodes += codesneeded);
+<span class="lineNum">    1030 </span>            :         unwindcode = &amp;unwindinfo-&gt;unwindInfo.UnwindCode[codeindex];
+<span class="lineNum">    1031 </span>            : 
+<span class="lineNum">    1032 </span>            :         if (codesneeded == 1) {
+<span class="lineNum">    1033 </span>            :                 /*The size of the allocation is 
+<span class="lineNum">    1034 </span>            :                   (the number in the OpInfo member) times 8 plus 8*/
+<span class="lineNum">    1035 </span>            :                 unwindcode-&gt;OpInfo = (size - 8)/8;
+<span class="lineNum">    1036 </span>            :                 unwindcode-&gt;UnwindOp = 2; /*UWOP_ALLOC_SMALL*/
+<span class="lineNum">    1037 </span>            :         }
+<span class="lineNum">    1038 </span>            :         else {
+<span class="lineNum">    1039 </span>            :                 if (codesneeded == 3) {
+<span class="lineNum">    1040 </span>            :                         /*the unscaled size of the allocation is recorded
+<span class="lineNum">    1041 </span>            :                           in the next two slots in little-endian format*/
+<span class="lineNum">    1042 </span>            :                         *((unsigned int*)(&amp;unwindcode-&gt;FrameOffset)) = size;
+<span class="lineNum">    1043 </span>            :                         unwindcode += 2;
+<span class="lineNum">    1044 </span>            :                         unwindcode-&gt;OpInfo = 1;
+<span class="lineNum">    1045 </span>            :                 }
+<span class="lineNum">    1046 </span>            :                 else {
+<span class="lineNum">    1047 </span>            :                         /*the size of the allocation divided by 8
+<span class="lineNum">    1048 </span>            :                           is recorded in the next slot*/
+<span class="lineNum">    1049 </span>            :                         unwindcode-&gt;FrameOffset = size/8; 
+<span class="lineNum">    1050 </span>            :                         unwindcode++;   
+<span class="lineNum">    1051 </span>            :                         unwindcode-&gt;OpInfo = 0;
+<span class="lineNum">    1052 </span>            :                         
+<span class="lineNum">    1053 </span>            :                 }
+<span class="lineNum">    1054 </span>            :                 unwindcode-&gt;UnwindOp = 1; /*UWOP_ALLOC_LARGE*/
+<span class="lineNum">    1055 </span>            :         }
+<span class="lineNum">    1056 </span>            : 
+<span class="lineNum">    1057 </span>            :         unwindcode-&gt;CodeOffset = (((guchar*)nextip)-((guchar*)codebegin));
+<span class="lineNum">    1058 </span>            : 
+<span class="lineNum">    1059 </span>            :         if (unwindinfo-&gt;unwindInfo.SizeOfProlog &gt;= unwindcode-&gt;CodeOffset)
+<span class="lineNum">    1060 </span>            :                 g_error (&quot;Adding unwind info in wrong order.&quot;);
+<span class="lineNum">    1061 </span>            :         
+<span class="lineNum">    1062 </span>            :         unwindinfo-&gt;unwindInfo.SizeOfProlog = unwindcode-&gt;CodeOffset;
+<span class="lineNum">    1063 </span>            : }
+<span class="lineNum">    1064 </span>            : 
+<span class="lineNum">    1065 </span>            : guint
+<span class="lineNum">    1066 </span>            : mono_arch_unwindinfo_get_size (gpointer monoui)
+<span class="lineNum">    1067 </span>            : {
+<span class="lineNum">    1068 </span>            :         PMonoUnwindInfo unwindinfo;
+<span class="lineNum">    1069 </span>            :         if (!monoui)
+<span class="lineNum">    1070 </span>            :                 return 0;
+<span class="lineNum">    1071 </span>            :         
+<span class="lineNum">    1072 </span>            :         unwindinfo = (MonoUnwindInfo*)monoui;
+<span class="lineNum">    1073 </span>            :         return (8 + sizeof (MonoUnwindInfo)) - 
+<span class="lineNum">    1074 </span>            :                 (sizeof (UNWIND_CODE) * (MONO_MAX_UNWIND_CODES - unwindinfo-&gt;unwindInfo.CountOfCodes));
+<span class="lineNum">    1075 </span>            : }
+<span class="lineNum">    1076 </span>            : 
+<span class="lineNum">    1077 </span>            : static PRUNTIME_FUNCTION
+<span class="lineNum">    1078 </span>            : MONO_GET_RUNTIME_FUNCTION_CALLBACK ( DWORD64 ControlPc, IN PVOID Context )
+<span class="lineNum">    1079 </span>            : {
+<span class="lineNum">    1080 </span>            :         MonoJitInfo *ji;
+<span class="lineNum">    1081 </span>            :         guint64 pos;
+<span class="lineNum">    1082 </span>            :         PMonoUnwindInfo targetinfo;
+<span class="lineNum">    1083 </span>            :         MonoDomain *domain = mono_domain_get ();
+<span class="lineNum">    1084 </span>            : 
+<span class="lineNum">    1085 </span>            :         ji = mini_jit_info_table_find (domain, (char*)ControlPc, NULL);
+<span class="lineNum">    1086 </span>            :         if (!ji)
+<span class="lineNum">    1087 </span>            :                 return 0;
+<span class="lineNum">    1088 </span>            : 
+<span class="lineNum">    1089 </span>            :         pos = (guint64)(((char*)ji-&gt;code_start) + ji-&gt;code_size);
+<span class="lineNum">    1090 </span>            :         
+<span class="lineNum">    1091 </span>            :         targetinfo = (PMonoUnwindInfo)ALIGN_TO (pos, 8);
+<span class="lineNum">    1092 </span>            : 
+<span class="lineNum">    1093 </span>            :         targetinfo-&gt;runtimeFunction.BeginAddress = ((DWORD64)ji-&gt;code_start) - ((DWORD64)Context);
+<span class="lineNum">    1094 </span>            :         targetinfo-&gt;runtimeFunction.EndAddress = pos - ((DWORD64)Context);
+<span class="lineNum">    1095 </span>            :         targetinfo-&gt;runtimeFunction.UnwindData = ((DWORD64)&amp;targetinfo-&gt;unwindInfo) - ((DWORD64)Context);
+<span class="lineNum">    1096 </span>            : 
+<span class="lineNum">    1097 </span>            :         return &amp;targetinfo-&gt;runtimeFunction;
+<span class="lineNum">    1098 </span>            : }
+<span class="lineNum">    1099 </span>            : 
+<span class="lineNum">    1100 </span>            : void
+<span class="lineNum">    1101 </span>            : mono_arch_unwindinfo_install_unwind_info (gpointer* monoui, gpointer code, guint code_size)
+<span class="lineNum">    1102 </span>            : {
+<span class="lineNum">    1103 </span>            :         PMonoUnwindInfo unwindinfo, targetinfo;
+<span class="lineNum">    1104 </span>            :         guchar codecount;
+<span class="lineNum">    1105 </span>            :         guint64 targetlocation;
+<span class="lineNum">    1106 </span>            :         if (!*monoui)
+<span class="lineNum">    1107 </span>            :                 return;
+<span class="lineNum">    1108 </span>            : 
+<span class="lineNum">    1109 </span>            :         unwindinfo = (MonoUnwindInfo*)*monoui;
+<span class="lineNum">    1110 </span>            :         targetlocation = (guint64)&amp;(((guchar*)code)[code_size]);
+<span class="lineNum">    1111 </span>            :         targetinfo = (PMonoUnwindInfo) ALIGN_TO(targetlocation, 8);
+<span class="lineNum">    1112 </span>            : 
+<span class="lineNum">    1113 </span>            :         unwindinfo-&gt;runtimeFunction.EndAddress = code_size;
+<span class="lineNum">    1114 </span>            :         unwindinfo-&gt;runtimeFunction.UnwindData = ((guchar*)&amp;targetinfo-&gt;unwindInfo) - ((guchar*)code);
+<span class="lineNum">    1115 </span>            :         
+<span class="lineNum">    1116 </span>            :         memcpy (targetinfo, unwindinfo, sizeof (MonoUnwindInfo) - (sizeof (UNWIND_CODE) * MONO_MAX_UNWIND_CODES));
+<span class="lineNum">    1117 </span>            :         
+<span class="lineNum">    1118 </span>            :         codecount = unwindinfo-&gt;unwindInfo.CountOfCodes;
+<span class="lineNum">    1119 </span>            :         if (codecount) {
+<span class="lineNum">    1120 </span>            :                 memcpy (&amp;targetinfo-&gt;unwindInfo.UnwindCode[0], &amp;unwindinfo-&gt;unwindInfo.UnwindCode[MONO_MAX_UNWIND_CODES-codecount], 
+<span class="lineNum">    1121 </span>            :                         sizeof (UNWIND_CODE) * unwindinfo-&gt;unwindInfo.CountOfCodes);
+<span class="lineNum">    1122 </span>            :         }
+<span class="lineNum">    1123 </span>            : 
+<span class="lineNum">    1124 </span>            :         g_free (unwindinfo);
+<span class="lineNum">    1125 </span>            :         *monoui = 0;
+<span class="lineNum">    1126 </span>            : }
+<span class="lineNum">    1127 </span>            : 
+<span class="lineNum">    1128 </span>            : void
+<span class="lineNum">    1129 </span>            : mono_arch_code_chunk_new (void *chunk, int size)
+<span class="lineNum">    1130 </span>            : {
+<span class="lineNum">    1131 </span>            :         BOOLEAN success = RtlInstallFunctionTableCallback (((DWORD64)chunk) | 0x3, (DWORD64)chunk, size, MONO_GET_RUNTIME_FUNCTION_CALLBACK, chunk, NULL);
+<span class="lineNum">    1132 </span>            :         g_assert (success);
+<span class="lineNum">    1133 </span>            : }
+<span class="lineNum">    1134 </span>            : 
+<span class="lineNum">    1135 </span>            : void mono_arch_code_chunk_destroy (void *chunk)
+<span class="lineNum">    1136 </span>            : {
+<span class="lineNum">    1137 </span>            :         BOOLEAN success = RtlDeleteFunctionTable ((PRUNTIME_FUNCTION)((DWORD64)chunk | 0x03));
+<span class="lineNum">    1138 </span>            :         g_assert (success);
+<span class="lineNum">    1139 </span>            : }
+<span class="lineNum">    1140 </span>            : 
+<span class="lineNum">    1141 </span>            : #endif /* defined(TARGET_WIN32) !defined(DISABLE_JIT) */
+<span class="lineNum">    1142 </span>            : 
+<a name="1143"><span class="lineNum">    1143 </span>            : #if MONO_SUPPORT_TASKLETS &amp;&amp; !defined(DISABLE_JIT)</a>
+<span class="lineNum">    1144 </span>            : MonoContinuationRestore
+<span class="lineNum">    1145 </span>            : mono_tasklets_arch_restore (void)
+<span class="lineNum">    1146 </span>            : {
+<span class="lineNum">    1147 </span>            :         static guint8* saved = NULL;
+<span class="lineNum">    1148 </span>            :         guint8 *code, *start;
+<span class="lineNum">    1149 </span><span class="lineNoCov">          0 :         int cont_reg = AMD64_R9; /* register usable on both call conventions */</span>
+<span class="lineNum">    1150 </span><span class="lineNoCov">          0 :         const guint kMaxCodeSize = 64;</span>
+<span class="lineNum">    1151 </span>            :         
+<span class="lineNum">    1152 </span>            : 
+<span class="lineNum">    1153 </span><span class="lineNoCov">          0 :         if (saved)</span>
+<span class="lineNum">    1154 </span><span class="lineNoCov">          0 :                 return (MonoContinuationRestore)saved;</span>
+<span class="lineNum">    1155 </span><span class="lineNoCov">          0 :         code = start = (guint8 *)mono_global_codeman_reserve (kMaxCodeSize);</span>
+<span class="lineNum">    1156 </span>            :         /* the signature is: restore (MonoContinuation *cont, int state, MonoLMF **lmf_addr) */
+<span class="lineNum">    1157 </span>            :         /* cont is in AMD64_ARG_REG1 ($rcx or $rdi)
+<span class="lineNum">    1158 </span>            :          * state is in AMD64_ARG_REG2 ($rdx or $rsi)
+<span class="lineNum">    1159 </span>            :          * lmf_addr is in AMD64_ARG_REG3 ($r8 or $rdx)
+<span class="lineNum">    1160 </span>            :          * We move cont to cont_reg since we need both rcx and rdi for the copy
+<span class="lineNum">    1161 </span>            :          * state is moved to $rax so it's setup as the return value and we can overwrite $rsi
+<span class="lineNum">    1162 </span>            :          */
+<span class="lineNum">    1163 </span><span class="lineNoCov">          0 :         amd64_mov_reg_reg (code, cont_reg, MONO_AMD64_ARG_REG1, 8);</span>
+<span class="lineNum">    1164 </span><span class="lineNoCov">          0 :         amd64_mov_reg_reg (code, AMD64_RAX, MONO_AMD64_ARG_REG2, 8);</span>
+<span class="lineNum">    1165 </span>            :         /* setup the copy of the stack */
+<span class="lineNum">    1166 </span><span class="lineNoCov">          0 :         amd64_mov_reg_membase (code, AMD64_RCX, cont_reg, MONO_STRUCT_OFFSET (MonoContinuation, stack_used_size), sizeof (int));</span>
+<span class="lineNum">    1167 </span><span class="lineNoCov">          0 :         amd64_shift_reg_imm (code, X86_SHR, AMD64_RCX, 3);</span>
+<span class="lineNum">    1168 </span><span class="lineNoCov">          0 :         x86_cld (code);</span>
+<span class="lineNum">    1169 </span><span class="lineNoCov">          0 :         amd64_mov_reg_membase (code, AMD64_RSI, cont_reg, MONO_STRUCT_OFFSET (MonoContinuation, saved_stack), sizeof (gpointer));</span>
+<span class="lineNum">    1170 </span><span class="lineNoCov">          0 :         amd64_mov_reg_membase (code, AMD64_RDI, cont_reg, MONO_STRUCT_OFFSET (MonoContinuation, return_sp), sizeof (gpointer));</span>
+<span class="lineNum">    1171 </span><span class="lineNoCov">          0 :         amd64_prefix (code, X86_REP_PREFIX);</span>
+<span class="lineNum">    1172 </span><span class="lineNoCov">          0 :         amd64_movsl (code);</span>
+<span class="lineNum">    1173 </span>            : 
+<span class="lineNum">    1174 </span>            :         /* now restore the registers from the LMF */
+<span class="lineNum">    1175 </span><span class="lineNoCov">          0 :         amd64_mov_reg_membase (code, AMD64_RCX, cont_reg, MONO_STRUCT_OFFSET (MonoContinuation, lmf), 8);</span>
+<span class="lineNum">    1176 </span><span class="lineNoCov">          0 :         amd64_mov_reg_membase (code, AMD64_RBP, AMD64_RCX, MONO_STRUCT_OFFSET (MonoLMF, rbp), 8);</span>
+<span class="lineNum">    1177 </span><span class="lineNoCov">          0 :         amd64_mov_reg_membase (code, AMD64_RSP, AMD64_RCX, MONO_STRUCT_OFFSET (MonoLMF, rsp), 8);</span>
+<span class="lineNum">    1178 </span>            : 
+<span class="lineNum">    1179 </span>            : #ifdef WIN32
+<span class="lineNum">    1180 </span>            :         amd64_mov_reg_reg (code, AMD64_R14, AMD64_ARG_REG3, 8);
+<span class="lineNum">    1181 </span>            : #else
+<span class="lineNum">    1182 </span><span class="lineNoCov">          0 :         amd64_mov_reg_reg (code, AMD64_R12, AMD64_ARG_REG3, 8);</span>
+<span class="lineNum">    1183 </span>            : #endif
+<span class="lineNum">    1184 </span>            : 
+<span class="lineNum">    1185 </span>            :         /* state is already in rax */
+<span class="lineNum">    1186 </span><span class="lineNoCov">          0 :         amd64_jump_membase (code, cont_reg, MONO_STRUCT_OFFSET (MonoContinuation, return_ip));</span>
+<span class="lineNum">    1187 </span><span class="lineNoCov">          0 :         g_assert ((code - start) &lt;= kMaxCodeSize);</span>
+<span class="lineNum">    1188 </span>            : 
+<span class="lineNum">    1189 </span><span class="lineNoCov">          0 :         mono_arch_flush_icache (start, code - start);</span>
+<span class="lineNum">    1190 </span><span class="lineNoCov">          0 :         mono_profiler_code_buffer_new (start, code - start, MONO_PROFILER_CODE_BUFFER_EXCEPTION_HANDLING, NULL);</span>
+<span class="lineNum">    1191 </span>            : 
+<span class="lineNum">    1192 </span><span class="lineNoCov">          0 :         saved = start;</span>
+<span class="lineNum">    1193 </span><span class="lineNoCov">          0 :         return (MonoContinuationRestore)saved;</span>
+<span class="lineNum">    1194 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1195 </span>            : #endif /* MONO_SUPPORT_TASKLETS &amp;&amp; !defined(DISABLE_JIT) */
+<span class="lineNum">    1196 </span>            : 
+<span class="lineNum">    1197 </span>            : /*
+<span class="lineNum">    1198 </span>            :  * mono_arch_setup_resume_sighandler_ctx:
+<span class="lineNum">    1199 </span>            :  *
+<span class="lineNum">    1200 </span>            :  *   Setup CTX so execution continues at FUNC.
+<a name="1201"><span class="lineNum">    1201 </span>            :  */</a>
+<span class="lineNum">    1202 </span>            : void
+<span class="lineNum">    1203 </span>            : mono_arch_setup_resume_sighandler_ctx (MonoContext *ctx, gpointer func)
+<span class="lineNum">    1204 </span>            : {
+<span class="lineNum">    1205 </span>            :         /* 
+<span class="lineNum">    1206 </span>            :          * When resuming from a signal handler, the stack should be misaligned, just like right after
+<span class="lineNum">    1207 </span>            :          * a call.
+<span class="lineNum">    1208 </span>            :          */
+<span class="lineNum">    1209 </span><span class="lineNoCov">          0 :         if ((((guint64)MONO_CONTEXT_GET_SP (ctx)) % 16) == 0)</span>
+<span class="lineNum">    1210 </span><span class="lineNoCov">          0 :                 MONO_CONTEXT_SET_SP (ctx, (guint64)MONO_CONTEXT_GET_SP (ctx) - 8);</span>
+<span class="lineNum">    1211 </span><span class="lineNoCov">          0 :         MONO_CONTEXT_SET_IP (ctx, func);</span>
+<span class="lineNum">    1212 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1213 </span>            : 
+<span class="lineNum">    1214 </span>            : #ifdef DISABLE_JIT
+<span class="lineNum">    1215 </span>            : gpointer
+<span class="lineNum">    1216 </span>            : mono_arch_get_restore_context (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1217 </span>            : {
+<span class="lineNum">    1218 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1219 </span>            :         return NULL;
+<span class="lineNum">    1220 </span>            : }
+<span class="lineNum">    1221 </span>            : 
+<span class="lineNum">    1222 </span>            : gpointer
+<span class="lineNum">    1223 </span>            : mono_arch_get_call_filter (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1224 </span>            : {
+<span class="lineNum">    1225 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1226 </span>            :         return NULL;
+<span class="lineNum">    1227 </span>            : }
+<span class="lineNum">    1228 </span>            : 
+<span class="lineNum">    1229 </span>            : gpointer
+<span class="lineNum">    1230 </span>            : mono_arch_get_throw_exception (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1231 </span>            : {
+<span class="lineNum">    1232 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1233 </span>            :         return NULL;
+<span class="lineNum">    1234 </span>            : }
+<span class="lineNum">    1235 </span>            : 
+<span class="lineNum">    1236 </span>            : gpointer
+<span class="lineNum">    1237 </span>            : mono_arch_get_rethrow_exception (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1238 </span>            : {
+<span class="lineNum">    1239 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1240 </span>            :         return NULL;
+<span class="lineNum">    1241 </span>            : }
+<span class="lineNum">    1242 </span>            : 
+<span class="lineNum">    1243 </span>            : gpointer
+<span class="lineNum">    1244 </span>            : mono_arch_get_throw_corlib_exception (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1245 </span>            : {
+<span class="lineNum">    1246 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1247 </span>            :         return NULL;
+<span class="lineNum">    1248 </span>            : }
+<span class="lineNum">    1249 </span>            : 
+<span class="lineNum">    1250 </span>            : GSList*
+<span class="lineNum">    1251 </span>            : mono_amd64_get_exception_trampolines (gboolean aot)
+<span class="lineNum">    1252 </span>            : {
+<span class="lineNum">    1253 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1254 </span>            :         return NULL;
+<span class="lineNum">    1255 </span>            : }
+<span class="lineNum">    1256 </span>            : #endif /* DISABLE_JIT */
+<span class="lineNum">    1257 </span>            : 
+<span class="lineNum">    1258 </span>            : #if !MONO_SUPPORT_TASKLETS || defined(DISABLE_JIT)
+<span class="lineNum">    1259 </span>            : MonoContinuationRestore
+<span class="lineNum">    1260 </span>            : mono_tasklets_arch_restore (void)
+<span class="lineNum">    1261 </span>            : {
+<span class="lineNum">    1262 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1263 </span>            :         return NULL;
+<span class="lineNum">    1264 </span>            : }
+<span class="lineNum">    1265 </span>            : #endif /* !MONO_SUPPORT_TASKLETS || defined(DISABLE_JIT) */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

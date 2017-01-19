@@ -1,0 +1,1599 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/ssa.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - ssa.c<span style="font-size: 80%;"> (source / <a href="ssa.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">722</td>
+            <td class="headerCovTableEntry">859</td>
+            <td class="headerCovTableEntryMed">84.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">18</td>
+            <td class="headerCovTableEntry">20</td>
+            <td class="headerCovTableEntryHi">90.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * ssa.c: Static single assign form support for the JIT compiler.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *    Dietmar Maurer (dietmar@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2003 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  * Copyright 2011 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;mono/metadata/mempool.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;mono/metadata/mempool-internals.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      21 </span>            : #ifdef HAVE_ALLOCA_H
+<span class="lineNum">      22 </span>            : #include &lt;alloca.h&gt;
+<span class="lineNum">      23 </span>            : #endif
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : #define CREATE_PRUNED_SSA
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : //#define DEBUG_SSA 1
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : #define NEW_PHI(cfg,dest,val) do {      \
+<span class="lineNum">      30 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_PHI); \
+<span class="lineNum">      31 </span>            :         (dest)-&gt;inst_c0 = (val);                                                        \
+<span class="lineNum">      32 </span>            :         } while (0)
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : typedef struct {
+<span class="lineNum">      35 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">      36 </span>            :         MonoInst *inst;
+<span class="lineNum">      37 </span>            : } MonoVarUsageInfo;
+<a name="38"><span class="lineNum">      38 </span>            : </a>
+<span class="lineNum">      39 </span>            : static void 
+<span class="lineNum">      40 </span>            : unlink_target (MonoBasicBlock *bb, MonoBasicBlock *target)
+<span class="lineNum">      41 </span>            : {
+<span class="lineNum">      42 </span>            :         int i;
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; bb-&gt;out_count; i++) {</span>
+<span class="lineNum">      45 </span><span class="lineNoCov">          0 :                 if (bb-&gt;out_bb [i] == target) {</span>
+<span class="lineNum">      46 </span><span class="lineNoCov">          0 :                         bb-&gt;out_bb [i] = bb-&gt;out_bb [--bb-&gt;out_count];</span>
+<span class="lineNum">      47 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">      48 </span>            :                 }
+<span class="lineNum">      49 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      50 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; target-&gt;in_count; i++) {</span>
+<span class="lineNum">      51 </span><span class="lineNoCov">          0 :                 if (target-&gt;in_bb [i] == bb) {</span>
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 :                         target-&gt;in_bb [i] = target-&gt;in_bb [--target-&gt;in_count];</span>
+<span class="lineNum">      53 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">      54 </span>            :                         
+<span class="lineNum">      55 </span>            :                 }
+<span class="lineNum">      56 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      57 </span><span class="lineNoCov">          0 : }</span>
+<a name="58"><span class="lineNum">      58 </span>            : </a>
+<span class="lineNum">      59 </span>            : static void
+<span class="lineNum">      60 </span>            : unlink_unused_bblocks (MonoCompile *cfg) 
+<span class="lineNum">      61 </span>            : {
+<span class="lineNum">      62 </span>            :         int i, j;
+<span class="lineNum">      63 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span><span class="lineCov">   40452404 :         g_assert (cfg-&gt;comp_done &amp; MONO_COMP_REACHABILITY);</span>
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span><span class="lineCov">   13484200 :         if (G_UNLIKELY (cfg-&gt;verbose_level &gt; 1))</span>
+<span class="lineNum">      68 </span><span class="lineCov">     172816 :                 printf (&quot;\nUNLINK UNUSED BBLOCKS:\n&quot;);</span>
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span><span class="lineCov">  452675692 :         for (bb = cfg-&gt;bb_entry; bb &amp;&amp; bb-&gt;next_bb;) {</span>
+<span class="lineNum">      71 </span><span class="lineCov">   99680345 :                 if (!(bb-&gt;next_bb-&gt;flags &amp; BB_REACHABLE)) {</span>
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :                         bb-&gt;next_bb = bb-&gt;next_bb-&gt;next_bb;</span>
+<span class="lineNum">      73 </span><span class="lineNoCov">          0 :                 } else </span>
+<span class="lineNum">      74 </span><span class="lineCov">   99674436 :                         bb = bb-&gt;next_bb;</span>
+<span class="lineNum">      75 </span>            :         }
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span><span class="lineCov">  223797499 :         for (i = 1; i &lt; cfg-&gt;num_bblocks; i++) {</span>
+<span class="lineNum">      78 </span><span class="lineCov">   98441268 :                 bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">      79 </span>            :                
+<span class="lineNum">      80 </span><span class="lineCov">   98441268 :                 if (!(bb-&gt;flags &amp; BB_REACHABLE)) {</span>
+<span class="lineNum">      81 </span><span class="lineNoCov">          0 :                         for (j = 0; j &lt; bb-&gt;in_count; j++) {</span>
+<span class="lineNum">      82 </span><span class="lineNoCov">          0 :                                 unlink_target (bb-&gt;in_bb [j], bb);   </span>
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">      84 </span><span class="lineNoCov">          0 :                         for (j = 0; j &lt; bb-&gt;out_count; j++) {</span>
+<span class="lineNum">      85 </span><span class="lineNoCov">          0 :                                 unlink_target (bb, bb-&gt;out_bb [j]);  </span>
+<span class="lineNum">      86 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 :                         if (G_UNLIKELY (cfg-&gt;verbose_level &gt; 1))</span>
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 :                                 printf (&quot;\tUnlinked BB%d\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">      90 </span>            :  
+<span class="lineNum">      91 </span><span class="lineCov">   98374482 :         }</span>
+<span class="lineNum">      92 </span><span class="lineCov">   13482300 : }</span>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span>            : /**
+<span class="lineNum">      95 </span>            :  * remove_bb_from_phis:
+<span class="lineNum">      96 </span>            :  *
+<span class="lineNum">      97 </span>            :  *   Remove BB from the PHI statements in TARGET.
+<a name="98"><span class="lineNum">      98 </span>            :  */</a>
+<span class="lineNum">      99 </span>            : static void
+<span class="lineNum">     100 </span>            : remove_bb_from_phis (MonoCompile *cfg, MonoBasicBlock *bb, MonoBasicBlock *target)
+<span class="lineNum">     101 </span>            : {
+<span class="lineNum">     102 </span>            :         MonoInst *ins;
+<span class="lineNum">     103 </span>            :         int i, j;
+<span class="lineNum">     104 </span>            : 
+<span class="lineNum">     105 </span><span class="lineCov">     176161 :         for (i = 0; i &lt; target-&gt;in_count; i++) {</span>
+<span class="lineNum">     106 </span><span class="lineCov">      88073 :                 if (target-&gt;in_bb [i] == bb) {</span>
+<span class="lineNum">     107 </span><span class="lineCov">      55986 :                         break;</span>
+<span class="lineNum">     108 </span>            :                 }
+<span class="lineNum">     109 </span><span class="lineCov">      32074 :         }</span>
+<span class="lineNum">     110 </span><span class="lineCov">     167936 :         g_assert (i &lt; target-&gt;in_count);</span>
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineCov">     117192 :         for (ins = target-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">     113 </span><span class="lineCov">     226401 :                 if (MONO_IS_PHI (ins)) {</span>
+<span class="lineNum">     114 </span><span class="lineCov">      31268 :                         for (j = i; j &lt; ins-&gt;inst_phi_args [0] - 1; ++j)</span>
+<span class="lineNum">     115 </span><span class="lineCov">      13014 :                                 ins-&gt;inst_phi_args [j + 1] = ins-&gt;inst_phi_args [j + 2];</span>
+<span class="lineNum">     116 </span><span class="lineCov">       2625 :                         ins-&gt;inst_phi_args [0] --;</span>
+<span class="lineNum">     117 </span><span class="lineCov">       2625 :                 }</span>
+<span class="lineNum">     118 </span>            :                 else
+<span class="lineNum">     119 </span><span class="lineCov">      55903 :                         break;</span>
+<span class="lineNum">     120 </span><span class="lineCov">       2625 :         }</span>
+<span class="lineNum">     121 </span><span class="lineCov">      55906 : }</span>
+<a name="122"><span class="lineNum">     122 </span>            : </a>
+<span class="lineNum">     123 </span>            : static inline int
+<span class="lineNum">     124 </span>            : op_phi_to_move (int opcode)
+<span class="lineNum">     125 </span>            : {
+<span class="lineNum">     126 </span><span class="lineCov">   21190027 :         switch (opcode) {</span>
+<span class="lineNum">     127 </span>            :         case OP_PHI:
+<span class="lineNum">     128 </span><span class="lineCov">   20608733 :                 return OP_MOVE;</span>
+<span class="lineNum">     129 </span>            :         case OP_FPHI:
+<span class="lineNum">     130 </span><span class="lineCov">      16944 :                 return OP_FMOVE;</span>
+<span class="lineNum">     131 </span>            :         case OP_VPHI:
+<span class="lineNum">     132 </span><span class="lineCov">     568017 :                 return OP_VMOVE;</span>
+<span class="lineNum">     133 </span>            :         case OP_XPHI:
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :                 return OP_XMOVE;</span>
+<span class="lineNum">     135 </span>            :         default:
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :         return -1;</span>
+<span class="lineNum">     140 </span><span class="lineCov">   21193287 : }</span>
+<a name="141"><span class="lineNum">     141 </span>            : </a>
+<span class="lineNum">     142 </span>            : static inline void
+<span class="lineNum">     143 </span>            : record_use (MonoCompile *cfg, MonoInst *var, MonoBasicBlock *bb, MonoInst *ins)
+<span class="lineNum">     144 </span>            : {
+<span class="lineNum">     145 </span>            :         MonoMethodVar *info;
+<span class="lineNum">     146 </span><span class="lineCov">  387884768 :         MonoVarUsageInfo *ui = (MonoVarUsageInfo *)mono_mempool_alloc (cfg-&gt;mempool, sizeof (MonoVarUsageInfo));</span>
+<span class="lineNum">     147 </span>            : 
+<span class="lineNum">     148 </span><span class="lineCov">  387884768 :         info = MONO_VARINFO (cfg, var-&gt;inst_c0);</span>
+<span class="lineNum">     149 </span>            :         
+<span class="lineNum">     150 </span><span class="lineCov">  387884768 :         ui-&gt;bb = bb;</span>
+<span class="lineNum">     151 </span><span class="lineCov">  387884768 :         ui-&gt;inst = ins;</span>
+<span class="lineNum">     152 </span><span class="lineCov">  387884768 :         info-&gt;uses = g_list_prepend_mempool (cfg-&gt;mempool, info-&gt;uses, ui);</span>
+<span class="lineNum">     153 </span><span class="lineCov">  387884768 : }       </span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            : typedef struct {
+<span class="lineNum">     156 </span>            :         MonoInst *var;
+<span class="lineNum">     157 </span>            :         int idx;
+<span class="lineNum">     158 </span>            : } RenameInfo;
+<span class="lineNum">     159 </span>            : 
+<span class="lineNum">     160 </span>            : /**
+<span class="lineNum">     161 </span>            :  * mono_ssa_rename_vars:
+<span class="lineNum">     162 </span>            :  *
+<span class="lineNum">     163 </span>            :  *  Implement renaming of SSA variables. Also compute def-use information in parallel.
+<span class="lineNum">     164 </span>            :  * @stack_history points to an area of memory which can be used for storing changes 
+<span class="lineNum">     165 </span>            :  * made to the stack, so they can be reverted later.
+<a name="166"><span class="lineNum">     166 </span>            :  */</a>
+<span class="lineNum">     167 </span>            : static void
+<span class="lineNum">     168 </span>            : mono_ssa_rename_vars (MonoCompile *cfg, int max_vars, MonoBasicBlock *bb, gboolean *originals_used, MonoInst **stack,   guint32 *lvreg_stack, gboolean *lvreg_defined, RenameInfo *stack_history, int stack_history_size) 
+<span class="lineNum">     169 </span>            : {
+<span class="lineNum">     170 </span>            :         MonoInst *ins, *new_var;
+<span class="lineNum">     171 </span>            :         int i, j, idx;
+<span class="lineNum">     172 </span>            :         GSList *tmp;
+<span class="lineNum">     173 </span><span class="lineCov">  113125015 :         int stack_history_len = 0;</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span><span class="lineCov">  113125015 :         if (cfg-&gt;verbose_level &gt;= 4)</span>
+<span class="lineNum">     176 </span><span class="lineCov">    1379539 :                 printf (&quot;\nRENAME VARS BLOCK %d:\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     177 </span>            : 
+<span class="lineNum">     178 </span>            :         /* First pass: Create new vars */
+<span class="lineNum">     179 </span><span class="lineCov"> 1794506380 :         for (ins = bb-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">     180 </span><span class="lineCov">  784058063 :                 const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     181 </span>            :                 int num_sregs;
+<span class="lineNum">     182 </span>            :                 int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     183 </span>            : 
+<span class="lineNum">     184 </span>            : #ifdef DEBUG_SSA
+<span class="lineNum">     185 </span>            :                 printf (&quot;\tProcessing &quot;); mono_print_ins (ins);
+<span class="lineNum">     186 </span>            : #endif
+<span class="lineNum">     187 </span><span class="lineCov">  784058063 :                 if (ins-&gt;opcode == OP_NOP)</span>
+<span class="lineNum">     188 </span><span class="lineCov">    9216122 :                         continue;</span>
+<span class="lineNum">     189 </span>            : 
+<span class="lineNum">     190 </span>            :                 /* SREGs */
+<span class="lineNum">     191 </span><span class="lineCov">  774904198 :                 num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     192 </span><span class="lineCov"> 2364763334 :                 for (i = 0; i &lt; num_sregs; ++i) {</span>
+<span class="lineNum">     193 </span><span class="lineCov">  407881641 :                         if (spec [MONO_INST_SRC1 + i] != ' ') {</span>
+<span class="lineNum">     194 </span><span class="lineCov"> 1224440265 :                                 MonoInst *var = get_vreg_to_inst (cfg, sregs [i]);</span>
+<span class="lineNum">     195 </span><span class="lineCov">  586586809 :                                 if (var &amp;&amp; !(var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT))) {</span>
+<span class="lineNum">     196 </span><span class="lineCov">  160702940 :                                         int idx = var-&gt;inst_c0;</span>
+<span class="lineNum">     197 </span><span class="lineCov">  160702940 :                                         if (stack [idx]) {</span>
+<span class="lineNum">     198 </span><span class="lineCov">   70266072 :                                                 if (var-&gt;opcode != OP_ARG)</span>
+<span class="lineNum">     199 </span><span class="lineCov">  270218844 :                                                         g_assert (stack [idx]);</span>
+<span class="lineNum">     200 </span><span class="lineCov">   70274094 :                                                 sregs [i] = stack [idx]-&gt;dreg;</span>
+<span class="lineNum">     201 </span><span class="lineCov">   70274094 :                                                 record_use (cfg, stack [idx], bb, ins);</span>
+<span class="lineNum">     202 </span><span class="lineCov">   70274094 :                                         }</span>
+<span class="lineNum">     203 </span>            :                                         else
+<span class="lineNum">     204 </span><span class="lineCov">   90434950 :                                                 record_use (cfg, var, bb, ins);</span>
+<span class="lineNum">     205 </span><span class="lineCov">  160632938 :                                 }</span>
+<span class="lineNum">     206 </span><span class="lineCov">  726255212 :                                 else if (G_UNLIKELY (!var &amp;&amp; lvreg_stack [sregs [i]]))</span>
+<span class="lineNum">     207 </span><span class="lineCov">    2138317 :                                         sregs [i] = lvreg_stack [sregs [i]];</span>
+<span class="lineNum">     208 </span><span class="lineCov">  407763931 :                         }</span>
+<span class="lineNum">     209 </span><span class="lineCov">  407792004 :                 }</span>
+<span class="lineNum">     210 </span><span class="lineCov">  776621278 :                 mono_inst_set_src_registers (ins, sregs);</span>
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span><span class="lineCov"> 1913774543 :                 if (MONO_IS_STORE_MEMBASE (ins)) {</span>
+<span class="lineNum">     213 </span><span class="lineCov">   61718819 :                         MonoInst *var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">     214 </span><span class="lineCov">   30054226 :                         if (var &amp;&amp; !(var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT))) {</span>
+<span class="lineNum">     215 </span><span class="lineCov">    9479921 :                                 int idx = var-&gt;inst_c0;</span>
+<span class="lineNum">     216 </span><span class="lineCov">    9479921 :                                 if (stack [idx]) {</span>
+<span class="lineNum">     217 </span><span class="lineCov">     814715 :                                         if (var-&gt;opcode != OP_ARG)</span>
+<span class="lineNum">     218 </span><span class="lineCov">    3124338 :                                                 g_assert (stack [idx]);</span>
+<span class="lineNum">     219 </span><span class="lineCov">     814705 :                                         ins-&gt;dreg = stack [idx]-&gt;dreg;</span>
+<span class="lineNum">     220 </span><span class="lineCov">     814705 :                                         record_use (cfg, stack [idx], bb, ins);</span>
+<span class="lineNum">     221 </span><span class="lineCov">     814705 :                                 }</span>
+<span class="lineNum">     222 </span>            :                                 else
+<span class="lineNum">     223 </span><span class="lineCov">    8662750 :                                         record_use (cfg, var, bb, ins);</span>
+<span class="lineNum">     224 </span><span class="lineCov">    9479728 :                         }</span>
+<span class="lineNum">     225 </span><span class="lineCov">   33274682 :                         else if (G_UNLIKELY (!var &amp;&amp; lvreg_stack [ins-&gt;dreg]))</span>
+<span class="lineNum">     226 </span><span class="lineCov">     601843 :                                 ins-&gt;dreg = lvreg_stack [ins-&gt;dreg];</span>
+<span class="lineNum">     227 </span><span class="lineCov">   20571250 :                 }</span>
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span>            :                 /* DREG */
+<span class="lineNum">     230 </span><span class="lineCov"> 1839050451 :                 if ((spec [MONO_INST_DEST] != ' ') &amp;&amp; !MONO_IS_STORE_MEMBASE (ins)) {</span>
+<span class="lineNum">     231 </span><span class="lineCov"> 1139518478 :                         MonoInst *var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">     232 </span>            :                         MonoMethodVar *info;
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span><span class="lineCov">  450204353 :                         if (var &amp;&amp; !(var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT))) {</span>
+<span class="lineNum">     235 </span><span class="lineCov">   40587948 :                                 idx = var-&gt;inst_c0;</span>
+<span class="lineNum">     236 </span><span class="lineCov">  121769772 :                                 g_assert (idx &lt; max_vars);</span>
+<span class="lineNum">     237 </span>            : 
+<span class="lineNum">     238 </span><span class="lineCov">   40592289 :                                 if (var-&gt;opcode == OP_ARG)</span>
+<span class="lineNum">     239 </span><span class="lineCov">    1325860 :                                         originals_used [idx] = TRUE;</span>
+<span class="lineNum">     240 </span>            : 
+<span class="lineNum">     241 </span>            :                                 /* FIXME: */
+<span class="lineNum">     242 </span><span class="lineCov">  121776886 :                                 g_assert (stack_history_len &lt; stack_history_size);</span>
+<span class="lineNum">     243 </span><span class="lineCov">   40597843 :                                 stack_history [stack_history_len].var = stack [idx];</span>
+<span class="lineNum">     244 </span><span class="lineCov">   40597843 :                                 stack_history [stack_history_len].idx = idx;</span>
+<span class="lineNum">     245 </span><span class="lineCov">   40597843 :                                 stack_history_len ++;</span>
+<span class="lineNum">     246 </span>            : 
+<span class="lineNum">     247 </span><span class="lineCov">   40597843 :                                 if (originals_used [idx]) {</span>
+<span class="lineNum">     248 </span><span class="lineCov">   20086437 :                                         new_var = mono_compile_create_var (cfg, var-&gt;inst_vtype, OP_LOCAL);</span>
+<span class="lineNum">     249 </span><span class="lineCov">   20086437 :                                         new_var-&gt;flags = var-&gt;flags;</span>
+<span class="lineNum">     250 </span><span class="lineCov">   20086437 :                                         MONO_VARINFO (cfg, new_var-&gt;inst_c0)-&gt;reg = idx;</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span><span class="lineCov">   20086437 :                                         if (cfg-&gt;verbose_level &gt;= 4)</span>
+<span class="lineNum">     253 </span><span class="lineCov">     245921 :                                                 printf (&quot;  R%d -&gt; R%d\n&quot;, var-&gt;dreg, new_var-&gt;dreg);</span>
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineCov">   20087403 :                                         stack [idx] = new_var;</span>
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span><span class="lineCov">   20087403 :                                         ins-&gt;dreg = new_var-&gt;dreg;</span>
+<span class="lineNum">     258 </span><span class="lineCov">   20087403 :                                         var = new_var;</span>
+<span class="lineNum">     259 </span><span class="lineCov">   20087403 :                                 }</span>
+<span class="lineNum">     260 </span>            :                                 else {
+<span class="lineNum">     261 </span><span class="lineCov">   20498236 :                                         stack [idx] = var;</span>
+<span class="lineNum">     262 </span><span class="lineCov">   20498236 :                                         originals_used [idx] = TRUE;</span>
+<span class="lineNum">     263 </span>            :                                 }
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineCov">   40576084 :                                 info = MONO_VARINFO (cfg, var-&gt;inst_c0);</span>
+<span class="lineNum">     266 </span><span class="lineCov">   40576084 :                                 info-&gt;def = ins;</span>
+<span class="lineNum">     267 </span><span class="lineCov">   40576084 :                                 info-&gt;def_bb = bb;</span>
+<span class="lineNum">     268 </span><span class="lineCov">   40576084 :                         }</span>
+<span class="lineNum">     269 </span><span class="lineCov">  991618429 :                         else if (G_UNLIKELY (!var &amp;&amp; lvreg_defined [ins-&gt;dreg] &amp;&amp; (ins-&gt;dreg &gt;= MONO_MAX_IREGS))) {</span>
+<span class="lineNum">     270 </span>            :                                 /* Perform renaming for local vregs */
+<span class="lineNum">     271 </span><span class="lineCov">   10326961 :                                 lvreg_stack [ins-&gt;dreg] = vreg_is_ref (cfg, ins-&gt;dreg) ? mono_alloc_ireg_ref (cfg) : mono_alloc_preg (cfg);</span>
+<span class="lineNum">     272 </span><span class="lineCov">    2580515 :                                 ins-&gt;dreg = lvreg_stack [ins-&gt;dreg];</span>
+<span class="lineNum">     273 </span><span class="lineCov">    2580515 :                         }</span>
+<span class="lineNum">     274 </span>            :                         else
+<span class="lineNum">     275 </span><span class="lineCov">  336959432 :                                 lvreg_defined [ins-&gt;dreg] = TRUE;</span>
+<span class="lineNum">     276 </span><span class="lineCov">  379883157 :                 }</span>
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span>            : #ifdef DEBUG_SSA
+<span class="lineNum">     279 </span>            :                 printf (&quot;\tAfter processing &quot;); mono_print_ins (ins);
+<span class="lineNum">     280 </span>            : #endif
+<span class="lineNum">     281 </span>            : 
+<span class="lineNum">     282 </span><span class="lineCov">  775002920 :         }</span>
+<span class="lineNum">     283 </span>            : 
+<span class="lineNum">     284 </span>            :         /* Rename PHI arguments in succeeding bblocks */
+<span class="lineNum">     285 </span><span class="lineCov">  505527230 :         for (i = 0; i &lt; bb-&gt;out_count; i++) {</span>
+<span class="lineNum">     286 </span><span class="lineCov">  139629493 :                 MonoBasicBlock *n = bb-&gt;out_bb [i];</span>
+<span class="lineNum">     287 </span>            : 
+<span class="lineNum">     288 </span><span class="lineCov">  680789440 :                 for (j = 0; j &lt; n-&gt;in_count; j++)</span>
+<span class="lineNum">     289 </span><span class="lineCov">  541423420 :                         if (n-&gt;in_bb [j] == bb)</span>
+<span class="lineNum">     290 </span><span class="lineCov">  139661261 :                                 break;</span>
+<span class="lineNum">     291 </span>            :                 
+<span class="lineNum">     292 </span><span class="lineCov">  324697860 :                 for (ins = n-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">     293 </span><span class="lineCov">  476149426 :                         if (MONO_IS_PHI (ins)) {</span>
+<span class="lineNum">     294 </span><span class="lineCov">   22697654 :                                 idx = ins-&gt;inst_c0;</span>
+<span class="lineNum">     295 </span><span class="lineCov">   22697654 :                                 if (stack [idx])</span>
+<span class="lineNum">     296 </span><span class="lineCov">   22119647 :                                         new_var = stack [idx];</span>
+<span class="lineNum">     297 </span>            :                                 else
+<span class="lineNum">     298 </span><span class="lineCov">     578763 :                                         new_var = cfg-&gt;varinfo [idx];</span>
+<span class="lineNum">     299 </span>            : #ifdef DEBUG_SSA
+<span class="lineNum">     300 </span>            :                                 printf (&quot;FOUND PHI %d (%d, %d)\n&quot;, idx, j, new_var-&gt;inst_c0);
+<span class="lineNum">     301 </span>            : #endif
+<span class="lineNum">     302 </span><span class="lineCov">   22695047 :                                 ins-&gt;inst_phi_args [j + 1] = new_var-&gt;dreg;</span>
+<span class="lineNum">     303 </span><span class="lineCov">   22695047 :                                 record_use (cfg,  new_var, n, ins);                             </span>
+<span class="lineNum">     304 </span><span class="lineCov">   22695047 :                                 if (G_UNLIKELY (cfg-&gt;verbose_level &gt;= 4))</span>
+<span class="lineNum">     305 </span><span class="lineCov">     277107 :                                         printf (&quot;\tAdd PHI R%d &lt;- R%d to BB%d\n&quot;, ins-&gt;dreg, new_var-&gt;dreg, n-&gt;block_num);</span>
+<span class="lineNum">     306 </span><span class="lineCov">   22695881 :                         }</span>
+<span class="lineNum">     307 </span>            :                         else
+<span class="lineNum">     308 </span>            :                                 /* The phi nodes are at the beginning of the bblock */
+<span class="lineNum">     309 </span><span class="lineCov">  113021765 :                                 break;</span>
+<span class="lineNum">     310 </span><span class="lineCov">   22696266 :                 }</span>
+<span class="lineNum">     311 </span><span class="lineCov">  139671788 :         }</span>
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span><span class="lineCov">  113149250 :         if (bb-&gt;dominated) {</span>
+<span class="lineNum">     314 </span><span class="lineCov">  323506824 :                 for (tmp = bb-&gt;dominated; tmp; tmp = tmp-&gt;next) {</span>
+<span class="lineNum">     315 </span><span class="lineCov">   99527027 :                         mono_ssa_rename_vars (cfg, max_vars, (MonoBasicBlock *)tmp-&gt;data, originals_used, stack, lvreg_stack, lvreg_defined, stack_history + stack_history_len, stack_history_size - stack_history_len);</span>
+<span class="lineNum">     316 </span><span class="lineCov">   99527027 :                 }</span>
+<span class="lineNum">     317 </span><span class="lineCov">   62221315 :         }</span>
+<span class="lineNum">     318 </span>            : 
+<span class="lineNum">     319 </span>            :         /* Restore stack */
+<span class="lineNum">     320 </span><span class="lineCov">  307421928 :         for (i = stack_history_len - 1; i &gt;= 0; i--) {</span>
+<span class="lineNum">     321 </span><span class="lineCov">   40585907 :                 stack [stack_history [i].idx] = stack_history [i].var;</span>
+<span class="lineNum">     322 </span><span class="lineCov">   40585907 :         }</span>
+<span class="lineNum">     323 </span>            : 
+<span class="lineNum">     324 </span><span class="lineCov">  113138409 :         cfg-&gt;comp_done |= MONO_COMP_SSA_DEF_USE;</span>
+<span class="lineNum">     325 </span><span class="lineCov">  113138409 : }</span>
+<a name="326"><span class="lineNum">     326 </span>            : </a>
+<span class="lineNum">     327 </span>            : void
+<span class="lineNum">     328 </span>            : mono_ssa_compute (MonoCompile *cfg)
+<span class="lineNum">     329 </span>            : {
+<span class="lineNum">     330 </span>            :         int i, j, idx, bitsize;
+<span class="lineNum">     331 </span>            :         MonoBitSet *set;
+<span class="lineNum">     332 </span><span class="lineCov">   13586939 :         MonoMethodVar *vinfo = g_new0 (MonoMethodVar, cfg-&gt;num_varinfo);</span>
+<span class="lineNum">     333 </span>            :         MonoInst *ins, **stack;
+<span class="lineNum">     334 </span>            :         guint8 *buf, *buf_start;
+<span class="lineNum">     335 </span>            :         RenameInfo *stack_history;
+<span class="lineNum">     336 </span>            :         int stack_history_size;
+<span class="lineNum">     337 </span>            :         gboolean *originals;
+<span class="lineNum">     338 </span>            :         guint32 *lvreg_stack;
+<span class="lineNum">     339 </span>            :         gboolean *lvreg_defined;
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span><span class="lineCov">   40785755 :         g_assert (!(cfg-&gt;comp_done &amp; MONO_COMP_SSA));</span>
+<span class="lineNum">     342 </span>            : 
+<span class="lineNum">     343 </span><span class="lineCov">   40798037 :         g_assert (!cfg-&gt;disable_ssa);</span>
+<span class="lineNum">     344 </span>            : 
+<span class="lineNum">     345 </span><span class="lineCov">   13599365 :         if (cfg-&gt;verbose_level &gt;= 4)</span>
+<span class="lineNum">     346 </span><span class="lineCov">     172816 :                 printf (&quot;\nCOMPUTE SSA %d (R%d-)\n\n&quot;, cfg-&gt;num_varinfo, cfg-&gt;next_vreg);</span>
+<span class="lineNum">     347 </span>            : 
+<span class="lineNum">     348 </span>            : #ifdef CREATE_PRUNED_SSA
+<span class="lineNum">     349 </span>            :         /* we need liveness for pruned SSA */
+<span class="lineNum">     350 </span><span class="lineCov">   13595413 :         if (!(cfg-&gt;comp_done &amp; MONO_COMP_LIVENESS))</span>
+<span class="lineNum">     351 </span><span class="lineCov">   13596445 :                 mono_analyze_liveness (cfg);</span>
+<span class="lineNum">     352 </span>            : #endif
+<span class="lineNum">     353 </span>            : 
+<span class="lineNum">     354 </span><span class="lineCov">   13597627 :         mono_compile_dominator_info (cfg, MONO_COMP_DOM | MONO_COMP_IDOM | MONO_COMP_DFRONTIER);</span>
+<span class="lineNum">     355 </span>            : 
+<span class="lineNum">     356 </span><span class="lineCov">   13597627 :         bitsize = mono_bitset_alloc_size (cfg-&gt;num_bblocks, 0);</span>
+<span class="lineNum">     357 </span><span class="lineCov">   13597627 :         buf = buf_start = (guint8 *)g_malloc0 (mono_bitset_alloc_size (cfg-&gt;num_bblocks, 0) * cfg-&gt;num_varinfo);</span>
+<span class="lineNum">     358 </span>            : 
+<span class="lineNum">     359 </span><span class="lineCov">  173251861 :         for (i = 0; i &lt; cfg-&gt;num_varinfo; ++i) {</span>
+<span class="lineNum">     360 </span><span class="lineCov">   73040803 :                 vinfo [i].def_in = mono_bitset_mem_new (buf, cfg-&gt;num_bblocks, 0);</span>
+<span class="lineNum">     361 </span><span class="lineCov">   73040803 :                 buf += bitsize;</span>
+<span class="lineNum">     362 </span><span class="lineCov">   73040803 :                 vinfo [i].idx = i;</span>
+<span class="lineNum">     363 </span>            :                 /* implicit reference at start */
+<span class="lineNum">     364 </span><span class="lineCov">   73040803 :                 if (cfg-&gt;varinfo [i]-&gt;opcode == OP_ARG)</span>
+<span class="lineNum">     365 </span><span class="lineCov">  113727550 :                         mono_bitset_set_fast (vinfo [i].def_in, 0);</span>
+<span class="lineNum">     366 </span><span class="lineCov">   73015988 :         }</span>
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span><span class="lineCov">  253139605 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     369 </span><span class="lineCov"> 1776725928 :                 MONO_BB_FOR_EACH_INS (cfg-&gt;bblocks [i], ins) {</span>
+<span class="lineNum">     370 </span><span class="lineCov">  775517592 :                         if (ins-&gt;opcode == OP_NOP)</span>
+<span class="lineNum">     371 </span><span class="lineCov">    9218860 :                                 continue;</span>
+<span class="lineNum">     372 </span>            : 
+<span class="lineNum">     373 </span><span class="lineCov"> 3389911517 :                         if (!MONO_IS_STORE_MEMBASE (ins) &amp;&amp; get_vreg_to_inst (cfg, ins-&gt;dreg)) {</span>
+<span class="lineNum">     374 </span><span class="lineCov">  246912853 :                                 mono_bitset_set_fast (vinfo [get_vreg_to_inst (cfg, ins-&gt;dreg)-&gt;inst_c0].def_in, i);</span>
+<span class="lineNum">     375 </span><span class="lineCov">   61735307 :                         }</span>
+<span class="lineNum">     376 </span><span class="lineCov">  766170433 :                 }</span>
+<span class="lineNum">     377 </span><span class="lineCov">  112949651 :         }</span>
+<span class="lineNum">     378 </span>            : 
+<span class="lineNum">     379 </span>            :         /* insert phi functions */
+<span class="lineNum">     380 </span><span class="lineCov">  173254970 :         for (i = 0; i &lt; cfg-&gt;num_varinfo; ++i) {</span>
+<span class="lineNum">     381 </span><span class="lineCov">   73042832 :                 MonoInst *var = cfg-&gt;varinfo [i];</span>
+<span class="lineNum">     382 </span>            : 
+<span class="lineNum">     383 </span>            : #if SIZEOF_REGISTER == 4
+<span class="lineNum">     384 </span>            :                 if (var-&gt;type == STACK_I8 &amp;&amp; !COMPILE_LLVM (cfg))
+<span class="lineNum">     385 </span>            :                         continue;
+<span class="lineNum">     386 </span>            : #endif
+<span class="lineNum">     387 </span><span class="lineCov">   73042832 :                 if (var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT))</span>
+<span class="lineNum">     388 </span><span class="lineCov">   24299688 :                         continue;</span>
+<span class="lineNum">     389 </span>            : 
+<span class="lineNum">     390 </span>            :                 /* Most variables have only one definition */
+<span class="lineNum">     391 </span><span class="lineCov">   48755359 :                 if (mono_bitset_count (vinfo [i].def_in) &lt;= 1)</span>
+<span class="lineNum">     392 </span><span class="lineCov">   41135758 :                         continue;</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span><span class="lineCov">    7619421 :                 set = mono_compile_iterated_dfrontier (cfg, vinfo [i].def_in);</span>
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineCov">    7619421 :                 if (cfg-&gt;verbose_level &gt;= 4) {</span>
+<span class="lineNum">     397 </span><span class="lineCov">      93718 :                         if (mono_bitset_count (set) &gt; 0) {</span>
+<span class="lineNum">     398 </span><span class="lineCov">      92059 :                                 printf (&quot;\tR%d needs PHI functions in &quot;, var-&gt;dreg);</span>
+<span class="lineNum">     399 </span><span class="lineCov">      92059 :                                 mono_blockset_print (cfg, set, &quot;&quot;, -1);</span>
+<span class="lineNum">     400 </span><span class="lineCov">      92059 :                         }</span>
+<span class="lineNum">     401 </span><span class="lineCov">      93719 :                 }</span>
+<span class="lineNum">     402 </span>            :                         
+<span class="lineNum">     403 </span><span class="lineCov">   89181602 :                 mono_bitset_foreach_bit (set, idx, cfg-&gt;num_bblocks) {</span>
+<span class="lineNum">     404 </span><span class="lineCov">   16584878 :                         MonoBasicBlock *bb = cfg-&gt;bblocks [idx];</span>
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span>            :                         /* fixme: create pruned SSA? we would need liveness information for that */
+<span class="lineNum">     407 </span>            : 
+<span class="lineNum">     408 </span><span class="lineCov">   20405936 :                         if (bb == cfg-&gt;bb_exit &amp;&amp; !COMPILE_LLVM (cfg))</span>
+<span class="lineNum">     409 </span><span class="lineCov">    3747708 :                                 continue;</span>
+<span class="lineNum">     410 </span>            : 
+<span class="lineNum">     411 </span><span class="lineCov">   25675164 :                         if ((cfg-&gt;comp_done &amp; MONO_COMP_LIVENESS) &amp;&amp; !mono_bitset_test_fast (bb-&gt;live_in_set, i)) {</span>
+<span class="lineNum">     412 </span>            :                                 //printf (&quot;%d is not live in BB%d %s\n&quot;, i, bb-&gt;block_num, mono_method_full_name (cfg-&gt;method, TRUE));
+<span class="lineNum">     413 </span><span class="lineCov">    4465739 :                                 continue;</span>
+<span class="lineNum">     414 </span>            :                         }
+<span class="lineNum">     415 </span>            : 
+<span class="lineNum">     416 </span><span class="lineCov">   50241361 :                         NEW_PHI (cfg, ins, i);</span>
+<span class="lineNum">     417 </span>            : 
+<span class="lineNum">     418 </span><span class="lineCov">   16736679 :                         switch (var-&gt;type) {</span>
+<span class="lineNum">     419 </span>            :                         case STACK_I4:
+<span class="lineNum">     420 </span>            :                         case STACK_I8:
+<span class="lineNum">     421 </span>            :                         case STACK_PTR:
+<span class="lineNum">     422 </span>            :                         case STACK_MP:
+<span class="lineNum">     423 </span>            :                         case STACK_OBJ:
+<span class="lineNum">     424 </span><span class="lineCov">    8035365 :                                 ins-&gt;opcode = OP_PHI;</span>
+<span class="lineNum">     425 </span><span class="lineCov">    8035365 :                                 break;</span>
+<span class="lineNum">     426 </span>            :                         case STACK_R8:
+<span class="lineNum">     427 </span><span class="lineCov">       8488 :                                 ins-&gt;opcode = OP_FPHI;</span>
+<span class="lineNum">     428 </span><span class="lineCov">       8488 :                                 break;</span>
+<span class="lineNum">     429 </span>            :                         case STACK_VTYPE:
+<span class="lineNum">     430 </span><span class="lineCov">     974800 :                                 ins-&gt;opcode = MONO_CLASS_IS_SIMD (cfg, var-&gt;klass) ? OP_XPHI : OP_VPHI;</span>
+<span class="lineNum">     431 </span><span class="lineCov">     324971 :                                 break;</span>
+<span class="lineNum">     432 </span>            :                         }
+<span class="lineNum">     433 </span>            : 
+<span class="lineNum">     434 </span><span class="lineCov">    8371356 :                         if (var-&gt;inst_vtype-&gt;byref)</span>
+<span class="lineNum">     435 </span><span class="lineNoCov">          0 :                                 ins-&gt;klass = mono_defaults.int_class;</span>
+<span class="lineNum">     436 </span>            :                         else
+<span class="lineNum">     437 </span><span class="lineCov">    8372465 :                                 ins-&gt;klass = var-&gt;klass;</span>
+<span class="lineNum">     438 </span>            : 
+<span class="lineNum">     439 </span><span class="lineCov">    8374062 :                         ins-&gt;inst_phi_args = (int *)mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (int) * (cfg-&gt;bblocks [idx]-&gt;in_count + 1));</span>
+<span class="lineNum">     440 </span><span class="lineCov">    8374062 :                         ins-&gt;inst_phi_args [0] = cfg-&gt;bblocks [idx]-&gt;in_count;</span>
+<span class="lineNum">     441 </span>            : 
+<span class="lineNum">     442 </span>            :                         /* For debugging */
+<span class="lineNum">     443 </span><span class="lineCov">   62159823 :                         for (j = 0; j &lt; cfg-&gt;bblocks [idx]-&gt;in_count; ++j)</span>
+<span class="lineNum">     444 </span><span class="lineCov">   22703027 :                                 ins-&gt;inst_phi_args [j + 1] = -1;</span>
+<span class="lineNum">     445 </span>            : 
+<span class="lineNum">     446 </span><span class="lineCov">    8375626 :                         ins-&gt;dreg = cfg-&gt;varinfo [i]-&gt;dreg;</span>
+<span class="lineNum">     447 </span>            : 
+<span class="lineNum">     448 </span><span class="lineCov">    8375626 :                         mono_bblock_insert_before_ins (bb, bb-&gt;code, ins);</span>
+<span class="lineNum">     449 </span>            : 
+<span class="lineNum">     450 </span>            : #ifdef DEBUG_SSA
+<span class="lineNum">     451 </span>            :                         printf (&quot;ADD PHI BB%d %s\n&quot;, cfg-&gt;bblocks [idx]-&gt;block_num, mono_method_full_name (cfg-&gt;method, TRUE));
+<span class="lineNum">     452 </span>            : #endif
+<span class="lineNum">     453 </span><span class="lineCov">    8375626 :                 }</span>
+<span class="lineNum">     454 </span><span class="lineCov">    7619580 :         }</span>
+<span class="lineNum">     455 </span>            : 
+<span class="lineNum">     456 </span>            :         /* free the stuff */
+<span class="lineNum">     457 </span><span class="lineCov">   13599406 :         g_free (vinfo);</span>
+<span class="lineNum">     458 </span><span class="lineCov">   13599406 :         g_free (buf_start);</span>
+<span class="lineNum">     459 </span>            : 
+<span class="lineNum">     460 </span>            :         /* Renaming phase */
+<span class="lineNum">     461 </span>            : 
+<span class="lineNum">     462 </span><span class="lineCov">   13599406 :         stack = (MonoInst **)alloca (sizeof (MonoInst *) * cfg-&gt;num_varinfo);</span>
+<span class="lineNum">     463 </span><span class="lineCov">   13599406 :         memset (stack, 0, sizeof (MonoInst *) * cfg-&gt;num_varinfo);</span>
+<span class="lineNum">     464 </span>            : 
+<span class="lineNum">     465 </span><span class="lineCov">   13599406 :         lvreg_stack = g_new0 (guint32, cfg-&gt;next_vreg);</span>
+<span class="lineNum">     466 </span><span class="lineCov">   13599406 :         lvreg_defined = g_new0 (gboolean, cfg-&gt;next_vreg);</span>
+<span class="lineNum">     467 </span><span class="lineCov">   13599406 :         stack_history_size = 10240;</span>
+<span class="lineNum">     468 </span><span class="lineCov">   13599406 :         stack_history = g_new (RenameInfo, stack_history_size);</span>
+<span class="lineNum">     469 </span><span class="lineCov">   13599406 :         originals = g_new0 (gboolean, cfg-&gt;num_varinfo);</span>
+<span class="lineNum">     470 </span><span class="lineCov">   13599406 :         mono_ssa_rename_vars (cfg, cfg-&gt;num_varinfo, cfg-&gt;bb_entry, originals, stack, lvreg_stack, lvreg_defined, stack_history, stack_history_size);</span>
+<span class="lineNum">     471 </span><span class="lineCov">   13599406 :         g_free (stack_history);</span>
+<span class="lineNum">     472 </span><span class="lineCov">   13599406 :         g_free (originals);</span>
+<span class="lineNum">     473 </span><span class="lineCov">   13599406 :         g_free (lvreg_stack);</span>
+<span class="lineNum">     474 </span><span class="lineCov">   13599406 :         g_free (lvreg_defined);</span>
+<span class="lineNum">     475 </span>            : 
+<span class="lineNum">     476 </span><span class="lineCov">   13599406 :         if (cfg-&gt;verbose_level &gt;= 4)</span>
+<span class="lineNum">     477 </span><span class="lineCov">     172816 :                 printf (&quot;\nEND COMPUTE SSA.\n\n&quot;);</span>
+<span class="lineNum">     478 </span>            : 
+<span class="lineNum">     479 </span><span class="lineCov">   13600608 :         cfg-&gt;comp_done |= MONO_COMP_SSA;</span>
+<span class="lineNum">     480 </span><span class="lineCov">   13600608 : }</span>
+<span class="lineNum">     481 </span>            : 
+<span class="lineNum">     482 </span>            : /*
+<span class="lineNum">     483 </span>            :  * mono_ssa_remove_gsharedvt:
+<span class="lineNum">     484 </span>            :  *
+<span class="lineNum">     485 </span>            :  *   Same as mono_ssa_remove, but only remove phi nodes for gsharedvt variables.
+<a name="486"><span class="lineNum">     486 </span>            :  */</a>
+<span class="lineNum">     487 </span>            : void
+<span class="lineNum">     488 </span>            : mono_ssa_remove_gsharedvt (MonoCompile *cfg)
+<span class="lineNum">     489 </span>            : {
+<span class="lineNum">     490 </span>            :         MonoInst *ins, *var, *move;
+<span class="lineNum">     491 </span>            :         int i, j, first;
+<span class="lineNum">     492 </span>            : 
+<span class="lineNum">     493 </span>            :         /*
+<span class="lineNum">     494 </span>            :          * When compiling gsharedvt code, we need to get rid of the VPHI instructions,
+<span class="lineNum">     495 </span>            :          * since they cannot be handled later in the llvm backend.
+<span class="lineNum">     496 </span>            :          */
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :         g_assert (cfg-&gt;comp_done &amp; MONO_COMP_SSA);</span>
+<span class="lineNum">     498 </span>            : 
+<span class="lineNum">     499 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     500 </span><span class="lineNoCov">          0 :                 MonoBasicBlock *bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     501 </span>            : 
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 :                 if (cfg-&gt;verbose_level &gt;= 4)</span>
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :                         printf (&quot;\nREMOVE SSA %d:\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     504 </span>            : 
+<span class="lineNum">     505 </span><span class="lineNoCov">          0 :                 for (ins = bb-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">     506 </span><span class="lineNoCov">          0 :                         if (!(MONO_IS_PHI (ins) &amp;&amp; ins-&gt;opcode == OP_VPHI &amp;&amp; mini_is_gsharedvt_variable_type (&amp;ins-&gt;klass-&gt;byval_arg)))</span>
+<span class="lineNum">     507 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     508 </span>            : 
+<span class="lineNum">     509 </span><span class="lineNoCov">          0 :                         g_assert (ins-&gt;inst_phi_args [0] == bb-&gt;in_count);</span>
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :                         var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">     511 </span>            : 
+<span class="lineNum">     512 </span>            :                         /* Check for PHI nodes where all the inputs are the same */
+<span class="lineNum">     513 </span><span class="lineNoCov">          0 :                         first = ins-&gt;inst_phi_args [1];</span>
+<span class="lineNum">     514 </span>            : 
+<span class="lineNum">     515 </span><span class="lineNoCov">          0 :                         for (j = 1; j &lt; bb-&gt;in_count; ++j)</span>
+<span class="lineNum">     516 </span><span class="lineNoCov">          0 :                                 if (first != ins-&gt;inst_phi_args [j + 1])</span>
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :                                         break;</span>
+<span class="lineNum">     518 </span>            : 
+<span class="lineNum">     519 </span><span class="lineNoCov">          0 :                         if ((bb-&gt;in_count &gt; 1) &amp;&amp; (j == bb-&gt;in_count)) {</span>
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :                                 ins-&gt;opcode = op_phi_to_move (ins-&gt;opcode);</span>
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 :                                 if (ins-&gt;opcode == OP_VMOVE)</span>
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :                                         g_assert (ins-&gt;klass);</span>
+<span class="lineNum">     523 </span><span class="lineNoCov">          0 :                                 ins-&gt;sreg1 = first;</span>
+<span class="lineNum">     524 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :                                 for (j = 0; j &lt; bb-&gt;in_count; j++) {</span>
+<span class="lineNum">     526 </span><span class="lineNoCov">          0 :                                         MonoBasicBlock *pred = bb-&gt;in_bb [j];</span>
+<span class="lineNum">     527 </span><span class="lineNoCov">          0 :                                         int sreg = ins-&gt;inst_phi_args [j + 1];</span>
+<span class="lineNum">     528 </span>            : 
+<span class="lineNum">     529 </span><span class="lineNoCov">          0 :                                         if (cfg-&gt;verbose_level &gt;= 4)</span>
+<span class="lineNum">     530 </span><span class="lineNoCov">          0 :                                                 printf (&quot;\tADD R%d &lt;- R%d in BB%d\n&quot;, var-&gt;dreg, sreg, pred-&gt;block_num);</span>
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :                                         if (var-&gt;dreg != sreg) {</span>
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :                                                 MONO_INST_NEW (cfg, move, op_phi_to_move (ins-&gt;opcode));</span>
+<span class="lineNum">     533 </span><span class="lineNoCov">          0 :                                                 if (move-&gt;opcode == OP_VMOVE) {</span>
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 :                                                         g_assert (ins-&gt;klass);</span>
+<span class="lineNum">     535 </span><span class="lineNoCov">          0 :                                                         move-&gt;klass = ins-&gt;klass;</span>
+<span class="lineNum">     536 </span><span class="lineNoCov">          0 :                                                 }</span>
+<span class="lineNum">     537 </span><span class="lineNoCov">          0 :                                                 move-&gt;dreg = var-&gt;dreg;</span>
+<span class="lineNum">     538 </span><span class="lineNoCov">          0 :                                                 move-&gt;sreg1 = sreg;</span>
+<span class="lineNum">     539 </span><span class="lineNoCov">          0 :                                                 mono_add_ins_to_end (pred, move);</span>
+<span class="lineNum">     540 </span><span class="lineNoCov">          0 :                                         }</span>
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     542 </span>            : 
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :                                 NULLIFY_INS (ins);</span>
+<span class="lineNum">     544 </span>            :                         }
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     546 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     547 </span><span class="lineNoCov">          0 : }</span>
+<a name="548"><span class="lineNum">     548 </span>            : </a>
+<span class="lineNum">     549 </span>            : void
+<span class="lineNum">     550 </span>            : mono_ssa_remove (MonoCompile *cfg)
+<span class="lineNum">     551 </span>            : {
+<span class="lineNum">     552 </span>            :         MonoInst *ins, *var, *move;
+<span class="lineNum">     553 </span>            :         int bbindex, i, j, first;
+<span class="lineNum">     554 </span>            : 
+<span class="lineNum">     555 </span><span class="lineCov">   40411036 :         g_assert (cfg-&gt;comp_done &amp; MONO_COMP_SSA);</span>
+<span class="lineNum">     556 </span>            : 
+<span class="lineNum">     557 </span><span class="lineCov">  250512493 :         for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     558 </span><span class="lineCov">  111797055 :                 MonoBasicBlock *bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     559 </span>            : 
+<span class="lineNum">     560 </span><span class="lineCov">  111797055 :                 if (cfg-&gt;verbose_level &gt;= 4)</span>
+<span class="lineNum">     561 </span><span class="lineCov">    1379545 :                         printf (&quot;\nREMOVE SSA %d:\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     562 </span>            : 
+<span class="lineNum">     563 </span><span class="lineCov"> 1803036220 :                 for (ins = bb-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">     564 </span><span class="lineCov"> 3135128946 :                         if (MONO_IS_PHI (ins)) {</span>
+<span class="lineNum">     565 </span><span class="lineCov">   24624321 :                                 g_assert (ins-&gt;inst_phi_args [0] == bb-&gt;in_count);</span>
+<span class="lineNum">     566 </span><span class="lineCov">   24624202 :                                 var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">     567 </span>            : 
+<span class="lineNum">     568 </span>            :                                 /* Check for PHI nodes where all the inputs are the same */
+<span class="lineNum">     569 </span><span class="lineCov">    8208102 :                                 first = ins-&gt;inst_phi_args [1];</span>
+<span class="lineNum">     570 </span>            : 
+<span class="lineNum">     571 </span><span class="lineCov">   18912678 :                                 for (j = 1; j &lt; bb-&gt;in_count; ++j)</span>
+<span class="lineNum">     572 </span><span class="lineCov">   10482157 :                                         if (first != ins-&gt;inst_phi_args [j + 1])</span>
+<span class="lineNum">     573 </span><span class="lineCov">    7985757 :                                                 break;</span>
+<span class="lineNum">     574 </span>            : 
+<span class="lineNum">     575 </span><span class="lineCov">   16415005 :                                 if ((bb-&gt;in_count &gt; 1) &amp;&amp; (j == bb-&gt;in_count)) {</span>
+<span class="lineNum">     576 </span><span class="lineCov">     222534 :                                         ins-&gt;opcode = op_phi_to_move (ins-&gt;opcode);</span>
+<span class="lineNum">     577 </span><span class="lineCov">     222534 :                                         if (ins-&gt;opcode == OP_VMOVE)</span>
+<span class="lineNum">     578 </span><span class="lineCov">     471052 :                                                 g_assert (ins-&gt;klass);</span>
+<span class="lineNum">     579 </span><span class="lineCov">     222517 :                                         ins-&gt;sreg1 = first;</span>
+<span class="lineNum">     580 </span><span class="lineCov">     222517 :                                 } else {</span>
+<span class="lineNum">     581 </span><span class="lineCov">   59544900 :                                         for (j = 0; j &lt; bb-&gt;in_count; j++) {</span>
+<span class="lineNum">     582 </span><span class="lineCov">   21786857 :                                                 MonoBasicBlock *pred = bb-&gt;in_bb [j];</span>
+<span class="lineNum">     583 </span><span class="lineCov">   21786857 :                                                 int sreg = ins-&gt;inst_phi_args [j + 1];</span>
+<span class="lineNum">     584 </span>            : 
+<span class="lineNum">     585 </span><span class="lineCov">   21786857 :                                                 if (cfg-&gt;verbose_level &gt;= 4)</span>
+<span class="lineNum">     586 </span><span class="lineCov">     268981 :                                                         printf (&quot;\tADD R%d &lt;- R%d in BB%d\n&quot;, var-&gt;dreg, sreg, pred-&gt;block_num);</span>
+<span class="lineNum">     587 </span><span class="lineCov">   21788667 :                                                 if (var-&gt;dreg != sreg) {</span>
+<span class="lineNum">     588 </span><span class="lineCov">   83912563 :                                                         MONO_INST_NEW (cfg, move, op_phi_to_move (ins-&gt;opcode));</span>
+<span class="lineNum">     589 </span><span class="lineCov">   20977176 :                                                         if (move-&gt;opcode == OP_VMOVE) {</span>
+<span class="lineNum">     590 </span><span class="lineCov">    1352036 :                                                                 g_assert (ins-&gt;klass);</span>
+<span class="lineNum">     591 </span><span class="lineCov">     450731 :                                                                 move-&gt;klass = ins-&gt;klass;</span>
+<span class="lineNum">     592 </span><span class="lineCov">     450731 :                                                         }</span>
+<span class="lineNum">     593 </span><span class="lineCov">   20976152 :                                                         move-&gt;dreg = var-&gt;dreg;</span>
+<span class="lineNum">     594 </span><span class="lineCov">   20976152 :                                                         move-&gt;sreg1 = sreg;</span>
+<span class="lineNum">     595 </span><span class="lineCov">   20976152 :                                                         mono_add_ins_to_end (pred, move);</span>
+<span class="lineNum">     596 </span><span class="lineCov">   20976152 :                                                 }</span>
+<span class="lineNum">     597 </span><span class="lineCov">   21787947 :                                         }</span>
+<span class="lineNum">     598 </span>            : 
+<span class="lineNum">     599 </span><span class="lineCov">   31946920 :                                         NULLIFY_INS (ins);</span>
+<span class="lineNum">     600 </span>            :                                 }
+<span class="lineNum">     601 </span><span class="lineCov">    8209251 :                         }</span>
+<span class="lineNum">     602 </span><span class="lineCov">  789727881 :                 }</span>
+<span class="lineNum">     603 </span><span class="lineCov">  111762391 :         }</span>
+<span class="lineNum">     604 </span>            : 
+<span class="lineNum">     605 </span><span class="lineCov">   13484153 :         if (cfg-&gt;verbose_level &gt;= 4) {</span>
+<span class="lineNum">     606 </span><span class="lineCov">    3104724 :                 for (i = 0; i &lt; cfg-&gt;num_bblocks; ++i) {</span>
+<span class="lineNum">     607 </span><span class="lineCov">    1379546 :                         MonoBasicBlock *bb = cfg-&gt;bblocks [i];</span>
+<span class="lineNum">     608 </span>            : 
+<span class="lineNum">     609 </span><span class="lineCov">    1379546 :                         mono_print_bb (bb, &quot;AFTER REMOVE SSA:&quot;);</span>
+<span class="lineNum">     610 </span><span class="lineCov">    1379546 :                 }</span>
+<span class="lineNum">     611 </span><span class="lineCov">     172816 :         }</span>
+<span class="lineNum">     612 </span>            : 
+<span class="lineNum">     613 </span>            :         /*
+<span class="lineNum">     614 </span>            :          * Removal of SSA form introduces many copies. To avoid this, we tyry to coalesce 
+<span class="lineNum">     615 </span>            :          * the variables if possible. Since the newly introduced SSA variables don't
+<span class="lineNum">     616 </span>            :          * have overlapping live ranges (because we don't do agressive optimization), we
+<span class="lineNum">     617 </span>            :          * can coalesce them into the original variable.
+<span class="lineNum">     618 </span>            :          */
+<span class="lineNum">     619 </span>            : 
+<span class="lineNum">     620 </span><span class="lineCov">  250634808 :         for (bbindex = 0; bbindex &lt; cfg-&gt;num_bblocks; ++bbindex) {</span>
+<span class="lineNum">     621 </span><span class="lineCov">  111837587 :                 MonoBasicBlock *bb = cfg-&gt;bblocks [bbindex];</span>
+<span class="lineNum">     622 </span>            : 
+<span class="lineNum">     623 </span><span class="lineCov"> 1816891518 :                 for (ins = bb-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">     624 </span><span class="lineCov">  796954895 :                         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     625 </span>            :                         int num_sregs;
+<span class="lineNum">     626 </span>            :                         int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     627 </span>            : 
+<span class="lineNum">     628 </span><span class="lineCov">  796954895 :                         if (ins-&gt;opcode == OP_NOP)</span>
+<span class="lineNum">     629 </span><span class="lineCov">   25332502 :                                 continue;</span>
+<span class="lineNum">     630 </span>            : 
+<span class="lineNum">     631 </span><span class="lineCov">  773971392 :                         if (spec [MONO_INST_DEST] != ' ') {</span>
+<span class="lineNum">     632 </span><span class="lineCov"> 1217711760 :                                 MonoInst *var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">     633 </span>            : 
+<span class="lineNum">     634 </span><span class="lineCov">  406244265 :                                 if (var) {</span>
+<span class="lineNum">     635 </span><span class="lineCov">   88494899 :                                         MonoMethodVar *vmv = MONO_VARINFO (cfg, var-&gt;inst_c0);</span>
+<span class="lineNum">     636 </span>            :                                         
+<span class="lineNum">     637 </span>            :                                         /* 
+<span class="lineNum">     638 </span>            :                                          * The third condition avoids coalescing with variables eliminated
+<span class="lineNum">     639 </span>            :                                          * during deadce.
+<span class="lineNum">     640 </span>            :                                          */
+<span class="lineNum">     641 </span><span class="lineCov">  152974888 :                                         if ((vmv-&gt;reg != -1) &amp;&amp; (vmv-&gt;idx != vmv-&gt;reg) &amp;&amp; (MONO_VARINFO (cfg, vmv-&gt;reg)-&gt;reg != -1)) {</span>
+<span class="lineNum">     642 </span><span class="lineNoCov">          0 :                                                 printf (&quot;COALESCE: R%d -&gt; R%d\n&quot;, ins-&gt;dreg, cfg-&gt;varinfo [vmv-&gt;reg]-&gt;dreg);</span>
+<span class="lineNum">     643 </span><span class="lineNoCov">          0 :                                                 ins-&gt;dreg = cfg-&gt;varinfo [vmv-&gt;reg]-&gt;dreg; </span>
+<span class="lineNum">     644 </span><span class="lineNoCov">          0 :                                         }</span>
+<span class="lineNum">     645 </span><span class="lineCov">   88470040 :                                 }</span>
+<span class="lineNum">     646 </span><span class="lineCov">  405867332 :                         }</span>
+<span class="lineNum">     647 </span>            : 
+<span class="lineNum">     648 </span><span class="lineCov">  771543617 :                         num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     649 </span><span class="lineCov"> 2376965163 :                         for (i = 0; i &lt; num_sregs; ++i) {</span>
+<span class="lineNum">     650 </span><span class="lineCov"> 1251735289 :                                 MonoInst *var = get_vreg_to_inst (cfg, sregs [i]);</span>
+<span class="lineNum">     651 </span>            : 
+<span class="lineNum">     652 </span><span class="lineCov">  417745878 :                                 if (var) {</span>
+<span class="lineNum">     653 </span><span class="lineCov">  191514046 :                                         MonoMethodVar *vmv = MONO_VARINFO (cfg, var-&gt;inst_c0);</span>
+<span class="lineNum">     654 </span>            : 
+<span class="lineNum">     655 </span><span class="lineCov">  264937234 :                                         if ((vmv-&gt;reg != -1) &amp;&amp; (vmv-&gt;idx != vmv-&gt;reg) &amp;&amp; (MONO_VARINFO (cfg, vmv-&gt;reg)-&gt;reg != -1)) {</span>
+<span class="lineNum">     656 </span><span class="lineNoCov">          0 :                                                 printf (&quot;COALESCE: R%d -&gt; R%d\n&quot;, sregs [i], cfg-&gt;varinfo [vmv-&gt;reg]-&gt;dreg);</span>
+<span class="lineNum">     657 </span><span class="lineNoCov">          0 :                                                 sregs [i] = cfg-&gt;varinfo [vmv-&gt;reg]-&gt;dreg;</span>
+<span class="lineNum">     658 </span><span class="lineNoCov">          0 :                                         }</span>
+<span class="lineNum">     659 </span><span class="lineCov">  191427322 :                                 }</span>
+<span class="lineNum">     660 </span><span class="lineCov">  417151669 :                         }</span>
+<span class="lineNum">     661 </span><span class="lineCov">  771514114 :                         mono_inst_set_src_registers (ins, sregs);</span>
+<span class="lineNum">     662 </span><span class="lineCov">  771514114 :                 }</span>
+<span class="lineNum">     663 </span><span class="lineCov">  111823918 :         }</span>
+<span class="lineNum">     664 </span>            : 
+<span class="lineNum">     665 </span><span class="lineCov">  211259716 :         for (i = 0; i &lt; cfg-&gt;num_varinfo; ++i) {</span>
+<span class="lineNum">     666 </span><span class="lineCov">   92155462 :                 MONO_VARINFO (cfg, i)-&gt;reg = -1;</span>
+<span class="lineNum">     667 </span><span class="lineCov">   92155462 :         }</span>
+<span class="lineNum">     668 </span>            : 
+<span class="lineNum">     669 </span><span class="lineCov">   13484788 :         if (cfg-&gt;comp_done &amp; MONO_COMP_REACHABILITY)</span>
+<span class="lineNum">     670 </span><span class="lineCov">   13484709 :                 unlink_unused_bblocks (cfg);</span>
+<span class="lineNum">     671 </span>            : 
+<span class="lineNum">     672 </span><span class="lineCov">   13483028 :         cfg-&gt;comp_done &amp;= ~MONO_COMP_LIVENESS;</span>
+<span class="lineNum">     673 </span>            : 
+<span class="lineNum">     674 </span><span class="lineCov">   13483028 :         cfg-&gt;comp_done &amp;= ~MONO_COMP_SSA;</span>
+<span class="lineNum">     675 </span><span class="lineCov">   13483028 : }</span>
+<a name="676"><span class="lineNum">     676 </span>            : </a>
+<span class="lineNum">     677 </span>            : static void
+<span class="lineNum">     678 </span>            : mono_ssa_create_def_use (MonoCompile *cfg) 
+<span class="lineNum">     679 </span>            : {
+<span class="lineNum">     680 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">     681 </span>            :         MonoInst *ins;
+<span class="lineNum">     682 </span>            :         int i;
+<span class="lineNum">     683 </span>            : 
+<span class="lineNum">     684 </span><span class="lineCov">   40430873 :         g_assert (!(cfg-&gt;comp_done &amp; MONO_COMP_SSA_DEF_USE));</span>
+<span class="lineNum">     685 </span>            : 
+<span class="lineNum">     686 </span><span class="lineCov">  253253352 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     687 </span><span class="lineCov"> 1794358877 :                 for (ins = bb-&gt;code; ins; ins = ins-&gt;next) {</span>
+<span class="lineNum">     688 </span><span class="lineCov">  783902023 :                         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     689 </span>            :                         MonoMethodVar *info;
+<span class="lineNum">     690 </span>            :                         int num_sregs;
+<span class="lineNum">     691 </span>            :                         int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     692 </span>            : 
+<span class="lineNum">     693 </span><span class="lineCov">  783902023 :                         if (ins-&gt;opcode == OP_NOP)</span>
+<span class="lineNum">     694 </span><span class="lineCov">    9096435 :                                 continue;</span>
+<span class="lineNum">     695 </span>            : 
+<span class="lineNum">     696 </span>            :                         /* SREGs */
+<span class="lineNum">     697 </span><span class="lineCov">  774814288 :                         num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     698 </span><span class="lineCov"> 2363386814 :                         for (i = 0; i &lt; num_sregs; ++i) {</span>
+<span class="lineNum">     699 </span><span class="lineCov"> 1222955688 :                                 MonoInst *var = get_vreg_to_inst (cfg, sregs [i]);</span>
+<span class="lineNum">     700 </span><span class="lineCov">  585853969 :                                 if (var &amp;&amp; !(var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT)))</span>
+<span class="lineNum">     701 </span><span class="lineCov">  159379382 :                                         record_use (cfg, var, bb, ins);</span>
+<span class="lineNum">     702 </span><span class="lineCov">  407313315 :                         }</span>
+<span class="lineNum">     703 </span>            : 
+<span class="lineNum">     704 </span><span class="lineCov"> 1913650023 :                         if (MONO_IS_STORE_MEMBASE (ins)) {</span>
+<span class="lineNum">     705 </span><span class="lineCov">   61387796 :                                 MonoInst *var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">     706 </span><span class="lineCov">   29836050 :                                 if (var &amp;&amp; !(var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT)))</span>
+<span class="lineNum">     707 </span><span class="lineCov">    9372924 :                                         record_use (cfg, var, bb, ins);</span>
+<span class="lineNum">     708 </span><span class="lineCov">   20461711 :                         }</span>
+<span class="lineNum">     709 </span>            : 
+<span class="lineNum">     710 </span><span class="lineCov"> 3074909066 :                         if (MONO_IS_PHI (ins)) {</span>
+<span class="lineNum">     711 </span><span class="lineCov">   60982905 :                                 for (i = ins-&gt;inst_phi_args [0]; i &gt; 0; i--) {</span>
+<span class="lineNum">     712 </span><span class="lineCov">   66814372 :                                         g_assert (ins-&gt;inst_phi_args [i] != -1);</span>
+<span class="lineNum">     713 </span><span class="lineCov">   66820901 :                                         record_use (cfg,  get_vreg_to_inst (cfg, ins-&gt;inst_phi_args [i]), bb, ins);</span>
+<span class="lineNum">     714 </span><span class="lineCov">   22274229 :                                 }</span>
+<span class="lineNum">     715 </span><span class="lineCov">    8220168 :                         }</span>
+<span class="lineNum">     716 </span>            : 
+<span class="lineNum">     717 </span>            :                         /* DREG */
+<span class="lineNum">     718 </span><span class="lineCov"> 1839090351 :                         if ((spec [MONO_INST_DEST] != ' ') &amp;&amp; !MONO_IS_STORE_MEMBASE (ins)) {</span>
+<span class="lineNum">     719 </span><span class="lineCov"> 1139830774 :                                 MonoInst *var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">     720 </span>            : 
+<span class="lineNum">     721 </span><span class="lineCov">  450890410 :                                 if (var &amp;&amp; !(var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT))) {</span>
+<span class="lineNum">     722 </span><span class="lineCov">   40340467 :                                         info = MONO_VARINFO (cfg, var-&gt;inst_c0);</span>
+<span class="lineNum">     723 </span><span class="lineCov">   40340467 :                                         info-&gt;def = ins;</span>
+<span class="lineNum">     724 </span><span class="lineCov">   40340467 :                                         info-&gt;def_bb = bb;</span>
+<span class="lineNum">     725 </span><span class="lineCov">   40340467 :                                 }</span>
+<span class="lineNum">     726 </span><span class="lineCov">  379872316 :                         }</span>
+<span class="lineNum">     727 </span><span class="lineCov">  775062392 :                 }</span>
+<span class="lineNum">     728 </span><span class="lineCov">  113139255 :         }</span>
+<span class="lineNum">     729 </span>            : 
+<span class="lineNum">     730 </span><span class="lineCov">   13482031 :         cfg-&gt;comp_done |= MONO_COMP_SSA_DEF_USE;</span>
+<span class="lineNum">     731 </span><span class="lineCov">   13482031 : }</span>
+<a name="732"><span class="lineNum">     732 </span>            : </a>
+<span class="lineNum">     733 </span>            : static void
+<span class="lineNum">     734 </span>            : mono_ssa_copyprop (MonoCompile *cfg)
+<span class="lineNum">     735 </span>            : {
+<span class="lineNum">     736 </span>            :         int i, index;
+<span class="lineNum">     737 </span>            :         GList *l;
+<span class="lineNum">     738 </span>            : 
+<span class="lineNum">     739 </span><span class="lineCov">   40416533 :         g_assert ((cfg-&gt;comp_done &amp; MONO_COMP_SSA_DEF_USE));</span>
+<span class="lineNum">     740 </span>            : 
+<span class="lineNum">     741 </span><span class="lineCov">  211230240 :         for (index = 0; index &lt; cfg-&gt;num_varinfo; ++index) {</span>
+<span class="lineNum">     742 </span><span class="lineCov">   92164545 :                 MonoInst *var = cfg-&gt;varinfo [index];</span>
+<span class="lineNum">     743 </span><span class="lineCov">   92164545 :                 MonoMethodVar *info = MONO_VARINFO (cfg, index);</span>
+<span class="lineNum">     744 </span>            : 
+<span class="lineNum">     745 </span><span class="lineCov">  260752357 :                 if (info-&gt;def &amp;&amp; (MONO_IS_MOVE (info-&gt;def))) {</span>
+<span class="lineNum">     746 </span><span class="lineCov">   25475690 :                         MonoInst *var2 = get_vreg_to_inst (cfg, info-&gt;def-&gt;sreg1);</span>
+<span class="lineNum">     747 </span>            : 
+<span class="lineNum">     748 </span><span class="lineCov">   29118271 :                         if (var2 &amp;&amp; !(var2-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT)) &amp;&amp; MONO_VARINFO (cfg, var2-&gt;inst_c0)-&gt;def &amp;&amp; (!MONO_IS_PHI (MONO_VARINFO (cfg, var2-&gt;inst_c0)-&gt;def))) {</span>
+<span class="lineNum">     749 </span>            :                                 /* Rewrite all uses of var to be uses of var2 */
+<span class="lineNum">     750 </span><span class="lineCov">    1990120 :                                 int dreg = var-&gt;dreg;</span>
+<span class="lineNum">     751 </span><span class="lineCov">    1990120 :                                 int sreg1 = var2-&gt;dreg;</span>
+<span class="lineNum">     752 </span>            : 
+<span class="lineNum">     753 </span><span class="lineCov">    1990120 :                                 l = info-&gt;uses;</span>
+<span class="lineNum">     754 </span><span class="lineCov">   13526174 :                                 while (l) {</span>
+<span class="lineNum">     755 </span><span class="lineCov">    4773220 :                                         MonoVarUsageInfo *u = (MonoVarUsageInfo*)l-&gt;data;</span>
+<span class="lineNum">     756 </span><span class="lineCov">    4773220 :                                         MonoInst *ins = u-&gt;inst;</span>
+<span class="lineNum">     757 </span><span class="lineCov">    4773220 :                                         GList *next = l-&gt;next;</span>
+<span class="lineNum">     758 </span>            :                                         int num_sregs;
+<span class="lineNum">     759 </span>            :                                         int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     760 </span>            : 
+<span class="lineNum">     761 </span><span class="lineCov">    4773220 :                                         num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     762 </span><span class="lineCov">    9639992 :                                         for (i = 0; i &lt; num_sregs; ++i) {</span>
+<span class="lineNum">     763 </span><span class="lineCov">    3324914 :                                                 if (sregs [i] == dreg)</span>
+<span class="lineNum">     764 </span><span class="lineCov">    3278366 :                                                         break;</span>
+<span class="lineNum">     765 </span><span class="lineCov">      46583 :                                         }</span>
+<span class="lineNum">     766 </span><span class="lineCov">    4773283 :                                         if (i &lt; num_sregs) {</span>
+<span class="lineNum">     767 </span><span class="lineCov">    9834637 :                                                 g_assert (sregs [i] == dreg);</span>
+<span class="lineNum">     768 </span><span class="lineCov">    3278490 :                                                 sregs [i] = sreg1;</span>
+<span class="lineNum">     769 </span><span class="lineCov">    3278490 :                                                 mono_inst_set_src_registers (ins, sregs);</span>
+<span class="lineNum">     770 </span><span class="lineCov">    6281815 :                                         } else if (MONO_IS_STORE_MEMBASE (ins) &amp;&amp; ins-&gt;dreg == dreg) {</span>
+<span class="lineNum">     771 </span><span class="lineCov">      13418 :                                                 ins-&gt;dreg = sreg1;</span>
+<span class="lineNum">     772 </span><span class="lineCov">    1958165 :                                         } else if (MONO_IS_PHI (ins)) {</span>
+<span class="lineNum">     773 </span><span class="lineCov">    5034817 :                                                 for (i = ins-&gt;inst_phi_args [0]; i &gt; 0; i--) {</span>
+<span class="lineNum">     774 </span><span class="lineCov">    2518507 :                                                         int sreg = ins-&gt;inst_phi_args [i];</span>
+<span class="lineNum">     775 </span><span class="lineCov">    2518507 :                                                         if (sreg == var-&gt;dreg)</span>
+<span class="lineNum">     776 </span><span class="lineCov">    1481653 :                                                                 break;</span>
+<span class="lineNum">     777 </span><span class="lineCov">    1036734 :                                                 }</span>
+<span class="lineNum">     778 </span><span class="lineCov">    4445208 :                                                 g_assert (i &gt; 0);</span>
+<span class="lineNum">     779 </span><span class="lineCov">    1481912 :                                                 ins-&gt;inst_phi_args [i] = sreg1;</span>
+<span class="lineNum">     780 </span><span class="lineCov">    1481912 :                                         }</span>
+<span class="lineNum">     781 </span>            :                                         else
+<span class="lineNum">     782 </span><span class="lineNoCov">          0 :                                                 g_assert_not_reached ();</span>
+<span class="lineNum">     783 </span>            : 
+<span class="lineNum">     784 </span><span class="lineCov">    4772603 :                                         record_use (cfg, var2, u-&gt;bb, ins);</span>
+<span class="lineNum">     785 </span>            : 
+<span class="lineNum">     786 </span><span class="lineCov">    4772603 :                                         l = next;</span>
+<span class="lineNum">     787 </span>            :                                 }
+<span class="lineNum">     788 </span>            : 
+<span class="lineNum">     789 </span><span class="lineCov">    1990396 :                                 info-&gt;uses = NULL;</span>
+<span class="lineNum">     790 </span><span class="lineCov">    1990396 :                         }</span>
+<span class="lineNum">     791 </span><span class="lineCov">    8492137 :                 }</span>
+<span class="lineNum">     792 </span><span class="lineCov">   92112343 :         }</span>
+<span class="lineNum">     793 </span>            : 
+<span class="lineNum">     794 </span><span class="lineCov">   13481539 :         if (cfg-&gt;verbose_level &gt;= 4) {</span>
+<span class="lineNum">     795 </span>            :                 MonoBasicBlock *bb;
+<span class="lineNum">     796 </span>            : 
+<span class="lineNum">     797 </span><span class="lineCov">    3155376 :                 for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb)</span>
+<span class="lineNum">     798 </span><span class="lineCov">    1404872 :                         mono_print_bb (bb, &quot;AFTER SSA COPYPROP&quot;);</span>
+<span class="lineNum">     799 </span><span class="lineCov">     172816 :         }</span>
+<span class="lineNum">     800 </span><span class="lineCov">   13476971 : }</span>
+<a name="801"><span class="lineNum">     801 </span>            : </a>
+<span class="lineNum">     802 </span>            : static int
+<span class="lineNum">     803 </span>            : evaluate_ins (MonoCompile *cfg, MonoInst *ins, MonoInst **res, MonoInst **carray)
+<span class="lineNum">     804 </span>            : {
+<span class="lineNum">     805 </span>            :         MonoInst *args [MONO_MAX_SRC_REGS];
+<span class="lineNum">     806 </span>            :         int rs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     807 </span>            :         MonoInst *c0;
+<span class="lineNum">     808 </span><span class="lineCov">  565646671 :         gboolean const_args = TRUE;</span>
+<span class="lineNum">     809 </span><span class="lineCov">  565646671 :         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     810 </span>            :         int num_sregs, i;
+<span class="lineNum">     811 </span>            :         int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     812 </span>            : 
+<span class="lineNum">     813 </span>            :         /* Short-circuit this */
+<span class="lineNum">     814 </span><span class="lineCov">  565646671 :         if (ins-&gt;opcode == OP_ICONST) {</span>
+<span class="lineNum">     815 </span><span class="lineCov">   30239422 :                 *res = ins;</span>
+<span class="lineNum">     816 </span><span class="lineCov">   30239422 :                 return 1;</span>
+<span class="lineNum">     817 </span>            :         }
+<span class="lineNum">     818 </span>            : 
+<span class="lineNum">     819 </span><span class="lineCov">  535619076 :         if (ins-&gt;opcode == OP_NOP)</span>
+<span class="lineNum">     820 </span><span class="lineNoCov">          0 :                 return 2;</span>
+<span class="lineNum">     821 </span>            : 
+<span class="lineNum">     822 </span><span class="lineCov">  535634245 :         num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     823 </span><span class="lineCov"> 4284272499 :         for (i = 0; i &lt; MONO_MAX_SRC_REGS; ++i)</span>
+<span class="lineNum">     824 </span><span class="lineCov"> 1606335618 :                 args [i] = NULL;</span>
+<span class="lineNum">     825 </span><span class="lineCov"> 2047338533 :         for (i = 0; i &lt; num_sregs; ++i) {</span>
+<span class="lineNum">     826 </span><span class="lineCov"> 1463871403 :                 MonoInst *var = get_vreg_to_inst (cfg, sregs [i]);</span>
+<span class="lineNum">     827 </span>            : 
+<span class="lineNum">     828 </span><span class="lineCov">  487967667 :                 rs [i] = 2;</span>
+<span class="lineNum">     829 </span><span class="lineCov">  487967667 :                 args [i] = carray [sregs [i]];</span>
+<span class="lineNum">     830 </span><span class="lineCov">  487967667 :                 if (args [i])</span>
+<span class="lineNum">     831 </span><span class="lineCov">   10829830 :                         rs [i] = 1;</span>
+<span class="lineNum">     832 </span><span class="lineCov">  726729035 :                 else if (var &amp;&amp; !(var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT)))</span>
+<span class="lineNum">     833 </span><span class="lineCov">  230653077 :                         rs [i] = MONO_VARINFO (cfg, var-&gt;inst_c0)-&gt;cpstate;</span>
+<span class="lineNum">     834 </span><span class="lineCov">  488013515 :                 if (rs [i] != 1)</span>
+<span class="lineNum">     835 </span><span class="lineCov">  477183368 :                         const_args = FALSE;</span>
+<span class="lineNum">     836 </span><span class="lineCov">  487959824 :         }</span>
+<span class="lineNum">     837 </span>            : 
+<span class="lineNum">     838 </span><span class="lineCov">  535832356 :         c0 = NULL;</span>
+<span class="lineNum">     839 </span>            : 
+<span class="lineNum">     840 </span><span class="lineCov">  984958637 :         if (num_sregs &gt; 0 &amp;&amp; const_args) {</span>
+<span class="lineNum">     841 </span><span class="lineCov">   23708717 :                 g_assert (num_sregs &lt;= 2);</span>
+<span class="lineNum">     842 </span><span class="lineCov">   14724584 :                 if ((spec [MONO_INST_DEST] != ' ') &amp;&amp; carray [ins-&gt;dreg]) {</span>
+<span class="lineNum">     843 </span>            :                         // Cached value
+<span class="lineNum">     844 </span><span class="lineCov">      26601 :                         *res = carray [ins-&gt;dreg];</span>
+<span class="lineNum">     845 </span><span class="lineCov">      26601 :                         return 1;</span>
+<span class="lineNum">     846 </span>            :                 }
+<span class="lineNum">     847 </span><span class="lineCov">    7869925 :                 c0 = mono_constant_fold_ins (cfg, ins, args [0], args [1], FALSE);</span>
+<span class="lineNum">     848 </span><span class="lineCov">    7869925 :                 if (c0) {</span>
+<span class="lineNum">     849 </span><span class="lineCov">    3903024 :                         if (G_UNLIKELY (cfg-&gt;verbose_level &gt; 1)) {</span>
+<span class="lineNum">     850 </span><span class="lineCov">      50421 :                                 printf (&quot;\t cfold -&gt; &quot;);</span>
+<span class="lineNum">     851 </span><span class="lineCov">      50421 :                                 mono_print_ins (c0);</span>
+<span class="lineNum">     852 </span><span class="lineCov">      50421 :                         }</span>
+<span class="lineNum">     853 </span><span class="lineCov">    3903320 :                         *res = c0;</span>
+<span class="lineNum">     854 </span><span class="lineCov">    3903320 :                         return 1;</span>
+<span class="lineNum">     855 </span>            :                 }
+<span class="lineNum">     856 </span>            :                 else
+<span class="lineNum">     857 </span>            :                         /* Can't cfold this ins */
+<span class="lineNum">     858 </span><span class="lineCov">    3967408 :                         return 2;</span>
+<span class="lineNum">     859 </span>            :         }
+<span class="lineNum">     860 </span>            : 
+<span class="lineNum">     861 </span><span class="lineCov">  527901199 :         if (num_sregs == 0)</span>
+<span class="lineNum">     862 </span><span class="lineCov">   86739546 :                 return 2;</span>
+<span class="lineNum">     863 </span><span class="lineCov">  991259786 :         for (i = 0; i &lt; num_sregs; ++i) {</span>
+<span class="lineNum">     864 </span><span class="lineCov">  447759870 :                 if (rs [i] == 2)</span>
+<span class="lineNum">     865 </span><span class="lineCov">  393335992 :                         return 2;</span>
+<span class="lineNum">     866 </span><span class="lineCov">   54434685 :         }</span>
+<span class="lineNum">     867 </span><span class="lineCov">   48004907 :         return 0;</span>
+<span class="lineNum">     868 </span><span class="lineCov">  565407197 : }</span>
+<a name="869"><span class="lineNum">     869 </span>            : </a>
+<span class="lineNum">     870 </span>            : static inline void
+<span class="lineNum">     871 </span>            : change_varstate (MonoCompile *cfg, GList **cvars, MonoMethodVar *info, int state, MonoInst *c0, MonoInst **carray)
+<span class="lineNum">     872 </span>            : {
+<span class="lineNum">     873 </span><span class="lineCov">   57341487 :         if (info-&gt;cpstate &gt;= state)</span>
+<span class="lineNum">     874 </span><span class="lineCov">   13574633 :                 return;</span>
+<span class="lineNum">     875 </span>            : 
+<span class="lineNum">     876 </span><span class="lineCov">   43774171 :         info-&gt;cpstate = state;</span>
+<span class="lineNum">     877 </span>            : 
+<span class="lineNum">     878 </span><span class="lineCov">   43774171 :         if (G_UNLIKELY (cfg-&gt;verbose_level &gt; 1))</span>
+<span class="lineNum">     879 </span><span class="lineCov">     542584 :                 printf (&quot;\tState of R%d set to %d\n&quot;, cfg-&gt;varinfo [info-&gt;idx]-&gt;dreg, info-&gt;cpstate);</span>
+<span class="lineNum">     880 </span>            : 
+<span class="lineNum">     881 </span><span class="lineCov">   43778924 :         if (state == 1)</span>
+<span class="lineNum">     882 </span><span class="lineCov">   29419856 :                 g_assert (c0);</span>
+<span class="lineNum">     883 </span>            : 
+<span class="lineNum">     884 </span><span class="lineCov">   43773337 :         carray [cfg-&gt;varinfo [info-&gt;idx]-&gt;dreg] = c0;</span>
+<span class="lineNum">     885 </span>            : 
+<span class="lineNum">     886 </span><span class="lineCov">   43773337 :         if (!g_list_find (*cvars, info)) {</span>
+<span class="lineNum">     887 </span><span class="lineCov">   43649766 :                 *cvars = g_list_prepend (*cvars, info);</span>
+<span class="lineNum">     888 </span><span class="lineCov">   43649766 :         }</span>
+<span class="lineNum">     889 </span><span class="lineCov">   57329967 : }</span>
+<a name="890"><span class="lineNum">     890 </span>            : </a>
+<span class="lineNum">     891 </span>            : static inline void
+<span class="lineNum">     892 </span>            : add_cprop_bb (MonoCompile *cfg, MonoBasicBlock *bb, GList **bblist)
+<span class="lineNum">     893 </span>            : {
+<span class="lineNum">     894 </span><span class="lineCov">  338803790 :         if (G_UNLIKELY (cfg-&gt;verbose_level &gt; 1))</span>
+<span class="lineNum">     895 </span><span class="lineCov">    4112461 :                 printf (&quot;\tAdd BB%d to worklist\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     896 </span>            : 
+<span class="lineNum">     897 </span><span class="lineCov">  339183382 :     if (!(bb-&gt;flags &amp;  BB_REACHABLE)) {</span>
+<span class="lineNum">     898 </span><span class="lineCov">   99709316 :             bb-&gt;flags |= BB_REACHABLE;</span>
+<span class="lineNum">     899 </span><span class="lineCov">   99709316 :                 *bblist = g_list_prepend (*bblist, bb);</span>
+<span class="lineNum">     900 </span><span class="lineCov">   99709316 :         }</span>
+<span class="lineNum">     901 </span><span class="lineCov">  338883563 : }</span>
+<a name="902"><span class="lineNum">     902 </span>            : </a>
+<span class="lineNum">     903 </span>            : static void
+<span class="lineNum">     904 </span>            : visit_inst (MonoCompile *cfg, MonoBasicBlock *bb, MonoInst *ins, GList **cvars, GList **bblist, MonoInst **carray)
+<span class="lineNum">     905 </span>            : {
+<span class="lineNum">     906 </span><span class="lineCov">  952817643 :         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     907 </span>            : 
+<span class="lineNum">     908 </span><span class="lineCov">  952817643 :         if (ins-&gt;opcode == OP_NOP)</span>
+<span class="lineNum">     909 </span><span class="lineCov">    9103104 :                 return;</span>
+<span class="lineNum">     910 </span>            : 
+<span class="lineNum">     911 </span><span class="lineCov">  944232131 :         if (cfg-&gt;verbose_level &gt; 1)</span>
+<span class="lineNum">     912 </span><span class="lineCov">   11438921 :                 mono_print_ins (ins);</span>
+<span class="lineNum">     913 </span>            : 
+<span class="lineNum">     914 </span>            :         /* FIXME: Support longs/floats */
+<span class="lineNum">     915 </span>            :         /* FIXME: Work on vregs as well */
+<span class="lineNum">     916 </span>            : 
+<span class="lineNum">     917 </span><span class="lineCov"> 3680787616 :         if (MONO_IS_PHI (ins)) {</span>
+<span class="lineNum">     918 </span><span class="lineCov">  100149769 :                 MonoMethodVar *info = MONO_VARINFO (cfg, get_vreg_to_inst (cfg, ins-&gt;dreg)-&gt;inst_c0);</span>
+<span class="lineNum">     919 </span><span class="lineCov">   33385093 :                 MonoInst *c0 = NULL;</span>
+<span class="lineNum">     920 </span>            :                 int j;
+<span class="lineNum">     921 </span>            : 
+<span class="lineNum">     922 </span><span class="lineCov">  188262089 :                 for (j = 1; j &lt;= ins-&gt;inst_phi_args [0]; j++) {</span>
+<span class="lineNum">     923 </span><span class="lineCov">  247437004 :                         MonoInst *var = get_vreg_to_inst (cfg, ins-&gt;inst_phi_args [j]);</span>
+<span class="lineNum">     924 </span><span class="lineCov">   82495688 :                         MonoMethodVar *mv = MONO_VARINFO (cfg, var-&gt;inst_c0);</span>
+<span class="lineNum">     925 </span><span class="lineCov">   82495688 :                         MonoInst *src = mv-&gt;def;</span>
+<span class="lineNum">     926 </span>            : 
+<span class="lineNum">     927 </span><span class="lineCov">  164240030 :                         if (mv-&gt;def_bb &amp;&amp; !(mv-&gt;def_bb-&gt;flags &amp; BB_REACHABLE))</span>
+<span class="lineNum">     928 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     929 </span>            : 
+<span class="lineNum">     930 </span><span class="lineCov">  246029971 :                         if (!mv-&gt;def || !src || mv-&gt;cpstate == 2) {</span>
+<span class="lineNum">     931 </span><span class="lineCov">   19734543 :                                 change_varstate (cfg, cvars, info, 2, NULL, carray);</span>
+<span class="lineNum">     932 </span><span class="lineCov">   19734543 :                                 break;</span>
+<span class="lineNum">     933 </span>            :                         }
+<span class="lineNum">     934 </span>            :                                         
+<span class="lineNum">     935 </span><span class="lineCov">   62846355 :                         if (mv-&gt;cpstate == 0)</span>
+<span class="lineNum">     936 </span><span class="lineCov">   36134219 :                                 continue;</span>
+<span class="lineNum">     937 </span>            : 
+<span class="lineNum">     938 </span><span class="lineCov">   80155475 :                         g_assert (carray [var-&gt;dreg]);</span>
+<span class="lineNum">     939 </span>            : 
+<span class="lineNum">     940 </span><span class="lineCov">   26739170 :                         if (!c0)</span>
+<span class="lineNum">     941 </span><span class="lineCov">    7537992 :                                 c0 = carray [var-&gt;dreg];</span>
+<span class="lineNum">     942 </span>            :                 
+<span class="lineNum">     943 </span>            :                         /* FIXME: */
+<span class="lineNum">     944 </span><span class="lineCov">   26721780 :                         if (c0-&gt;opcode != OP_ICONST) {</span>
+<span class="lineNum">     945 </span><span class="lineNoCov">          0 :                                 change_varstate (cfg, cvars, info, 2, NULL, carray);</span>
+<span class="lineNum">     946 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     947 </span>            :                         }
+<span class="lineNum">     948 </span>            : 
+<span class="lineNum">     949 </span><span class="lineCov">   26728073 :                         if (carray [var-&gt;dreg]-&gt;inst_c0 != c0-&gt;inst_c0) {</span>
+<span class="lineNum">     950 </span><span class="lineCov">    2036628 :                                 change_varstate (cfg, cvars, info, 2, NULL, carray);</span>
+<span class="lineNum">     951 </span><span class="lineCov">    2036628 :                                 break;</span>
+<span class="lineNum">     952 </span>            :                         }
+<span class="lineNum">     953 </span><span class="lineCov">   24693073 :                 }</span>
+<span class="lineNum">     954 </span>            :                                 
+<span class="lineNum">     955 </span><span class="lineCov">   40915395 :                 if (c0 &amp;&amp; info-&gt;cpstate &lt; 1) {</span>
+<span class="lineNum">     956 </span><span class="lineCov">    2381381 :                         change_varstate (cfg, cvars, info, 1, c0, carray);</span>
+<span class="lineNum">     957 </span>            : 
+<span class="lineNum">     958 </span><span class="lineCov">    7143771 :                         g_assert (c0-&gt;opcode == OP_ICONST);</span>
+<span class="lineNum">     959 </span><span class="lineCov">    2381324 :                 }</span>
+<span class="lineNum">     960 </span><span class="lineCov">   33370003 :         }</span>
+<span class="lineNum">     961 </span><span class="lineCov"> 4072223661 :         else if (!MONO_IS_STORE_MEMBASE (ins) &amp;&amp; ((spec [MONO_INST_SRC1] != ' ') || (spec [MONO_INST_SRC2] != ' ') || (spec [MONO_INST_DEST] != ' '))) {</span>
+<span class="lineNum">     962 </span>            :                 MonoInst *var, *c0;
+<span class="lineNum">     963 </span>            :                 int state;
+<span class="lineNum">     964 </span>            : 
+<span class="lineNum">     965 </span><span class="lineCov">  566186343 :                 if (spec [MONO_INST_DEST] !=  ' ')</span>
+<span class="lineNum">     966 </span><span class="lineCov"> 1300096451 :                         var = get_vreg_to_inst (cfg, ins-&gt;dreg);</span>
+<span class="lineNum">     967 </span>            :                 else
+<span class="lineNum">     968 </span><span class="lineCov">  132843356 :                         var = NULL;</span>
+<span class="lineNum">     969 </span>            : 
+<span class="lineNum">     970 </span><span class="lineCov">  565596590 :                 c0 = NULL;</span>
+<span class="lineNum">     971 </span><span class="lineCov">  565596590 :                 state = evaluate_ins (cfg, ins, &amp;c0, carray);</span>
+<span class="lineNum">     972 </span>            : 
+<span class="lineNum">     973 </span><span class="lineCov">  640703729 :                 if (var &amp;&amp; !(var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT))) {</span>
+<span class="lineNum">     974 </span><span class="lineCov">   41724952 :                         MonoMethodVar *info = MONO_VARINFO (cfg, var-&gt;inst_c0);</span>
+<span class="lineNum">     975 </span>            : 
+<span class="lineNum">     976 </span><span class="lineCov">   41724952 :                         if (info-&gt;cpstate &lt; 2) {</span>
+<span class="lineNum">     977 </span><span class="lineCov">   38959143 :                                 if (state == 1)</span>
+<span class="lineNum">     978 </span><span class="lineCov">    4998683 :                                         change_varstate (cfg, cvars, info, 1, c0, carray);</span>
+<span class="lineNum">     979 </span><span class="lineCov">   33963716 :                                 else if (state == 2)</span>
+<span class="lineNum">     980 </span><span class="lineCov">   28210746 :                                         change_varstate (cfg, cvars, info, 2, NULL, carray);</span>
+<span class="lineNum">     981 </span><span class="lineCov">   38949673 :                         }</span>
+<span class="lineNum">     982 </span><span class="lineCov">   41716618 :                 }</span>
+<span class="lineNum">     983 </span><span class="lineCov"> 1014780914 :                 else if (!var &amp;&amp; (ins-&gt;dreg != -1)) {</span>
+<span class="lineNum">     984 </span>            :                         /*
+<span class="lineNum">     985 </span>            :                          * We don't record def-use information for local vregs since it would be 
+<span class="lineNum">     986 </span>            :                          * expensive. Instead, we depend on the fact that all uses of the vreg are in
+<span class="lineNum">     987 </span>            :                          * the same bblock, so they will be examined after the definition.
+<span class="lineNum">     988 </span>            :                          * FIXME: This isn't true if the ins is visited through an SSA edge.
+<span class="lineNum">     989 </span>            :                          */
+<span class="lineNum">     990 </span><span class="lineCov">  358190438 :                         if (c0) {</span>
+<span class="lineNum">     991 </span><span class="lineCov">   22592087 :                                 carray [ins-&gt;dreg] = c0;</span>
+<span class="lineNum">     992 </span><span class="lineCov">   22592087 :                         } else {</span>
+<span class="lineNum">     993 </span><span class="lineCov">  335600761 :                                 if (carray [ins-&gt;dreg]) {</span>
+<span class="lineNum">     994 </span>            :                                         /* 
+<span class="lineNum">     995 </span>            :                                          * The state of the vreg changed from constant to non-constant
+<span class="lineNum">     996 </span>            :                                          * -&gt; need to rescan the whole bblock.
+<span class="lineNum">     997 </span>            :                                          */
+<span class="lineNum">     998 </span><span class="lineCov">    1111759 :                                         carray [ins-&gt;dreg] = NULL;</span>
+<span class="lineNum">     999 </span>            :                                         /* FIXME: Speed this up */
+<span class="lineNum">    1000 </span>            : 
+<span class="lineNum">    1001 </span><span class="lineCov">    1111759 :                                         if (!g_list_find (*bblist, bb))</span>
+<span class="lineNum">    1002 </span><span class="lineCov">     842858 :                                                 *bblist = g_list_prepend (*bblist, bb);</span>
+<span class="lineNum">    1003 </span><span class="lineCov">    1111596 :                                 }</span>
+<span class="lineNum">    1004 </span>            :                         }
+<span class="lineNum">    1005 </span><span class="lineCov">  358065546 :                 }</span>
+<span class="lineNum">    1006 </span>            : 
+<span class="lineNum">    1007 </span><span class="lineCov"> 2824908294 :                 if (MONO_IS_JUMP_TABLE (ins)) {</span>
+<span class="lineNum">    1008 </span>            :                         int i;
+<span class="lineNum">    1009 </span><span class="lineCov">    1816407 :                         MonoJumpInfoBBTable *table = (MonoJumpInfoBBTable *)MONO_JUMP_TABLE_FROM_INS (ins);</span>
+<span class="lineNum">    1010 </span>            : 
+<span class="lineNum">    1011 </span><span class="lineCov">    1208960 :                         if (!ins-&gt;next || ins-&gt;next-&gt;opcode != OP_PADD) {</span>
+<span class="lineNum">    1012 </span>            :                                 /* The PADD was optimized away */
+<span class="lineNum">    1013 </span>            :                                 /* FIXME: handle this as well */
+<span class="lineNum">    1014 </span><span class="lineNoCov">          0 :                                 for (i = 0; i &lt; table-&gt;table_size; i++)</span>
+<span class="lineNum">    1015 </span><span class="lineNoCov">          0 :                                         if (table-&gt;table [i])</span>
+<span class="lineNum">    1016 </span><span class="lineNoCov">          0 :                                                 add_cprop_bb (cfg, table-&gt;table [i], bblist);</span>
+<span class="lineNum">    1017 </span><span class="lineNoCov">          0 :                                 return;</span>
+<span class="lineNum">    1018 </span>            :                         }
+<span class="lineNum">    1019 </span>            : 
+<span class="lineNum">    1020 </span><span class="lineCov">    1812644 :                         g_assert (ins-&gt;next-&gt;opcode == OP_PADD);</span>
+<span class="lineNum">    1021 </span><span class="lineCov">    1813241 :                         g_assert (ins-&gt;next-&gt;sreg1 == ins-&gt;dreg);</span>
+<span class="lineNum">    1022 </span>            : 
+<span class="lineNum">    1023 </span><span class="lineCov">     604352 :                         if (carray [ins-&gt;next-&gt;sreg2]) {</span>
+<span class="lineNum">    1024 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">    1025 </span><span class="lineNoCov">          0 :                                 int idx = carray [ins-&gt;next-&gt;sreg2]-&gt;inst_c0 &gt;&gt; 3;</span>
+<span class="lineNum">    1026 </span>            : #else
+<span class="lineNum">    1027 </span>            :                                 int idx = carray [ins-&gt;next-&gt;sreg2]-&gt;inst_c0 &gt;&gt; 2;
+<span class="lineNum">    1028 </span>            : #endif
+<span class="lineNum">    1029 </span><span class="lineNoCov">          0 :                                 if ((idx &lt; 0) || (idx &gt;= table-&gt;table_size))</span>
+<span class="lineNum">    1030 </span>            :                                         /* Out-of-range, no branch is executed */
+<span class="lineNum">    1031 </span><span class="lineNoCov">          0 :                                         return;</span>
+<span class="lineNum">    1032 </span>            :                                 else
+<span class="lineNum">    1033 </span><span class="lineNoCov">          0 :                                         if (table-&gt;table [idx])</span>
+<span class="lineNum">    1034 </span><span class="lineNoCov">          0 :                                                 add_cprop_bb (cfg, table-&gt;table [idx], bblist);</span>
+<span class="lineNum">    1035 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1036 </span>            :                         else {
+<span class="lineNum">    1037 </span><span class="lineCov">   15273734 :                                 for (i = 0; i &lt; table-&gt;table_size; i++)</span>
+<span class="lineNum">    1038 </span><span class="lineCov">   14064340 :                                         if (table-&gt;table [i])</span>
+<span class="lineNum">    1039 </span><span class="lineCov">    6942300 :                                                 add_cprop_bb (cfg, table-&gt;table [i], bblist);</span>
+<span class="lineNum">    1040 </span>            :                         }
+<span class="lineNum">    1041 </span><span class="lineCov">     605108 :                 }</span>
+<span class="lineNum">    1042 </span>            : 
+<span class="lineNum">    1043 </span><span class="lineCov">  565377220 :                 if (ins-&gt;opcode == OP_SWITCH) {</span>
+<span class="lineNum">    1044 </span>            :                         int i;
+<span class="lineNum">    1045 </span><span class="lineNoCov">          0 :                         MonoJumpInfoBBTable *table = (MonoJumpInfoBBTable *)ins-&gt;inst_p0;</span>
+<span class="lineNum">    1046 </span>            : 
+<span class="lineNum">    1047 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; table-&gt;table_size; i++)</span>
+<span class="lineNum">    1048 </span><span class="lineNoCov">          0 :                                 if (table-&gt;table [i])</span>
+<span class="lineNum">    1049 </span><span class="lineNoCov">          0 :                                         add_cprop_bb (cfg, table-&gt;table [i], bblist);</span>
+<span class="lineNum">    1050 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1051 </span>            : 
+<span class="lineNum">    1052 </span>            :                 /* Handle COMPARE+BRCOND pairs */
+<span class="lineNum">    1053 </span><span class="lineCov"> 2489026375 :                 if (ins-&gt;next &amp;&amp; MONO_IS_COND_BRANCH_OP (ins-&gt;next)) {</span>
+<span class="lineNum">    1054 </span><span class="lineCov">   48780804 :                         if (c0) {</span>
+<span class="lineNum">    1055 </span><span class="lineCov">    2992532 :                                 g_assert (c0-&gt;opcode == OP_ICONST);</span>
+<span class="lineNum">    1056 </span>            : 
+<span class="lineNum">    1057 </span><span class="lineCov">     997508 :                                 if (c0-&gt;inst_c0)</span>
+<span class="lineNum">    1058 </span><span class="lineCov">     562120 :                                         ins-&gt;next-&gt;flags |= MONO_INST_CFOLD_TAKEN;</span>
+<span class="lineNum">    1059 </span>            :                                 else
+<span class="lineNum">    1060 </span><span class="lineCov">     435287 :                                         ins-&gt;next-&gt;flags |= MONO_INST_CFOLD_NOT_TAKEN;</span>
+<span class="lineNum">    1061 </span><span class="lineCov">     997359 :                         }</span>
+<span class="lineNum">    1062 </span>            :                         else {
+<span class="lineNum">    1063 </span><span class="lineCov">   47774893 :                                 ins-&gt;next-&gt;flags &amp;= ~(MONO_INST_CFOLD_TAKEN | MONO_INST_CFOLD_NOT_TAKEN);</span>
+<span class="lineNum">    1064 </span>            :                         }
+<span class="lineNum">    1065 </span>            : 
+<span class="lineNum">    1066 </span><span class="lineCov">   48775327 :                         visit_inst (cfg, bb, ins-&gt;next, cvars, bblist, carray);</span>
+<span class="lineNum">    1067 </span><span class="lineCov">   48775327 :                 }</span>
+<span class="lineNum">    1068 </span><span class="lineCov">  911577340 :         } else if (ins-&gt;opcode == OP_BR) {</span>
+<span class="lineNum">    1069 </span><span class="lineCov">   18293563 :                 add_cprop_bb (cfg, ins-&gt;inst_target_bb, bblist);</span>
+<span class="lineNum">    1070 </span><span class="lineCov"> 1111671276 :         } else if (MONO_IS_COND_BRANCH_OP (ins)) {</span>
+<span class="lineNum">    1071 </span><span class="lineCov">   86027146 :                 if (ins-&gt;flags &amp; MONO_INST_CFOLD_TAKEN) {</span>
+<span class="lineNum">    1072 </span><span class="lineCov">     600838 :                         add_cprop_bb (cfg, ins-&gt;inst_true_bb, bblist);</span>
+<span class="lineNum">    1073 </span><span class="lineCov">   86025693 :                 } else if (ins-&gt;flags &amp; MONO_INST_CFOLD_NOT_TAKEN) {</span>
+<span class="lineNum">    1074 </span><span class="lineCov">     495333 :                         if (ins-&gt;inst_false_bb)</span>
+<span class="lineNum">    1075 </span><span class="lineCov">     495345 :                                 add_cprop_bb (cfg, ins-&gt;inst_false_bb, bblist);</span>
+<span class="lineNum">    1076 </span><span class="lineCov">     495335 :         } else {</span>
+<span class="lineNum">    1077 </span><span class="lineCov">   84906813 :                         add_cprop_bb (cfg, ins-&gt;inst_true_bb, bblist);</span>
+<span class="lineNum">    1078 </span><span class="lineCov">   84906813 :                         if (ins-&gt;inst_false_bb)</span>
+<span class="lineNum">    1079 </span><span class="lineCov">   84903704 :                                 add_cprop_bb (cfg, ins-&gt;inst_false_bb, bblist);</span>
+<span class="lineNum">    1080 </span>            :                 }
+<span class="lineNum">    1081 </span><span class="lineCov">   86000453 :         }</span>
+<span class="lineNum">    1082 </span><span class="lineCov">  951162262 : }</span>
+<span class="lineNum">    1083 </span>            : 
+<span class="lineNum">    1084 </span>            : /**
+<span class="lineNum">    1085 </span>            :  * fold_ins:
+<span class="lineNum">    1086 </span>            :  *
+<span class="lineNum">    1087 </span>            :  *   Replace INS with its constant value, if it exists
+<a name="1088"><span class="lineNum">    1088 </span>            :  */</a>
+<span class="lineNum">    1089 </span>            : static void
+<span class="lineNum">    1090 </span>            : fold_ins (MonoCompile *cfg, MonoBasicBlock *bb, MonoInst *ins, MonoInst **carray)
+<span class="lineNum">    1091 </span>            : {
+<span class="lineNum">    1092 </span><span class="lineCov">  784568371 :         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">    1093 </span>            :         int opcode2;
+<span class="lineNum">    1094 </span><span class="lineCov">  784568371 :         int num_sregs = mono_inst_get_num_src_registers (ins);</span>
+<span class="lineNum">    1095 </span>            : 
+<span class="lineNum">    1096 </span><span class="lineCov"> 2624893455 :         if ((ins-&gt;opcode != OP_NOP) &amp;&amp; (ins-&gt;dreg != -1) &amp;&amp; !MONO_IS_STORE_MEMBASE (ins)) {</span>
+<span class="lineNum">    1097 </span><span class="lineCov">  429896756 :                 if (carray [ins-&gt;dreg] &amp;&amp; (spec [MONO_INST_DEST] == 'i') &amp;&amp; (ins-&gt;dreg &gt;= MONO_MAX_IREGS)) {</span>
+<span class="lineNum">    1098 </span>            :                         /* Perform constant folding */
+<span class="lineNum">    1099 </span>            :                         /* FIXME: */
+<span class="lineNum">    1100 </span><span class="lineCov">   74542758 :                         g_assert (carray [ins-&gt;dreg]-&gt;opcode == OP_ICONST);</span>
+<span class="lineNum">    1101 </span><span class="lineCov">   24847784 :                         ins-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">    1102 </span><span class="lineCov">   24847784 :                         ins-&gt;inst_c0 = carray [ins-&gt;dreg]-&gt;inst_c0;</span>
+<span class="lineNum">    1103 </span><span class="lineCov">   49694809 :                         MONO_INST_NULLIFY_SREGS (ins);</span>
+<span class="lineNum">    1104 </span><span class="lineCov">  391037730 :                 } else if (num_sregs == 2 &amp;&amp; carray [ins-&gt;sreg2]) {</span>
+<span class="lineNum">    1105 </span>            :                         /* Perform op-&gt;op_imm conversion */
+<span class="lineNum">    1106 </span><span class="lineCov">     707511 :                         opcode2 = mono_op_to_op_imm (ins-&gt;opcode);</span>
+<span class="lineNum">    1107 </span><span class="lineCov">     707511 :                         if (opcode2 != -1) {</span>
+<span class="lineNum">    1108 </span><span class="lineCov">      10505 :                                 ins-&gt;opcode = opcode2;</span>
+<span class="lineNum">    1109 </span><span class="lineCov">      10505 :                                 ins-&gt;inst_imm = carray [ins-&gt;sreg2]-&gt;inst_c0;</span>
+<span class="lineNum">    1110 </span><span class="lineCov">      10505 :                                 ins-&gt;sreg2 = -1;</span>
+<span class="lineNum">    1111 </span>            : 
+<span class="lineNum">    1112 </span><span class="lineCov">      42021 :                                 if ((opcode2 == OP_VOIDCALL) || (opcode2 == OP_CALL) || (opcode2 == OP_LCALL) || (opcode2 == OP_FCALL))</span>
+<span class="lineNum">    1113 </span><span class="lineNoCov">          0 :                                         ((MonoCallInst*)ins)-&gt;fptr = (gpointer)ins-&gt;inst_imm;</span>
+<span class="lineNum">    1114 </span><span class="lineCov">      10505 :                         }</span>
+<span class="lineNum">    1115 </span><span class="lineCov">     707525 :                 } else {</span>
+<span class="lineNum">    1116 </span>            :                         /* FIXME: Handle 3 op insns */
+<span class="lineNum">    1117 </span>            :                 }
+<span class="lineNum">    1118 </span>            : 
+<span class="lineNum">    1119 </span><span class="lineCov"> 1899480141 :                 if (MONO_IS_JUMP_TABLE (ins)) {</span>
+<span class="lineNum">    1120 </span>            :                         int i;
+<span class="lineNum">    1121 </span><span class="lineCov">    1801798 :                         MonoJumpInfoBBTable *table = (MonoJumpInfoBBTable *)MONO_JUMP_TABLE_FROM_INS (ins);</span>
+<span class="lineNum">    1122 </span>            : 
+<span class="lineNum">    1123 </span><span class="lineCov">    1199275 :                         if (!ins-&gt;next || ins-&gt;next-&gt;opcode != OP_PADD) {</span>
+<span class="lineNum">    1124 </span>            :                                 /* The PADD was optimized away */
+<span class="lineNum">    1125 </span>            :                                 /* FIXME: handle this as well */
+<span class="lineNum">    1126 </span><span class="lineNoCov">          0 :                                 return;</span>
+<span class="lineNum">    1127 </span>            :                         }
+<span class="lineNum">    1128 </span>            : 
+<span class="lineNum">    1129 </span><span class="lineCov">    1799348 :                         g_assert (ins-&gt;next-&gt;opcode == OP_PADD);</span>
+<span class="lineNum">    1130 </span><span class="lineCov">    1799431 :                         g_assert (ins-&gt;next-&gt;sreg1 == ins-&gt;dreg);</span>
+<span class="lineNum">    1131 </span><span class="lineCov">    1799107 :                         g_assert (ins-&gt;next-&gt;next-&gt;opcode == OP_LOAD_MEMBASE);</span>
+<span class="lineNum">    1132 </span>            : 
+<span class="lineNum">    1133 </span><span class="lineCov">     599769 :                         if (carray [ins-&gt;next-&gt;sreg2]) {</span>
+<span class="lineNum">    1134 </span>            :                                 /* Convert to a simple branch */
+<span class="lineNum">    1135 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">    1136 </span><span class="lineNoCov">          0 :                                 int idx = carray [ins-&gt;next-&gt;sreg2]-&gt;inst_c0 &gt;&gt; 3;</span>
+<span class="lineNum">    1137 </span>            : #else
+<span class="lineNum">    1138 </span>            :                                 int idx = carray [ins-&gt;next-&gt;sreg2]-&gt;inst_c0 &gt;&gt; 2;
+<span class="lineNum">    1139 </span>            : #endif
+<span class="lineNum">    1140 </span>            : 
+<span class="lineNum">    1141 </span><span class="lineNoCov">          0 :                                 if (!((idx &gt;= 0) &amp;&amp; (idx &lt; table-&gt;table_size))) {</span>
+<span class="lineNum">    1142 </span>            :                                         /* Out of range, eliminate the whole switch */
+<span class="lineNum">    1143 </span><span class="lineNoCov">          0 :                                         for (i = 0; i &lt; table-&gt;table_size; ++i) {</span>
+<span class="lineNum">    1144 </span><span class="lineNoCov">          0 :                                                 remove_bb_from_phis (cfg, bb, table-&gt;table [i]);</span>
+<span class="lineNum">    1145 </span><span class="lineNoCov">          0 :                                                 mono_unlink_bblock (cfg, bb, table-&gt;table [i]);</span>
+<span class="lineNum">    1146 </span><span class="lineNoCov">          0 :                                         }</span>
+<span class="lineNum">    1147 </span>            : 
+<span class="lineNum">    1148 </span><span class="lineNoCov">          0 :                                         NULLIFY_INS (ins);</span>
+<span class="lineNum">    1149 </span><span class="lineNoCov">          0 :                                         NULLIFY_INS (ins-&gt;next);</span>
+<span class="lineNum">    1150 </span><span class="lineNoCov">          0 :                                         NULLIFY_INS (ins-&gt;next-&gt;next);</span>
+<span class="lineNum">    1151 </span><span class="lineNoCov">          0 :                                         if (ins-&gt;next-&gt;next-&gt;next)</span>
+<span class="lineNum">    1152 </span><span class="lineNoCov">          0 :                                                 NULLIFY_INS (ins-&gt;next-&gt;next-&gt;next);</span>
+<span class="lineNum">    1153 </span>            : 
+<span class="lineNum">    1154 </span><span class="lineNoCov">          0 :                                         return;</span>
+<span class="lineNum">    1155 </span>            :                                 }
+<span class="lineNum">    1156 </span>            : 
+<span class="lineNum">    1157 </span><span class="lineNoCov">          0 :                                 if (!ins-&gt;next-&gt;next-&gt;next || ins-&gt;next-&gt;next-&gt;next-&gt;opcode != OP_BR_REG) {</span>
+<span class="lineNum">    1158 </span>            :                                         /* A one-way switch which got optimized away */
+<span class="lineNum">    1159 </span><span class="lineNoCov">          0 :                                         if (G_UNLIKELY (cfg-&gt;verbose_level &gt; 1)) {</span>
+<span class="lineNum">    1160 </span><span class="lineNoCov">          0 :                                                 printf (&quot;\tNo cfold on &quot;);</span>
+<span class="lineNum">    1161 </span><span class="lineNoCov">          0 :                                                 mono_print_ins (ins);</span>
+<span class="lineNum">    1162 </span><span class="lineNoCov">          0 :                                         }</span>
+<span class="lineNum">    1163 </span><span class="lineNoCov">          0 :                                         return;</span>
+<span class="lineNum">    1164 </span>            :                                 }
+<span class="lineNum">    1165 </span>            : 
+<span class="lineNum">    1166 </span><span class="lineNoCov">          0 :                                 if (G_UNLIKELY (cfg-&gt;verbose_level &gt; 1)) {</span>
+<span class="lineNum">    1167 </span><span class="lineNoCov">          0 :                                         printf (&quot;\tcfold on &quot;);</span>
+<span class="lineNum">    1168 </span><span class="lineNoCov">          0 :                                         mono_print_ins (ins);</span>
+<span class="lineNum">    1169 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">    1170 </span>            : 
+<span class="lineNum">    1171 </span>            :                                 /* Unlink target bblocks */
+<span class="lineNum">    1172 </span><span class="lineNoCov">          0 :                                 for (i = 0; i &lt; table-&gt;table_size; ++i) {</span>
+<span class="lineNum">    1173 </span><span class="lineNoCov">          0 :                                         if (table-&gt;table [i] != table-&gt;table [idx]) {</span>
+<span class="lineNum">    1174 </span><span class="lineNoCov">          0 :                                                 remove_bb_from_phis (cfg, bb, table-&gt;table [i]);</span>
+<span class="lineNum">    1175 </span><span class="lineNoCov">          0 :                                                 mono_unlink_bblock (cfg, bb, table-&gt;table [i]);</span>
+<span class="lineNum">    1176 </span><span class="lineNoCov">          0 :                                         }</span>
+<span class="lineNum">    1177 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">    1178 </span>            : 
+<span class="lineNum">    1179 </span>            :                                 /* Change the OP_BR_REG to a simple branch */
+<span class="lineNum">    1180 </span><span class="lineNoCov">          0 :                                 ins-&gt;next-&gt;next-&gt;next-&gt;opcode = OP_BR;</span>
+<span class="lineNum">    1181 </span><span class="lineNoCov">          0 :                                 ins-&gt;next-&gt;next-&gt;next-&gt;inst_target_bb = table-&gt;table [idx];</span>
+<span class="lineNum">    1182 </span><span class="lineNoCov">          0 :                                 ins-&gt;next-&gt;next-&gt;next-&gt;sreg1 = -1;</span>
+<span class="lineNum">    1183 </span>            : 
+<span class="lineNum">    1184 </span>            :                                 /* Nullify the other instructions */
+<span class="lineNum">    1185 </span><span class="lineNoCov">          0 :                                 NULLIFY_INS (ins);</span>
+<span class="lineNum">    1186 </span><span class="lineNoCov">          0 :                                 NULLIFY_INS (ins-&gt;next);</span>
+<span class="lineNum">    1187 </span><span class="lineNoCov">          0 :                                 NULLIFY_INS (ins-&gt;next-&gt;next);</span>
+<span class="lineNum">    1188 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1189 </span><span class="lineCov">     599768 :                 }</span>
+<span class="lineNum">    1190 </span><span class="lineCov">  380259111 :         } </span>
+<span class="lineNum">    1191 </span><span class="lineCov"> 1382555172 :         else if (MONO_IS_COND_BRANCH_OP (ins)) {</span>
+<span class="lineNum">    1192 </span><span class="lineCov">   36914360 :                 if (ins-&gt;flags &amp; MONO_INST_CFOLD_TAKEN) {</span>
+<span class="lineNum">    1193 </span><span class="lineCov">       6145 :                         remove_bb_from_phis (cfg, bb, ins-&gt;inst_false_bb);</span>
+<span class="lineNum">    1194 </span><span class="lineCov">       6145 :                         mono_unlink_bblock (cfg, bb, ins-&gt;inst_false_bb);</span>
+<span class="lineNum">    1195 </span><span class="lineCov">       6145 :                         ins-&gt;opcode = OP_BR;</span>
+<span class="lineNum">    1196 </span><span class="lineCov">       6145 :                         ins-&gt;inst_target_bb = ins-&gt;inst_true_bb;</span>
+<span class="lineNum">    1197 </span><span class="lineCov">   36913571 :                 } else if (ins-&gt;flags &amp; MONO_INST_CFOLD_NOT_TAKEN) {</span>
+<span class="lineNum">    1198 </span><span class="lineCov">      49872 :                         remove_bb_from_phis (cfg, bb, ins-&gt;inst_true_bb);</span>
+<span class="lineNum">    1199 </span><span class="lineCov">      49872 :                         mono_unlink_bblock (cfg, bb, ins-&gt;inst_true_bb);</span>
+<span class="lineNum">    1200 </span><span class="lineCov">      49872 :                         ins-&gt;opcode = OP_BR;</span>
+<span class="lineNum">    1201 </span><span class="lineCov">      49872 :                         ins-&gt;inst_target_bb = ins-&gt;inst_false_bb;</span>
+<span class="lineNum">    1202 </span><span class="lineCov">      49872 :                 }</span>
+<span class="lineNum">    1203 </span><span class="lineCov">   36915842 :         }</span>
+<span class="lineNum">    1204 </span><span class="lineCov">  785174283 : }</span>
+<a name="1205"><span class="lineNum">    1205 </span>            : </a>
+<span class="lineNum">    1206 </span>            : void
+<span class="lineNum">    1207 </span>            : mono_ssa_cprop (MonoCompile *cfg) 
+<span class="lineNum">    1208 </span>            : {
+<span class="lineNum">    1209 </span>            :         MonoInst **carray;
+<span class="lineNum">    1210 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">    1211 </span>            :         GList *bblock_list, *cvars;
+<span class="lineNum">    1212 </span>            :         GList *tmp;
+<span class="lineNum">    1213 </span>            :         int i;
+<span class="lineNum">    1214 </span>            :         //printf (&quot;SIMPLE OPTS BB%d %s\n&quot;, bb-&gt;block_num, mono_method_full_name (cfg-&gt;method, TRUE));
+<span class="lineNum">    1215 </span>            : 
+<span class="lineNum">    1216 </span><span class="lineCov">   13483525 :         carray = g_new0 (MonoInst*, cfg-&gt;next_vreg);</span>
+<span class="lineNum">    1217 </span>            : 
+<span class="lineNum">    1218 </span><span class="lineCov">   13483525 :         if (!(cfg-&gt;comp_done &amp; MONO_COMP_SSA_DEF_USE))</span>
+<span class="lineNum">    1219 </span><span class="lineNoCov">          0 :                 mono_ssa_create_def_use (cfg);</span>
+<span class="lineNum">    1220 </span>            : 
+<span class="lineNum">    1221 </span><span class="lineCov">   13483728 :         bblock_list = g_list_prepend (NULL, cfg-&gt;bb_entry);</span>
+<span class="lineNum">    1222 </span><span class="lineCov">   13483728 :         cfg-&gt;bb_entry-&gt;flags |= BB_REACHABLE;</span>
+<span class="lineNum">    1223 </span>            : 
+<span class="lineNum">    1224 </span><span class="lineCov">   13483728 :         memset (carray, 0, sizeof (MonoInst *) * cfg-&gt;num_varinfo);</span>
+<span class="lineNum">    1225 </span>            : 
+<span class="lineNum">    1226 </span><span class="lineCov">  211366666 :         for (i = 0; i &lt; cfg-&gt;num_varinfo; i++) {</span>
+<span class="lineNum">    1227 </span><span class="lineCov">   92200723 :                 MonoMethodVar *info = MONO_VARINFO (cfg, i);</span>
+<span class="lineNum">    1228 </span><span class="lineCov">   92200723 :                 if (!info-&gt;def)</span>
+<span class="lineNum">    1229 </span><span class="lineCov">   52146104 :                         info-&gt;cpstate = 2;</span>
+<span class="lineNum">    1230 </span><span class="lineCov">   92170661 :         }</span>
+<span class="lineNum">    1231 </span>            : 
+<span class="lineNum">    1232 </span><span class="lineCov">  226391470 :         for (bb = cfg-&gt;bb_entry-&gt;next_bb; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">    1233 </span>            :                 /*
+<span class="lineNum">    1234 </span>            :                  * FIXME: This should be bb-&gt;flags &amp; BB_FLAG_EXCEPTION_HANDLER, but
+<span class="lineNum">    1235 </span>            :                  * that would still allow unreachable try's to be removed.
+<span class="lineNum">    1236 </span>            :                  */
+<span class="lineNum">    1237 </span><span class="lineCov">   99711009 :                 if (bb-&gt;region)</span>
+<span class="lineNum">    1238 </span><span class="lineCov">   99713966 :                         add_cprop_bb (cfg, bb, &amp;bblock_list);</span>
+<span class="lineNum">    1239 </span><span class="lineCov">   99708439 :         }</span>
+<span class="lineNum">    1240 </span>            : 
+<span class="lineNum">    1241 </span><span class="lineCov">   13485845 :         cvars = NULL;</span>
+<span class="lineNum">    1242 </span>            : 
+<span class="lineNum">    1243 </span><span class="lineCov">  255008181 :         while (bblock_list) {</span>
+<span class="lineNum">    1244 </span>            :                 MonoInst *inst;
+<span class="lineNum">    1245 </span>            : 
+<span class="lineNum">    1246 </span><span class="lineCov">  114024552 :                 bb = (MonoBasicBlock *)bblock_list-&gt;data;</span>
+<span class="lineNum">    1247 </span>            : 
+<span class="lineNum">    1248 </span><span class="lineCov">  114024552 :                 bblock_list = g_list_delete_link (bblock_list, bblock_list);</span>
+<span class="lineNum">    1249 </span>            : 
+<span class="lineNum">    1250 </span><span class="lineCov">  342120189 :                 g_assert (bb-&gt;flags &amp;  BB_REACHABLE);</span>
+<span class="lineNum">    1251 </span>            : 
+<span class="lineNum">    1252 </span>            :                 /* 
+<span class="lineNum">    1253 </span>            :                  * Some bblocks are linked to 2 others even through they fall through to the
+<span class="lineNum">    1254 </span>            :                  * next bblock.
+<span class="lineNum">    1255 </span>            :                  */
+<span class="lineNum">    1256 </span><span class="lineCov">  535709172 :                 if (!(bb-&gt;last_ins &amp;&amp; MONO_IS_BRANCH_OP (bb-&gt;last_ins))) {</span>
+<span class="lineNum">    1257 </span><span class="lineCov">  202922307 :                         for (i = 0; i &lt; bb-&gt;out_count; ++i)</span>
+<span class="lineNum">    1258 </span><span class="lineCov">   43532057 :                                 add_cprop_bb (cfg, bb-&gt;out_bb [i], &amp;bblock_list);</span>
+<span class="lineNum">    1259 </span><span class="lineCov">   57929504 :                 }</span>
+<span class="lineNum">    1260 </span>            : 
+<span class="lineNum">    1261 </span><span class="lineCov">  114050479 :                 if (cfg-&gt;verbose_level &gt; 1)</span>
+<span class="lineNum">    1262 </span><span class="lineCov">    1414375 :                         printf (&quot;\nSSA CONSPROP BB%d:\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">    1263 </span>            : 
+<span class="lineNum">    1264 </span><span class="lineCov"> 1833683698 :                 for (inst = bb-&gt;code; inst; inst = inst-&gt;next) {</span>
+<span class="lineNum">    1265 </span><span class="lineCov">  802929979 :                         visit_inst (cfg, bb, inst, &amp;cvars, &amp;bblock_list, carray);</span>
+<span class="lineNum">    1266 </span><span class="lineCov">  802929979 :                 }</span>
+<span class="lineNum">    1267 </span>            : 
+<span class="lineNum">    1268 </span><span class="lineCov">  315364664 :                 while (cvars) {</span>
+<span class="lineNum">    1269 </span><span class="lineCov">   43647419 :                         MonoMethodVar *info = (MonoMethodVar *)cvars-&gt;data;                  </span>
+<span class="lineNum">    1270 </span><span class="lineCov">   43647419 :                         cvars = g_list_delete_link (cvars, cvars);</span>
+<span class="lineNum">    1271 </span>            : 
+<span class="lineNum">    1272 </span><span class="lineCov">  289354588 :                         for (tmp = info-&gt;uses; tmp; tmp = tmp-&gt;next) {</span>
+<span class="lineNum">    1273 </span><span class="lineCov">  101049127 :                                 MonoVarUsageInfo *ui = (MonoVarUsageInfo *)tmp-&gt;data;</span>
+<span class="lineNum">    1274 </span><span class="lineCov">  101049127 :                                 if (!(ui-&gt;bb-&gt;flags &amp; BB_REACHABLE))</span>
+<span class="lineNum">    1275 </span><span class="lineNoCov">          0 :                                         continue;</span>
+<span class="lineNum">    1276 </span><span class="lineCov">  101062228 :                                 visit_inst (cfg, ui-&gt;bb, ui-&gt;inst, &amp;cvars, &amp;bblock_list, carray);</span>
+<span class="lineNum">    1277 </span><span class="lineCov">  101062228 :                         }</span>
+<span class="lineNum">    1278 </span>            :                 }
+<span class="lineNum">    1279 </span>            :         }
+<span class="lineNum">    1280 </span>            : 
+<span class="lineNum">    1281 </span><span class="lineCov">  226387414 :         for (bb = cfg-&gt;bb_entry-&gt;next_bb; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">    1282 </span>            :                 MonoInst *inst;
+<span class="lineNum">    1283 </span><span class="lineCov"> 1769214893 :                 for (inst = bb-&gt;code; inst; inst = inst-&gt;next) {</span>
+<span class="lineNum">    1284 </span><span class="lineCov">  784898504 :                         fold_ins (cfg, bb, inst, carray);</span>
+<span class="lineNum">    1285 </span><span class="lineCov">  784898504 :                 }</span>
+<span class="lineNum">    1286 </span><span class="lineCov">   99701069 :         }</span>
+<span class="lineNum">    1287 </span>            : 
+<span class="lineNum">    1288 </span><span class="lineCov">   13484137 :         g_free (carray);</span>
+<span class="lineNum">    1289 </span>            : 
+<span class="lineNum">    1290 </span><span class="lineCov">   13484137 :         cfg-&gt;comp_done |= MONO_COMP_REACHABILITY;</span>
+<span class="lineNum">    1291 </span>            : 
+<span class="lineNum">    1292 </span>            :         /* fixme: we should update usage infos during cprop, instead of computing it again */
+<span class="lineNum">    1293 </span><span class="lineCov">   13484137 :         cfg-&gt;comp_done &amp;=  ~MONO_COMP_SSA_DEF_USE;</span>
+<span class="lineNum">    1294 </span><span class="lineCov">  211265661 :         for (i = 0; i &lt; cfg-&gt;num_varinfo; i++) {</span>
+<span class="lineNum">    1295 </span><span class="lineCov">   92162401 :                 MonoMethodVar *info = MONO_VARINFO (cfg, i);</span>
+<span class="lineNum">    1296 </span><span class="lineCov">   92162401 :                 info-&gt;def = NULL;</span>
+<span class="lineNum">    1297 </span><span class="lineCov">   92162401 :                 info-&gt;uses = NULL;</span>
+<span class="lineNum">    1298 </span><span class="lineCov">   92162401 :         }</span>
+<span class="lineNum">    1299 </span><span class="lineCov">   13484288 : }</span>
+<a name="1300"><span class="lineNum">    1300 </span>            : </a>
+<span class="lineNum">    1301 </span>            : static inline void
+<span class="lineNum">    1302 </span>            : add_to_dce_worklist (MonoCompile *cfg, MonoMethodVar *var, MonoMethodVar *use, GList **wl)
+<span class="lineNum">    1303 </span>            : {
+<span class="lineNum">    1304 </span>            :         GList *tmp;
+<span class="lineNum">    1305 </span>            : 
+<span class="lineNum">    1306 </span><span class="lineCov">    2211567 :         *wl = g_list_prepend_mempool (cfg-&gt;mempool, *wl, use);</span>
+<span class="lineNum">    1307 </span>            : 
+<span class="lineNum">    1308 </span><span class="lineCov">   30408550 :         for (tmp = use-&gt;uses; tmp; tmp = tmp-&gt;next) {</span>
+<span class="lineNum">    1309 </span><span class="lineCov">   15204794 :                 MonoVarUsageInfo *ui = (MonoVarUsageInfo *)tmp-&gt;data;</span>
+<span class="lineNum">    1310 </span><span class="lineCov">   15204794 :                 if (ui-&gt;inst == var-&gt;def) {</span>
+<span class="lineNum">    1311 </span>            :                         /* from the mempool */
+<span class="lineNum">    1312 </span><span class="lineCov">    2212060 :                         use-&gt;uses = g_list_remove_link (use-&gt;uses, tmp);</span>
+<span class="lineNum">    1313 </span><span class="lineCov">    2212060 :                         break;</span>
+<span class="lineNum">    1314 </span>            :                 }
+<span class="lineNum">    1315 </span><span class="lineCov">   12991568 :         }       </span>
+<span class="lineNum">    1316 </span><span class="lineCov">    2212377 : }</span>
+<a name="1317"><span class="lineNum">    1317 </span>            : </a>
+<span class="lineNum">    1318 </span>            : void
+<span class="lineNum">    1319 </span>            : mono_ssa_deadce (MonoCompile *cfg) 
+<span class="lineNum">    1320 </span>            : {
+<span class="lineNum">    1321 </span>            :         int i;
+<span class="lineNum">    1322 </span>            :         GList *work_list;
+<span class="lineNum">    1323 </span>            : 
+<span class="lineNum">    1324 </span><span class="lineCov">   40455088 :         g_assert (cfg-&gt;comp_done &amp; MONO_COMP_SSA);</span>
+<span class="lineNum">    1325 </span>            : 
+<span class="lineNum">    1326 </span>            :         //printf (&quot;DEADCE %s\n&quot;, mono_method_full_name (cfg-&gt;method, TRUE));
+<span class="lineNum">    1327 </span>            : 
+<span class="lineNum">    1328 </span><span class="lineCov">   13478819 :         if (!(cfg-&gt;comp_done &amp; MONO_COMP_SSA_DEF_USE))</span>
+<span class="lineNum">    1329 </span><span class="lineCov">   13479878 :                 mono_ssa_create_def_use (cfg);</span>
+<span class="lineNum">    1330 </span>            : 
+<span class="lineNum">    1331 </span><span class="lineCov">   13480510 :         mono_ssa_copyprop (cfg);</span>
+<span class="lineNum">    1332 </span>            : 
+<span class="lineNum">    1333 </span><span class="lineCov">   13480510 :         work_list = NULL;</span>
+<span class="lineNum">    1334 </span><span class="lineCov">  211293693 :         for (i = 0; i &lt; cfg-&gt;num_varinfo; i++) {</span>
+<span class="lineNum">    1335 </span><span class="lineCov">   92163713 :                 MonoMethodVar *info = MONO_VARINFO (cfg, i);</span>
+<span class="lineNum">    1336 </span><span class="lineCov">   92163713 :                 work_list = g_list_prepend_mempool (cfg-&gt;mempool, work_list, info);</span>
+<span class="lineNum">    1337 </span><span class="lineCov">   92163713 :         }</span>
+<span class="lineNum">    1338 </span>            : 
+<span class="lineNum">    1339 </span><span class="lineCov">  215694625 :         while (work_list) {</span>
+<span class="lineNum">    1340 </span><span class="lineCov">   94391570 :                 MonoMethodVar *info = (MonoMethodVar *)work_list-&gt;data;</span>
+<span class="lineNum">    1341 </span><span class="lineCov">   94391570 :                 work_list = g_list_remove_link (work_list, work_list);</span>
+<span class="lineNum">    1342 </span>            : 
+<span class="lineNum">    1343 </span>            :                 /* 
+<span class="lineNum">    1344 </span>            :                  * The second part of the condition happens often when PHI nodes have their dreg
+<span class="lineNum">    1345 </span>            :                  * as one of their arguments due to the fact that we use the original vars.
+<span class="lineNum">    1346 </span>            :                  */
+<span class="lineNum">    1347 </span><span class="lineCov">  196465099 :                 if (info-&gt;def &amp;&amp; (!info-&gt;uses || ((info-&gt;uses-&gt;next == NULL) &amp;&amp; (((MonoVarUsageInfo*)info-&gt;uses-&gt;data)-&gt;inst == info-&gt;def)))) {</span>
+<span class="lineNum">    1348 </span><span class="lineCov">    3478012 :                         MonoInst *def = info-&gt;def;</span>
+<span class="lineNum">    1349 </span>            : 
+<span class="lineNum">    1350 </span>            :                         /* Eliminating FMOVE could screw up the fp stack */
+<span class="lineNum">    1351 </span><span class="lineCov">    8778544 :                         if (MONO_IS_MOVE (def) &amp;&amp; (!MONO_ARCH_USE_FPSTACK || (def-&gt;opcode != OP_FMOVE))) {</span>
+<span class="lineNum">    1352 </span><span class="lineCov">    6847443 :                                 MonoInst *src_var = get_vreg_to_inst (cfg, def-&gt;sreg1);</span>
+<span class="lineNum">    1353 </span><span class="lineCov">    4471551 :                                 if (src_var &amp;&amp; !(src_var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT)))</span>
+<span class="lineNum">    1354 </span><span class="lineCov">    2189129 :                                         add_to_dce_worklist (cfg, info, MONO_VARINFO (cfg, src_var-&gt;inst_c0), &amp;work_list);</span>
+<span class="lineNum">    1355 </span><span class="lineCov">    9136687 :                                 NULLIFY_INS (def);</span>
+<span class="lineNum">    1356 </span><span class="lineCov">    2284184 :                                 info-&gt;reg = -1;</span>
+<span class="lineNum">    1357 </span><span class="lineCov">    5252452 :                         } else if ((def-&gt;opcode == OP_ICONST) || (def-&gt;opcode == OP_I8CONST) || MONO_IS_ZERO (def)) {</span>
+<span class="lineNum">    1358 </span><span class="lineCov">    4391979 :                                 NULLIFY_INS (def);</span>
+<span class="lineNum">    1359 </span><span class="lineCov">    1098513 :                                 info-&gt;reg = -1;</span>
+<span class="lineNum">    1360 </span><span class="lineCov">    1445447 :                         } else if (MONO_IS_PHI (def)) {</span>
+<span class="lineNum">    1361 </span>            :                                 int j;
+<span class="lineNum">    1362 </span><span class="lineCov">      66986 :                                 for (j = def-&gt;inst_phi_args [0]; j &gt; 0; j--) {</span>
+<span class="lineNum">    1363 </span><span class="lineCov">      66988 :                                         MonoMethodVar *u = MONO_VARINFO (cfg, get_vreg_to_inst (cfg, def-&gt;inst_phi_args [j])-&gt;inst_c0);</span>
+<span class="lineNum">    1364 </span><span class="lineCov">      22330 :                                         add_to_dce_worklist (cfg, info, u, &amp;work_list);</span>
+<span class="lineNum">    1365 </span><span class="lineCov">      22330 :                                 }</span>
+<span class="lineNum">    1366 </span><span class="lineCov">      44659 :                                 NULLIFY_INS (def);</span>
+<span class="lineNum">    1367 </span><span class="lineCov">      11165 :                                 info-&gt;reg = -1;</span>
+<span class="lineNum">    1368 </span><span class="lineCov">      11165 :                         }</span>
+<span class="lineNum">    1369 </span><span class="lineCov">      83940 :                         else if (def-&gt;opcode == OP_NOP) {</span>
+<span class="lineNum">    1370 </span><span class="lineCov">      22121 :                         }</span>
+<span class="lineNum">    1371 </span>            :                         //else
+<span class="lineNum">    1372 </span>            :                         //mono_print_ins (def);
+<span class="lineNum">    1373 </span><span class="lineCov">    3476105 :                 }</span>
+<span class="lineNum">    1374 </span>            : 
+<span class="lineNum">    1375 </span>            :         }
+<span class="lineNum">    1376 </span><span class="lineCov">   13483977 : }</span>
+<span class="lineNum">    1377 </span>            : 
+<span class="lineNum">    1378 </span>            : #if 0
+<span class="lineNum">    1379 </span>            : void
+<span class="lineNum">    1380 </span>            : mono_ssa_strength_reduction (MonoCompile *cfg)
+<span class="lineNum">    1381 </span>            : {
+<span class="lineNum">    1382 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">    1383 </span>            :         int i;
+<span class="lineNum">    1384 </span>            : 
+<span class="lineNum">    1385 </span>            :         g_assert (cfg-&gt;comp_done &amp; MONO_COMP_SSA);
+<span class="lineNum">    1386 </span>            :         g_assert (cfg-&gt;comp_done &amp; MONO_COMP_LOOPS);
+<span class="lineNum">    1387 </span>            :         g_assert (cfg-&gt;comp_done &amp; MONO_COMP_SSA_DEF_USE);
+<span class="lineNum">    1388 </span>            : 
+<span class="lineNum">    1389 </span>            :         for (bb = cfg-&gt;bb_entry-&gt;next_bb; bb; bb = bb-&gt;next_bb) {
+<span class="lineNum">    1390 </span>            :                 GList *lp = bb-&gt;loop_blocks;
+<span class="lineNum">    1391 </span>            : 
+<span class="lineNum">    1392 </span>            :                 if (lp) {
+<span class="lineNum">    1393 </span>            :                         MonoBasicBlock *h = (MonoBasicBlock *)lp-&gt;data;
+<span class="lineNum">    1394 </span>            : 
+<span class="lineNum">    1395 </span>            :                         /* we only consider loops with 2 in bblocks */
+<span class="lineNum">    1396 </span>            :                         if (!h-&gt;in_count == 2)
+<span class="lineNum">    1397 </span>            :                                 continue;
+<span class="lineNum">    1398 </span>            : 
+<span class="lineNum">    1399 </span>            :                         for (i = 0; i &lt; cfg-&gt;num_varinfo; i++) {
+<span class="lineNum">    1400 </span>            :                                 MonoMethodVar *info = MONO_VARINFO (cfg, i);
+<span class="lineNum">    1401 </span>            :                         
+<span class="lineNum">    1402 </span>            :                                 if (info-&gt;def &amp;&amp; info-&gt;def-&gt;ssa_op == MONO_SSA_STORE &amp;&amp;
+<span class="lineNum">    1403 </span>            :                                     info-&gt;def-&gt;inst_i0-&gt;opcode == OP_LOCAL &amp;&amp; g_list_find (lp, info-&gt;def_bb)) {
+<span class="lineNum">    1404 </span>            :                                         MonoInst *v = info-&gt;def-&gt;inst_i1;
+<span class="lineNum">    1405 </span>            : 
+<span class="lineNum">    1406 </span>            : 
+<span class="lineNum">    1407 </span>            :                                         printf (&quot;FOUND %d in %s\n&quot;, info-&gt;idx, mono_method_full_name (cfg-&gt;method, TRUE));
+<span class="lineNum">    1408 </span>            :                                 }
+<span class="lineNum">    1409 </span>            :                         }
+<span class="lineNum">    1410 </span>            :                 }
+<span class="lineNum">    1411 </span>            :         }
+<span class="lineNum">    1412 </span>            : }
+<span class="lineNum">    1413 </span>            : #endif
+<a name="1414"><span class="lineNum">    1414 </span>            : </a>
+<span class="lineNum">    1415 </span>            : void
+<span class="lineNum">    1416 </span>            : mono_ssa_loop_invariant_code_motion (MonoCompile *cfg)
+<span class="lineNum">    1417 </span>            : {
+<span class="lineNum">    1418 </span>            :         MonoBasicBlock *bb, *h, *idom;
+<span class="lineNum">    1419 </span>            :         MonoInst *ins, *n, *tins;
+<span class="lineNum">    1420 </span>            :         int i;
+<span class="lineNum">    1421 </span>            : 
+<span class="lineNum">    1422 </span><span class="lineCov">     349931 :         g_assert (cfg-&gt;comp_done &amp; MONO_COMP_SSA);</span>
+<span class="lineNum">    1423 </span><span class="lineCov">     233290 :         if (!(cfg-&gt;comp_done &amp; MONO_COMP_LOOPS) || !(cfg-&gt;comp_done &amp; MONO_COMP_SSA_DEF_USE))</span>
+<span class="lineNum">    1424 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1425 </span>            : 
+<span class="lineNum">    1426 </span><span class="lineCov">    2460543 :         for (bb = cfg-&gt;bb_entry-&gt;next_bb; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">    1427 </span><span class="lineCov">    1113624 :                 GList *lp = bb-&gt;loop_blocks;</span>
+<span class="lineNum">    1428 </span>            : 
+<span class="lineNum">    1429 </span><span class="lineCov">    1113624 :                 if (!lp)</span>
+<span class="lineNum">    1430 </span><span class="lineCov">    1090447 :                         continue;</span>
+<span class="lineNum">    1431 </span><span class="lineCov">      23176 :                 h = (MonoBasicBlock *)lp-&gt;data;</span>
+<span class="lineNum">    1432 </span><span class="lineCov">      23176 :                 if (bb != h)</span>
+<span class="lineNum">    1433 </span><span class="lineCov">       1832 :                         continue;</span>
+<span class="lineNum">    1434 </span><span class="lineCov">     618591 :                 MONO_BB_FOR_EACH_INS_SAFE (bb, n, ins) {</span>
+<span class="lineNum">    1435 </span>            :                         /*
+<span class="lineNum">    1436 </span>            :                          * Try to move instructions out of loop headers into the preceeding bblock.
+<span class="lineNum">    1437 </span>            :                          */
+<span class="lineNum">    1438 </span><span class="lineCov">     640007 :                         if (ins-&gt;opcode == OP_LDLEN || ins-&gt;opcode == OP_STRLEN || ins-&gt;opcode == OP_CHECK_THIS || ins-&gt;opcode == OP_AOTCONST || ins-&gt;opcode == OP_GENERIC_CLASS_INIT) {</span>
+<span class="lineNum">    1439 </span>            :                                 gboolean skip;
+<span class="lineNum">    1440 </span>            :                                 int sreg;
+<span class="lineNum">    1441 </span>            : 
+<span class="lineNum">    1442 </span><span class="lineCov">       7045 :                                 idom = h-&gt;idom;</span>
+<span class="lineNum">    1443 </span>            :                                 /*
+<span class="lineNum">    1444 </span>            :                                  * h-&gt;nesting is needed to work around:
+<span class="lineNum">    1445 </span>            :                                  * http://llvm.org/bugs/show_bug.cgi?id=17868
+<span class="lineNum">    1446 </span>            :                                  */
+<span class="lineNum">    1447 </span><span class="lineCov">      34697 :                                 if (!(idom &amp;&amp; idom-&gt;last_ins &amp;&amp; idom-&gt;last_ins-&gt;opcode == OP_BR &amp;&amp; idom-&gt;last_ins-&gt;inst_target_bb == h &amp;&amp; h-&gt;nesting == 1)) {</span>
+<span class="lineNum">    1448 </span><span class="lineCov">       1436 :                                         continue;</span>
+<span class="lineNum">    1449 </span>            :                                 }
+<span class="lineNum">    1450 </span>            : 
+<span class="lineNum">    1451 </span>            :                                 /*
+<span class="lineNum">    1452 </span>            :                                  * Make sure there are no instructions with side effects before ins.
+<span class="lineNum">    1453 </span>            :                                  */
+<span class="lineNum">    1454 </span><span class="lineCov">       5609 :                                 skip = FALSE;</span>
+<span class="lineNum">    1455 </span><span class="lineCov">      38908 :                                 MONO_BB_FOR_EACH_INS (bb, tins) {</span>
+<span class="lineNum">    1456 </span><span class="lineCov">      19454 :                                         if (tins == ins)</span>
+<span class="lineNum">    1457 </span><span class="lineCov">       4164 :                                                 break;</span>
+<span class="lineNum">    1458 </span><span class="lineCov">     455680 :                                         if (!MONO_INS_HAS_NO_SIDE_EFFECT (tins)) {</span>
+<span class="lineNum">    1459 </span><span class="lineCov">       1445 :                                                 skip = TRUE;</span>
+<span class="lineNum">    1460 </span><span class="lineCov">       1445 :                                                 break;</span>
+<span class="lineNum">    1461 </span>            :                                         }
+<span class="lineNum">    1462 </span><span class="lineCov">      13845 :                                 }</span>
+<span class="lineNum">    1463 </span><span class="lineCov">       5609 :                                 if (skip) {</span>
+<span class="lineNum">    1464 </span>            :                                         /*
+<span class="lineNum">    1465 </span>            :                                           printf (&quot;%s\n&quot;, mono_method_full_name (cfg-&gt;method, TRUE));
+<span class="lineNum">    1466 </span>            :                                           mono_print_ins (tins);
+<span class="lineNum">    1467 </span>            :                                         */
+<span class="lineNum">    1468 </span><span class="lineCov">       1445 :                                         continue;</span>
+<span class="lineNum">    1469 </span>            :                                 }
+<span class="lineNum">    1470 </span>            : 
+<span class="lineNum">    1471 </span>            :                                 /* Make sure we don't move the instruction before the def of its sreg */
+<span class="lineNum">    1472 </span><span class="lineCov">       5383 :                                 if (ins-&gt;opcode == OP_LDLEN || ins-&gt;opcode == OP_STRLEN || ins-&gt;opcode == OP_CHECK_THIS)</span>
+<span class="lineNum">    1473 </span><span class="lineCov">       4164 :                                         sreg = ins-&gt;sreg1;</span>
+<span class="lineNum">    1474 </span>            :                                 else
+<span class="lineNum">    1475 </span><span class="lineNoCov">          0 :                                         sreg = -1;</span>
+<span class="lineNum">    1476 </span><span class="lineCov">       4164 :                                 if (sreg != -1) {</span>
+<span class="lineNum">    1477 </span>            :                                         MonoInst *tins, *var;
+<span class="lineNum">    1478 </span>            : 
+<span class="lineNum">    1479 </span><span class="lineCov">       4164 :                                         skip = FALSE;</span>
+<span class="lineNum">    1480 </span><span class="lineCov">      29326 :                                         for (tins = ins-&gt;prev; tins; tins = tins-&gt;prev) {</span>
+<span class="lineNum">    1481 </span><span class="lineCov">      10565 :                                                 const char *spec = INS_INFO (tins-&gt;opcode);</span>
+<span class="lineNum">    1482 </span>            : 
+<span class="lineNum">    1483 </span><span class="lineCov">      11197 :                                                 if (tins-&gt;opcode == OP_MOVE &amp;&amp; tins-&gt;dreg == sreg) {</span>
+<span class="lineNum">    1484 </span><span class="lineCov">        152 :                                                         sreg = tins-&gt;sreg1;</span>
+<span class="lineNum">    1485 </span><span class="lineCov">      17118 :                                                 } if (spec [MONO_INST_DEST] != ' ' &amp;&amp; tins-&gt;dreg == sreg) {</span>
+<span class="lineNum">    1486 </span><span class="lineCov">         66 :                                                         skip = TRUE;</span>
+<span class="lineNum">    1487 </span><span class="lineCov">         66 :                                                         break;</span>
+<span class="lineNum">    1488 </span>            :                                                 }
+<span class="lineNum">    1489 </span><span class="lineCov">      10499 :                                         }</span>
+<span class="lineNum">    1490 </span><span class="lineCov">       4164 :                                         if (skip)</span>
+<span class="lineNum">    1491 </span><span class="lineCov">         66 :                                                 continue;</span>
+<span class="lineNum">    1492 </span><span class="lineCov">      12294 :                                         var = get_vreg_to_inst (cfg, sreg);</span>
+<span class="lineNum">    1493 </span><span class="lineCov">       8196 :                                         if (var &amp;&amp; (var-&gt;flags &amp; (MONO_INST_VOLATILE|MONO_INST_INDIRECT)))</span>
+<span class="lineNum">    1494 </span><span class="lineCov">        152 :                                                 continue;</span>
+<span class="lineNum">    1495 </span><span class="lineCov">       3946 :                                         ins-&gt;sreg1 = sreg;</span>
+<span class="lineNum">    1496 </span><span class="lineCov">       3946 :                                 }</span>
+<span class="lineNum">    1497 </span>            : 
+<span class="lineNum">    1498 </span><span class="lineCov">       3946 :                                 if (cfg-&gt;verbose_level &gt; 1) {</span>
+<span class="lineNum">    1499 </span><span class="lineNoCov">          0 :                                         printf (&quot;licm in BB%d on &quot;, bb-&gt;block_num);</span>
+<span class="lineNum">    1500 </span><span class="lineNoCov">          0 :                                         mono_print_ins (ins);</span>
+<span class="lineNum">    1501 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">    1502 </span>            :                                 //{ static int count = 0; count ++; printf (&quot;%d\n&quot;, count); }
+<span class="lineNum">    1503 </span><span class="lineCov">      31568 :                                 MONO_REMOVE_INS (bb, ins);</span>
+<span class="lineNum">    1504 </span><span class="lineCov">       3946 :                                 mono_bblock_insert_before_ins (idom, idom-&gt;last_ins, ins);</span>
+<span class="lineNum">    1505 </span><span class="lineCov">       4817 :                                 if (ins-&gt;opcode == OP_LDLEN || ins-&gt;opcode == OP_STRLEN)</span>
+<span class="lineNum">    1506 </span><span class="lineCov">       3736 :                                         idom-&gt;has_array_access = TRUE;</span>
+<span class="lineNum">    1507 </span><span class="lineCov">       3946 :                         }</span>
+<span class="lineNum">    1508 </span><span class="lineCov">     130204 :                 }</span>
+<span class="lineNum">    1509 </span><span class="lineCov">      21344 :         }</span>
+<span class="lineNum">    1510 </span>            : 
+<span class="lineNum">    1511 </span><span class="lineCov">     116646 :         cfg-&gt;comp_done &amp;=  ~MONO_COMP_SSA_DEF_USE;</span>
+<span class="lineNum">    1512 </span><span class="lineCov">    2129533 :         for (i = 0; i &lt; cfg-&gt;num_varinfo; i++) {</span>
+<span class="lineNum">    1513 </span><span class="lineCov">     948125 :                 MonoMethodVar *info = MONO_VARINFO (cfg, i);</span>
+<span class="lineNum">    1514 </span><span class="lineCov">     948125 :                 info-&gt;def = NULL;</span>
+<span class="lineNum">    1515 </span><span class="lineCov">     948125 :                 info-&gt;uses = NULL;</span>
+<span class="lineNum">    1516 </span><span class="lineCov">     948125 :         }</span>
+<span class="lineNum">    1517 </span><span class="lineCov">     116645 : }</span>
+<span class="lineNum">    1518 </span>            : 
+<span class="lineNum">    1519 </span>            : #else /* !DISABLE_JIT */
+<span class="lineNum">    1520 </span>            : 
+<span class="lineNum">    1521 </span>            : MONO_EMPTY_SOURCE_FILE (ssa);
+<span class="lineNum">    1522 </span>            : 
+<span class="lineNum">    1523 </span>            : #endif /* !DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

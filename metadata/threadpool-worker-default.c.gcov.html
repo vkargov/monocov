@@ -1,0 +1,1347 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/threadpool-worker-default.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - threadpool-worker-default.c<span style="font-size: 80%;"> (source / <a href="threadpool-worker-default.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">452</td>
+            <td class="headerCovTableEntry">500</td>
+            <td class="headerCovTableEntryHi">90.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">33</td>
+            <td class="headerCovTableEntry">35</td>
+            <td class="headerCovTableEntryHi">94.3 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * threadpool-worker.c: native threadpool worker
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Ludovic Henry (ludovic.henry@xamarin.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      11 </span>            : #define _USE_MATH_DEFINES // needed by MSVC to define math constants
+<span class="lineNum">      12 </span>            : #include &lt;math.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;mono/metadata/class-internals.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;mono/metadata/exception.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/metadata/gc-internals.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/object.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/metadata/object-internals.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/metadata/threadpool.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;mono/metadata/threadpool-worker.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/metadata/threadpool-io.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;mono/metadata/w32event.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;mono/utils/mono-complex.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;mono/utils/mono-lazy-init.h&gt;
+<span class="lineNum">      29 </span>            : #include &lt;mono/utils/mono-logger.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;mono/utils/mono-logger-internals.h&gt;
+<span class="lineNum">      31 </span>            : #include &lt;mono/utils/mono-proclib.h&gt;
+<span class="lineNum">      32 </span>            : #include &lt;mono/utils/mono-threads.h&gt;
+<span class="lineNum">      33 </span>            : #include &lt;mono/utils/mono-time.h&gt;
+<span class="lineNum">      34 </span>            : #include &lt;mono/utils/mono-rand.h&gt;
+<span class="lineNum">      35 </span>            : #include &lt;mono/utils/refcount.h&gt;
+<span class="lineNum">      36 </span>            : 
+<span class="lineNum">      37 </span>            : #define CPU_USAGE_LOW 80
+<span class="lineNum">      38 </span>            : #define CPU_USAGE_HIGH 95
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : #define MONITOR_INTERVAL 500 // ms
+<span class="lineNum">      41 </span>            : #define MONITOR_MINIMAL_LIFETIME 60 * 1000 // ms
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : #define WORKER_CREATION_MAX_PER_SEC 10
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            : /* The exponent to apply to the gain. 1.0 means to use linear gain,
+<span class="lineNum">      46 </span>            :  * higher values will enhance large moves and damp small ones.
+<span class="lineNum">      47 </span>            :  * default: 2.0 */
+<span class="lineNum">      48 </span>            : #define HILL_CLIMBING_GAIN_EXPONENT 2.0
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span>            : /* The 'cost' of a thread. 0 means drive for increased throughput regardless
+<span class="lineNum">      51 </span>            :  * of thread count, higher values bias more against higher thread counts.
+<span class="lineNum">      52 </span>            :  * default: 0.15 */
+<span class="lineNum">      53 </span>            : #define HILL_CLIMBING_BIAS 0.15
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : #define HILL_CLIMBING_WAVE_PERIOD 4
+<span class="lineNum">      56 </span>            : #define HILL_CLIMBING_MAX_WAVE_MAGNITUDE 20
+<span class="lineNum">      57 </span>            : #define HILL_CLIMBING_WAVE_MAGNITUDE_MULTIPLIER 1.0
+<span class="lineNum">      58 </span>            : #define HILL_CLIMBING_WAVE_HISTORY_SIZE 8
+<span class="lineNum">      59 </span>            : #define HILL_CLIMBING_TARGET_SIGNAL_TO_NOISE_RATIO 3.0
+<span class="lineNum">      60 </span>            : #define HILL_CLIMBING_MAX_CHANGE_PER_SECOND 4
+<span class="lineNum">      61 </span>            : #define HILL_CLIMBING_MAX_CHANGE_PER_SAMPLE 20
+<span class="lineNum">      62 </span>            : #define HILL_CLIMBING_SAMPLE_INTERVAL_LOW 10
+<span class="lineNum">      63 </span>            : #define HILL_CLIMBING_SAMPLE_INTERVAL_HIGH 200
+<span class="lineNum">      64 </span>            : #define HILL_CLIMBING_ERROR_SMOOTHING_FACTOR 0.01
+<span class="lineNum">      65 </span>            : #define HILL_CLIMBING_MAX_SAMPLE_ERROR_PERCENT 0.15
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            : typedef enum {
+<span class="lineNum">      68 </span>            :         TRANSITION_WARMUP,
+<span class="lineNum">      69 </span>            :         TRANSITION_INITIALIZING,
+<span class="lineNum">      70 </span>            :         TRANSITION_RANDOM_MOVE,
+<span class="lineNum">      71 </span>            :         TRANSITION_CLIMBING_MOVE,
+<span class="lineNum">      72 </span>            :         TRANSITION_CHANGE_POINT,
+<span class="lineNum">      73 </span>            :         TRANSITION_STABILIZING,
+<span class="lineNum">      74 </span>            :         TRANSITION_STARVATION,
+<span class="lineNum">      75 </span>            :         TRANSITION_THREAD_TIMED_OUT,
+<span class="lineNum">      76 </span>            :         TRANSITION_UNDEFINED,
+<span class="lineNum">      77 </span>            : } ThreadPoolHeuristicStateTransition;
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            : typedef struct {
+<span class="lineNum">      80 </span>            :         gint32 wave_period;
+<span class="lineNum">      81 </span>            :         gint32 samples_to_measure;
+<span class="lineNum">      82 </span>            :         gdouble target_throughput_ratio;
+<span class="lineNum">      83 </span>            :         gdouble target_signal_to_noise_ratio;
+<span class="lineNum">      84 </span>            :         gdouble max_change_per_second;
+<span class="lineNum">      85 </span>            :         gdouble max_change_per_sample;
+<span class="lineNum">      86 </span>            :         gint32 max_thread_wave_magnitude;
+<span class="lineNum">      87 </span>            :         gint32 sample_interval_low;
+<span class="lineNum">      88 </span>            :         gdouble thread_magnitude_multiplier;
+<span class="lineNum">      89 </span>            :         gint32 sample_interval_high;
+<span class="lineNum">      90 </span>            :         gdouble throughput_error_smoothing_factor;
+<span class="lineNum">      91 </span>            :         gdouble gain_exponent;
+<span class="lineNum">      92 </span>            :         gdouble max_sample_error;
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span>            :         gdouble current_control_setting;
+<span class="lineNum">      95 </span>            :         gint64 total_samples;
+<span class="lineNum">      96 </span>            :         gint16 last_thread_count;
+<span class="lineNum">      97 </span>            :         gdouble elapsed_since_last_change;
+<span class="lineNum">      98 </span>            :         gdouble completions_since_last_change;
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span>            :         gdouble average_throughput_noise;
+<span class="lineNum">     101 </span>            : 
+<span class="lineNum">     102 </span>            :         gdouble *samples;
+<span class="lineNum">     103 </span>            :         gdouble *thread_counts;
+<span class="lineNum">     104 </span>            : 
+<span class="lineNum">     105 </span>            :         guint32 current_sample_interval;
+<span class="lineNum">     106 </span>            :         gpointer random_interval_generator;
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span>            :         gint32 accumulated_completion_count;
+<span class="lineNum">     109 </span>            :         gdouble accumulated_sample_duration;
+<span class="lineNum">     110 </span>            : } ThreadPoolHillClimbing;
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span>            : typedef struct {
+<span class="lineNum">     113 </span>            :         MonoThreadPoolWorkerCallback callback;
+<span class="lineNum">     114 </span>            :         gpointer data;
+<span class="lineNum">     115 </span>            : } ThreadPoolWorkItem;
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span>            : typedef union {
+<span class="lineNum">     118 </span>            :         struct {
+<span class="lineNum">     119 </span>            :                 gint16 max_working; /* determined by heuristic */
+<span class="lineNum">     120 </span>            :                 gint16 starting; /* starting, but not yet in worker_thread */
+<span class="lineNum">     121 </span>            :                 gint16 working; /* executing worker_thread */
+<span class="lineNum">     122 </span>            :                 gint16 parked; /* parked */
+<span class="lineNum">     123 </span>            :         } _;
+<span class="lineNum">     124 </span>            :         gint64 as_gint64;
+<span class="lineNum">     125 </span>            : } ThreadPoolWorkerCounter;
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span>            : typedef MonoInternalThread ThreadPoolWorkerThread;
+<span class="lineNum">     128 </span>            : 
+<span class="lineNum">     129 </span>            : struct MonoThreadPoolWorker {
+<span class="lineNum">     130 </span>            :         MonoRefCount ref;
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span>            :         ThreadPoolWorkerCounter counters;
+<span class="lineNum">     133 </span>            : 
+<span class="lineNum">     134 </span>            :         GPtrArray *threads; // ThreadPoolWorkerThread* []
+<span class="lineNum">     135 </span>            :         MonoCoopMutex threads_lock; /* protect access to working_threads and parked_threads */
+<span class="lineNum">     136 </span>            :         gint32 parked_threads_count;
+<span class="lineNum">     137 </span>            :         MonoCoopCond parked_threads_cond;
+<span class="lineNum">     138 </span>            :         MonoCoopCond threads_exit_cond;
+<span class="lineNum">     139 </span>            : 
+<span class="lineNum">     140 </span>            :         ThreadPoolWorkItem *work_items; // ThreadPoolWorkItem []
+<span class="lineNum">     141 </span>            :         gint32 work_items_count;
+<span class="lineNum">     142 </span>            :         gint32 work_items_size;
+<span class="lineNum">     143 </span>            :         MonoCoopMutex work_items_lock;
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span>            :         guint32 worker_creation_current_second;
+<span class="lineNum">     146 </span>            :         guint32 worker_creation_current_count;
+<span class="lineNum">     147 </span>            :         MonoCoopMutex worker_creation_lock;
+<span class="lineNum">     148 </span>            : 
+<span class="lineNum">     149 </span>            :         gint32 heuristic_completions;
+<span class="lineNum">     150 </span>            :         gint64 heuristic_sample_start;
+<span class="lineNum">     151 </span>            :         gint64 heuristic_last_dequeue; // ms
+<span class="lineNum">     152 </span>            :         gint64 heuristic_last_adjustment; // ms
+<span class="lineNum">     153 </span>            :         gint64 heuristic_adjustment_interval; // ms
+<span class="lineNum">     154 </span>            :         ThreadPoolHillClimbing heuristic_hill_climbing;
+<span class="lineNum">     155 </span>            :         MonoCoopMutex heuristic_lock;
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span>            :         gint32 limit_worker_min;
+<span class="lineNum">     158 </span>            :         gint32 limit_worker_max;
+<span class="lineNum">     159 </span>            : 
+<span class="lineNum">     160 </span>            :         MonoCpuUsageState *cpu_usage_state;
+<span class="lineNum">     161 </span>            :         gint32 cpu_usage;
+<span class="lineNum">     162 </span>            : 
+<span class="lineNum">     163 </span>            :         /* suspended by the debugger */
+<span class="lineNum">     164 </span>            :         gboolean suspended;
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span>            :         gint32 monitor_status;
+<span class="lineNum">     167 </span>            : };
+<span class="lineNum">     168 </span>            : 
+<span class="lineNum">     169 </span>            : enum {
+<span class="lineNum">     170 </span>            :         MONITOR_STATUS_REQUESTED,
+<span class="lineNum">     171 </span>            :         MONITOR_STATUS_WAITING_FOR_REQUEST,
+<span class="lineNum">     172 </span>            :         MONITOR_STATUS_NOT_RUNNING,
+<span class="lineNum">     173 </span>            : };
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span>            : #define COUNTER_CHECK(counter) \
+<span class="lineNum">     176 </span>            :         do { \
+<span class="lineNum">     177 </span>            :                 g_assert (counter._.max_working &gt; 0); \
+<span class="lineNum">     178 </span>            :                 g_assert (counter._.starting &gt;= 0); \
+<span class="lineNum">     179 </span>            :                 g_assert (counter._.working &gt;= 0); \
+<span class="lineNum">     180 </span>            :         } while (0)
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span>            : #define COUNTER_ATOMIC(worker,var,block) \
+<span class="lineNum">     183 </span>            :         do { \
+<span class="lineNum">     184 </span>            :                 ThreadPoolWorkerCounter __old; \
+<span class="lineNum">     185 </span>            :                 do { \
+<span class="lineNum">     186 </span>            :                         g_assert (worker); \
+<span class="lineNum">     187 </span>            :                         __old = COUNTER_READ (worker); \
+<span class="lineNum">     188 </span>            :                         (var) = __old; \
+<span class="lineNum">     189 </span>            :                         { block; } \
+<span class="lineNum">     190 </span>            :                         COUNTER_CHECK (var); \
+<span class="lineNum">     191 </span>            :                 } while (InterlockedCompareExchange64 (&amp;worker-&gt;counters.as_gint64, (var).as_gint64, __old.as_gint64) != __old.as_gint64); \
+<span class="lineNum">     192 </span>            :         } while (0)
+<a name="193"><span class="lineNum">     193 </span>            : </a>
+<span class="lineNum">     194 </span>            : static inline ThreadPoolWorkerCounter
+<span class="lineNum">     195 </span>            : COUNTER_READ (MonoThreadPoolWorker *worker)
+<span class="lineNum">     196 </span>            : {
+<span class="lineNum">     197 </span>            :         ThreadPoolWorkerCounter counter;
+<span class="lineNum">     198 </span><span class="lineCov">    2880599 :         counter.as_gint64 = InterlockedRead64 (&amp;worker-&gt;counters.as_gint64);</span>
+<span class="lineNum">     199 </span><span class="lineCov">    2880599 :         return counter;</span>
+<span class="lineNum">     200 </span>            : }
+<a name="201"><span class="lineNum">     201 </span>            : </a>
+<span class="lineNum">     202 </span>            : static gpointer
+<span class="lineNum">     203 </span>            : rand_create (void)
+<span class="lineNum">     204 </span>            : {
+<span class="lineNum">     205 </span><span class="lineCov">       2242 :         mono_rand_open ();</span>
+<span class="lineNum">     206 </span><span class="lineCov">       2242 :         return mono_rand_init (NULL, 0);</span>
+<span class="lineNum">     207 </span>            : }
+<a name="208"><span class="lineNum">     208 </span>            : </a>
+<span class="lineNum">     209 </span>            : static guint32
+<span class="lineNum">     210 </span>            : rand_next (gpointer *handle, guint32 min, guint32 max)
+<span class="lineNum">     211 </span>            : {
+<span class="lineNum">     212 </span>            :         MonoError error;
+<span class="lineNum">     213 </span>            :         guint32 val;
+<span class="lineNum">     214 </span><span class="lineCov">     980032 :         mono_rand_try_get_uint32 (handle, &amp;val, min, max, &amp;error);</span>
+<span class="lineNum">     215 </span>            :         // FIXME handle error
+<span class="lineNum">     216 </span><span class="lineCov">     980032 :         mono_error_assert_ok (&amp;error);</span>
+<span class="lineNum">     217 </span><span class="lineCov">     980032 :         return val;</span>
+<span class="lineNum">     218 </span>            : }
+<a name="219"><span class="lineNum">     219 </span>            : </a>
+<span class="lineNum">     220 </span>            : static void
+<span class="lineNum">     221 </span>            : destroy (gpointer data)
+<span class="lineNum">     222 </span>            : {
+<span class="lineNum">     223 </span>            :         MonoThreadPoolWorker *worker;
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span><span class="lineCov">       1104 :         worker = (MonoThreadPoolWorker*) data;</span>
+<span class="lineNum">     226 </span><span class="lineCov">       3312 :         g_assert (worker);</span>
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span>            :         // FIXME destroy everything
+<span class="lineNum">     229 </span>            : 
+<span class="lineNum">     230 </span><span class="lineCov">       1104 :         g_free (worker);</span>
+<span class="lineNum">     231 </span><span class="lineCov">       1104 : }</span>
+<a name="232"><span class="lineNum">     232 </span>            : </a>
+<span class="lineNum">     233 </span>            : void
+<span class="lineNum">     234 </span>            : mono_threadpool_worker_init (MonoThreadPoolWorker **worker)
+<span class="lineNum">     235 </span>            : {
+<span class="lineNum">     236 </span>            :         MonoThreadPoolWorker *wk;
+<span class="lineNum">     237 </span>            :         ThreadPoolHillClimbing *hc;
+<span class="lineNum">     238 </span>            :         const char *threads_per_cpu_env;
+<span class="lineNum">     239 </span>            :         gint threads_per_cpu;
+<span class="lineNum">     240 </span>            :         gint threads_count;
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span><span class="lineCov">       3366 :         g_assert (worker);</span>
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span><span class="lineCov">       1122 :         wk = *worker = g_new0 (MonoThreadPoolWorker, 1);</span>
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">       2244 :         mono_refcount_init (wk, destroy);</span>
+<span class="lineNum">     247 </span>            : 
+<span class="lineNum">     248 </span><span class="lineCov">       1122 :         wk-&gt;threads = g_ptr_array_new ();</span>
+<span class="lineNum">     249 </span><span class="lineCov">       1122 :         mono_coop_mutex_init (&amp;wk-&gt;threads_lock);</span>
+<span class="lineNum">     250 </span><span class="lineCov">       1122 :         wk-&gt;parked_threads_count = 0;</span>
+<span class="lineNum">     251 </span><span class="lineCov">       1122 :         mono_coop_cond_init (&amp;wk-&gt;parked_threads_cond);</span>
+<span class="lineNum">     252 </span><span class="lineCov">       1122 :         mono_coop_cond_init (&amp;wk-&gt;threads_exit_cond);</span>
+<span class="lineNum">     253 </span>            : 
+<span class="lineNum">     254 </span>            :         /* wk-&gt;work_items_size is inited to 0 */
+<span class="lineNum">     255 </span><span class="lineCov">       1122 :         mono_coop_mutex_init (&amp;wk-&gt;work_items_lock);</span>
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span><span class="lineCov">       1122 :         wk-&gt;worker_creation_current_second = -1;</span>
+<span class="lineNum">     258 </span><span class="lineCov">       1122 :         mono_coop_mutex_init (&amp;wk-&gt;worker_creation_lock);</span>
+<span class="lineNum">     259 </span>            : 
+<span class="lineNum">     260 </span><span class="lineCov">       1122 :         wk-&gt;heuristic_adjustment_interval = 10;</span>
+<span class="lineNum">     261 </span><span class="lineCov">       1122 :         mono_coop_mutex_init (&amp;wk-&gt;heuristic_lock);</span>
+<span class="lineNum">     262 </span>            : 
+<span class="lineNum">     263 </span><span class="lineCov">       1122 :         mono_rand_open ();</span>
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineCov">       1122 :         hc = &amp;wk-&gt;heuristic_hill_climbing;</span>
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineCov">       1122 :         hc-&gt;wave_period = HILL_CLIMBING_WAVE_PERIOD;</span>
+<span class="lineNum">     268 </span><span class="lineCov">       1122 :         hc-&gt;max_thread_wave_magnitude = HILL_CLIMBING_MAX_WAVE_MAGNITUDE;</span>
+<span class="lineNum">     269 </span><span class="lineCov">       1122 :         hc-&gt;thread_magnitude_multiplier = (gdouble) HILL_CLIMBING_WAVE_MAGNITUDE_MULTIPLIER;</span>
+<span class="lineNum">     270 </span><span class="lineCov">       1122 :         hc-&gt;samples_to_measure = hc-&gt;wave_period * HILL_CLIMBING_WAVE_HISTORY_SIZE;</span>
+<span class="lineNum">     271 </span><span class="lineCov">       1122 :         hc-&gt;target_throughput_ratio = (gdouble) HILL_CLIMBING_BIAS;</span>
+<span class="lineNum">     272 </span><span class="lineCov">       1122 :         hc-&gt;target_signal_to_noise_ratio = (gdouble) HILL_CLIMBING_TARGET_SIGNAL_TO_NOISE_RATIO;</span>
+<span class="lineNum">     273 </span><span class="lineCov">       1122 :         hc-&gt;max_change_per_second = (gdouble) HILL_CLIMBING_MAX_CHANGE_PER_SECOND;</span>
+<span class="lineNum">     274 </span><span class="lineCov">       1122 :         hc-&gt;max_change_per_sample = (gdouble) HILL_CLIMBING_MAX_CHANGE_PER_SAMPLE;</span>
+<span class="lineNum">     275 </span><span class="lineCov">       1122 :         hc-&gt;sample_interval_low = HILL_CLIMBING_SAMPLE_INTERVAL_LOW;</span>
+<span class="lineNum">     276 </span><span class="lineCov">       1122 :         hc-&gt;sample_interval_high = HILL_CLIMBING_SAMPLE_INTERVAL_HIGH;</span>
+<span class="lineNum">     277 </span><span class="lineCov">       1122 :         hc-&gt;throughput_error_smoothing_factor = (gdouble) HILL_CLIMBING_ERROR_SMOOTHING_FACTOR;</span>
+<span class="lineNum">     278 </span><span class="lineCov">       1122 :         hc-&gt;gain_exponent = (gdouble) HILL_CLIMBING_GAIN_EXPONENT;</span>
+<span class="lineNum">     279 </span><span class="lineCov">       1122 :         hc-&gt;max_sample_error = (gdouble) HILL_CLIMBING_MAX_SAMPLE_ERROR_PERCENT;</span>
+<span class="lineNum">     280 </span><span class="lineCov">       1122 :         hc-&gt;current_control_setting = 0;</span>
+<span class="lineNum">     281 </span><span class="lineCov">       1122 :         hc-&gt;total_samples = 0;</span>
+<span class="lineNum">     282 </span><span class="lineCov">       1122 :         hc-&gt;last_thread_count = 0;</span>
+<span class="lineNum">     283 </span><span class="lineCov">       1122 :         hc-&gt;average_throughput_noise = 0;</span>
+<span class="lineNum">     284 </span><span class="lineCov">       1122 :         hc-&gt;elapsed_since_last_change = 0;</span>
+<span class="lineNum">     285 </span><span class="lineCov">       1122 :         hc-&gt;accumulated_completion_count = 0;</span>
+<span class="lineNum">     286 </span><span class="lineCov">       1122 :         hc-&gt;accumulated_sample_duration = 0;</span>
+<span class="lineNum">     287 </span><span class="lineCov">       1122 :         hc-&gt;samples = g_new0 (gdouble, hc-&gt;samples_to_measure);</span>
+<span class="lineNum">     288 </span><span class="lineCov">       1122 :         hc-&gt;thread_counts = g_new0 (gdouble, hc-&gt;samples_to_measure);</span>
+<span class="lineNum">     289 </span><span class="lineCov">       1122 :         hc-&gt;random_interval_generator = rand_create ();</span>
+<span class="lineNum">     290 </span><span class="lineCov">       1122 :         hc-&gt;current_sample_interval = rand_next (&amp;hc-&gt;random_interval_generator, hc-&gt;sample_interval_low, hc-&gt;sample_interval_high);</span>
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span><span class="lineCov">       1122 :         if (!(threads_per_cpu_env = g_getenv (&quot;MONO_THREADS_PER_CPU&quot;)))</span>
+<span class="lineNum">     293 </span><span class="lineCov">       1122 :                 threads_per_cpu = 1;</span>
+<span class="lineNum">     294 </span>            :         else
+<span class="lineNum">     295 </span><span class="lineNoCov">          0 :                 threads_per_cpu = CLAMP (atoi (threads_per_cpu_env), 1, 50);</span>
+<span class="lineNum">     296 </span>            : 
+<span class="lineNum">     297 </span><span class="lineCov">       1122 :         threads_count = mono_cpu_count () * threads_per_cpu;</span>
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span><span class="lineCov">       1122 :         wk-&gt;limit_worker_min = threads_count;</span>
+<span class="lineNum">     300 </span>            : 
+<span class="lineNum">     301 </span>            : #if defined (PLATFORM_ANDROID) || defined (HOST_IOS)
+<span class="lineNum">     302 </span>            :         wk-&gt;limit_worker_max = CLAMP (threads_count * 100, MIN (threads_count, 200), MAX (threads_count, 200));
+<span class="lineNum">     303 </span>            : #else
+<span class="lineNum">     304 </span><span class="lineCov">       1122 :         wk-&gt;limit_worker_max = threads_count * 100;</span>
+<span class="lineNum">     305 </span>            : #endif
+<span class="lineNum">     306 </span>            : 
+<span class="lineNum">     307 </span><span class="lineCov">       1122 :         wk-&gt;counters._.max_working = wk-&gt;limit_worker_min;</span>
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span><span class="lineCov">       1122 :         wk-&gt;cpu_usage_state = g_new0 (MonoCpuUsageState, 1);</span>
+<span class="lineNum">     310 </span>            : 
+<span class="lineNum">     311 </span><span class="lineCov">       1122 :         wk-&gt;suspended = FALSE;</span>
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span><span class="lineCov">       1122 :         wk-&gt;monitor_status = MONITOR_STATUS_NOT_RUNNING;</span>
+<span class="lineNum">     314 </span><span class="lineCov">       1122 : }</span>
+<a name="315"><span class="lineNum">     315 </span>            : </a>
+<span class="lineNum">     316 </span>            : void
+<span class="lineNum">     317 </span>            : mono_threadpool_worker_cleanup (MonoThreadPoolWorker *worker)
+<span class="lineNum">     318 </span>            : {
+<span class="lineNum">     319 </span>            :         MonoInternalThread *current;
+<span class="lineNum">     320 </span>            : 
+<span class="lineNum">     321 </span>            :         /* we make the assumption along the code that we are
+<span class="lineNum">     322 </span>            :          * cleaning up only if the runtime is shutting down */
+<span class="lineNum">     323 </span><span class="lineCov">       3348 :         g_assert (mono_runtime_is_shutting_down ());</span>
+<span class="lineNum">     324 </span>            : 
+<span class="lineNum">     325 </span><span class="lineCov">       1116 :         current = mono_thread_internal_current ();</span>
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span><span class="lineCov">     426276 :         while (worker-&gt;monitor_status != MONITOR_STATUS_NOT_RUNNING)</span>
+<span class="lineNum">     328 </span><span class="lineCov">     212022 :                 mono_thread_info_sleep (1, NULL);</span>
+<span class="lineNum">     329 </span>            : 
+<span class="lineNum">     330 </span><span class="lineCov">       1116 :         mono_coop_mutex_lock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     331 </span>            : 
+<span class="lineNum">     332 </span>            :         /* unpark all worker-&gt;parked_threads */
+<span class="lineNum">     333 </span><span class="lineCov">       1116 :         mono_coop_cond_broadcast (&amp;worker-&gt;parked_threads_cond);</span>
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span><span class="lineCov">       2275 :         for (;;) {</span>
+<span class="lineNum">     336 </span>            :                 ThreadPoolWorkerCounter counter;
+<span class="lineNum">     337 </span>            : 
+<span class="lineNum">     338 </span><span class="lineCov">       2275 :                 counter = COUNTER_READ (worker);</span>
+<span class="lineNum">     339 </span><span class="lineCov">       2275 :                 if (counter._.starting + counter._.working + counter._.parked == 0)</span>
+<span class="lineNum">     340 </span><span class="lineCov">       1104 :                         break;</span>
+<span class="lineNum">     341 </span>            : 
+<span class="lineNum">     342 </span><span class="lineCov">       1171 :                 if (counter._.starting + counter._.working + counter._.parked == 1) {</span>
+<span class="lineNum">     343 </span><span class="lineCov">         84 :                         if (worker-&gt;threads-&gt;len == 1 &amp;&amp; g_ptr_array_index (worker-&gt;threads, 0) == current) {</span>
+<span class="lineNum">     344 </span>            :                                 /* We are waiting on ourselves */
+<span class="lineNum">     345 </span><span class="lineCov">         12 :                                 break;</span>
+<span class="lineNum">     346 </span>            :                         }
+<span class="lineNum">     347 </span><span class="lineCov">         30 :                 }</span>
+<span class="lineNum">     348 </span>            : 
+<span class="lineNum">     349 </span><span class="lineCov">       1159 :                 mono_coop_cond_wait (&amp;worker-&gt;threads_exit_cond, &amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     350 </span>            :         }
+<span class="lineNum">     351 </span>            : 
+<span class="lineNum">     352 </span><span class="lineCov">       1116 :         mono_coop_mutex_unlock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     353 </span>            : 
+<span class="lineNum">     354 </span><span class="lineCov">       2232 :         mono_refcount_dec (worker);</span>
+<span class="lineNum">     355 </span><span class="lineCov">       1116 : }</span>
+<a name="356"><span class="lineNum">     356 </span>            : </a>
+<span class="lineNum">     357 </span>            : static void
+<span class="lineNum">     358 </span>            : work_item_lock (MonoThreadPoolWorker *worker)
+<span class="lineNum">     359 </span>            : {
+<span class="lineNum">     360 </span><span class="lineCov">    3210807 :         mono_coop_mutex_lock (&amp;worker-&gt;work_items_lock);</span>
+<span class="lineNum">     361 </span><span class="lineCov">    3210807 : }</span>
+<a name="362"><span class="lineNum">     362 </span>            : </a>
+<span class="lineNum">     363 </span>            : static void
+<span class="lineNum">     364 </span>            : work_item_unlock (MonoThreadPoolWorker *worker)
+<span class="lineNum">     365 </span>            : {
+<span class="lineNum">     366 </span><span class="lineCov">    3212930 :         mono_coop_mutex_unlock (&amp;worker-&gt;work_items_lock);</span>
+<span class="lineNum">     367 </span><span class="lineCov">    3212930 : }</span>
+<a name="368"><span class="lineNum">     368 </span>            : </a>
+<span class="lineNum">     369 </span>            : static void
+<span class="lineNum">     370 </span>            : work_item_push (MonoThreadPoolWorker *worker, MonoThreadPoolWorkerCallback callback, gpointer data)
+<span class="lineNum">     371 </span>            : {
+<span class="lineNum">     372 </span>            :         ThreadPoolWorkItem work_item;
+<span class="lineNum">     373 </span>            : 
+<span class="lineNum">     374 </span><span class="lineCov">    3307658 :         g_assert (worker);</span>
+<span class="lineNum">     375 </span><span class="lineCov">    3307661 :         g_assert (callback);</span>
+<span class="lineNum">     376 </span>            : 
+<span class="lineNum">     377 </span><span class="lineCov">    1102556 :         work_item.callback = callback;</span>
+<span class="lineNum">     378 </span><span class="lineCov">    1102556 :         work_item.data = data;</span>
+<span class="lineNum">     379 </span>            : 
+<span class="lineNum">     380 </span><span class="lineCov">    1102556 :         work_item_lock (worker);</span>
+<span class="lineNum">     381 </span>            : 
+<span class="lineNum">     382 </span><span class="lineCov">    3307708 :         g_assert (worker-&gt;work_items_count &lt;= worker-&gt;work_items_size);</span>
+<span class="lineNum">     383 </span>            : 
+<span class="lineNum">     384 </span><span class="lineCov">    1102576 :         if (G_UNLIKELY (worker-&gt;work_items_count == worker-&gt;work_items_size)) {</span>
+<span class="lineNum">     385 </span><span class="lineCov">       1120 :                 worker-&gt;work_items_size += 64;</span>
+<span class="lineNum">     386 </span><span class="lineCov">       1120 :                 worker-&gt;work_items = g_renew (ThreadPoolWorkItem, worker-&gt;work_items, worker-&gt;work_items_size);</span>
+<span class="lineNum">     387 </span><span class="lineCov">       1120 :         }</span>
+<span class="lineNum">     388 </span>            : 
+<span class="lineNum">     389 </span><span class="lineCov">    3307728 :         g_assert (worker-&gt;work_items);</span>
+<span class="lineNum">     390 </span>            : 
+<span class="lineNum">     391 </span><span class="lineCov">    1102576 :         worker-&gt;work_items [worker-&gt;work_items_count ++] = work_item;</span>
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span>            :         // printf (&quot;[push] worker-&gt;work_items = %p, worker-&gt;work_items_count = %d, worker-&gt;work_items_size = %d\n&quot;,
+<span class="lineNum">     394 </span>            :         //      worker-&gt;work_items, worker-&gt;work_items_count, worker-&gt;work_items_size);
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineCov">    1102576 :         work_item_unlock (worker);</span>
+<span class="lineNum">     397 </span><span class="lineCov">    1102576 : }</span>
+<a name="398"><span class="lineNum">     398 </span>            : </a>
+<span class="lineNum">     399 </span>            : static gboolean
+<span class="lineNum">     400 </span>            : work_item_try_pop (MonoThreadPoolWorker *worker, ThreadPoolWorkItem *work_item)
+<span class="lineNum">     401 </span>            : {
+<span class="lineNum">     402 </span><span class="lineCov">    6233836 :         g_assert (worker);</span>
+<span class="lineNum">     403 </span><span class="lineCov">    6233986 :         g_assert (work_item);</span>
+<span class="lineNum">     404 </span>            : 
+<span class="lineNum">     405 </span><span class="lineCov">    2078976 :         work_item_lock (worker);</span>
+<span class="lineNum">     406 </span>            : 
+<span class="lineNum">     407 </span>            :         // printf (&quot;[pop]  worker-&gt;work_items = %p, worker-&gt;work_items_count = %d, worker-&gt;work_items_size = %d\n&quot;,
+<span class="lineNum">     408 </span>            :         //      worker-&gt;work_items, worker-&gt;work_items_count, worker-&gt;work_items_size);
+<span class="lineNum">     409 </span>            : 
+<span class="lineNum">     410 </span><span class="lineCov">    2078976 :         if (worker-&gt;work_items_count == 0) {</span>
+<span class="lineNum">     411 </span><span class="lineCov">     976403 :                 work_item_unlock (worker);</span>
+<span class="lineNum">     412 </span><span class="lineCov">     976403 :                 return FALSE;</span>
+<span class="lineNum">     413 </span>            :         }
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span><span class="lineCov">    1102573 :         *work_item = worker-&gt;work_items [-- worker-&gt;work_items_count];</span>
+<span class="lineNum">     416 </span>            : 
+<span class="lineNum">     417 </span><span class="lineCov">    2205146 :         if (G_UNLIKELY (worker-&gt;work_items_count &gt;= 64 * 3 &amp;&amp; worker-&gt;work_items_count &lt; worker-&gt;work_items_size / 2)) {</span>
+<span class="lineNum">     418 </span><span class="lineNoCov">          0 :                 worker-&gt;work_items_size -= 64;</span>
+<span class="lineNum">     419 </span><span class="lineNoCov">          0 :                 worker-&gt;work_items = g_renew (ThreadPoolWorkItem, worker-&gt;work_items, worker-&gt;work_items_size);</span>
+<span class="lineNum">     420 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     421 </span>            : 
+<span class="lineNum">     422 </span><span class="lineCov">    1102573 :         work_item_unlock (worker);</span>
+<span class="lineNum">     423 </span>            : 
+<span class="lineNum">     424 </span><span class="lineCov">    1102573 :         return TRUE;</span>
+<span class="lineNum">     425 </span><span class="lineCov">    2078974 : }</span>
+<a name="426"><span class="lineNum">     426 </span>            : </a>
+<span class="lineNum">     427 </span>            : static gint32
+<span class="lineNum">     428 </span>            : work_item_count (MonoThreadPoolWorker *worker)
+<span class="lineNum">     429 </span>            : {
+<span class="lineNum">     430 </span>            :         gint32 count;
+<span class="lineNum">     431 </span>            : 
+<span class="lineNum">     432 </span><span class="lineCov">      31378 :         work_item_lock (worker);</span>
+<span class="lineNum">     433 </span><span class="lineCov">      31378 :         count = worker-&gt;work_items_count;</span>
+<span class="lineNum">     434 </span><span class="lineCov">      31378 :         work_item_unlock (worker);</span>
+<span class="lineNum">     435 </span>            : 
+<span class="lineNum">     436 </span><span class="lineCov">      31378 :         return count;</span>
+<span class="lineNum">     437 </span>            : }
+<span class="lineNum">     438 </span>            : 
+<span class="lineNum">     439 </span>            : static void worker_request (MonoThreadPoolWorker *worker);
+<a name="440"><span class="lineNum">     440 </span>            : </a>
+<span class="lineNum">     441 </span>            : void
+<span class="lineNum">     442 </span>            : mono_threadpool_worker_enqueue (MonoThreadPoolWorker *worker, MonoThreadPoolWorkerCallback callback, gpointer data)
+<span class="lineNum">     443 </span>            : {
+<span class="lineNum">     444 </span><span class="lineCov">    1102558 :         work_item_push (worker, callback, data);</span>
+<span class="lineNum">     445 </span>            : 
+<span class="lineNum">     446 </span><span class="lineCov">    1102558 :         worker_request (worker);</span>
+<span class="lineNum">     447 </span><span class="lineCov">    1102558 : }</span>
+<a name="448"><span class="lineNum">     448 </span>            : </a>
+<span class="lineNum">     449 </span>            : static void
+<span class="lineNum">     450 </span>            : worker_wait_interrupt (gpointer data)
+<span class="lineNum">     451 </span>            : {
+<span class="lineNum">     452 </span>            :         MonoThreadPoolWorker *worker;
+<span class="lineNum">     453 </span>            : 
+<span class="lineNum">     454 </span><span class="lineNoCov">          0 :         worker = (MonoThreadPoolWorker*) data;</span>
+<span class="lineNum">     455 </span><span class="lineNoCov">          0 :         g_assert (worker);</span>
+<span class="lineNum">     456 </span>            : 
+<span class="lineNum">     457 </span><span class="lineNoCov">          0 :         mono_coop_mutex_lock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     458 </span><span class="lineNoCov">          0 :         mono_coop_cond_signal (&amp;worker-&gt;parked_threads_cond);</span>
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 :         mono_coop_mutex_unlock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span><span class="lineNoCov">          0 :         mono_refcount_dec (worker);</span>
+<span class="lineNum">     462 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     463 </span>            : 
+<a name="464"><span class="lineNum">     464 </span>            : /* return TRUE if timeout, FALSE otherwise (worker unpark or interrupt) */</a>
+<span class="lineNum">     465 </span>            : static gboolean
+<span class="lineNum">     466 </span>            : worker_park (MonoThreadPoolWorker *worker)
+<span class="lineNum">     467 </span>            : {
+<span class="lineNum">     468 </span><span class="lineCov">     976403 :         gboolean timeout = FALSE;</span>
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span><span class="lineCov">     976403 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] worker parking&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     471 </span>            : 
+<span class="lineNum">     472 </span><span class="lineCov">     976403 :         mono_coop_mutex_lock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     473 </span>            : 
+<span class="lineNum">     474 </span><span class="lineCov">     976403 :         if (!mono_runtime_is_shutting_down ()) {</span>
+<span class="lineNum">     475 </span>            :                 static gpointer rand_handle = NULL;
+<span class="lineNum">     476 </span>            :                 MonoInternalThread *thread;
+<span class="lineNum">     477 </span><span class="lineCov">     976402 :                 gboolean interrupted = FALSE;</span>
+<span class="lineNum">     478 </span>            :                 ThreadPoolWorkerCounter counter;
+<span class="lineNum">     479 </span>            : 
+<span class="lineNum">     480 </span><span class="lineCov">     976402 :                 if (!rand_handle)</span>
+<span class="lineNum">     481 </span><span class="lineCov">       1120 :                         rand_handle = rand_create ();</span>
+<span class="lineNum">     482 </span><span class="lineCov">    2929206 :                 g_assert (rand_handle);</span>
+<span class="lineNum">     483 </span>            : 
+<span class="lineNum">     484 </span><span class="lineCov">     976402 :                 thread = mono_thread_internal_current ();</span>
+<span class="lineNum">     485 </span><span class="lineCov">    2929206 :                 g_assert (thread);</span>
+<span class="lineNum">     486 </span>            : 
+<span class="lineNum">     487 </span><span class="lineCov">   18551702 :                 COUNTER_ATOMIC (worker, counter, {</span>
+<span class="lineNum">     488 </span>            :                         counter._.working --;
+<span class="lineNum">     489 </span>            :                         counter._.parked ++;
+<span class="lineNum">     490 </span>            :                 });
+<span class="lineNum">     491 </span>            : 
+<span class="lineNum">     492 </span><span class="lineCov">     976402 :                 worker-&gt;parked_threads_count += 1;</span>
+<span class="lineNum">     493 </span>            : 
+<span class="lineNum">     494 </span><span class="lineCov">     976402 :                 mono_thread_info_install_interrupt (worker_wait_interrupt, mono_refcount_inc (worker), &amp;interrupted);</span>
+<span class="lineNum">     495 </span><span class="lineCov">     976402 :                 if (interrupted) {</span>
+<span class="lineNum">     496 </span><span class="lineNoCov">          0 :                         mono_refcount_dec (worker);</span>
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">     498 </span>            :                 }
+<span class="lineNum">     499 </span>            : 
+<span class="lineNum">     500 </span><span class="lineCov">     976396 :                 if (mono_coop_cond_timedwait (&amp;worker-&gt;parked_threads_cond, &amp;worker-&gt;threads_lock, rand_next (&amp;rand_handle, 5 * 1000, 60 * 1000)) != 0)</span>
+<span class="lineNum">     501 </span><span class="lineCov">        294 :                         timeout = TRUE;</span>
+<span class="lineNum">     502 </span>            : 
+<span class="lineNum">     503 </span><span class="lineCov">     976396 :                 mono_thread_info_uninstall_interrupt (&amp;interrupted);</span>
+<span class="lineNum">     504 </span><span class="lineCov">    1952792 :                 if (!interrupted)</span>
+<span class="lineNum">     505 </span><span class="lineCov">    2929188 :                         mono_refcount_dec (worker);</span>
+<span class="lineNum">     506 </span>            : 
+<span class="lineNum">     507 </span>            : done:
+<span class="lineNum">     508 </span><span class="lineCov">     976396 :                 worker-&gt;parked_threads_count -= 1;</span>
+<span class="lineNum">     509 </span>            : 
+<span class="lineNum">     510 </span><span class="lineCov">   18551556 :                 COUNTER_ATOMIC (worker, counter, {</span>
+<span class="lineNum">     511 </span>            :                         counter._.working ++;
+<span class="lineNum">     512 </span>            :                         counter._.parked --;
+<span class="lineNum">     513 </span>            :                 });
+<span class="lineNum">     514 </span><span class="lineCov">     976396 :         }</span>
+<span class="lineNum">     515 </span>            : 
+<span class="lineNum">     516 </span><span class="lineCov">     976397 :         mono_coop_mutex_unlock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     517 </span>            : 
+<span class="lineNum">     518 </span><span class="lineCov">     976397 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] worker unparking, timeout? %s&quot;, mono_native_thread_id_get (), timeout ? &quot;yes&quot; : &quot;no&quot;);</span>
+<span class="lineNum">     519 </span>            : 
+<span class="lineNum">     520 </span><span class="lineCov">     976397 :         return timeout;</span>
+<span class="lineNum">     521 </span>            : }
+<a name="522"><span class="lineNum">     522 </span>            : </a>
+<span class="lineNum">     523 </span>            : static gboolean
+<span class="lineNum">     524 </span>            : worker_try_unpark (MonoThreadPoolWorker *worker)
+<span class="lineNum">     525 </span>            : {
+<span class="lineNum">     526 </span><span class="lineCov">    1104081 :         gboolean res = FALSE;</span>
+<span class="lineNum">     527 </span>            : 
+<span class="lineNum">     528 </span><span class="lineCov">    1104081 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] try unpark worker&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     529 </span>            : 
+<span class="lineNum">     530 </span><span class="lineCov">    1104081 :         mono_coop_mutex_lock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     531 </span><span class="lineCov">    1104081 :         if (worker-&gt;parked_threads_count &gt; 0) {</span>
+<span class="lineNum">     532 </span><span class="lineCov">     980472 :                 mono_coop_cond_signal (&amp;worker-&gt;parked_threads_cond);</span>
+<span class="lineNum">     533 </span><span class="lineCov">     980472 :                 res = TRUE;</span>
+<span class="lineNum">     534 </span><span class="lineCov">     980472 :         }</span>
+<span class="lineNum">     535 </span><span class="lineCov">    1104081 :         mono_coop_mutex_unlock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     536 </span>            : 
+<span class="lineNum">     537 </span><span class="lineCov">    1104081 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] try unpark worker, success? %s&quot;, mono_native_thread_id_get (), res ? &quot;yes&quot; : &quot;no&quot;);</span>
+<span class="lineNum">     538 </span>            : 
+<span class="lineNum">     539 </span><span class="lineCov">    1104081 :         return res;</span>
+<span class="lineNum">     540 </span>            : }
+<a name="541"><span class="lineNum">     541 </span>            : </a>
+<span class="lineNum">     542 </span>            : static gsize WINAPI
+<span class="lineNum">     543 </span>            : worker_thread (gpointer data)
+<span class="lineNum">     544 </span>            : {
+<span class="lineNum">     545 </span>            :         MonoThreadPoolWorker *worker;
+<span class="lineNum">     546 </span>            :         MonoError error;
+<span class="lineNum">     547 </span>            :         MonoInternalThread *thread;
+<span class="lineNum">     548 </span>            :         ThreadPoolWorkerCounter counter;
+<span class="lineNum">     549 </span>            : 
+<span class="lineNum">     550 </span><span class="lineCov">       9142 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_THREADPOOL, &quot;[%p] worker starting&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     551 </span>            : 
+<span class="lineNum">     552 </span><span class="lineCov">       9142 :         worker = (MonoThreadPoolWorker*) data;</span>
+<span class="lineNum">     553 </span><span class="lineCov">      27426 :         g_assert (worker);</span>
+<span class="lineNum">     554 </span>            : 
+<span class="lineNum">     555 </span><span class="lineCov">     173698 :         COUNTER_ATOMIC (worker, counter, {</span>
+<span class="lineNum">     556 </span>            :                 counter._.starting --;
+<span class="lineNum">     557 </span>            :                 counter._.working ++;
+<span class="lineNum">     558 </span>            :         });
+<span class="lineNum">     559 </span>            : 
+<span class="lineNum">     560 </span><span class="lineCov">       9142 :         thread = mono_thread_internal_current ();</span>
+<span class="lineNum">     561 </span><span class="lineCov">      27426 :         g_assert (thread);</span>
+<span class="lineNum">     562 </span>            : 
+<span class="lineNum">     563 </span><span class="lineCov">       9142 :         mono_coop_mutex_lock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     564 </span><span class="lineCov">       9142 :         g_ptr_array_add (worker-&gt;threads, thread);</span>
+<span class="lineNum">     565 </span><span class="lineCov">       9142 :         mono_coop_mutex_unlock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     566 </span>            : 
+<span class="lineNum">     567 </span><span class="lineCov">       9142 :         mono_thread_set_name_internal (thread, mono_string_new (mono_get_root_domain (), &quot;Threadpool worker&quot;), FALSE, &amp;error);</span>
+<span class="lineNum">     568 </span><span class="lineCov">       9142 :         mono_error_assert_ok (&amp;error);</span>
+<span class="lineNum">     569 </span>            : 
+<span class="lineNum">     570 </span><span class="lineCov">    3198709 :         while (!mono_runtime_is_shutting_down ()) {</span>
+<span class="lineNum">     571 </span>            :                 ThreadPoolWorkItem work_item;
+<span class="lineNum">     572 </span>            : 
+<span class="lineNum">     573 </span><span class="lineCov">    2077946 :                 if (mono_thread_interruption_checkpoint ())</span>
+<span class="lineNum">     574 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     575 </span>            : 
+<span class="lineNum">     576 </span><span class="lineCov">    2078965 :                 if (!work_item_try_pop (worker, &amp;work_item)) {</span>
+<span class="lineNum">     577 </span>            :                         gboolean timeout;
+<span class="lineNum">     578 </span>            : 
+<span class="lineNum">     579 </span><span class="lineCov">     976385 :                         timeout = worker_park (worker);</span>
+<span class="lineNum">     580 </span><span class="lineCov">     976385 :                         if (timeout)</span>
+<span class="lineNum">     581 </span><span class="lineCov">        294 :                                 break;</span>
+<span class="lineNum">     582 </span>            : 
+<span class="lineNum">     583 </span><span class="lineCov">     976094 :                         continue;</span>
+<span class="lineNum">     584 </span>            :                 }
+<span class="lineNum">     585 </span>            : 
+<span class="lineNum">     586 </span><span class="lineCov">    1102573 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] worker executing %p (%p)&quot;,</span>
+<span class="lineNum">     587 </span><span class="lineCov">    1102573 :                         mono_native_thread_id_get (), work_item.callback, work_item.data);</span>
+<span class="lineNum">     588 </span>            : 
+<span class="lineNum">     589 </span><span class="lineCov">    1102573 :                 work_item.callback (work_item.data);</span>
+<span class="lineNum">     590 </span>            :         }
+<span class="lineNum">     591 </span>            : 
+<span class="lineNum">     592 </span><span class="lineCov">       9116 :         mono_coop_mutex_lock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     593 </span>            : 
+<span class="lineNum">     594 </span><span class="lineCov">     173240 :         COUNTER_ATOMIC (worker, counter, {</span>
+<span class="lineNum">     595 </span>            :                 counter._.working --;
+<span class="lineNum">     596 </span>            :         });
+<span class="lineNum">     597 </span>            : 
+<span class="lineNum">     598 </span><span class="lineCov">       9118 :         g_ptr_array_remove (worker-&gt;threads, thread);</span>
+<span class="lineNum">     599 </span>            : 
+<span class="lineNum">     600 </span><span class="lineCov">       9118 :         mono_coop_cond_signal (&amp;worker-&gt;threads_exit_cond);</span>
+<span class="lineNum">     601 </span>            : 
+<span class="lineNum">     602 </span><span class="lineCov">       9118 :         mono_coop_mutex_unlock (&amp;worker-&gt;threads_lock);</span>
+<span class="lineNum">     603 </span>            : 
+<span class="lineNum">     604 </span><span class="lineCov">       9118 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_THREADPOOL, &quot;[%p] worker finishing&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     605 </span>            : 
+<span class="lineNum">     606 </span><span class="lineCov">      18236 :         mono_refcount_dec (worker);</span>
+<span class="lineNum">     607 </span>            : 
+<span class="lineNum">     608 </span><span class="lineCov">       9118 :         return 0;</span>
+<span class="lineNum">     609 </span>            : }
+<a name="610"><span class="lineNum">     610 </span>            : </a>
+<span class="lineNum">     611 </span>            : static gboolean
+<span class="lineNum">     612 </span>            : worker_try_create (MonoThreadPoolWorker *worker)
+<span class="lineNum">     613 </span>            : {
+<span class="lineNum">     614 </span>            :         MonoError error;
+<span class="lineNum">     615 </span>            :         MonoInternalThread *thread;
+<span class="lineNum">     616 </span>            :         gint64 current_ticks;
+<span class="lineNum">     617 </span>            :         gint32 now;
+<span class="lineNum">     618 </span>            :         ThreadPoolWorkerCounter counter;
+<span class="lineNum">     619 </span>            : 
+<span class="lineNum">     620 </span><span class="lineCov">     123600 :         if (mono_runtime_is_shutting_down ())</span>
+<span class="lineNum">     621 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     622 </span>            : 
+<span class="lineNum">     623 </span><span class="lineCov">     123609 :         mono_coop_mutex_lock (&amp;worker-&gt;worker_creation_lock);</span>
+<span class="lineNum">     624 </span>            : 
+<span class="lineNum">     625 </span><span class="lineCov">     123609 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] try create worker&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     626 </span>            : 
+<span class="lineNum">     627 </span><span class="lineCov">     123609 :         current_ticks = mono_100ns_ticks ();</span>
+<span class="lineNum">     628 </span><span class="lineCov">     123609 :         if (0 == current_ticks) {</span>
+<span class="lineNum">     629 </span><span class="lineNoCov">          0 :                 g_warning (&quot;failed to get 100ns ticks&quot;);</span>
+<span class="lineNum">     630 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     631 </span><span class="lineCov">     123609 :                 now = current_ticks / (10 * 1000 * 1000);</span>
+<span class="lineNum">     632 </span><span class="lineCov">     123609 :                 if (worker-&gt;worker_creation_current_second != now) {</span>
+<span class="lineNum">     633 </span><span class="lineCov">       3701 :                         worker-&gt;worker_creation_current_second = now;</span>
+<span class="lineNum">     634 </span><span class="lineCov">       3701 :                         worker-&gt;worker_creation_current_count = 0;</span>
+<span class="lineNum">     635 </span><span class="lineCov">       3701 :                 } else {</span>
+<span class="lineNum">     636 </span><span class="lineCov">     359724 :                         g_assert (worker-&gt;worker_creation_current_count &lt;= WORKER_CREATION_MAX_PER_SEC);</span>
+<span class="lineNum">     637 </span><span class="lineCov">     119908 :                         if (worker-&gt;worker_creation_current_count == WORKER_CREATION_MAX_PER_SEC) {</span>
+<span class="lineNum">     638 </span><span class="lineCov">       2122 :                                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] try create worker, failed: maximum number of worker created per second reached, current count = %d&quot;,</span>
+<span class="lineNum">     639 </span><span class="lineCov">       2122 :                                         mono_native_thread_id_get (), worker-&gt;worker_creation_current_count);</span>
+<span class="lineNum">     640 </span><span class="lineCov">       2122 :                                 mono_coop_mutex_unlock (&amp;worker-&gt;worker_creation_lock);</span>
+<span class="lineNum">     641 </span><span class="lineCov">       2122 :                                 return FALSE;</span>
+<span class="lineNum">     642 </span>            :                         }
+<span class="lineNum">     643 </span>            :                 }
+<span class="lineNum">     644 </span>            :         }
+<span class="lineNum">     645 </span>            : 
+<span class="lineNum">     646 </span><span class="lineCov">     969306 :         COUNTER_ATOMIC (worker, counter, {</span>
+<span class="lineNum">     647 </span>            :                 if (counter._.working &gt;= counter._.max_working) {
+<span class="lineNum">     648 </span>            :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] try create worker, failed: maximum number of working threads reached&quot;,
+<span class="lineNum">     649 </span>            :                                 mono_native_thread_id_get ());
+<span class="lineNum">     650 </span>            :                         mono_coop_mutex_unlock (&amp;worker-&gt;worker_creation_lock);
+<span class="lineNum">     651 </span>            :                         return FALSE;
+<span class="lineNum">     652 </span>            :                 }
+<span class="lineNum">     653 </span>            :                 counter._.starting ++;
+<span class="lineNum">     654 </span>            :         });
+<span class="lineNum">     655 </span>            : 
+<span class="lineNum">     656 </span><span class="lineCov">       9142 :         thread = mono_thread_create_internal (mono_get_root_domain (), worker_thread, mono_refcount_inc (worker), TRUE, 0, &amp;error);</span>
+<span class="lineNum">     657 </span><span class="lineCov">       9142 :         if (!thread) {</span>
+<span class="lineNum">     658 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] try create worker, failed: could not create thread due to %s&quot;, mono_native_thread_id_get (), mono_error_get_message (&amp;error));</span>
+<span class="lineNum">     659 </span><span class="lineNoCov">          0 :                 mono_error_cleanup (&amp;error);</span>
+<span class="lineNum">     660 </span>            : 
+<span class="lineNum">     661 </span><span class="lineNoCov">          0 :                 COUNTER_ATOMIC (worker, counter, {</span>
+<span class="lineNum">     662 </span>            :                         counter._.starting --;
+<span class="lineNum">     663 </span>            :                 });
+<span class="lineNum">     664 </span>            : 
+<span class="lineNum">     665 </span><span class="lineNoCov">          0 :                 mono_coop_mutex_unlock (&amp;worker-&gt;worker_creation_lock);</span>
+<span class="lineNum">     666 </span>            : 
+<span class="lineNum">     667 </span><span class="lineNoCov">          0 :                 mono_refcount_dec (worker);</span>
+<span class="lineNum">     668 </span>            : 
+<span class="lineNum">     669 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     670 </span>            :         }
+<span class="lineNum">     671 </span>            : 
+<span class="lineNum">     672 </span><span class="lineCov">       9142 :         worker-&gt;worker_creation_current_count += 1;</span>
+<span class="lineNum">     673 </span>            : 
+<span class="lineNum">     674 </span><span class="lineCov">       9142 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] try create worker, created %p, now = %d count = %d&quot;,</span>
+<span class="lineNum">     675 </span><span class="lineCov">       9142 :                 mono_native_thread_id_get (), (gpointer) thread-&gt;tid, now, worker-&gt;worker_creation_current_count);</span>
+<span class="lineNum">     676 </span>            : 
+<span class="lineNum">     677 </span><span class="lineCov">       9142 :         mono_coop_mutex_unlock (&amp;worker-&gt;worker_creation_lock);</span>
+<span class="lineNum">     678 </span><span class="lineCov">       9142 :         return TRUE;</span>
+<span class="lineNum">     679 </span><span class="lineCov">     123606 : }</span>
+<span class="lineNum">     680 </span>            : 
+<span class="lineNum">     681 </span>            : static void monitor_ensure_running (MonoThreadPoolWorker *worker);
+<a name="682"><span class="lineNum">     682 </span>            : </a>
+<span class="lineNum">     683 </span>            : static void
+<span class="lineNum">     684 </span>            : worker_request (MonoThreadPoolWorker *worker)
+<span class="lineNum">     685 </span>            : {
+<span class="lineNum">     686 </span><span class="lineCov">    3307728 :         g_assert (worker);</span>
+<span class="lineNum">     687 </span>            : 
+<span class="lineNum">     688 </span><span class="lineCov">    1102575 :         if (worker-&gt;suspended)</span>
+<span class="lineNum">     689 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     690 </span>            : 
+<span class="lineNum">     691 </span><span class="lineCov">    1102567 :         monitor_ensure_running (worker);</span>
+<span class="lineNum">     692 </span>            : 
+<span class="lineNum">     693 </span><span class="lineCov">    1102567 :         if (worker_try_unpark (worker)) {</span>
+<span class="lineNum">     694 </span><span class="lineCov">     980465 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] request worker, unparked&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     695 </span><span class="lineCov">     980465 :                 return;</span>
+<span class="lineNum">     696 </span>            :         }
+<span class="lineNum">     697 </span>            : 
+<span class="lineNum">     698 </span><span class="lineCov">     122105 :         if (worker_try_create (worker)) {</span>
+<span class="lineNum">     699 </span><span class="lineCov">       8473 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] request worker, created&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     700 </span><span class="lineCov">       8473 :                 return;</span>
+<span class="lineNum">     701 </span>            :         }
+<span class="lineNum">     702 </span>            : 
+<span class="lineNum">     703 </span><span class="lineCov">     113632 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] request worker, failed&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     704 </span><span class="lineCov">    1216200 : }</span>
+<a name="705"><span class="lineNum">     705 </span>            : </a>
+<span class="lineNum">     706 </span>            : static gboolean
+<span class="lineNum">     707 </span>            : monitor_should_keep_running (MonoThreadPoolWorker *worker)
+<span class="lineNum">     708 </span>            : {
+<span class="lineNum">     709 </span>            :         static gint64 last_should_keep_running = -1;
+<span class="lineNum">     710 </span>            : 
+<span class="lineNum">     711 </span><span class="lineCov">      90716 :         g_assert (worker-&gt;monitor_status == MONITOR_STATUS_WAITING_FOR_REQUEST || worker-&gt;monitor_status == MONITOR_STATUS_REQUESTED);</span>
+<span class="lineNum">     712 </span>            : 
+<span class="lineNum">     713 </span><span class="lineCov">      20729 :         if (InterlockedExchange (&amp;worker-&gt;monitor_status, MONITOR_STATUS_WAITING_FOR_REQUEST) == MONITOR_STATUS_WAITING_FOR_REQUEST) {</span>
+<span class="lineNum">     714 </span><span class="lineCov">      12929 :                 gboolean should_keep_running = TRUE, force_should_keep_running = FALSE;</span>
+<span class="lineNum">     715 </span>            : 
+<span class="lineNum">     716 </span><span class="lineCov">      12929 :                 if (mono_runtime_is_shutting_down ()) {</span>
+<span class="lineNum">     717 </span><span class="lineCov">       1108 :                         should_keep_running = FALSE;</span>
+<span class="lineNum">     718 </span><span class="lineCov">       1108 :                 } else {</span>
+<span class="lineNum">     719 </span><span class="lineCov">      11821 :                         if (work_item_count (worker) == 0)</span>
+<span class="lineNum">     720 </span><span class="lineCov">      11204 :                                 should_keep_running = FALSE;</span>
+<span class="lineNum">     721 </span>            : 
+<span class="lineNum">     722 </span><span class="lineCov">      11821 :                         if (!should_keep_running) {</span>
+<span class="lineNum">     723 </span><span class="lineCov">      21370 :                                 if (last_should_keep_running == -1 || mono_100ns_ticks () - last_should_keep_running &lt; MONITOR_MINIMAL_LIFETIME * 1000 * 10) {</span>
+<span class="lineNum">     724 </span><span class="lineCov">      11157 :                                         should_keep_running = force_should_keep_running = TRUE;</span>
+<span class="lineNum">     725 </span><span class="lineCov">      11157 :                                 }</span>
+<span class="lineNum">     726 </span><span class="lineCov">      11204 :                         }</span>
+<span class="lineNum">     727 </span>            :                 }
+<span class="lineNum">     728 </span>            : 
+<span class="lineNum">     729 </span><span class="lineCov">      12929 :                 if (should_keep_running) {</span>
+<span class="lineNum">     730 </span><span class="lineCov">      22471 :                         if (last_should_keep_running == -1 || !force_should_keep_running)</span>
+<span class="lineNum">     731 </span><span class="lineCov">       1655 :                                 last_should_keep_running = mono_100ns_ticks ();</span>
+<span class="lineNum">     732 </span><span class="lineCov">      11774 :                 } else {</span>
+<span class="lineNum">     733 </span><span class="lineCov">       1155 :                         last_should_keep_running = -1;</span>
+<span class="lineNum">     734 </span><span class="lineCov">       1155 :                         if (InterlockedCompareExchange (&amp;worker-&gt;monitor_status, MONITOR_STATUS_NOT_RUNNING, MONITOR_STATUS_WAITING_FOR_REQUEST) == MONITOR_STATUS_WAITING_FOR_REQUEST)</span>
+<span class="lineNum">     735 </span><span class="lineCov">       1155 :                                 return FALSE;</span>
+<span class="lineNum">     736 </span>            :                 }
+<span class="lineNum">     737 </span><span class="lineCov">      11774 :         }</span>
+<span class="lineNum">     738 </span>            : 
+<span class="lineNum">     739 </span><span class="lineCov">      78296 :         g_assert (worker-&gt;monitor_status == MONITOR_STATUS_WAITING_FOR_REQUEST || worker-&gt;monitor_status == MONITOR_STATUS_REQUESTED);</span>
+<span class="lineNum">     740 </span>            : 
+<span class="lineNum">     741 </span><span class="lineCov">      19574 :         return TRUE;</span>
+<span class="lineNum">     742 </span><span class="lineCov">      20729 : }</span>
+<a name="743"><span class="lineNum">     743 </span>            : </a>
+<span class="lineNum">     744 </span>            : static gboolean
+<span class="lineNum">     745 </span>            : monitor_sufficient_delay_since_last_dequeue (MonoThreadPoolWorker *worker)
+<span class="lineNum">     746 </span>            : {
+<span class="lineNum">     747 </span>            :         gint64 threshold;
+<span class="lineNum">     748 </span>            : 
+<span class="lineNum">     749 </span><span class="lineCov">       7650 :         g_assert (worker);</span>
+<span class="lineNum">     750 </span>            : 
+<span class="lineNum">     751 </span><span class="lineCov">       2550 :         if (worker-&gt;cpu_usage &lt; CPU_USAGE_LOW) {</span>
+<span class="lineNum">     752 </span><span class="lineCov">       2467 :                 threshold = MONITOR_INTERVAL;</span>
+<span class="lineNum">     753 </span><span class="lineCov">       2467 :         } else {</span>
+<span class="lineNum">     754 </span>            :                 ThreadPoolWorkerCounter counter;
+<span class="lineNum">     755 </span><span class="lineCov">         83 :                 counter = COUNTER_READ (worker);</span>
+<span class="lineNum">     756 </span><span class="lineCov">         83 :                 threshold = counter._.max_working * MONITOR_INTERVAL * 2;</span>
+<span class="lineNum">     757 </span>            :         }
+<span class="lineNum">     758 </span>            : 
+<span class="lineNum">     759 </span><span class="lineCov">       2550 :         return mono_msec_ticks () &gt;= worker-&gt;heuristic_last_dequeue + threshold;</span>
+<span class="lineNum">     760 </span>            : }
+<span class="lineNum">     761 </span>            : 
+<span class="lineNum">     762 </span>            : static void hill_climbing_force_change (MonoThreadPoolWorker *worker, gint16 new_thread_count, ThreadPoolHeuristicStateTransition transition);
+<a name="763"><span class="lineNum">     763 </span>            : </a>
+<span class="lineNum">     764 </span>            : static gsize WINAPI
+<span class="lineNum">     765 </span>            : monitor_thread (gpointer data)
+<span class="lineNum">     766 </span>            : {
+<span class="lineNum">     767 </span>            :         MonoThreadPoolWorker *worker;
+<span class="lineNum">     768 </span>            :         MonoInternalThread *internal;
+<span class="lineNum">     769 </span>            :         guint i;
+<span class="lineNum">     770 </span>            : 
+<span class="lineNum">     771 </span><span class="lineCov">       1161 :         worker = (MonoThreadPoolWorker*) data;</span>
+<span class="lineNum">     772 </span><span class="lineCov">       3483 :         g_assert (worker);</span>
+<span class="lineNum">     773 </span>            : 
+<span class="lineNum">     774 </span><span class="lineCov">       1161 :         internal = mono_thread_internal_current ();</span>
+<span class="lineNum">     775 </span><span class="lineCov">       3483 :         g_assert (internal);</span>
+<span class="lineNum">     776 </span>            : 
+<span class="lineNum">     777 </span><span class="lineCov">       1161 :         mono_cpu_usage (worker-&gt;cpu_usage_state);</span>
+<span class="lineNum">     778 </span>            : 
+<span class="lineNum">     779 </span>            :         // printf (&quot;monitor_thread: start\n&quot;);
+<span class="lineNum">     780 </span>            : 
+<span class="lineNum">     781 </span><span class="lineCov">       1161 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] monitor thread, started&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     782 </span>            : 
+<span class="lineNum">     783 </span><span class="lineCov">       1161 :         do {</span>
+<span class="lineNum">     784 </span>            :                 ThreadPoolWorkerCounter counter;
+<span class="lineNum">     785 </span>            :                 gboolean limit_worker_max_reached;
+<span class="lineNum">     786 </span><span class="lineCov">      20735 :                 gint32 interval_left = MONITOR_INTERVAL;</span>
+<span class="lineNum">     787 </span><span class="lineCov">      20735 :                 gint32 awake = 0; /* number of spurious awakes we tolerate before doing a round of rebalancing */</span>
+<span class="lineNum">     788 </span>            : 
+<span class="lineNum">     789 </span><span class="lineCov">      62205 :                 g_assert (worker-&gt;monitor_status != MONITOR_STATUS_NOT_RUNNING);</span>
+<span class="lineNum">     790 </span>            : 
+<span class="lineNum">     791 </span>            :                 // counter = COUNTER_READ (worker);
+<span class="lineNum">     792 </span>            :                 // printf (&quot;monitor_thread: starting = %d working = %d parked = %d max_working = %d\n&quot;,
+<span class="lineNum">     793 </span>            :                 //      counter._.starting, counter._.working, counter._.parked, counter._.max_working);
+<span class="lineNum">     794 </span>            : 
+<span class="lineNum">     795 </span><span class="lineCov">      20735 :                 do {</span>
+<span class="lineNum">     796 </span>            :                         gint64 ts;
+<span class="lineNum">     797 </span><span class="lineCov">      20735 :                         gboolean alerted = FALSE;</span>
+<span class="lineNum">     798 </span>            : 
+<span class="lineNum">     799 </span><span class="lineCov">      20735 :                         if (mono_runtime_is_shutting_down ())</span>
+<span class="lineNum">     800 </span><span class="lineCov">         64 :                                 break;</span>
+<span class="lineNum">     801 </span>            : 
+<span class="lineNum">     802 </span><span class="lineCov">      20665 :                         ts = mono_msec_ticks ();</span>
+<span class="lineNum">     803 </span><span class="lineCov">      20665 :                         if (mono_thread_info_sleep (interval_left, &amp;alerted) == 0)</span>
+<span class="lineNum">     804 </span><span class="lineCov">      20665 :                                 break;</span>
+<span class="lineNum">     805 </span><span class="lineNoCov">          0 :                         interval_left -= mono_msec_ticks () - ts;</span>
+<span class="lineNum">     806 </span>            : 
+<span class="lineNum">     807 </span><span class="lineNoCov">          0 :                         g_assert (!(internal-&gt;state &amp; ThreadState_StopRequested));</span>
+<span class="lineNum">     808 </span><span class="lineNoCov">          0 :                         mono_thread_interruption_checkpoint ();</span>
+<span class="lineNum">     809 </span><span class="lineNoCov">          0 :                 } while (interval_left &gt; 0 &amp;&amp; ++awake &lt; 10);</span>
+<span class="lineNum">     810 </span>            : 
+<span class="lineNum">     811 </span><span class="lineCov">      20729 :                 if (mono_runtime_is_shutting_down ())</span>
+<span class="lineNum">     812 </span><span class="lineCov">       1172 :                         continue;</span>
+<span class="lineNum">     813 </span>            : 
+<span class="lineNum">     814 </span><span class="lineCov">      19557 :                 if (worker-&gt;suspended)</span>
+<span class="lineNum">     815 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     816 </span>            : 
+<span class="lineNum">     817 </span><span class="lineCov">      19557 :                 if (work_item_count (worker) == 0)</span>
+<span class="lineNum">     818 </span><span class="lineCov">      17007 :                         continue;</span>
+<span class="lineNum">     819 </span>            : 
+<span class="lineNum">     820 </span><span class="lineCov">       2550 :                 worker-&gt;cpu_usage = mono_cpu_usage (worker-&gt;cpu_usage_state);</span>
+<span class="lineNum">     821 </span>            : 
+<span class="lineNum">     822 </span><span class="lineCov">       2550 :                 if (!monitor_sufficient_delay_since_last_dequeue (worker))</span>
+<span class="lineNum">     823 </span><span class="lineCov">       1713 :                         continue;</span>
+<span class="lineNum">     824 </span>            : 
+<span class="lineNum">     825 </span><span class="lineCov">        837 :                 limit_worker_max_reached = FALSE;</span>
+<span class="lineNum">     826 </span>            : 
+<span class="lineNum">     827 </span><span class="lineCov">      16740 :                 COUNTER_ATOMIC (worker, counter, {</span>
+<span class="lineNum">     828 </span>            :                         if (counter._.max_working &gt;= worker-&gt;limit_worker_max) {
+<span class="lineNum">     829 </span>            :                                 limit_worker_max_reached = TRUE;
+<span class="lineNum">     830 </span>            :                                 break;
+<span class="lineNum">     831 </span>            :                         }
+<span class="lineNum">     832 </span>            :                         counter._.max_working ++;
+<span class="lineNum">     833 </span>            :                 });
+<span class="lineNum">     834 </span>            : 
+<span class="lineNum">     835 </span><span class="lineCov">        837 :                 if (limit_worker_max_reached)</span>
+<span class="lineNum">     836 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     837 </span>            : 
+<span class="lineNum">     838 </span><span class="lineCov">        837 :                 hill_climbing_force_change (worker, counter._.max_working, TRANSITION_STARVATION);</span>
+<span class="lineNum">     839 </span>            : 
+<span class="lineNum">     840 </span><span class="lineCov">       3344 :                 for (i = 0; i &lt; 5; ++i) {</span>
+<span class="lineNum">     841 </span><span class="lineCov">       1505 :                         if (mono_runtime_is_shutting_down ())</span>
+<span class="lineNum">     842 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     843 </span>            : 
+<span class="lineNum">     844 </span><span class="lineCov">       1505 :                         if (worker_try_unpark (worker)) {</span>
+<span class="lineNum">     845 </span><span class="lineCov">          1 :                                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] monitor thread, unparked&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     846 </span><span class="lineCov">          1 :                                 break;</span>
+<span class="lineNum">     847 </span>            :                         }
+<span class="lineNum">     848 </span>            : 
+<span class="lineNum">     849 </span><span class="lineCov">       1504 :                         if (worker_try_create (worker)) {</span>
+<span class="lineNum">     850 </span><span class="lineCov">        669 :                                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] monitor thread, created&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     851 </span><span class="lineCov">        669 :                                 break;</span>
+<span class="lineNum">     852 </span>            :                         }
+<span class="lineNum">     853 </span><span class="lineCov">        835 :                 }</span>
+<span class="lineNum">     854 </span><span class="lineCov">      21566 :         } while (monitor_should_keep_running (worker));</span>
+<span class="lineNum">     855 </span>            : 
+<span class="lineNum">     856 </span>            :         // printf (&quot;monitor_thread: stop\n&quot;);
+<span class="lineNum">     857 </span>            : 
+<span class="lineNum">     858 </span><span class="lineCov">       1155 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_THREADPOOL, &quot;[%p] monitor thread, finished&quot;, mono_native_thread_id_get ());</span>
+<span class="lineNum">     859 </span>            : 
+<span class="lineNum">     860 </span><span class="lineCov">       1155 :         return 0;</span>
+<span class="lineNum">     861 </span>            : }
+<a name="862"><span class="lineNum">     862 </span>            : </a>
+<span class="lineNum">     863 </span>            : static void
+<span class="lineNum">     864 </span>            : monitor_ensure_running (MonoThreadPoolWorker *worker)
+<span class="lineNum">     865 </span>            : {
+<span class="lineNum">     866 </span>            :         MonoError error;
+<span class="lineNum">     867 </span><span class="lineCov">    1109225 :         for (;;) {</span>
+<span class="lineNum">     868 </span><span class="lineCov">    1109209 :                 switch (worker-&gt;monitor_status) {</span>
+<span class="lineNum">     869 </span>            :                 case MONITOR_STATUS_REQUESTED:
+<span class="lineNum">     870 </span>            :                         // printf (&quot;monitor_thread: requested\n&quot;);
+<span class="lineNum">     871 </span><span class="lineCov">    1101403 :                         return;</span>
+<span class="lineNum">     872 </span>            :                 case MONITOR_STATUS_WAITING_FOR_REQUEST:
+<span class="lineNum">     873 </span>            :                         // printf (&quot;monitor_thread: waiting for request\n&quot;);
+<span class="lineNum">     874 </span><span class="lineCov">       6648 :                         InterlockedCompareExchange (&amp;worker-&gt;monitor_status, MONITOR_STATUS_REQUESTED, MONITOR_STATUS_WAITING_FOR_REQUEST);</span>
+<span class="lineNum">     875 </span><span class="lineCov">       6648 :                         break;</span>
+<span class="lineNum">     876 </span>            :                 case MONITOR_STATUS_NOT_RUNNING:
+<span class="lineNum">     877 </span>            :                         // printf (&quot;monitor_thread: not running\n&quot;);
+<span class="lineNum">     878 </span><span class="lineCov">       1161 :                         if (mono_runtime_is_shutting_down ())</span>
+<span class="lineNum">     879 </span><span class="lineNoCov">          0 :                                 return;</span>
+<span class="lineNum">     880 </span><span class="lineCov">       1161 :                         if (InterlockedCompareExchange (&amp;worker-&gt;monitor_status, MONITOR_STATUS_REQUESTED, MONITOR_STATUS_NOT_RUNNING) == MONITOR_STATUS_NOT_RUNNING) {</span>
+<span class="lineNum">     881 </span>            :                                 // printf (&quot;monitor_thread: creating\n&quot;);
+<span class="lineNum">     882 </span><span class="lineCov">       1161 :                                 if (!mono_thread_create_internal (mono_get_root_domain (), monitor_thread, worker, TRUE, SMALL_STACK, &amp;error)) {</span>
+<span class="lineNum">     883 </span>            :                                         // printf (&quot;monitor_thread: creating failed\n&quot;);
+<span class="lineNum">     884 </span><span class="lineNoCov">          0 :                                         worker-&gt;monitor_status = MONITOR_STATUS_NOT_RUNNING;</span>
+<span class="lineNum">     885 </span><span class="lineNoCov">          0 :                                         mono_error_cleanup (&amp;error);</span>
+<span class="lineNum">     886 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     887 </span><span class="lineCov">       1161 :                                 return;</span>
+<span class="lineNum">     888 </span>            :                         }
+<span class="lineNum">     889 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     890 </span><span class="lineNoCov">          0 :                 default: g_assert_not_reached ();</span>
+<span class="lineNum">     891 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     892 </span>            :         }
+<span class="lineNum">     893 </span><span class="lineCov">    1102562 : }</span>
+<a name="894"><span class="lineNum">     894 </span>            : </a>
+<span class="lineNum">     895 </span>            : static void
+<span class="lineNum">     896 </span>            : hill_climbing_change_thread_count (MonoThreadPoolWorker *worker, gint16 new_thread_count, ThreadPoolHeuristicStateTransition transition)
+<span class="lineNum">     897 </span>            : {
+<span class="lineNum">     898 </span>            :         ThreadPoolHillClimbing *hc;
+<span class="lineNum">     899 </span>            : 
+<span class="lineNum">     900 </span><span class="lineCov">       7524 :         g_assert (worker);</span>
+<span class="lineNum">     901 </span>            : 
+<span class="lineNum">     902 </span><span class="lineCov">       2508 :         hc = &amp;worker-&gt;heuristic_hill_climbing;</span>
+<span class="lineNum">     903 </span>            : 
+<span class="lineNum">     904 </span><span class="lineCov">       2508 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_THREADPOOL, &quot;[%p] hill climbing, change max number of threads %d&quot;, mono_native_thread_id_get (), new_thread_count);</span>
+<span class="lineNum">     905 </span>            : 
+<span class="lineNum">     906 </span><span class="lineCov">       2508 :         hc-&gt;last_thread_count = new_thread_count;</span>
+<span class="lineNum">     907 </span><span class="lineCov">       2508 :         hc-&gt;current_sample_interval = rand_next (&amp;hc-&gt;random_interval_generator, hc-&gt;sample_interval_low, hc-&gt;sample_interval_high);</span>
+<span class="lineNum">     908 </span><span class="lineCov">       2508 :         hc-&gt;elapsed_since_last_change = 0;</span>
+<span class="lineNum">     909 </span><span class="lineCov">       2508 :         hc-&gt;completions_since_last_change = 0;</span>
+<span class="lineNum">     910 </span><span class="lineCov">       2508 : }</span>
+<a name="911"><span class="lineNum">     911 </span>            : </a>
+<span class="lineNum">     912 </span>            : static void
+<span class="lineNum">     913 </span>            : hill_climbing_force_change (MonoThreadPoolWorker *worker, gint16 new_thread_count, ThreadPoolHeuristicStateTransition transition)
+<span class="lineNum">     914 </span>            : {
+<span class="lineNum">     915 </span>            :         ThreadPoolHillClimbing *hc;
+<span class="lineNum">     916 </span>            : 
+<span class="lineNum">     917 </span><span class="lineCov">       5079 :         g_assert (worker);</span>
+<span class="lineNum">     918 </span>            : 
+<span class="lineNum">     919 </span><span class="lineCov">       1693 :         hc = &amp;worker-&gt;heuristic_hill_climbing;</span>
+<span class="lineNum">     920 </span>            : 
+<span class="lineNum">     921 </span><span class="lineCov">       1693 :         if (new_thread_count != hc-&gt;last_thread_count) {</span>
+<span class="lineNum">     922 </span><span class="lineCov">       1693 :                 hc-&gt;current_control_setting += new_thread_count - hc-&gt;last_thread_count;</span>
+<span class="lineNum">     923 </span><span class="lineCov">       1693 :                 hill_climbing_change_thread_count (worker, new_thread_count, transition);</span>
+<span class="lineNum">     924 </span><span class="lineCov">       1693 :         }</span>
+<span class="lineNum">     925 </span><span class="lineCov">       1693 : }</span>
+<a name="926"><span class="lineNum">     926 </span>            : </a>
+<span class="lineNum">     927 </span>            : static double_complex
+<span class="lineNum">     928 </span>            : hill_climbing_get_wave_component (MonoThreadPoolWorker *worker, gdouble *samples, guint sample_count, gdouble period)
+<span class="lineNum">     929 </span>            : {
+<span class="lineNum">     930 </span>            :         ThreadPoolHillClimbing *hc;
+<span class="lineNum">     931 </span>            :         gdouble w, cosine, sine, coeff, q0, q1, q2;
+<span class="lineNum">     932 </span>            :         guint i;
+<span class="lineNum">     933 </span>            : 
+<span class="lineNum">     934 </span><span class="lineCov">       3507 :         g_assert (worker);</span>
+<span class="lineNum">     935 </span><span class="lineCov">       3507 :         g_assert (sample_count &gt;= period);</span>
+<span class="lineNum">     936 </span><span class="lineCov">       3507 :         g_assert (period &gt;= 2);</span>
+<span class="lineNum">     937 </span>            : 
+<span class="lineNum">     938 </span><span class="lineCov">       1169 :         hc = &amp;worker-&gt;heuristic_hill_climbing;</span>
+<span class="lineNum">     939 </span>            : 
+<span class="lineNum">     940 </span><span class="lineCov">       1169 :         w = 2.0 * M_PI / period;</span>
+<span class="lineNum">     941 </span><span class="lineCov">       1169 :         cosine = cos (w);</span>
+<span class="lineNum">     942 </span><span class="lineCov">       1169 :         sine = sin (w);</span>
+<span class="lineNum">     943 </span><span class="lineCov">       1169 :         coeff = 2.0 * cosine;</span>
+<span class="lineNum">     944 </span><span class="lineCov">       1169 :         q0 = q1 = q2 = 0;</span>
+<span class="lineNum">     945 </span>            : 
+<span class="lineNum">     946 </span><span class="lineCov">      37090 :         for (i = 0; i &lt; sample_count; ++i) {</span>
+<span class="lineNum">     947 </span><span class="lineCov">      17376 :                 q0 = coeff * q1 - q2 + samples [(hc-&gt;total_samples - sample_count + i) % hc-&gt;samples_to_measure];</span>
+<span class="lineNum">     948 </span><span class="lineCov">      17376 :                 q2 = q1;</span>
+<span class="lineNum">     949 </span><span class="lineCov">      17376 :                 q1 = q0;</span>
+<span class="lineNum">     950 </span><span class="lineCov">      17376 :         }</span>
+<span class="lineNum">     951 </span>            : 
+<span class="lineNum">     952 </span><span class="lineCov">       1169 :         return mono_double_complex_scalar_div (mono_double_complex_make (q1 - q2 * cosine, (q2 * sine)), ((gdouble)sample_count));</span>
+<span class="lineNum">     953 </span>            : }
+<a name="954"><span class="lineNum">     954 </span>            : </a>
+<span class="lineNum">     955 </span>            : static gint16
+<span class="lineNum">     956 </span>            : hill_climbing_update (MonoThreadPoolWorker *worker, gint16 current_thread_count, guint32 sample_duration, gint32 completions, gint64 *adjustment_interval)
+<span class="lineNum">     957 </span>            : {
+<span class="lineNum">     958 </span>            :         ThreadPoolHillClimbing *hc;
+<span class="lineNum">     959 </span>            :         ThreadPoolHeuristicStateTransition transition;
+<span class="lineNum">     960 </span>            :         gdouble throughput;
+<span class="lineNum">     961 </span>            :         gdouble throughput_error_estimate;
+<span class="lineNum">     962 </span>            :         gdouble confidence;
+<span class="lineNum">     963 </span>            :         gdouble move;
+<span class="lineNum">     964 </span>            :         gdouble gain;
+<span class="lineNum">     965 </span>            :         gint sample_index;
+<span class="lineNum">     966 </span>            :         gint sample_count;
+<span class="lineNum">     967 </span>            :         gint new_thread_wave_magnitude;
+<span class="lineNum">     968 </span>            :         gint new_thread_count;
+<span class="lineNum">     969 </span>            :         double_complex thread_wave_component;
+<span class="lineNum">     970 </span>            :         double_complex throughput_wave_component;
+<span class="lineNum">     971 </span>            :         double_complex ratio;
+<span class="lineNum">     972 </span>            : 
+<span class="lineNum">     973 </span><span class="lineCov">      60522 :         g_assert (worker);</span>
+<span class="lineNum">     974 </span><span class="lineCov">      60522 :         g_assert (adjustment_interval);</span>
+<span class="lineNum">     975 </span>            : 
+<span class="lineNum">     976 </span><span class="lineCov">      20174 :         hc = &amp;worker-&gt;heuristic_hill_climbing;</span>
+<span class="lineNum">     977 </span>            : 
+<span class="lineNum">     978 </span>            :         /* If someone changed the thread count without telling us, update our records accordingly. */
+<span class="lineNum">     979 </span><span class="lineCov">      20174 :         if (current_thread_count != hc-&gt;last_thread_count)</span>
+<span class="lineNum">     980 </span><span class="lineCov">        856 :                 hill_climbing_force_change (worker, current_thread_count, TRANSITION_INITIALIZING);</span>
+<span class="lineNum">     981 </span>            : 
+<span class="lineNum">     982 </span>            :         /* Update the cumulative stats for this thread count */
+<span class="lineNum">     983 </span><span class="lineCov">      20174 :         hc-&gt;elapsed_since_last_change += sample_duration;</span>
+<span class="lineNum">     984 </span><span class="lineCov">      20174 :         hc-&gt;completions_since_last_change += completions;</span>
+<span class="lineNum">     985 </span>            : 
+<span class="lineNum">     986 </span>            :         /* Add in any data we've already collected about this sample */
+<span class="lineNum">     987 </span><span class="lineCov">      20174 :         sample_duration += hc-&gt;accumulated_sample_duration;</span>
+<span class="lineNum">     988 </span><span class="lineCov">      20174 :         completions += hc-&gt;accumulated_completion_count;</span>
+<span class="lineNum">     989 </span>            : 
+<span class="lineNum">     990 </span>            :         /* We need to make sure we're collecting reasonably accurate data. Since we're just counting the end
+<span class="lineNum">     991 </span>            :          * of each work item, we are goinng to be missing some data about what really happened during the
+<span class="lineNum">     992 </span>            :          * sample interval. The count produced by each thread includes an initial work item that may have
+<span class="lineNum">     993 </span>            :          * started well before the start of the interval, and each thread may have been running some new
+<span class="lineNum">     994 </span>            :          * work item for some time before the end of the interval, which did not yet get counted. So
+<span class="lineNum">     995 </span>            :          * our count is going to be off by +/- threadCount workitems.
+<span class="lineNum">     996 </span>            :          *
+<span class="lineNum">     997 </span>            :          * The exception is that the thread that reported to us last time definitely wasn't running any work
+<span class="lineNum">     998 </span>            :          * at that time, and the thread that's reporting now definitely isn't running a work item now. So
+<span class="lineNum">     999 </span>            :          * we really only need to consider threadCount-1 threads.
+<span class="lineNum">    1000 </span>            :          *
+<span class="lineNum">    1001 </span>            :          * Thus the percent error in our count is +/- (threadCount-1)/numCompletions.
+<span class="lineNum">    1002 </span>            :          *
+<span class="lineNum">    1003 </span>            :          * We cannot rely on the frequency-domain analysis we'll be doing later to filter out this error, because
+<span class="lineNum">    1004 </span>            :          * of the way it accumulates over time. If this sample is off by, say, 33% in the negative direction,
+<span class="lineNum">    1005 </span>            :          * then the next one likely will be too. The one after that will include the sum of the completions
+<span class="lineNum">    1006 </span>            :          * we missed in the previous samples, and so will be 33% positive. So every three samples we'll have
+<span class="lineNum">    1007 </span>            :          * two &quot;low&quot; samples and one &quot;high&quot; sample. This will appear as periodic variation right in the frequency
+<span class="lineNum">    1008 </span>            :          * range we're targeting, which will not be filtered by the frequency-domain translation. */
+<span class="lineNum">    1009 </span><span class="lineCov">      39258 :         if (hc-&gt;total_samples &gt; 0 &amp;&amp; ((current_thread_count - 1.0) / completions) &gt;= hc-&gt;max_sample_error) {</span>
+<span class="lineNum">    1010 </span>            :                 /* Not accurate enough yet. Let's accumulate the data so
+<span class="lineNum">    1011 </span>            :                  * far, and tell the MonoThreadPoolWorker to collect a little more. */
+<span class="lineNum">    1012 </span><span class="lineCov">      17785 :                 hc-&gt;accumulated_sample_duration = sample_duration;</span>
+<span class="lineNum">    1013 </span><span class="lineCov">      17785 :                 hc-&gt;accumulated_completion_count = completions;</span>
+<span class="lineNum">    1014 </span><span class="lineCov">      17785 :                 *adjustment_interval = 10;</span>
+<span class="lineNum">    1015 </span><span class="lineCov">      17785 :                 return current_thread_count;</span>
+<span class="lineNum">    1016 </span>            :         }
+<span class="lineNum">    1017 </span>            : 
+<span class="lineNum">    1018 </span>            :         /* We've got enouugh data for our sample; reset our accumulators for next time. */
+<span class="lineNum">    1019 </span><span class="lineCov">       2389 :         hc-&gt;accumulated_sample_duration = 0;</span>
+<span class="lineNum">    1020 </span><span class="lineCov">       2389 :         hc-&gt;accumulated_completion_count = 0;</span>
+<span class="lineNum">    1021 </span>            : 
+<span class="lineNum">    1022 </span>            :         /* Add the current thread count and throughput sample to our history. */
+<span class="lineNum">    1023 </span><span class="lineCov">       2389 :         throughput = ((gdouble) completions) / sample_duration;</span>
+<span class="lineNum">    1024 </span>            : 
+<span class="lineNum">    1025 </span><span class="lineCov">       2389 :         sample_index = hc-&gt;total_samples % hc-&gt;samples_to_measure;</span>
+<span class="lineNum">    1026 </span><span class="lineCov">       2389 :         hc-&gt;samples [sample_index] = throughput;</span>
+<span class="lineNum">    1027 </span><span class="lineCov">       2389 :         hc-&gt;thread_counts [sample_index] = current_thread_count;</span>
+<span class="lineNum">    1028 </span><span class="lineCov">       2389 :         hc-&gt;total_samples ++;</span>
+<span class="lineNum">    1029 </span>            : 
+<span class="lineNum">    1030 </span>            :         /* Set up defaults for our metrics. */
+<span class="lineNum">    1031 </span><span class="lineCov">       2389 :         thread_wave_component = mono_double_complex_make(0, 0);</span>
+<span class="lineNum">    1032 </span><span class="lineCov">       2389 :         throughput_wave_component = mono_double_complex_make(0, 0);</span>
+<span class="lineNum">    1033 </span><span class="lineCov">       2389 :         throughput_error_estimate = 0;</span>
+<span class="lineNum">    1034 </span><span class="lineCov">       2389 :         ratio = mono_double_complex_make(0, 0);</span>
+<span class="lineNum">    1035 </span><span class="lineCov">       2389 :         confidence = 0;</span>
+<span class="lineNum">    1036 </span>            : 
+<span class="lineNum">    1037 </span><span class="lineCov">       2389 :         transition = TRANSITION_WARMUP;</span>
+<span class="lineNum">    1038 </span>            : 
+<span class="lineNum">    1039 </span>            :         /* How many samples will we use? It must be at least the three wave periods we're looking for, and it must also
+<span class="lineNum">    1040 </span>            :          * be a whole multiple of the primary wave's period; otherwise the frequency we're looking for will fall between
+<span class="lineNum">    1041 </span>            :          * two frequency bands in the Fourier analysis, and we won't be able to measure it accurately. */
+<span class="lineNum">    1042 </span><span class="lineCov">       7167 :         sample_count = ((gint) MIN (hc-&gt;total_samples - 1, hc-&gt;samples_to_measure) / hc-&gt;wave_period) * hc-&gt;wave_period;</span>
+<span class="lineNum">    1043 </span>            : 
+<span class="lineNum">    1044 </span><span class="lineCov">       2389 :         if (sample_count &gt; hc-&gt;wave_period) {</span>
+<span class="lineNum">    1045 </span>            :                 guint i;
+<span class="lineNum">    1046 </span>            :                 gdouble average_throughput;
+<span class="lineNum">    1047 </span>            :                 gdouble average_thread_count;
+<span class="lineNum">    1048 </span><span class="lineCov">        250 :                 gdouble sample_sum = 0;</span>
+<span class="lineNum">    1049 </span><span class="lineCov">        250 :                 gdouble thread_sum = 0;</span>
+<span class="lineNum">    1050 </span>            : 
+<span class="lineNum">    1051 </span>            :                 /* Average the throughput and thread count samples, so we can scale the wave magnitudes later. */
+<span class="lineNum">    1052 </span><span class="lineCov">       8028 :                 for (i = 0; i &lt; sample_count; ++i) {</span>
+<span class="lineNum">    1053 </span><span class="lineCov">       3764 :                         guint j = (hc-&gt;total_samples - sample_count + i) % hc-&gt;samples_to_measure;</span>
+<span class="lineNum">    1054 </span><span class="lineCov">       3764 :                         sample_sum += hc-&gt;samples [j];</span>
+<span class="lineNum">    1055 </span><span class="lineCov">       3764 :                         thread_sum += hc-&gt;thread_counts [j];</span>
+<span class="lineNum">    1056 </span><span class="lineCov">       3764 :                 }</span>
+<span class="lineNum">    1057 </span>            : 
+<span class="lineNum">    1058 </span><span class="lineCov">        250 :                 average_throughput = sample_sum / sample_count;</span>
+<span class="lineNum">    1059 </span><span class="lineCov">        250 :                 average_thread_count = thread_sum / sample_count;</span>
+<span class="lineNum">    1060 </span>            : 
+<span class="lineNum">    1061 </span><span class="lineCov">        500 :                 if (average_throughput &gt; 0 &amp;&amp; average_thread_count &gt; 0) {</span>
+<span class="lineNum">    1062 </span>            :                         gdouble noise_for_confidence, adjacent_period_1, adjacent_period_2;
+<span class="lineNum">    1063 </span>            : 
+<span class="lineNum">    1064 </span>            :                         /* Calculate the periods of the adjacent frequency bands we'll be using to
+<span class="lineNum">    1065 </span>            :                          * measure noise levels. We want the two adjacent Fourier frequency bands. */
+<span class="lineNum">    1066 </span><span class="lineCov">        250 :                         adjacent_period_1 = sample_count / (((gdouble) sample_count) / ((gdouble) hc-&gt;wave_period) + 1);</span>
+<span class="lineNum">    1067 </span><span class="lineCov">        250 :                         adjacent_period_2 = sample_count / (((gdouble) sample_count) / ((gdouble) hc-&gt;wave_period) - 1);</span>
+<span class="lineNum">    1068 </span>            : 
+<span class="lineNum">    1069 </span>            :                         /* Get the the three different frequency components of the throughput (scaled by average
+<span class="lineNum">    1070 </span>            :                          * throughput). Our &quot;error&quot; estimate (the amount of noise that might be present in the
+<span class="lineNum">    1071 </span>            :                          * frequency band we're really interested in) is the average of the adjacent bands. */
+<span class="lineNum">    1072 </span><span class="lineCov">        250 :                         throughput_wave_component = mono_double_complex_scalar_div (hill_climbing_get_wave_component (worker, hc-&gt;samples, sample_count, hc-&gt;wave_period), average_throughput);</span>
+<span class="lineNum">    1073 </span><span class="lineCov">        250 :                         throughput_error_estimate = cabs (mono_double_complex_scalar_div (hill_climbing_get_wave_component (worker, hc-&gt;samples, sample_count, adjacent_period_1), average_throughput));</span>
+<span class="lineNum">    1074 </span>            : 
+<span class="lineNum">    1075 </span><span class="lineCov">        250 :                         if (adjacent_period_2 &lt;= sample_count) {</span>
+<span class="lineNum">    1076 </span><span class="lineCov">        750 :                                 throughput_error_estimate = MAX (throughput_error_estimate, cabs (mono_double_complex_scalar_div (hill_climbing_get_wave_component (</span>
+<span class="lineNum">    1077 </span>            :                                         worker, hc-&gt;samples, sample_count, adjacent_period_2), average_throughput)));
+<span class="lineNum">    1078 </span><span class="lineCov">        250 :                         }</span>
+<span class="lineNum">    1079 </span>            : 
+<span class="lineNum">    1080 </span>            :                         /* Do the same for the thread counts, so we have something to compare to. We don't
+<span class="lineNum">    1081 </span>            :                          * measure thread count noise, because there is none; these are exact measurements. */
+<span class="lineNum">    1082 </span><span class="lineCov">        250 :                         thread_wave_component = mono_double_complex_scalar_div (hill_climbing_get_wave_component (worker, hc-&gt;thread_counts, sample_count, hc-&gt;wave_period), average_thread_count);</span>
+<span class="lineNum">    1083 </span>            : 
+<span class="lineNum">    1084 </span>            :                         /* Update our moving average of the throughput noise. We'll use this
+<span class="lineNum">    1085 </span>            :                          * later as feedback to determine the new size of the thread wave. */
+<span class="lineNum">    1086 </span><span class="lineCov">        250 :                         if (hc-&gt;average_throughput_noise == 0) {</span>
+<span class="lineNum">    1087 </span><span class="lineCov">         43 :                                 hc-&gt;average_throughput_noise = throughput_error_estimate;</span>
+<span class="lineNum">    1088 </span><span class="lineCov">         43 :                         } else {</span>
+<span class="lineNum">    1089 </span><span class="lineCov">        414 :                                 hc-&gt;average_throughput_noise = (hc-&gt;throughput_error_smoothing_factor * throughput_error_estimate)</span>
+<span class="lineNum">    1090 </span><span class="lineCov">        207 :                                         + ((1.0 + hc-&gt;throughput_error_smoothing_factor) * hc-&gt;average_throughput_noise);</span>
+<span class="lineNum">    1091 </span>            :                         }
+<span class="lineNum">    1092 </span>            : 
+<span class="lineNum">    1093 </span><span class="lineCov">        250 :                         if (cabs (thread_wave_component) &gt; 0) {</span>
+<span class="lineNum">    1094 </span>            :                                 /* Adjust the throughput wave so it's centered around the target wave,
+<span class="lineNum">    1095 </span>            :                                  * and then calculate the adjusted throughput/thread ratio. */
+<span class="lineNum">    1096 </span><span class="lineCov">        250 :                                 ratio = mono_double_complex_div (mono_double_complex_sub (throughput_wave_component, mono_double_complex_scalar_mul(thread_wave_component, hc-&gt;target_throughput_ratio)), thread_wave_component);</span>
+<span class="lineNum">    1097 </span><span class="lineCov">        250 :                                 transition = TRANSITION_CLIMBING_MOVE;</span>
+<span class="lineNum">    1098 </span><span class="lineCov">        250 :                         } else {</span>
+<span class="lineNum">    1099 </span><span class="lineNoCov">          0 :                                 ratio = mono_double_complex_make (0, 0);</span>
+<span class="lineNum">    1100 </span><span class="lineNoCov">          0 :                                 transition = TRANSITION_STABILIZING;</span>
+<span class="lineNum">    1101 </span>            :                         }
+<span class="lineNum">    1102 </span>            : 
+<span class="lineNum">    1103 </span><span class="lineCov">        750 :                         noise_for_confidence = MAX (hc-&gt;average_throughput_noise, throughput_error_estimate);</span>
+<span class="lineNum">    1104 </span><span class="lineCov">        250 :                         if (noise_for_confidence &gt; 0) {</span>
+<span class="lineNum">    1105 </span><span class="lineCov">        250 :                                 confidence = cabs (thread_wave_component) / noise_for_confidence / hc-&gt;target_signal_to_noise_ratio;</span>
+<span class="lineNum">    1106 </span><span class="lineCov">        250 :                         } else {</span>
+<span class="lineNum">    1107 </span>            :                                 /* there is no noise! */
+<span class="lineNum">    1108 </span><span class="lineNoCov">          0 :                                 confidence = 1.0;</span>
+<span class="lineNum">    1109 </span>            :                         }
+<span class="lineNum">    1110 </span><span class="lineCov">        250 :                 }</span>
+<span class="lineNum">    1111 </span><span class="lineCov">        250 :         }</span>
+<span class="lineNum">    1112 </span>            : 
+<span class="lineNum">    1113 </span>            :         /* We use just the real part of the complex ratio we just calculated. If the throughput signal
+<span class="lineNum">    1114 </span>            :          * is exactly in phase with the thread signal, this will be the same as taking the magnitude of
+<span class="lineNum">    1115 </span>            :          * the complex move and moving that far up. If they're 180 degrees out of phase, we'll move
+<span class="lineNum">    1116 </span>            :          * backward (because this indicates that our changes are having the opposite of the intended effect).
+<span class="lineNum">    1117 </span>            :          * If they're 90 degrees out of phase, we won't move at all, because we can't tell wether we're
+<span class="lineNum">    1118 </span>            :          * having a negative or positive effect on throughput. */
+<span class="lineNum">    1119 </span><span class="lineCov">       2389 :         move = creal (ratio);</span>
+<span class="lineNum">    1120 </span><span class="lineCov">      11857 :         move = CLAMP (move, -1.0, 1.0);</span>
+<span class="lineNum">    1121 </span>            : 
+<span class="lineNum">    1122 </span>            :         /* Apply our confidence multiplier. */
+<span class="lineNum">    1123 </span><span class="lineCov">      11945 :         move *= CLAMP (confidence, -1.0, 1.0);</span>
+<span class="lineNum">    1124 </span>            : 
+<span class="lineNum">    1125 </span>            :         /* Now apply non-linear gain, such that values around zero are attenuated, while higher values
+<span class="lineNum">    1126 </span>            :          * are enhanced. This allows us to move quickly if we're far away from the target, but more slowly
+<span class="lineNum">    1127 </span>            :         * if we're getting close, giving us rapid ramp-up without wild oscillations around the target. */
+<span class="lineNum">    1128 </span><span class="lineCov">       2389 :         gain = hc-&gt;max_change_per_second * sample_duration;</span>
+<span class="lineNum">    1129 </span><span class="lineCov">       2389 :         move = pow (fabs (move), hc-&gt;gain_exponent) * (move &gt;= 0.0 ? 1 : -1) * gain;</span>
+<span class="lineNum">    1130 </span><span class="lineCov">       7167 :         move = MIN (move, hc-&gt;max_change_per_sample);</span>
+<span class="lineNum">    1131 </span>            : 
+<span class="lineNum">    1132 </span>            :         /* If the result was positive, and CPU is &gt; 95%, refuse the move. */
+<span class="lineNum">    1133 </span><span class="lineCov">       2469 :         if (move &gt; 0.0 &amp;&amp; worker-&gt;cpu_usage &gt; CPU_USAGE_HIGH)</span>
+<span class="lineNum">    1134 </span><span class="lineCov">          3 :                 move = 0.0;</span>
+<span class="lineNum">    1135 </span>            : 
+<span class="lineNum">    1136 </span>            :         /* Apply the move to our control setting. */
+<span class="lineNum">    1137 </span><span class="lineCov">       2389 :         hc-&gt;current_control_setting += move;</span>
+<span class="lineNum">    1138 </span>            : 
+<span class="lineNum">    1139 </span>            :         /* Calculate the new thread wave magnitude, which is based on the moving average we've been keeping of the
+<span class="lineNum">    1140 </span>            :          * throughput error.  This average starts at zero, so we'll start with a nice safe little wave at first. */
+<span class="lineNum">    1141 </span><span class="lineCov">       4778 :         new_thread_wave_magnitude = (gint)(0.5 + (hc-&gt;current_control_setting * hc-&gt;average_throughput_noise</span>
+<span class="lineNum">    1142 </span><span class="lineCov">       2389 :                 * hc-&gt;target_signal_to_noise_ratio * hc-&gt;thread_magnitude_multiplier * 2.0));</span>
+<span class="lineNum">    1143 </span><span class="lineCov">       7485 :         new_thread_wave_magnitude = CLAMP (new_thread_wave_magnitude, 1, hc-&gt;max_thread_wave_magnitude);</span>
+<span class="lineNum">    1144 </span>            : 
+<span class="lineNum">    1145 </span>            :         /* Make sure our control setting is within the MonoThreadPoolWorker's limits. */
+<span class="lineNum">    1146 </span><span class="lineCov">      11683 :         hc-&gt;current_control_setting = CLAMP (hc-&gt;current_control_setting, worker-&gt;limit_worker_min, worker-&gt;limit_worker_max - new_thread_wave_magnitude);</span>
+<span class="lineNum">    1147 </span>            : 
+<span class="lineNum">    1148 </span>            :         /* Calculate the new thread count (control setting + square wave). */
+<span class="lineNum">    1149 </span><span class="lineCov">       2389 :         new_thread_count = (gint)(hc-&gt;current_control_setting + new_thread_wave_magnitude * ((hc-&gt;total_samples / (hc-&gt;wave_period / 2)) % 2));</span>
+<span class="lineNum">    1150 </span>            : 
+<span class="lineNum">    1151 </span>            :         /* Make sure the new thread count doesn't exceed the MonoThreadPoolWorker's limits. */
+<span class="lineNum">    1152 </span><span class="lineCov">      11945 :         new_thread_count = CLAMP (new_thread_count, worker-&gt;limit_worker_min, worker-&gt;limit_worker_max);</span>
+<span class="lineNum">    1153 </span>            : 
+<span class="lineNum">    1154 </span><span class="lineCov">       2389 :         if (new_thread_count != current_thread_count)</span>
+<span class="lineNum">    1155 </span><span class="lineCov">        815 :                 hill_climbing_change_thread_count (worker, new_thread_count, transition);</span>
+<span class="lineNum">    1156 </span>            : 
+<span class="lineNum">    1157 </span><span class="lineCov">       2559 :         if (creal (ratio) &lt; 0.0 &amp;&amp; new_thread_count == worker-&gt;limit_worker_min)</span>
+<span class="lineNum">    1158 </span><span class="lineCov">        204 :                 *adjustment_interval = (gint)(0.5 + hc-&gt;current_sample_interval * (10.0 * MAX (-1.0 * creal (ratio), 1.0)));</span>
+<span class="lineNum">    1159 </span>            :         else
+<span class="lineNum">    1160 </span><span class="lineCov">       2321 :                 *adjustment_interval = hc-&gt;current_sample_interval;</span>
+<span class="lineNum">    1161 </span>            : 
+<span class="lineNum">    1162 </span><span class="lineCov">       2389 :         return new_thread_count;</span>
+<span class="lineNum">    1163 </span><span class="lineCov">      20174 : }</span>
+<a name="1164"><span class="lineNum">    1164 </span>            : </a>
+<span class="lineNum">    1165 </span>            : static gboolean
+<span class="lineNum">    1166 </span>            : heuristic_should_adjust (MonoThreadPoolWorker *worker)
+<span class="lineNum">    1167 </span>            : {
+<span class="lineNum">    1168 </span><span class="lineCov">     653706 :         if (worker-&gt;heuristic_last_dequeue &gt; worker-&gt;heuristic_last_adjustment + worker-&gt;heuristic_adjustment_interval) {</span>
+<span class="lineNum">    1169 </span>            :                 ThreadPoolWorkerCounter counter;
+<span class="lineNum">    1170 </span><span class="lineCov">      91457 :                 counter = COUNTER_READ (worker);</span>
+<span class="lineNum">    1171 </span><span class="lineCov">      91457 :                 if (counter._.working &lt;= counter._.max_working)</span>
+<span class="lineNum">    1172 </span><span class="lineCov">      20976 :                         return TRUE;</span>
+<span class="lineNum">    1173 </span><span class="lineCov">      70476 :         }</span>
+<span class="lineNum">    1174 </span>            : 
+<span class="lineNum">    1175 </span><span class="lineCov">     632744 :         return FALSE;</span>
+<span class="lineNum">    1176 </span><span class="lineCov">     653737 : }</span>
+<a name="1177"><span class="lineNum">    1177 </span>            : </a>
+<span class="lineNum">    1178 </span>            : static void
+<span class="lineNum">    1179 </span>            : heuristic_adjust (MonoThreadPoolWorker *worker)
+<span class="lineNum">    1180 </span>            : {
+<span class="lineNum">    1181 </span><span class="lineCov">      21013 :         if (mono_coop_mutex_trylock (&amp;worker-&gt;heuristic_lock) == 0) {</span>
+<span class="lineNum">    1182 </span><span class="lineCov">      20208 :                 gint32 completions = InterlockedExchange (&amp;worker-&gt;heuristic_completions, 0);</span>
+<span class="lineNum">    1183 </span><span class="lineCov">      20208 :                 gint64 sample_end = mono_msec_ticks ();</span>
+<span class="lineNum">    1184 </span><span class="lineCov">      20208 :                 gint64 sample_duration = sample_end - worker-&gt;heuristic_sample_start;</span>
+<span class="lineNum">    1185 </span>            : 
+<span class="lineNum">    1186 </span><span class="lineCov">      20208 :                 if (sample_duration &gt;= worker-&gt;heuristic_adjustment_interval / 2) {</span>
+<span class="lineNum">    1187 </span>            :                         ThreadPoolWorkerCounter counter;
+<span class="lineNum">    1188 </span>            :                         gint16 new_thread_count;
+<span class="lineNum">    1189 </span>            : 
+<span class="lineNum">    1190 </span><span class="lineCov">      20174 :                         counter = COUNTER_READ (worker);</span>
+<span class="lineNum">    1191 </span><span class="lineCov">      20174 :                         new_thread_count = hill_climbing_update (worker, counter._.max_working, sample_duration, completions, &amp;worker-&gt;heuristic_adjustment_interval);</span>
+<span class="lineNum">    1192 </span>            : 
+<span class="lineNum">    1193 </span><span class="lineCov">     384442 :                         COUNTER_ATOMIC (worker, counter, {</span>
+<span class="lineNum">    1194 </span>            :                                 counter._.max_working = new_thread_count;
+<span class="lineNum">    1195 </span>            :                         });
+<span class="lineNum">    1196 </span>            : 
+<span class="lineNum">    1197 </span><span class="lineCov">      20174 :                         if (new_thread_count &gt; counter._.max_working)</span>
+<span class="lineNum">    1198 </span><span class="lineNoCov">          0 :                                 worker_request (worker);</span>
+<span class="lineNum">    1199 </span>            : 
+<span class="lineNum">    1200 </span><span class="lineCov">      20174 :                         worker-&gt;heuristic_sample_start = sample_end;</span>
+<span class="lineNum">    1201 </span><span class="lineCov">      20174 :                         worker-&gt;heuristic_last_adjustment = mono_msec_ticks ();</span>
+<span class="lineNum">    1202 </span><span class="lineCov">      20174 :                 }</span>
+<span class="lineNum">    1203 </span>            : 
+<span class="lineNum">    1204 </span><span class="lineCov">      20208 :                 mono_coop_mutex_unlock (&amp;worker-&gt;heuristic_lock);</span>
+<span class="lineNum">    1205 </span><span class="lineCov">      20208 :         }</span>
+<span class="lineNum">    1206 </span><span class="lineCov">      21009 : }</span>
+<a name="1207"><span class="lineNum">    1207 </span>            : </a>
+<span class="lineNum">    1208 </span>            : static void
+<span class="lineNum">    1209 </span>            : heuristic_notify_work_completed (MonoThreadPoolWorker *worker)
+<span class="lineNum">    1210 </span>            : {
+<span class="lineNum">    1211 </span><span class="lineCov">    1959852 :         g_assert (worker);</span>
+<span class="lineNum">    1212 </span>            : 
+<span class="lineNum">    1213 </span><span class="lineCov">     653749 :         InterlockedIncrement (&amp;worker-&gt;heuristic_completions);</span>
+<span class="lineNum">    1214 </span><span class="lineCov">     653749 :         worker-&gt;heuristic_last_dequeue = mono_msec_ticks ();</span>
+<span class="lineNum">    1215 </span>            : 
+<span class="lineNum">    1216 </span><span class="lineCov">     653749 :         if (heuristic_should_adjust (worker))</span>
+<span class="lineNum">    1217 </span><span class="lineCov">      20986 :                 heuristic_adjust (worker);</span>
+<span class="lineNum">    1218 </span><span class="lineCov">     653768 : }</span>
+<a name="1219"><span class="lineNum">    1219 </span>            : </a>
+<span class="lineNum">    1220 </span>            : gboolean
+<span class="lineNum">    1221 </span>            : mono_threadpool_worker_notify_completed (MonoThreadPoolWorker *worker)
+<span class="lineNum">    1222 </span>            : {
+<span class="lineNum">    1223 </span>            :         ThreadPoolWorkerCounter counter;
+<span class="lineNum">    1224 </span>            : 
+<span class="lineNum">    1225 </span><span class="lineCov">     653291 :         heuristic_notify_work_completed (worker);</span>
+<span class="lineNum">    1226 </span>            : 
+<span class="lineNum">    1227 </span><span class="lineCov">     653291 :         counter = COUNTER_READ (worker);</span>
+<span class="lineNum">    1228 </span><span class="lineCov">     653291 :         return counter._.working &lt;= counter._.max_working;</span>
+<span class="lineNum">    1229 </span>            : }
+<a name="1230"><span class="lineNum">    1230 </span>            : </a>
+<span class="lineNum">    1231 </span>            : gint32
+<span class="lineNum">    1232 </span>            : mono_threadpool_worker_get_min (MonoThreadPoolWorker *worker)
+<span class="lineNum">    1233 </span>            : {
+<span class="lineNum">    1234 </span><span class="lineCov">          1 :         return worker-&gt;limit_worker_min;</span>
+<span class="lineNum">    1235 </span>            : }
+<a name="1236"><span class="lineNum">    1236 </span>            : </a>
+<span class="lineNum">    1237 </span>            : gboolean
+<span class="lineNum">    1238 </span>            : mono_threadpool_worker_set_min (MonoThreadPoolWorker *worker, gint32 value)
+<span class="lineNum">    1239 </span>            : {
+<span class="lineNum">    1240 </span><span class="lineCov">      11494 :         if (value &lt;= 0 || value &gt; worker-&gt;limit_worker_max)</span>
+<span class="lineNum">    1241 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">    1242 </span>            : 
+<span class="lineNum">    1243 </span><span class="lineCov">       5747 :         worker-&gt;limit_worker_min = value;</span>
+<span class="lineNum">    1244 </span><span class="lineCov">       5747 :         return TRUE;</span>
+<span class="lineNum">    1245 </span><span class="lineCov">       5747 : }</span>
+<a name="1246"><span class="lineNum">    1246 </span>            : </a>
+<span class="lineNum">    1247 </span>            : gint32
+<span class="lineNum">    1248 </span>            : mono_threadpool_worker_get_max (MonoThreadPoolWorker *worker)
+<span class="lineNum">    1249 </span>            : {
+<span class="lineNum">    1250 </span><span class="lineCov">        298 :         return worker-&gt;limit_worker_max;</span>
+<span class="lineNum">    1251 </span>            : }
+<a name="1252"><span class="lineNum">    1252 </span>            : </a>
+<span class="lineNum">    1253 </span>            : gboolean
+<span class="lineNum">    1254 </span>            : mono_threadpool_worker_set_max (MonoThreadPoolWorker *worker, gint32 value)
+<span class="lineNum">    1255 </span>            : {
+<span class="lineNum">    1256 </span><span class="lineCov">       2874 :         gint32 cpu_count = mono_cpu_count ();</span>
+<span class="lineNum">    1257 </span>            : 
+<span class="lineNum">    1258 </span><span class="lineCov">       5748 :         if (value &lt; worker-&gt;limit_worker_min || value &lt; cpu_count)</span>
+<span class="lineNum">    1259 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">    1260 </span>            : 
+<span class="lineNum">    1261 </span><span class="lineCov">       2874 :         worker-&gt;limit_worker_max = value;</span>
+<span class="lineNum">    1262 </span><span class="lineCov">       2874 :         return TRUE;</span>
+<span class="lineNum">    1263 </span><span class="lineCov">       2874 : }</span>
+<a name="1264"><span class="lineNum">    1264 </span>            : </a>
+<span class="lineNum">    1265 </span>            : void
+<span class="lineNum">    1266 </span>            : mono_threadpool_worker_set_suspended (MonoThreadPoolWorker *worker, gboolean suspended)
+<span class="lineNum">    1267 </span>            : {
+<span class="lineNum">    1268 </span><span class="lineNoCov">          0 :         worker-&gt;suspended = suspended;</span>
+<span class="lineNum">    1269 </span><span class="lineNoCov">          0 :         if (!suspended)</span>
+<span class="lineNum">    1270 </span><span class="lineNoCov">          0 :                 worker_request (worker);</span>
+<span class="lineNum">    1271 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

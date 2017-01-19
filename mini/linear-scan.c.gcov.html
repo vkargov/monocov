@@ -1,0 +1,596 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/linear-scan.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - linear-scan.c<span style="font-size: 80%;"> (source / <a href="linear-scan.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">230</td>
+            <td class="headerCovTableEntry">243</td>
+            <td class="headerCovTableEntryHi">94.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">7</td>
+            <td class="headerCovTableEntry">7</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * liveness.c: liveness analysis
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Dietmar Maurer (dietmar@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2002 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      11 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : static void mono_linear_scan2 (MonoCompile *cfg, GList *vars, GList *regs, regmask_t *used_mask);
+<a name="17"><span class="lineNum">      17 </span>            : </a>
+<span class="lineNum">      18 </span>            : GList *
+<span class="lineNum">      19 </span>            : mono_varlist_insert_sorted (MonoCompile *cfg, GList *list, MonoMethodVar *mv, int sort_type)
+<span class="lineNum">      20 </span>            : {
+<span class="lineNum">      21 </span>            :         GList *l;
+<span class="lineNum">      22 </span>            : 
+<span class="lineNum">      23 </span><span class="lineCov">   49295234 :         if (!list)</span>
+<span class="lineNum">      24 </span><span class="lineCov">   16366707 :                 return g_list_prepend (NULL, mv);</span>
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span><span class="lineCov">  101477069 :         for (l = list; l; l = l-&gt;next) {</span>
+<span class="lineNum">      27 </span><span class="lineCov">   45993875 :                 MonoMethodVar *v1 = (MonoMethodVar *)l-&gt;data;</span>
+<span class="lineNum">      28 </span>            :                 
+<span class="lineNum">      29 </span><span class="lineCov">   45993875 :                 if (sort_type == 2) {</span>
+<span class="lineNum">      30 </span><span class="lineCov">    5793724 :                         if (mv-&gt;spill_costs &gt;= v1-&gt;spill_costs) {</span>
+<span class="lineNum">      31 </span><span class="lineCov">    2796861 :                                 list = g_list_insert_before (list, l, mv);</span>
+<span class="lineNum">      32 </span><span class="lineCov">    2796861 :                                 break;</span>
+<span class="lineNum">      33 </span>            :                         }                       
+<span class="lineNum">      34 </span><span class="lineCov">   43194165 :                 } else if (sort_type == 1) {</span>
+<span class="lineNum">      35 </span><span class="lineCov">   40200234 :                         if (mv-&gt;range.last_use.abs_pos &lt;= v1-&gt;range.last_use.abs_pos) {</span>
+<span class="lineNum">      36 </span><span class="lineCov">   25384378 :                                 list = g_list_insert_before (list, l, mv);</span>
+<span class="lineNum">      37 </span><span class="lineCov">   25384378 :                                 break;</span>
+<span class="lineNum">      38 </span>            :                         }
+<span class="lineNum">      39 </span><span class="lineCov">   14812641 :                 } else {</span>
+<span class="lineNum">      40 </span><span class="lineNoCov">          0 :                         if (mv-&gt;range.first_use.abs_pos &lt;= v1-&gt;range.first_use.abs_pos) {</span>
+<span class="lineNum">      41 </span><span class="lineNoCov">          0 :                                 list = g_list_insert_before (list, l, mv);</span>
+<span class="lineNum">      42 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">      43 </span>            :                         }
+<span class="lineNum">      44 </span>            :                 }
+<span class="lineNum">      45 </span><span class="lineCov">   17808636 :         }</span>
+<span class="lineNum">      46 </span><span class="lineCov">   32925552 :         if (!l)</span>
+<span class="lineNum">      47 </span><span class="lineCov">    4744678 :                 list = g_list_append (list, mv);</span>
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span><span class="lineCov">   32924082 :         return list;</span>
+<span class="lineNum">      50 </span><span class="lineCov">   49277200 : }</span>
+<a name="51"><span class="lineNum">      51 </span>            : </a>
+<span class="lineNum">      52 </span>            : static gint 
+<span class="lineNum">      53 </span>            : compare_by_first_use_func (gconstpointer a, gconstpointer b)
+<span class="lineNum">      54 </span>            : {
+<span class="lineNum">      55 </span><span class="lineCov">  159053130 :         MonoMethodVar *v1 = (MonoMethodVar*)a;</span>
+<span class="lineNum">      56 </span><span class="lineCov">  159053130 :         MonoMethodVar *v2 = (MonoMethodVar*)b;</span>
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span><span class="lineCov">  159053130 :         return v1-&gt;range.first_use.abs_pos - v2-&gt;range.first_use.abs_pos;</span>
+<span class="lineNum">      59 </span>            : }
+<a name="60"><span class="lineNum">      60 </span>            : </a>
+<span class="lineNum">      61 </span>            : GList *
+<span class="lineNum">      62 </span>            : mono_varlist_sort (MonoCompile *cfg, GList *list, int sort_type)
+<span class="lineNum">      63 </span>            : {
+<span class="lineNum">      64 </span><span class="lineCov">   28409982 :         if (sort_type == 0)</span>
+<span class="lineNum">      65 </span><span class="lineCov">   28413997 :                 return g_list_sort (list, compare_by_first_use_func);</span>
+<span class="lineNum">      66 </span>            :         else
+<span class="lineNum">      67 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">      70 </span><span class="lineCov">   28419594 : }</span>
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            : // #define DEBUG_LSCAN
+<a name="73"><span class="lineNum">      73 </span>            : </a>
+<span class="lineNum">      74 </span>            : void
+<span class="lineNum">      75 </span>            : mono_linear_scan (MonoCompile *cfg, GList *vars, GList *regs, regmask_t *used_mask)
+<span class="lineNum">      76 </span>            : {
+<span class="lineNum">      77 </span><span class="lineCov">   12469551 :         GList *l, *a, *active = NULL;</span>
+<span class="lineNum">      78 </span>            :         MonoMethodVar *vmv, *amv;
+<span class="lineNum">      79 </span>            :         int max_regs, n_regvars;
+<span class="lineNum">      80 </span>            :         int gains [sizeof (regmask_t) * 8];
+<span class="lineNum">      81 </span><span class="lineCov">   12469551 :         regmask_t used_regs = 0;</span>
+<span class="lineNum">      82 </span>            :         gboolean cost_driven;
+<span class="lineNum">      83 </span>            : 
+<span class="lineNum">      84 </span><span class="lineCov">   37410472 :         if (!cfg-&gt;disable_reuse_registers &amp;&amp; vars &amp;&amp; (((MonoMethodVar*)vars-&gt;data)-&gt;interval != NULL)) {</span>
+<span class="lineNum">      85 </span><span class="lineCov">      31051 :                 mono_linear_scan2 (cfg, vars, regs, used_mask);</span>
+<span class="lineNum">      86 </span><span class="lineCov">      31051 :                 g_list_free (regs);</span>
+<span class="lineNum">      87 </span><span class="lineCov">      31051 :                 g_list_free (vars);</span>
+<span class="lineNum">      88 </span><span class="lineCov">      31051 :                 return;</span>
+<span class="lineNum">      89 </span>            :         }
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span><span class="lineCov">   12435706 :         cost_driven = TRUE;</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">      94 </span>            :         printf (&quot;Linears scan for %s\n&quot;, mono_method_full_name (cfg-&gt;method, TRUE));
+<span class="lineNum">      95 </span>            : #endif
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">      98 </span>            :         for (l = vars; l; l = l-&gt;next) {
+<span class="lineNum">      99 </span>            :                 vmv = l-&gt;data;
+<span class="lineNum">     100 </span>            :                 printf (&quot;VAR %d %08x %08x C%d\n&quot;, vmv-&gt;idx, vmv-&gt;range.first_use.abs_pos, 
+<span class="lineNum">     101 </span>            :                         vmv-&gt;range.last_use.abs_pos, vmv-&gt;spill_costs);
+<span class="lineNum">     102 </span>            :         }
+<span class="lineNum">     103 </span>            : #endif
+<span class="lineNum">     104 </span><span class="lineCov">   12435706 :         max_regs = g_list_length (regs);</span>
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span><span class="lineCov">  170198889 :         for (l = regs; l; l = l-&gt;next) {</span>
+<span class="lineNum">     107 </span><span class="lineCov">   72659321 :                 int regnum = GPOINTER_TO_INT (l-&gt;data);</span>
+<span class="lineNum">     108 </span><span class="lineCov">  217970253 :                 g_assert (regnum &lt; G_N_ELEMENTS (gains));</span>
+<span class="lineNum">     109 </span><span class="lineCov">   72669665 :                 gains [regnum] = 0;</span>
+<span class="lineNum">     110 </span><span class="lineCov">   72669665 :         }</span>
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span>            :         /* linear scan */
+<span class="lineNum">     113 </span><span class="lineCov">  121542903 :         for (l = vars; l; l = l-&gt;next) {</span>
+<span class="lineNum">     114 </span><span class="lineCov">   48337894 :                 vmv = (MonoMethodVar *)l-&gt;data;</span>
+<span class="lineNum">     115 </span>            : 
+<span class="lineNum">     116 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">     117 </span>            :                 printf (&quot;START  %2d %08x %08x\n&quot;,  vmv-&gt;idx, vmv-&gt;range.first_use.abs_pos, 
+<span class="lineNum">     118 </span>            :                         vmv-&gt;range.last_use.abs_pos);
+<span class="lineNum">     119 </span>            : #endif
+<span class="lineNum">     120 </span>            :                 /* expire old intervals in active */
+<span class="lineNum">     121 </span><span class="lineCov">   48337894 :                 if (!cfg-&gt;disable_reuse_registers) {</span>
+<span class="lineNum">     122 </span><span class="lineCov">  108969822 :                         while (active) {</span>
+<span class="lineNum">     123 </span><span class="lineCov">   41311433 :                                 amv = (MonoMethodVar *)active-&gt;data;</span>
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span><span class="lineCov">   41311433 :                                 if (amv-&gt;range.last_use.abs_pos &gt; vmv-&gt;range.first_use.abs_pos)</span>
+<span class="lineNum">     126 </span><span class="lineCov">   35166411 :                                         break;</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">     129 </span>            :                                 printf (&quot;EXPIR  %2d %08x %08x C%d R%d\n&quot;, amv-&gt;idx, amv-&gt;range.first_use.abs_pos, 
+<span class="lineNum">     130 </span>            :                                                 amv-&gt;range.last_use.abs_pos, amv-&gt;spill_costs, amv-&gt;reg);
+<span class="lineNum">     131 </span>            : #endif
+<span class="lineNum">     132 </span><span class="lineCov">    6146244 :                                 active = g_list_delete_link (active, active);</span>
+<span class="lineNum">     133 </span><span class="lineCov">    6146244 :                                 regs = g_list_prepend (regs, GINT_TO_POINTER (amv-&gt;reg));</span>
+<span class="lineNum">     134 </span><span class="lineCov">    6146244 :                                 gains [amv-&gt;reg] += amv-&gt;spill_costs;</span>
+<span class="lineNum">     135 </span>            :                         }
+<span class="lineNum">     136 </span><span class="lineCov">   48336301 :                 }</span>
+<span class="lineNum">     137 </span>            : 
+<span class="lineNum">     138 </span><span class="lineCov">   83514761 :                 if (active &amp;&amp; g_list_length (active) == max_regs) {</span>
+<span class="lineNum">     139 </span>            :                         /* Spill */
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span><span class="lineCov">    9636213 :                         a = g_list_nth (active, max_regs - 1);</span>
+<span class="lineNum">     142 </span><span class="lineCov">    9636213 :                         amv = (MonoMethodVar *)a-&gt;data;</span>
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span><span class="lineCov">   19273386 :                         if ((cost_driven &amp;&amp; amv-&gt;spill_costs &lt; vmv-&gt;spill_costs) ||                         </span>
+<span class="lineNum">     145 </span><span class="lineCov">    6681348 :                             (!cost_driven &amp;&amp; amv-&gt;range.last_use.abs_pos &gt; vmv-&gt;range.last_use.abs_pos)) {</span>
+<span class="lineNum">     146 </span><span class="lineCov">    2955675 :                                 vmv-&gt;reg = amv-&gt;reg;</span>
+<span class="lineNum">     147 </span><span class="lineCov">    2955675 :                                 amv-&gt;reg = -1;</span>
+<span class="lineNum">     148 </span><span class="lineCov">    2955675 :                                 active = g_list_delete_link (active, a);</span>
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span><span class="lineCov">    2955675 :                                 if (cost_driven)</span>
+<span class="lineNum">     151 </span><span class="lineCov">    2955943 :                                         active = mono_varlist_insert_sorted (cfg, active, vmv, 2);      </span>
+<span class="lineNum">     152 </span>            :                                 else
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                                         active = mono_varlist_insert_sorted (cfg, active, vmv, 1);      </span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">     156 </span>            :                                 printf (&quot;SPILL0 %2d %08x %08x C%d\n&quot;,  amv-&gt;idx, 
+<span class="lineNum">     157 </span>            :                                         amv-&gt;range.first_use.abs_pos, amv-&gt;range.last_use.abs_pos,
+<span class="lineNum">     158 </span>            :                                         amv-&gt;spill_costs);
+<span class="lineNum">     159 </span>            : #endif
+<span class="lineNum">     160 </span><span class="lineCov">    2956080 :                         } else {</span>
+<span class="lineNum">     161 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">     162 </span>            :                                 printf (&quot;SPILL1 %2d %08x %08x C%d\n&quot;,  vmv-&gt;idx, 
+<span class="lineNum">     163 </span>            :                                         vmv-&gt;range.first_use.abs_pos, vmv-&gt;range.last_use.abs_pos,
+<span class="lineNum">     164 </span>            :                                         vmv-&gt;spill_costs);
+<span class="lineNum">     165 </span>            : #endif
+<span class="lineNum">     166 </span><span class="lineCov">    6679866 :                                 vmv-&gt;reg = -1;</span>
+<span class="lineNum">     167 </span>            :                         }
+<span class="lineNum">     168 </span><span class="lineCov">    9634819 :                 } else {</span>
+<span class="lineNum">     169 </span>            :                         /* assign register */
+<span class="lineNum">     170 </span>            : 
+<span class="lineNum">     171 </span><span class="lineCov">  116108278 :                         g_assert (regs);</span>
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span><span class="lineCov">   38711629 :                         vmv-&gt;reg = GPOINTER_TO_INT (regs-&gt;data);</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span><span class="lineCov">   38711629 :                         used_regs |= 1LL &lt;&lt; vmv-&gt;reg;</span>
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineCov">   38711629 :                         regs = g_list_delete_link (regs, regs);</span>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">     180 </span>            :                         printf (&quot;ADD    %2d %08x %08x C%d R%d\n&quot;,  vmv-&gt;idx, 
+<span class="lineNum">     181 </span>            :                                 vmv-&gt;range.first_use.abs_pos, vmv-&gt;range.last_use.abs_pos, 
+<span class="lineNum">     182 </span>            :                                 vmv-&gt;spill_costs, vmv-&gt;reg);
+<span class="lineNum">     183 </span>            : #endif
+<span class="lineNum">     184 </span><span class="lineCov">   38711629 :                         active = mono_varlist_insert_sorted (cfg, active, vmv, TRUE);           </span>
+<span class="lineNum">     185 </span>            :                 }
+<span class="lineNum">     186 </span>            : 
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">     189 </span>            :                 for (a = active; a; a = a-&gt;next) {
+<span class="lineNum">     190 </span>            :                         amv = (MonoMethodVar *)a-&gt;data;              
+<span class="lineNum">     191 </span>            :                         printf (&quot;ACT    %2d %08x %08x C%d R%d\n&quot;, amv-&gt;idx, amv-&gt;range.first_use.abs_pos,  
+<span class="lineNum">     192 </span>            :                                 amv-&gt;range.last_use.abs_pos, amv-&gt;spill_costs, amv-&gt;reg);
+<span class="lineNum">     193 </span>            :                 }
+<span class="lineNum">     194 </span>            :                 printf (&quot;NEXT\n&quot;);
+<span class="lineNum">     195 </span>            : #endif
+<span class="lineNum">     196 </span><span class="lineCov">   48323509 :         }       </span>
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span><span class="lineCov">   89986841 :         for (a = active; a; a = a-&gt;next) {</span>
+<span class="lineNum">     199 </span><span class="lineCov">   32562933 :                 amv = (MonoMethodVar *)a-&gt;data;              </span>
+<span class="lineNum">     200 </span><span class="lineCov">   32562933 :                 gains [amv-&gt;reg] += amv-&gt;spill_costs;</span>
+<span class="lineNum">     201 </span><span class="lineCov">   32562933 :         }</span>
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span><span class="lineCov">   12439005 :         n_regvars = 0;</span>
+<span class="lineNum">     204 </span><span class="lineCov">  121533668 :         for (l = vars; l; l = l-&gt;next) {</span>
+<span class="lineNum">     205 </span><span class="lineCov">   48329001 :                 vmv = (MonoMethodVar *)l-&gt;data;</span>
+<span class="lineNum">     206 </span>            :                 
+<span class="lineNum">     207 </span><span class="lineCov">   48329001 :                 if (vmv-&gt;reg &gt;= 0)  {</span>
+<span class="lineNum">     208 </span><span class="lineCov">   69329554 :                         if ((gains [vmv-&gt;reg] &gt; mono_arch_regalloc_cost (cfg, vmv)) &amp;&amp; (cfg-&gt;varinfo [vmv-&gt;idx]-&gt;opcode != OP_REGVAR)) {</span>
+<span class="lineNum">     209 </span><span class="lineCov">   30623294 :                                 if (cfg-&gt;verbose_level &gt; 2) {</span>
+<span class="lineNum">     210 </span><span class="lineCov">     373480 :                                         printf (&quot;ALLOCATED R%d(%d) TO HREG %d COST %d\n&quot;, cfg-&gt;varinfo [vmv-&gt;idx]-&gt;dreg, vmv-&gt;idx, vmv-&gt;reg, vmv-&gt;spill_costs);</span>
+<span class="lineNum">     211 </span><span class="lineCov">     373480 :                                 }</span>
+<span class="lineNum">     212 </span><span class="lineCov">   30618920 :                                 cfg-&gt;varinfo [vmv-&gt;idx]-&gt;opcode = OP_REGVAR;</span>
+<span class="lineNum">     213 </span><span class="lineCov">   30618920 :                                 cfg-&gt;varinfo [vmv-&gt;idx]-&gt;dreg = vmv-&gt;reg;</span>
+<span class="lineNum">     214 </span><span class="lineCov">   30618920 :                                 n_regvars ++;</span>
+<span class="lineNum">     215 </span><span class="lineCov">   30618920 :                         } else {</span>
+<span class="lineNum">     216 </span><span class="lineCov">    8077479 :                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">     217 </span><span class="lineCov">     111887 :                                         printf (&quot;COSTLY: R%d C%d C%d %s\n&quot;, vmv-&gt;idx, vmv-&gt;spill_costs, mono_arch_regalloc_cost (cfg, vmv), mono_arch_regname (vmv-&gt;reg));</span>
+<span class="lineNum">     218 </span><span class="lineCov">    8078099 :                                 vmv-&gt;reg = -1;</span>
+<span class="lineNum">     219 </span>            :                         }
+<span class="lineNum">     220 </span><span class="lineCov">   38690470 :                 }</span>
+<span class="lineNum">     221 </span>            : 
+<span class="lineNum">     222 </span><span class="lineCov">   48325308 :                 if (vmv-&gt;reg == -1) {</span>
+<span class="lineNum">     223 </span><span class="lineCov">   17711731 :                         if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">     224 </span><span class="lineCov">     236648 :                                 printf (&quot;NOT REGVAR: %d\n&quot;, vmv-&gt;idx);</span>
+<span class="lineNum">     225 </span><span class="lineCov">   17713061 :                 }</span>
+<span class="lineNum">     226 </span><span class="lineCov">   48323223 :         }</span>
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span><span class="lineCov">   12438944 :         cfg-&gt;stat_n_regvars = n_regvars;</span>
+<span class="lineNum">     229 </span>            : 
+<span class="lineNum">     230 </span>            :         /* Compute used regs */
+<span class="lineNum">     231 </span><span class="lineCov">   12438944 :         used_regs = 0;</span>
+<span class="lineNum">     232 </span><span class="lineCov">  121532779 :         for (l = vars; l; l = l-&gt;next) {</span>
+<span class="lineNum">     233 </span><span class="lineCov">   48330955 :                 vmv = (MonoMethodVar *)l-&gt;data;</span>
+<span class="lineNum">     234 </span>            :                 
+<span class="lineNum">     235 </span><span class="lineCov">   48330955 :                 if (vmv-&gt;reg &gt;= 0)</span>
+<span class="lineNum">     236 </span><span class="lineCov">   30619267 :                         used_regs |= 1LL &lt;&lt; vmv-&gt;reg;</span>
+<span class="lineNum">     237 </span><span class="lineCov">   48326443 :         }</span>
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span><span class="lineCov">   12439433 :         *used_mask |= used_regs;</span>
+<span class="lineNum">     240 </span>            : 
+<span class="lineNum">     241 </span>            : #ifdef DEBUG_LSCAN
+<span class="lineNum">     242 </span>            :         if (cfg-&gt;verbose_level &gt; 2)
+<span class="lineNum">     243 </span>            :                 printf (&quot;EXIT: final used mask: %08x\n&quot;, *used_mask);
+<span class="lineNum">     244 </span>            : #endif
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">   12439433 :         g_list_free (regs);</span>
+<span class="lineNum">     247 </span><span class="lineCov">   12439433 :         g_list_free (active);</span>
+<span class="lineNum">     248 </span><span class="lineCov">   12439433 :         g_list_free (vars);</span>
+<span class="lineNum">     249 </span><span class="lineCov">   24910758 : }</span>
+<a name="250"><span class="lineNum">     250 </span>            : </a>
+<span class="lineNum">     251 </span>            : static gint
+<span class="lineNum">     252 </span>            : compare_by_interval_start_pos_func (gconstpointer a, gconstpointer b)
+<span class="lineNum">     253 </span>            : {
+<span class="lineNum">     254 </span><span class="lineCov">     131134 :         MonoMethodVar *v1 = (MonoMethodVar*)a;</span>
+<span class="lineNum">     255 </span><span class="lineCov">     131134 :         MonoMethodVar *v2 = (MonoMethodVar*)b;</span>
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span><span class="lineCov">     131134 :         if (v1 == v2)</span>
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">     259 </span><span class="lineCov">     262268 :         else if (v1-&gt;interval-&gt;range &amp;&amp; v2-&gt;interval-&gt;range)</span>
+<span class="lineNum">     260 </span><span class="lineCov">     131134 :                 return v1-&gt;interval-&gt;range-&gt;from - v2-&gt;interval-&gt;range-&gt;from;</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :         else if (v1-&gt;interval-&gt;range)</span>
+<span class="lineNum">     262 </span><span class="lineNoCov">          0 :                 return -1;</span>
+<span class="lineNum">     263 </span>            :         else
+<span class="lineNum">     264 </span><span class="lineNoCov">          0 :                 return 1;</span>
+<span class="lineNum">     265 </span><span class="lineCov">     131134 : }</span>
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span>            : #if 0
+<span class="lineNum">     268 </span>            : #define LSCAN_DEBUG(a) do { a; } while (0)
+<span class="lineNum">     269 </span>            : #else
+<span class="lineNum">     270 </span>            : #define LSCAN_DEBUG(a)
+<span class="lineNum">     271 </span>            : #endif
+<span class="lineNum">     272 </span>            : 
+<a name="273"><span class="lineNum">     273 </span>            : /* FIXME: This is x86 only */</a>
+<span class="lineNum">     274 </span>            : static inline guint32
+<span class="lineNum">     275 </span>            : regalloc_cost (MonoCompile *cfg, MonoMethodVar *vmv)
+<span class="lineNum">     276 </span>            : {
+<span class="lineNum">     277 </span><span class="lineCov">      89421 :         MonoInst *ins = cfg-&gt;varinfo [vmv-&gt;idx];</span>
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span>            :         /* Load if it is an argument */
+<span class="lineNum">     280 </span><span class="lineCov">      89421 :         return (ins-&gt;opcode == OP_ARG) ? 1 : 0;</span>
+<span class="lineNum">     281 </span>            : }
+<a name="282"><span class="lineNum">     282 </span>            : </a>
+<span class="lineNum">     283 </span>            : void
+<span class="lineNum">     284 </span>            : mono_linear_scan2 (MonoCompile *cfg, GList *vars, GList *regs, regmask_t *used_mask)
+<span class="lineNum">     285 </span>            : {
+<span class="lineNum">     286 </span>            :         GList *unhandled, *active, *inactive, *l;
+<span class="lineNum">     287 </span>            :         MonoMethodVar *vmv;
+<span class="lineNum">     288 </span>            :         gint32 free_pos [sizeof (regmask_t) * 8];
+<span class="lineNum">     289 </span>            :         gint32 gains [sizeof (regmask_t) * 8];
+<span class="lineNum">     290 </span><span class="lineCov">      31051 :         regmask_t used_regs = 0;</span>
+<span class="lineNum">     291 </span>            :         int n_regs, n_regvars, i;
+<span class="lineNum">     292 </span>            : 
+<span class="lineNum">     293 </span><span class="lineCov">     255208 :         for (l = vars; l; l = l-&gt;next) {</span>
+<span class="lineNum">     294 </span><span class="lineCov">      96553 :                 vmv = (MonoMethodVar *)l-&gt;data;</span>
+<span class="lineNum">     295 </span>            :                 LSCAN_DEBUG (printf (&quot;VAR R%d %08x %08x C%d\n&quot;, cfg-&gt;varinfo [vmv-&gt;idx]-&gt;dreg, vmv-&gt;range.first_use.abs_pos, 
+<span class="lineNum">     296 </span>            :                                                          vmv-&gt;range.last_use.abs_pos, vmv-&gt;spill_costs));
+<span class="lineNum">     297 </span><span class="lineCov">      96553 :         }</span>
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span>            :         LSCAN_DEBUG (printf (&quot;Linear Scan 2 for %s:\n&quot;, mono_method_full_name (cfg-&gt;method, TRUE)));
+<span class="lineNum">     300 </span>            : 
+<span class="lineNum">     301 </span><span class="lineCov">      31051 :         n_regs = g_list_length (regs);</span>
+<span class="lineNum">     302 </span><span class="lineCov">      31051 :         memset (gains, 0, n_regs * sizeof (gint32));</span>
+<span class="lineNum">     303 </span><span class="lineCov">      31051 :         unhandled = g_list_sort (g_list_copy (vars), compare_by_interval_start_pos_func);</span>
+<span class="lineNum">     304 </span><span class="lineCov">      31051 :         active = NULL;</span>
+<span class="lineNum">     305 </span><span class="lineCov">      31051 :         inactive = NULL;</span>
+<span class="lineNum">     306 </span>            : 
+<span class="lineNum">     307 </span><span class="lineCov">     255208 :         while (unhandled) {</span>
+<span class="lineNum">     308 </span><span class="lineCov">      96553 :                 MonoMethodVar *current = (MonoMethodVar *)unhandled-&gt;data;</span>
+<span class="lineNum">     309 </span>            :                 int pos, reg, max_free_pos;
+<span class="lineNum">     310 </span>            :                 gboolean changed;
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span><span class="lineCov">      96553 :                 unhandled = g_list_delete_link (unhandled, unhandled);</span>
+<span class="lineNum">     313 </span>            : 
+<span class="lineNum">     314 </span>            :                 LSCAN_DEBUG (printf (&quot;Processing R%d: &quot;, cfg-&gt;varinfo [current-&gt;idx]-&gt;dreg));
+<span class="lineNum">     315 </span>            :                 LSCAN_DEBUG (mono_linterval_print (current-&gt;interval));
+<span class="lineNum">     316 </span>            :                 LSCAN_DEBUG (printf (&quot;\n&quot;));
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span><span class="lineCov">      96553 :                 if (!current-&gt;interval-&gt;range)</span>
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     320 </span>            :                         
+<span class="lineNum">     321 </span><span class="lineCov">      96553 :                 pos = current-&gt;interval-&gt;range-&gt;from;</span>
+<span class="lineNum">     322 </span>            : 
+<span class="lineNum">     323 </span>            :                 /* Check for intervals in active which expired or inactive */
+<span class="lineNum">     324 </span><span class="lineCov">      96553 :                 changed = TRUE;</span>
+<span class="lineNum">     325 </span>            :                 /* FIXME: Optimize this */
+<span class="lineNum">     326 </span><span class="lineCov">     435814 :                 while (changed) {</span>
+<span class="lineNum">     327 </span><span class="lineCov">     121354 :                         changed = FALSE;</span>
+<span class="lineNum">     328 </span><span class="lineCov">     613960 :                         for (l = active; l != NULL; l = l-&gt;next) {</span>
+<span class="lineNum">     329 </span><span class="lineCov">     210427 :                                 MonoMethodVar *v = (MonoMethodVar*)l-&gt;data;</span>
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span><span class="lineCov">     210427 :                                 if (v-&gt;interval-&gt;last_range-&gt;to &lt; pos) {</span>
+<span class="lineNum">     332 </span><span class="lineCov">      12286 :                                         active = g_list_delete_link (active, l);</span>
+<span class="lineNum">     333 </span>            :                                         LSCAN_DEBUG (printf (&quot;Interval R%d has expired\n&quot;, cfg-&gt;varinfo [v-&gt;idx]-&gt;dreg));
+<span class="lineNum">     334 </span><span class="lineCov">      12286 :                                         changed = TRUE;</span>
+<span class="lineNum">     335 </span><span class="lineCov">      12286 :                                         break;</span>
+<span class="lineNum">     336 </span>            :                                 }
+<span class="lineNum">     337 </span><span class="lineCov">     198141 :                                 else if (!mono_linterval_covers (v-&gt;interval, pos)) {</span>
+<span class="lineNum">     338 </span><span class="lineCov">      12515 :                                         inactive = g_list_append (inactive, v);</span>
+<span class="lineNum">     339 </span><span class="lineCov">      12515 :                                         active = g_list_delete_link (active, l);</span>
+<span class="lineNum">     340 </span>            :                                         LSCAN_DEBUG (printf (&quot;Interval R%d became inactive\n&quot;, cfg-&gt;varinfo [v-&gt;idx]-&gt;dreg));
+<span class="lineNum">     341 </span><span class="lineCov">      12515 :                                         changed = TRUE;</span>
+<span class="lineNum">     342 </span><span class="lineCov">      12515 :                                         break;</span>
+<span class="lineNum">     343 </span>            :                                 }
+<span class="lineNum">     344 </span><span class="lineCov">     185626 :                         }</span>
+<span class="lineNum">     345 </span>            :                 }
+<span class="lineNum">     346 </span>            : 
+<span class="lineNum">     347 </span>            :                 /* Check for intervals in inactive which expired or active */
+<span class="lineNum">     348 </span><span class="lineCov">      96553 :                 changed = TRUE;</span>
+<span class="lineNum">     349 </span>            :                 /* FIXME: Optimize this */
+<span class="lineNum">     350 </span><span class="lineCov">     396610 :                 while (changed) {</span>
+<span class="lineNum">     351 </span><span class="lineCov">     101752 :                         changed = FALSE;</span>
+<span class="lineNum">     352 </span><span class="lineCov">     443724 :                         for (l = inactive; l != NULL; l = l-&gt;next) {</span>
+<span class="lineNum">     353 </span><span class="lineCov">     125309 :                                 MonoMethodVar *v = (MonoMethodVar*)l-&gt;data;</span>
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span><span class="lineCov">     125309 :                                 if (v-&gt;interval-&gt;last_range-&gt;to &lt; pos) {</span>
+<span class="lineNum">     356 </span><span class="lineCov">       2785 :                                         inactive = g_list_delete_link (inactive, l);</span>
+<span class="lineNum">     357 </span>            :                                         LSCAN_DEBUG (printf (&quot;\tInterval R%d has expired\n&quot;, cfg-&gt;varinfo [v-&gt;idx]-&gt;dreg));
+<span class="lineNum">     358 </span><span class="lineCov">       2785 :                                         changed = TRUE;</span>
+<span class="lineNum">     359 </span><span class="lineCov">       2785 :                                         break;</span>
+<span class="lineNum">     360 </span>            :                                 }
+<span class="lineNum">     361 </span><span class="lineCov">     122524 :                                 else if (mono_linterval_covers (v-&gt;interval, pos)) {</span>
+<span class="lineNum">     362 </span><span class="lineCov">       2414 :                                         active = g_list_append (active, v);</span>
+<span class="lineNum">     363 </span><span class="lineCov">       2414 :                                         inactive = g_list_delete_link (inactive, l);</span>
+<span class="lineNum">     364 </span>            :                                         LSCAN_DEBUG (printf (&quot;\tInterval R%d became active\n&quot;, cfg-&gt;varinfo [v-&gt;idx]-&gt;dreg));
+<span class="lineNum">     365 </span><span class="lineCov">       2414 :                                         changed = TRUE;</span>
+<span class="lineNum">     366 </span><span class="lineCov">       2414 :                                         break;</span>
+<span class="lineNum">     367 </span>            :                                 }
+<span class="lineNum">     368 </span><span class="lineCov">     120110 :                         }</span>
+<span class="lineNum">     369 </span>            :                 }
+<span class="lineNum">     370 </span>            : 
+<span class="lineNum">     371 </span>            :                 /* Find a register for the current interval */
+<span class="lineNum">     372 </span><span class="lineCov">    1306290 :                 for (i = 0; i &lt; n_regs; ++i)</span>
+<span class="lineNum">     373 </span><span class="lineCov">     556592 :                         free_pos [i] = ((gint32)0x7fffffff);</span>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span><span class="lineCov">     502464 :                 for (l = active; l != NULL; l = l-&gt;next) {</span>
+<span class="lineNum">     376 </span><span class="lineCov">     154679 :                         MonoMethodVar *v = (MonoMethodVar*)l-&gt;data;</span>
+<span class="lineNum">     377 </span>            : 
+<span class="lineNum">     378 </span><span class="lineCov">     154679 :                         if (v-&gt;reg &gt;= 0) {</span>
+<span class="lineNum">     379 </span><span class="lineCov">     154679 :                                 free_pos [v-&gt;reg] = 0;</span>
+<span class="lineNum">     380 </span>            :                                 LSCAN_DEBUG (printf (&quot;\threg %d is busy (cost %d)\n&quot;, v-&gt;reg, v-&gt;spill_costs));
+<span class="lineNum">     381 </span><span class="lineCov">     154679 :                         }</span>
+<span class="lineNum">     382 </span><span class="lineCov">     154679 :                 }</span>
+<span class="lineNum">     383 </span>            : 
+<span class="lineNum">     384 </span><span class="lineCov">     373444 :                 for (l = inactive; l != NULL; l = l-&gt;next) {</span>
+<span class="lineNum">     385 </span><span class="lineCov">      90169 :                         MonoMethodVar *v = (MonoMethodVar*)l-&gt;data;</span>
+<span class="lineNum">     386 </span>            :                         gint32 intersect_pos;
+<span class="lineNum">     387 </span>            : 
+<span class="lineNum">     388 </span><span class="lineCov">      90169 :                         if (v-&gt;reg &gt;= 0) {</span>
+<span class="lineNum">     389 </span><span class="lineCov">      90169 :                                 intersect_pos = mono_linterval_get_intersect_pos (current-&gt;interval, v-&gt;interval);</span>
+<span class="lineNum">     390 </span><span class="lineCov">      90169 :                                 if (intersect_pos != -1) {</span>
+<span class="lineNum">     391 </span><span class="lineCov">       1903 :                                         free_pos [v-&gt;reg] = intersect_pos;</span>
+<span class="lineNum">     392 </span>            :                                         LSCAN_DEBUG (printf (&quot;\threg %d becomes free at %d\n&quot;, v-&gt;reg, intersect_pos));
+<span class="lineNum">     393 </span><span class="lineCov">       1903 :                                 }</span>
+<span class="lineNum">     394 </span><span class="lineCov">      90169 :                         }</span>
+<span class="lineNum">     395 </span><span class="lineCov">      90169 :                 }</span>
+<span class="lineNum">     396 </span>            : 
+<span class="lineNum">     397 </span><span class="lineCov">      96553 :                 max_free_pos = -1;</span>
+<span class="lineNum">     398 </span><span class="lineCov">      96553 :                 reg = -1;</span>
+<span class="lineNum">     399 </span><span class="lineCov">    1306290 :                 for (i = 0; i &lt; n_regs; ++i)</span>
+<span class="lineNum">     400 </span><span class="lineCov">    1113184 :                         if (free_pos [i] &gt; max_free_pos) {</span>
+<span class="lineNum">     401 </span><span class="lineCov">     150830 :                                 reg = i;</span>
+<span class="lineNum">     402 </span><span class="lineCov">     150830 :                                 max_free_pos = free_pos [i];</span>
+<span class="lineNum">     403 </span><span class="lineCov">     150830 :                         }</span>
+<span class="lineNum">     404 </span>            : 
+<span class="lineNum">     405 </span><span class="lineCov">     289659 :                 g_assert (reg != -1);</span>
+<span class="lineNum">     406 </span>            : 
+<span class="lineNum">     407 </span><span class="lineCov">      96553 :                 if (free_pos [reg] &gt;= current-&gt;interval-&gt;last_range-&gt;to) {</span>
+<span class="lineNum">     408 </span>            :                         /* Register available for whole interval */
+<span class="lineNum">     409 </span><span class="lineCov">      91107 :                         current-&gt;reg = reg;</span>
+<span class="lineNum">     410 </span>            :                         LSCAN_DEBUG (printf (&quot;\tAssigned hreg %d to R%d\n&quot;, reg, cfg-&gt;varinfo [current-&gt;idx]-&gt;dreg));
+<span class="lineNum">     411 </span>            : 
+<span class="lineNum">     412 </span><span class="lineCov">      91107 :                         active = g_list_append (active, current);</span>
+<span class="lineNum">     413 </span><span class="lineCov">      91107 :                         gains [current-&gt;reg] += current-&gt;spill_costs;</span>
+<span class="lineNum">     414 </span><span class="lineCov">      91107 :                 }</span>
+<span class="lineNum">     415 </span>            :                 else {
+<span class="lineNum">     416 </span>            :                         /* 
+<span class="lineNum">     417 </span>            :                          * free_pos [reg] &gt; 0 means there is a register available for parts
+<span class="lineNum">     418 </span>            :                          * of the interval, so splitting it is possible. This is not yet
+<span class="lineNum">     419 </span>            :                          * supported, so we spill in this case too.
+<span class="lineNum">     420 </span>            :                          */
+<span class="lineNum">     421 </span>            : 
+<span class="lineNum">     422 </span>            :                         /* Spill an interval */
+<span class="lineNum">     423 </span>            : 
+<span class="lineNum">     424 </span>            :                         /* FIXME: Optimize the selection of the interval */
+<span class="lineNum">     425 </span>            : 
+<span class="lineNum">     426 </span><span class="lineCov">       5446 :                         if (active) {</span>
+<span class="lineNum">     427 </span>            :                                 GList *min_spill_pos;
+<span class="lineNum">     428 </span>            : #if 0
+<span class="lineNum">     429 </span>            :                                 /* 
+<span class="lineNum">     430 </span>            :                                  * This favors registers with big spill costs, thus larger liveness ranges,
+<span class="lineNum">     431 </span>            :                                  * thus actually leading to worse code size.
+<span class="lineNum">     432 </span>            :                                  */
+<span class="lineNum">     433 </span>            :                                 guint32 min_spill_value = G_MAXINT32;
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span>            :                                 for (l = active; l != NULL; l = l-&gt;next) {
+<span class="lineNum">     436 </span>            :                                         vmv = (MonoMethodVar*)l-&gt;data;
+<span class="lineNum">     437 </span>            : 
+<span class="lineNum">     438 </span>            :                                         if (vmv-&gt;spill_costs &lt; min_spill_value) {
+<span class="lineNum">     439 </span>            :                                                 min_spill_pos = l;
+<span class="lineNum">     440 </span>            :                                                 min_spill_value = vmv-&gt;spill_costs;
+<span class="lineNum">     441 </span>            :                                         }
+<span class="lineNum">     442 </span>            :                                 }
+<span class="lineNum">     443 </span>            : #else
+<span class="lineNum">     444 </span>            :                                 /* Spill either the first active or the current interval */
+<span class="lineNum">     445 </span><span class="lineCov">       5446 :                                 min_spill_pos = active;</span>
+<span class="lineNum">     446 </span>            : #endif
+<span class="lineNum">     447 </span><span class="lineCov">       5446 :                                 vmv = (MonoMethodVar*)min_spill_pos-&gt;data;</span>
+<span class="lineNum">     448 </span><span class="lineCov">       5446 :                                 if (vmv-&gt;spill_costs &lt; current-&gt;spill_costs) {</span>
+<span class="lineNum">     449 </span>            :                                 //                              if (vmv-&gt;interval-&gt;last_range-&gt;to &lt; current-&gt;interval-&gt;last_range-&gt;to) {
+<span class="lineNum">     450 </span><span class="lineCov">       1686 :                                         gains [vmv-&gt;reg] -= vmv-&gt;spill_costs;</span>
+<span class="lineNum">     451 </span><span class="lineCov">       1686 :                                         vmv-&gt;reg = -1;</span>
+<span class="lineNum">     452 </span>            :                                         LSCAN_DEBUG (printf (&quot;\tSpilled R%d\n&quot;, cfg-&gt;varinfo [vmv-&gt;idx]-&gt;dreg));
+<span class="lineNum">     453 </span><span class="lineCov">       1686 :                                         active = g_list_delete_link (active, min_spill_pos);</span>
+<span class="lineNum">     454 </span><span class="lineCov">       1686 :                                 }</span>
+<span class="lineNum">     455 </span>            :                                 else
+<span class="lineNum">     456 </span>            :                                         LSCAN_DEBUG (printf (&quot;\tSpilled current (cost %d)\n&quot;, current-&gt;spill_costs));
+<span class="lineNum">     457 </span><span class="lineCov">       5446 :                         }</span>
+<span class="lineNum">     458 </span>            :                         else
+<span class="lineNum">     459 </span>            :                                 LSCAN_DEBUG (printf (&quot;\tSpilled current\n&quot;));
+<span class="lineNum">     460 </span>            :                 }
+<span class="lineNum">     461 </span>            :         }
+<span class="lineNum">     462 </span>            : 
+<span class="lineNum">     463 </span>            :         /* Decrease the gains by the cost of saving+restoring the register */
+<span class="lineNum">     464 </span><span class="lineCov">     428300 :         for (i = 0; i &lt; n_regs; ++i) {</span>
+<span class="lineNum">     465 </span><span class="lineCov">     183099 :                 if (gains [i]) {</span>
+<span class="lineNum">     466 </span>            :                         /* FIXME: This is x86 only */
+<span class="lineNum">     467 </span><span class="lineCov">      71094 :                         gains [i] -= cfg-&gt;method-&gt;save_lmf ? 1 : 2;</span>
+<span class="lineNum">     468 </span><span class="lineCov">      71094 :                         if (gains [i] &lt; 0)</span>
+<span class="lineNum">     469 </span><span class="lineCov">      24354 :                                 gains [i] = 0;</span>
+<span class="lineNum">     470 </span><span class="lineCov">      71094 :                 }</span>
+<span class="lineNum">     471 </span><span class="lineCov">     183099 :         }</span>
+<span class="lineNum">     472 </span>            : 
+<span class="lineNum">     473 </span>            :         /* Do the actual register assignment */
+<span class="lineNum">     474 </span><span class="lineCov">      31051 :         n_regvars = 0;</span>
+<span class="lineNum">     475 </span><span class="lineCov">     255208 :         for (l = vars; l; l = l-&gt;next) {</span>
+<span class="lineNum">     476 </span><span class="lineCov">      96553 :                 vmv = (MonoMethodVar *)l-&gt;data;</span>
+<span class="lineNum">     477 </span>            : 
+<span class="lineNum">     478 </span><span class="lineCov">      96553 :                 if (vmv-&gt;reg &gt;= 0) {</span>
+<span class="lineNum">     479 </span><span class="lineCov">      89421 :                         int reg_index = vmv-&gt;reg;</span>
+<span class="lineNum">     480 </span>            : 
+<span class="lineNum">     481 </span>            :                         /* During allocation, vmv-&gt;reg is an index into the regs list */
+<span class="lineNum">     482 </span><span class="lineCov">      89421 :                         vmv-&gt;reg = GPOINTER_TO_INT (g_list_nth_data (regs, vmv-&gt;reg));</span>
+<span class="lineNum">     483 </span>            : 
+<span class="lineNum">     484 </span><span class="lineCov">     139053 :                         if ((gains [reg_index] &gt; regalloc_cost (cfg, vmv)) &amp;&amp; (cfg-&gt;varinfo [vmv-&gt;idx]-&gt;opcode != OP_REGVAR)) {</span>
+<span class="lineNum">     485 </span><span class="lineCov">      49632 :                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :                                         printf (&quot;REGVAR R%d G%d C%d %s\n&quot;, cfg-&gt;varinfo [vmv-&gt;idx]-&gt;dreg, gains [reg_index], regalloc_cost (cfg, vmv), mono_arch_regname (vmv-&gt;reg));</span>
+<span class="lineNum">     487 </span><span class="lineCov">      49632 :                                 cfg-&gt;varinfo [vmv-&gt;idx]-&gt;opcode = OP_REGVAR;</span>
+<span class="lineNum">     488 </span><span class="lineCov">      49632 :                                 cfg-&gt;varinfo [vmv-&gt;idx]-&gt;dreg = vmv-&gt;reg;</span>
+<span class="lineNum">     489 </span><span class="lineCov">      49632 :                                 n_regvars ++;</span>
+<span class="lineNum">     490 </span><span class="lineCov">      49632 :                         }</span>
+<span class="lineNum">     491 </span>            :                         else {
+<span class="lineNum">     492 </span><span class="lineCov">      39789 :                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 :                                         printf (&quot;COSTLY: %s R%d G%d C%d %s\n&quot;, mono_method_full_name (cfg-&gt;method, TRUE), cfg-&gt;varinfo [vmv-&gt;idx]-&gt;dreg, gains [reg_index], regalloc_cost (cfg, vmv), mono_arch_regname (vmv-&gt;reg));</span>
+<span class="lineNum">     494 </span><span class="lineCov">      39789 :                                 vmv-&gt;reg = -1;</span>
+<span class="lineNum">     495 </span>            :                         }
+<span class="lineNum">     496 </span><span class="lineCov">      89421 :                 }</span>
+<span class="lineNum">     497 </span><span class="lineCov">      96553 :         }</span>
+<span class="lineNum">     498 </span>            : 
+<span class="lineNum">     499 </span><span class="lineCov">      31051 :         cfg-&gt;stat_n_regvars = n_regvars;</span>
+<span class="lineNum">     500 </span>            : 
+<span class="lineNum">     501 </span>            :         /* Compute used regs */
+<span class="lineNum">     502 </span><span class="lineCov">      31051 :         used_regs = 0;</span>
+<span class="lineNum">     503 </span><span class="lineCov">     255208 :         for (l = vars; l; l = l-&gt;next) {</span>
+<span class="lineNum">     504 </span><span class="lineCov">      96553 :                 vmv = (MonoMethodVar *)l-&gt;data;</span>
+<span class="lineNum">     505 </span>            :                 
+<span class="lineNum">     506 </span><span class="lineCov">      96553 :                 if (vmv-&gt;reg &gt;= 0)</span>
+<span class="lineNum">     507 </span><span class="lineCov">      49632 :                         used_regs |= 1LL &lt;&lt; vmv-&gt;reg;</span>
+<span class="lineNum">     508 </span><span class="lineCov">      96553 :         }</span>
+<span class="lineNum">     509 </span>            : 
+<span class="lineNum">     510 </span><span class="lineCov">      31051 :         *used_mask |= used_regs;</span>
+<span class="lineNum">     511 </span>            : 
+<span class="lineNum">     512 </span><span class="lineCov">      31051 :         g_list_free (active);</span>
+<span class="lineNum">     513 </span><span class="lineCov">      31051 :         g_list_free (inactive);</span>
+<span class="lineNum">     514 </span><span class="lineCov">      31051 : }</span>
+<span class="lineNum">     515 </span>            : 
+<span class="lineNum">     516 </span>            : #else /* !DISABLE_JIT */
+<span class="lineNum">     517 </span>            : 
+<span class="lineNum">     518 </span>            : MONO_EMPTY_SOURCE_FILE (linear_scan);
+<span class="lineNum">     519 </span>            : 
+<span class="lineNum">     520 </span>            : #endif /* !DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

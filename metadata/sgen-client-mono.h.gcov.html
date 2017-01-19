@@ -1,0 +1,820 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/sgen-client-mono.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - sgen-client-mono.h<span style="font-size: 80%;"> (source / <a href="sgen-client-mono.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">114</td>
+            <td class="headerCovTableEntry">129</td>
+            <td class="headerCovTableEntryMed">88.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">47</td>
+            <td class="headerCovTableEntry">54</td>
+            <td class="headerCovTableEntryMed">87.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-client-mono.h: Mono's client definitions for SGen.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright (C) 2014 Xamarin Inc
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : #ifdef SGEN_DEFINE_OBJECT_VTABLE
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &quot;sgen/sgen-archdep.h&quot;
+<span class="lineNum">      12 </span>            : #include &quot;utils/mono-threads.h&quot;
+<span class="lineNum">      13 </span>            : #include &quot;utils/mono-mmap.h&quot;
+<span class="lineNum">      14 </span>            : #include &quot;metadata/object-internals.h&quot;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : typedef MonoObject GCObject;
+<span class="lineNum">      17 </span>            : typedef MonoVTable* GCVTable;
+<a name="18"><span class="lineNum">      18 </span>            : </a>
+<span class="lineNum">      19 </span>            : static inline GCVTable
+<span class="lineNum">      20 </span>            : SGEN_LOAD_VTABLE_UNCHECKED (GCObject *obj)
+<span class="lineNum">      21 </span>            : {
+<span class="lineNum">      22 </span><span class="lineCov"> 1914353146 :         return obj-&gt;vtable;</span>
+<span class="lineNum">      23 </span>            : }
+<a name="24"><span class="lineNum">      24 </span>            : </a>
+<span class="lineNum">      25 </span>            : static inline SgenDescriptor
+<span class="lineNum">      26 </span>            : sgen_vtable_get_descriptor (GCVTable vtable)
+<span class="lineNum">      27 </span>            : {
+<span class="lineNum">      28 </span><span class="lineCov"> 1725228313 :         return (SgenDescriptor)vtable-&gt;gc_descr;</span>
+<span class="lineNum">      29 </span>            : }
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : typedef struct _SgenClientThreadInfo SgenClientThreadInfo;
+<span class="lineNum">      32 </span>            : struct _SgenClientThreadInfo {
+<span class="lineNum">      33 </span>            :         MonoThreadInfo info;
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span>            :         /*
+<span class="lineNum">      36 </span>            :          * `skip` is set to TRUE when STW fails to suspend a thread, most probably because
+<span class="lineNum">      37 </span>            :          * the underlying thread is dead.
+<span class="lineNum">      38 </span>            :         */
+<span class="lineNum">      39 </span>            :         gboolean skip, suspend_done;
+<span class="lineNum">      40 </span>            :         volatile int in_critical_region;
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            :         /*
+<span class="lineNum">      43 </span>            :         This is set the argument of mono_gc_set_skip_thread.
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            :         A thread that knowingly holds no managed state can call this
+<span class="lineNum">      46 </span>            :         function around blocking loops to reduce the GC burden by not
+<span class="lineNum">      47 </span>            :         been scanned.
+<span class="lineNum">      48 </span>            :         */
+<span class="lineNum">      49 </span>            :         gboolean gc_disabled;
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : #ifdef SGEN_POSIX_STW
+<span class="lineNum">      52 </span>            :         /* This is -1 until the first suspend. */
+<span class="lineNum">      53 </span>            :         int signal;
+<span class="lineNum">      54 </span>            :         /* FIXME: kill this, we only use signals on systems that have rt-posix, which doesn't have issues with duplicates. */
+<span class="lineNum">      55 </span>            :         unsigned int stop_count; /* to catch duplicate signals. */
+<span class="lineNum">      56 </span>            : #endif
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            :         gpointer runtime_data;
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            :         void *stack_end;
+<span class="lineNum">      61 </span>            :         void *stack_start;
+<span class="lineNum">      62 </span>            :         void *stack_start_limit;
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            :         MonoContext ctx;                /* ditto */
+<span class="lineNum">      65 </span>            : };
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            : #else
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span>            : #include &quot;metadata/profiler-private.h&quot;
+<span class="lineNum">      70 </span>            : #include &quot;utils/dtrace.h&quot;
+<span class="lineNum">      71 </span>            : #include &quot;utils/mono-counters.h&quot;
+<span class="lineNum">      72 </span>            : #include &quot;utils/mono-logger-internals.h&quot;
+<span class="lineNum">      73 </span>            : #include &quot;utils/mono-time.h&quot;
+<span class="lineNum">      74 </span>            : #include &quot;utils/mono-os-semaphore.h&quot;
+<span class="lineNum">      75 </span>            : #include &quot;metadata/sgen-bridge-internals.h&quot;
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span>            : extern void mono_sgen_register_moved_object (void *obj, void *destination);
+<span class="lineNum">      78 </span>            : extern void mono_sgen_gc_event_moves (void);
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span>            : extern void mono_sgen_init_stw (void);
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span>            : enum {
+<span class="lineNum">      83 </span>            :         INTERNAL_MEM_EPHEMERON_LINK = INTERNAL_MEM_FIRST_CLIENT,
+<span class="lineNum">      84 </span>            :         INTERNAL_MEM_MOVED_OBJECT,
+<span class="lineNum">      85 </span>            :         INTERNAL_MEM_MAX
+<span class="lineNum">      86 </span>            : };
+<a name="87"><span class="lineNum">      87 </span>            : </a>
+<span class="lineNum">      88 </span>            : static inline mword
+<span class="lineNum">      89 </span>            : sgen_mono_array_size (GCVTable vtable, MonoArray *array, mword *bounds_size, mword descr)
+<span class="lineNum">      90 </span>            : {
+<span class="lineNum">      91 </span>            :         mword size, size_without_bounds;
+<span class="lineNum">      92 </span>            :         int element_size;
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineCov">  108247272 :         if ((descr &amp; DESC_TYPE_MASK) == DESC_TYPE_VECTOR)</span>
+<span class="lineNum">      95 </span><span class="lineCov">  108245980 :                 element_size = ((descr) &gt;&gt; VECTOR_ELSIZE_SHIFT) &amp; MAX_ELEMENT_SIZE;</span>
+<span class="lineNum">      96 </span>            :         else
+<span class="lineNum">      97 </span><span class="lineCov">       1292 :                 element_size = vtable-&gt;klass-&gt;sizes.element_size;</span>
+<span class="lineNum">      98 </span>            : 
+<span class="lineNum">      99 </span><span class="lineCov">  108247273 :         size_without_bounds = size = MONO_SIZEOF_MONO_ARRAY + element_size * mono_array_length_fast (array);</span>
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span><span class="lineCov">  108247273 :         if (G_UNLIKELY (array-&gt;bounds)) {</span>
+<span class="lineNum">     102 </span><span class="lineCov">      43129 :                 size += sizeof (mono_array_size_t) - 1;</span>
+<span class="lineNum">     103 </span><span class="lineCov">      43129 :                 size &amp;= ~(sizeof (mono_array_size_t) - 1);</span>
+<span class="lineNum">     104 </span><span class="lineCov">      43129 :                 size += sizeof (MonoArrayBounds) * vtable-&gt;klass-&gt;rank;</span>
+<span class="lineNum">     105 </span><span class="lineCov">      43129 :         }</span>
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span><span class="lineCov">  108247272 :         if (bounds_size)</span>
+<span class="lineNum">     108 </span><span class="lineCov">     614936 :                 *bounds_size = size - size_without_bounds;</span>
+<span class="lineNum">     109 </span><span class="lineCov">  108247273 :         return size;</span>
+<span class="lineNum">     110 </span>            : }
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span>            : #define SGEN_CLIENT_OBJECT_HEADER_SIZE          (sizeof (GCObject))
+<span class="lineNum">     113 </span>            : #define SGEN_CLIENT_MINIMUM_OBJECT_SIZE         SGEN_CLIENT_OBJECT_HEADER_SIZE
+<a name="114"><span class="lineNum">     114 </span>            : </a>
+<span class="lineNum">     115 </span>            : static mword /*__attribute__((noinline)) not sure if this hint is a good idea*/
+<span class="lineNum">     116 </span>            : sgen_client_slow_object_get_size (GCVTable vtable, GCObject* o)
+<span class="lineNum">     117 </span>            : {
+<span class="lineNum">     118 </span><span class="lineCov">  350577890 :         MonoClass *klass = ((MonoVTable*)vtable)-&gt;klass;</span>
+<span class="lineNum">     119 </span>            : 
+<span class="lineNum">     120 </span>            :         /*
+<span class="lineNum">     121 </span>            :          * We depend on mono_string_length_fast and
+<span class="lineNum">     122 </span>            :          * mono_array_length_fast not using the object's vtable.
+<span class="lineNum">     123 </span>            :          */
+<span class="lineNum">     124 </span><span class="lineCov">  350577890 :         if (klass == mono_defaults.string_class) {</span>
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :                 return G_STRUCT_OFFSET (MonoString, chars) + 2 * mono_string_length_fast ((MonoString*) o) + 2;</span>
+<span class="lineNum">     126 </span><span class="lineCov">  350577890 :         } else if (klass-&gt;rank) {</span>
+<span class="lineNum">     127 </span><span class="lineCov">        839 :                 return sgen_mono_array_size (vtable, (MonoArray*)o, NULL, 0);</span>
+<span class="lineNum">     128 </span>            :         } else {
+<span class="lineNum">     129 </span>            :                 /* from a created object: the class must be inited already */
+<span class="lineNum">     130 </span><span class="lineCov">  350577051 :                 return klass-&gt;instance_size;</span>
+<span class="lineNum">     131 </span>            :         }
+<span class="lineNum">     132 </span><span class="lineCov">  350577890 : }</span>
+<span class="lineNum">     133 </span>            : 
+<span class="lineNum">     134 </span>            : /*
+<span class="lineNum">     135 </span>            :  * This function can be called on an object whose first word, the
+<span class="lineNum">     136 </span>            :  * vtable field, is not intact.  This is necessary for the parallel
+<span class="lineNum">     137 </span>            :  * collector.
+<a name="138"><span class="lineNum">     138 </span>            :  */</a>
+<span class="lineNum">     139 </span>            : static MONO_NEVER_INLINE mword
+<span class="lineNum">     140 </span>            : sgen_client_par_object_get_size (GCVTable vtable, GCObject* o)
+<span class="lineNum">     141 </span>            : {
+<span class="lineNum">     142 </span><span class="lineCov">  711877124 :         SgenDescriptor descr = sgen_vtable_get_descriptor (vtable);</span>
+<span class="lineNum">     143 </span><span class="lineCov">  711877124 :         mword type = descr &amp; DESC_TYPE_MASK;</span>
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span><span class="lineCov"> 1423753446 :         if (type == DESC_TYPE_RUN_LENGTH || type == DESC_TYPE_SMALL_PTRFREE) {</span>
+<span class="lineNum">     146 </span><span class="lineCov">   34122174 :                 mword size = descr &amp; 0xfff8;</span>
+<span class="lineNum">     147 </span><span class="lineCov">   68244348 :                 SGEN_ASSERT (9, size &gt;= sizeof (MonoObject), &quot;Run length object size to small&quot;);</span>
+<span class="lineNum">     148 </span><span class="lineCov">   34122174 :                 return size;</span>
+<span class="lineNum">     149 </span><span class="lineCov">  677754950 :         } else if (descr == SGEN_DESC_STRING) {</span>
+<span class="lineNum">     150 </span><span class="lineCov">  219545561 :                 return G_STRUCT_OFFSET (MonoString, chars) + 2 * mono_string_length_fast ((MonoString*) o) + 2;</span>
+<span class="lineNum">     151 </span><span class="lineCov">  458209390 :         } else if (type == DESC_TYPE_VECTOR) {</span>
+<span class="lineNum">     152 </span><span class="lineCov">  107631499 :                 return sgen_mono_array_size (vtable, (MonoArray*)o, NULL, descr);</span>
+<span class="lineNum">     153 </span>            :         }
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span><span class="lineCov">  350577890 :         return sgen_client_slow_object_get_size (vtable, o);</span>
+<span class="lineNum">     156 </span><span class="lineCov">  711877121 : }</span>
+<a name="157"><span class="lineNum">     157 </span>            : </a>
+<span class="lineNum">     158 </span>            : static MONO_ALWAYS_INLINE size_t G_GNUC_UNUSED
+<span class="lineNum">     159 </span>            : sgen_client_array_element_size (GCVTable gc_vtable)
+<span class="lineNum">     160 </span>            : {
+<span class="lineNum">     161 </span><span class="lineCov">          6 :         MonoVTable *vt = (MonoVTable*)gc_vtable;</span>
+<span class="lineNum">     162 </span><span class="lineCov">          6 :         return mono_array_element_size (vt-&gt;klass);</span>
+<span class="lineNum">     163 </span>            : }
+<a name="164"><span class="lineNum">     164 </span>            : </a>
+<span class="lineNum">     165 </span>            : static MONO_ALWAYS_INLINE G_GNUC_UNUSED char*
+<span class="lineNum">     166 </span>            : sgen_client_array_data_start (GCObject *obj)
+<span class="lineNum">     167 </span>            : {
+<span class="lineNum">     168 </span><span class="lineCov">   33105214 :         return (char*)(obj) +  G_STRUCT_OFFSET (MonoArray, vector);</span>
+<span class="lineNum">     169 </span>            : }
+<a name="170"><span class="lineNum">     170 </span>            : </a>
+<span class="lineNum">     171 </span>            : static MONO_ALWAYS_INLINE size_t G_GNUC_UNUSED
+<span class="lineNum">     172 </span>            : sgen_client_array_length (GCObject *obj)
+<span class="lineNum">     173 </span>            : {
+<span class="lineNum">     174 </span><span class="lineCov">   33105214 :         return mono_array_length_fast ((MonoArray*)obj);</span>
+<span class="lineNum">     175 </span>            : }
+<a name="176"><span class="lineNum">     176 </span>            : </a>
+<span class="lineNum">     177 </span>            : static MONO_ALWAYS_INLINE gboolean G_GNUC_UNUSED
+<span class="lineNum">     178 </span>            : sgen_client_object_is_array_fill (GCObject *o)
+<span class="lineNum">     179 </span>            : {
+<span class="lineNum">     180 </span><span class="lineCov">   23162568 :         return ((MonoObject*)o)-&gt;synchronisation == GINT_TO_POINTER (-1);</span>
+<span class="lineNum">     181 </span>            : }
+<a name="182"><span class="lineNum">     182 </span>            : </a>
+<span class="lineNum">     183 </span>            : static MONO_ALWAYS_INLINE void G_GNUC_UNUSED
+<span class="lineNum">     184 </span>            : sgen_client_pre_copy_checks (char *destination, GCVTable gc_vtable, void *obj, mword objsize)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span><span class="lineCov">  133401742 :         MonoVTable *vt = (MonoVTable*)gc_vtable;</span>
+<span class="lineNum">     187 </span><span class="lineCov">  266803484 :         SGEN_ASSERT (9, vt-&gt;klass-&gt;inited, &quot;vtable %p for class %s:%s was not initialized&quot;, vt, vt-&gt;klass-&gt;name_space, vt-&gt;klass-&gt;name);</span>
+<span class="lineNum">     188 </span><span class="lineCov">  133401742 : }</span>
+<a name="189"><span class="lineNum">     189 </span>            : </a>
+<span class="lineNum">     190 </span>            : static MONO_ALWAYS_INLINE void G_GNUC_UNUSED
+<span class="lineNum">     191 </span>            : sgen_client_update_copied_object (char *destination, GCVTable gc_vtable, void *obj, mword objsize)
+<span class="lineNum">     192 </span>            : {
+<span class="lineNum">     193 </span><span class="lineCov">  133401742 :         MonoVTable *vt = (MonoVTable*)gc_vtable;</span>
+<span class="lineNum">     194 </span><span class="lineCov">  283416451 :         if (G_UNLIKELY (vt-&gt;rank &amp;&amp; ((MonoArray*)obj)-&gt;bounds)) {</span>
+<span class="lineNum">     195 </span><span class="lineCov">       9221 :                 MonoArray *array = (MonoArray*)destination;</span>
+<span class="lineNum">     196 </span><span class="lineCov">       9221 :                 array-&gt;bounds = (MonoArrayBounds*)((char*)destination + ((char*)((MonoArray*)obj)-&gt;bounds - (char*)obj));</span>
+<span class="lineNum">     197 </span><span class="lineCov">      18442 :                 SGEN_LOG (9, &quot;Array instance %p: size: %lu, rank: %d, length: %lu&quot;, array, (unsigned long)objsize, vt-&gt;rank, (unsigned long)mono_array_length (array));</span>
+<span class="lineNum">     198 </span><span class="lineCov">       9221 :         }</span>
+<span class="lineNum">     199 </span>            : 
+<span class="lineNum">     200 </span><span class="lineCov">  133401742 :         if (G_UNLIKELY (mono_profiler_events &amp; MONO_PROFILE_GC_MOVES))</span>
+<span class="lineNum">     201 </span><span class="lineCov">        202 :                 mono_sgen_register_moved_object (obj, destination);</span>
+<span class="lineNum">     202 </span><span class="lineCov">  133401742 : }</span>
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span>            : #ifdef XDOMAIN_CHECKS_IN_WBARRIER
+<span class="lineNum">     205 </span>            : extern gboolean sgen_mono_xdomain_checks;
+<span class="lineNum">     206 </span>            : 
+<span class="lineNum">     207 </span>            : #define sgen_client_wbarrier_generic_nostore_check(ptr) do {            \
+<span class="lineNum">     208 </span>            :                 /* FIXME: ptr_in_heap must be called with the GC lock held */ \
+<span class="lineNum">     209 </span>            :                 if (sgen_mono_xdomain_checks &amp;&amp; *(MonoObject**)ptr &amp;&amp; ptr_in_heap (ptr)) { \
+<span class="lineNum">     210 </span>            :                         char *start = find_object_for_ptr (ptr);        \
+<span class="lineNum">     211 </span>            :                         MonoObject *value = *(MonoObject**)ptr;         \
+<span class="lineNum">     212 </span>            :                         LOCK_GC;                                        \
+<span class="lineNum">     213 </span>            :                         SGEN_ASSERT (0, start, &quot;Write barrier outside an object?&quot;); \
+<span class="lineNum">     214 </span>            :                         if (start) {                                    \
+<span class="lineNum">     215 </span>            :                                 MonoObject *obj = (MonoObject*)start;   \
+<span class="lineNum">     216 </span>            :                                 if (obj-&gt;vtable-&gt;domain != value-&gt;vtable-&gt;domain) \
+<span class="lineNum">     217 </span>            :                                         SGEN_ASSERT (0, is_xdomain_ref_allowed (ptr, start, obj-&gt;vtable-&gt;domain), &quot;Cross-domain ref not allowed&quot;); \
+<span class="lineNum">     218 </span>            :                         }                                               \
+<span class="lineNum">     219 </span>            :                         UNLOCK_GC;                                      \
+<span class="lineNum">     220 </span>            :                 }                                                       \
+<span class="lineNum">     221 </span>            :         } while (0)
+<span class="lineNum">     222 </span>            : #else
+<span class="lineNum">     223 </span>            : #define sgen_client_wbarrier_generic_nostore_check(ptr)
+<span class="lineNum">     224 </span>            : #endif
+<a name="225"><span class="lineNum">     225 </span>            : </a>
+<span class="lineNum">     226 </span>            : static gboolean G_GNUC_UNUSED
+<span class="lineNum">     227 </span>            : sgen_client_object_has_critical_finalizer (GCObject *obj)
+<span class="lineNum">     228 </span>            : {
+<span class="lineNum">     229 </span>            :         MonoClass *klass;
+<span class="lineNum">     230 </span>            : 
+<span class="lineNum">     231 </span><span class="lineCov">    2493406 :         if (!mono_defaults.critical_finalizer_object)</span>
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span><span class="lineCov">    2493406 :         klass = SGEN_LOAD_VTABLE (obj)-&gt;klass;</span>
+<span class="lineNum">     235 </span>            : 
+<span class="lineNum">     236 </span><span class="lineCov">    2493406 :         return mono_class_has_parent_fast (klass, mono_defaults.critical_finalizer_object);</span>
+<span class="lineNum">     237 </span><span class="lineCov">    2493406 : }</span>
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span>            : const char* sgen_client_vtable_get_namespace (GCVTable vtable);
+<span class="lineNum">     240 </span>            : const char* sgen_client_vtable_get_name (GCVTable vtable);
+<a name="241"><span class="lineNum">     241 </span>            : </a>
+<span class="lineNum">     242 </span>            : static gboolean G_GNUC_UNUSED
+<span class="lineNum">     243 </span>            : sgen_client_bridge_need_processing (void)
+<span class="lineNum">     244 </span>            : {
+<span class="lineNum">     245 </span><span class="lineCov">     572633 :         return sgen_need_bridge_processing ();</span>
+<span class="lineNum">     246 </span>            : }
+<a name="247"><span class="lineNum">     247 </span>            : </a>
+<span class="lineNum">     248 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     249 </span>            : sgen_client_bridge_reset_data (void)
+<span class="lineNum">     250 </span>            : {
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :         sgen_bridge_reset_data ();</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 : }</span>
+<a name="253"><span class="lineNum">     253 </span>            : </a>
+<span class="lineNum">     254 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     255 </span>            : sgen_client_bridge_processing_stw_step (void)
+<span class="lineNum">     256 </span>            : {
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :         sgen_bridge_processing_stw_step ();</span>
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     259 </span>            : 
+<span class="lineNum">     260 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     261 </span>            : sgen_client_bridge_wait_for_processing (void)
+<span class="lineNum">     262 </span>            : {
+<span class="lineNum">     263 </span>            :         mono_gc_wait_for_bridge_processing ();
+<span class="lineNum">     264 </span>            : }
+<a name="265"><span class="lineNum">     265 </span>            : </a>
+<span class="lineNum">     266 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     267 </span>            : sgen_client_bridge_processing_finish (int generation)
+<span class="lineNum">     268 </span>            : {
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :         sgen_bridge_processing_finish (generation);</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 : }</span>
+<a name="271"><span class="lineNum">     271 </span>            : </a>
+<span class="lineNum">     272 </span>            : static gboolean G_GNUC_UNUSED
+<span class="lineNum">     273 </span>            : sgen_client_bridge_is_bridge_object (GCObject *obj)
+<span class="lineNum">     274 </span>            : {
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :         return sgen_is_bridge_object (obj);</span>
+<span class="lineNum">     276 </span>            : }
+<a name="277"><span class="lineNum">     277 </span>            : </a>
+<span class="lineNum">     278 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     279 </span>            : sgen_client_bridge_register_finalized_object (GCObject *object)
+<span class="lineNum">     280 </span>            : {
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 :         sgen_bridge_register_finalized_object (object);</span>
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 : }</span>
+<a name="283"><span class="lineNum">     283 </span>            : </a>
+<span class="lineNum">     284 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     285 </span>            : sgen_client_binary_protocol_collection_requested (int generation, size_t requested_size, gboolean force)
+<span class="lineNum">     286 </span>            : {
+<span class="lineNum">     287 </span><span class="lineCov">     379432 :         MONO_GC_REQUESTED (generation, requested_size, force);</span>
+<span class="lineNum">     288 </span><span class="lineCov">     189716 : }</span>
+<a name="289"><span class="lineNum">     289 </span>            : </a>
+<span class="lineNum">     290 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     291 </span>            : sgen_client_binary_protocol_collection_begin (int minor_gc_count, int generation)
+<span class="lineNum">     292 </span>            : {
+<span class="lineNum">     293 </span><span class="lineCov">     379432 :         MONO_GC_BEGIN (generation);</span>
+<span class="lineNum">     294 </span>            : 
+<span class="lineNum">     295 </span><span class="lineCov">     189716 :         mono_profiler_gc_event (MONO_GC_EVENT_START, generation);</span>
+<span class="lineNum">     296 </span>            : 
+<span class="lineNum">     297 </span>            : #ifndef DISABLE_PERFCOUNTERS
+<span class="lineNum">     298 </span><span class="lineCov">     189716 :         if (generation == GENERATION_NURSERY)</span>
+<span class="lineNum">     299 </span><span class="lineCov">       9946 :                 mono_perfcounters-&gt;gc_collections0++;</span>
+<span class="lineNum">     300 </span>            :         else
+<span class="lineNum">     301 </span><span class="lineCov">     179770 :                 mono_perfcounters-&gt;gc_collections1++;</span>
+<span class="lineNum">     302 </span>            : #endif
+<span class="lineNum">     303 </span><span class="lineCov">     189716 : }</span>
+<a name="304"><span class="lineNum">     304 </span>            : </a>
+<span class="lineNum">     305 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     306 </span>            : sgen_client_binary_protocol_collection_end (int minor_gc_count, int generation, long long num_objects_scanned, long long num_unique_objects_scanned)
+<span class="lineNum">     307 </span>            : {
+<span class="lineNum">     308 </span><span class="lineCov">     379432 :         MONO_GC_END (generation);</span>
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span><span class="lineCov">     189716 :         mono_profiler_gc_event (MONO_GC_EVENT_END, generation);</span>
+<span class="lineNum">     311 </span><span class="lineCov">     189716 : }</span>
+<a name="312"><span class="lineNum">     312 </span>            : </a>
+<span class="lineNum">     313 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     314 </span>            : sgen_client_binary_protocol_concurrent_start (void)
+<span class="lineNum">     315 </span>            : {
+<span class="lineNum">     316 </span><span class="lineCov">        498 :         MONO_GC_CONCURRENT_START_BEGIN (GENERATION_OLD);</span>
+<span class="lineNum">     317 </span><span class="lineCov">        249 : }</span>
+<a name="318"><span class="lineNum">     318 </span>            : </a>
+<span class="lineNum">     319 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     320 </span>            : sgen_client_binary_protocol_concurrent_update (void)
+<span class="lineNum">     321 </span>            : {
+<span class="lineNum">     322 </span><span class="lineCov">       1168 :         MONO_GC_CONCURRENT_UPDATE_FINISH_BEGIN (GENERATION_OLD, sgen_get_major_collector ()-&gt;get_and_reset_num_major_objects_marked ());</span>
+<span class="lineNum">     323 </span><span class="lineCov">        584 : }</span>
+<a name="324"><span class="lineNum">     324 </span>            : </a>
+<span class="lineNum">     325 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     326 </span>            : sgen_client_binary_protocol_concurrent_finish (void)
+<span class="lineNum">     327 </span>            : {
+<span class="lineNum">     328 </span><span class="lineCov">        498 :         MONO_GC_CONCURRENT_UPDATE_FINISH_BEGIN (GENERATION_OLD, sgen_get_major_collector ()-&gt;get_and_reset_num_major_objects_marked ());</span>
+<span class="lineNum">     329 </span><span class="lineCov">        249 : }</span>
+<a name="330"><span class="lineNum">     330 </span>            : </a>
+<span class="lineNum">     331 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     332 </span>            : sgen_client_binary_protocol_sweep_begin (int generation, int full_sweep)
+<span class="lineNum">     333 </span>            : {
+<span class="lineNum">     334 </span><span class="lineCov">     359540 :         MONO_GC_SWEEP_BEGIN (generation, full_sweep);</span>
+<span class="lineNum">     335 </span><span class="lineCov">     179770 : }</span>
+<a name="336"><span class="lineNum">     336 </span>            : </a>
+<span class="lineNum">     337 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     338 </span>            : sgen_client_binary_protocol_sweep_end (int generation, int full_sweep)
+<span class="lineNum">     339 </span>            : {
+<span class="lineNum">     340 </span><span class="lineCov">     359540 :         MONO_GC_SWEEP_END (generation, full_sweep);</span>
+<span class="lineNum">     341 </span><span class="lineCov">     179770 : }</span>
+<a name="342"><span class="lineNum">     342 </span>            : </a>
+<span class="lineNum">     343 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     344 </span>            : sgen_client_binary_protocol_world_stopping (int generation, long long timestamp, gpointer thread)
+<span class="lineNum">     345 </span>            : {
+<span class="lineNum">     346 </span><span class="lineCov">     386402 :         MONO_GC_WORLD_STOP_BEGIN ();</span>
+<span class="lineNum">     347 </span>            : 
+<span class="lineNum">     348 </span><span class="lineCov">     193201 :         mono_profiler_gc_event (MONO_GC_EVENT_PRE_STOP_WORLD, generation);</span>
+<span class="lineNum">     349 </span><span class="lineCov">     193201 : }</span>
+<a name="350"><span class="lineNum">     350 </span>            : </a>
+<span class="lineNum">     351 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     352 </span>            : sgen_client_binary_protocol_world_stopped (int generation, long long timestamp, long long total_major_cards, long long marked_major_cards, long long total_los_cards, long long marked_los_cards)
+<span class="lineNum">     353 </span>            : {
+<span class="lineNum">     354 </span><span class="lineCov">     386402 :         MONO_GC_WORLD_STOP_END ();</span>
+<span class="lineNum">     355 </span>            : 
+<span class="lineNum">     356 </span><span class="lineCov">     193201 :         mono_profiler_gc_event (MONO_GC_EVENT_POST_STOP_WORLD, generation);</span>
+<span class="lineNum">     357 </span><span class="lineCov">     193201 : }</span>
+<a name="358"><span class="lineNum">     358 </span>            : </a>
+<span class="lineNum">     359 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     360 </span>            : sgen_client_binary_protocol_world_restarting (int generation, long long timestamp, long long total_major_cards, long long marked_major_cards, long long total_los_cards, long long marked_los_cards)
+<span class="lineNum">     361 </span>            : {
+<span class="lineNum">     362 </span><span class="lineCov">     386402 :         MONO_GC_WORLD_RESTART_BEGIN (generation);</span>
+<span class="lineNum">     363 </span>            : 
+<span class="lineNum">     364 </span><span class="lineCov">     193201 :         mono_profiler_gc_event (MONO_GC_EVENT_PRE_START_WORLD, generation);</span>
+<span class="lineNum">     365 </span><span class="lineCov">     193201 : }</span>
+<a name="366"><span class="lineNum">     366 </span>            : </a>
+<span class="lineNum">     367 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     368 </span>            : sgen_client_binary_protocol_world_restarted (int generation, long long timestamp)
+<span class="lineNum">     369 </span>            : {
+<span class="lineNum">     370 </span><span class="lineCov">     386402 :         MONO_GC_WORLD_RESTART_END (generation);</span>
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span><span class="lineCov">     193201 :         mono_profiler_gc_event (MONO_GC_EVENT_POST_START_WORLD, generation);</span>
+<span class="lineNum">     373 </span><span class="lineCov">     193201 : }</span>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     376 </span>            : sgen_client_binary_protocol_block_alloc (gpointer addr, size_t size)
+<span class="lineNum">     377 </span>            : {
+<span class="lineNum">     378 </span>            : }
+<span class="lineNum">     379 </span>            : 
+<span class="lineNum">     380 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     381 </span>            : sgen_client_binary_protocol_block_free (gpointer addr, size_t size)
+<span class="lineNum">     382 </span>            : {
+<span class="lineNum">     383 </span>            : }
+<span class="lineNum">     384 </span>            : 
+<span class="lineNum">     385 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     386 </span>            : sgen_client_binary_protocol_block_set_state (gpointer addr, size_t size, int old, int new_)
+<span class="lineNum">     387 </span>            : {
+<span class="lineNum">     388 </span>            : }
+<a name="389"><span class="lineNum">     389 </span>            : </a>
+<span class="lineNum">     390 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     391 </span>            : sgen_client_binary_protocol_mark_start (int generation)
+<span class="lineNum">     392 </span>            : {
+<span class="lineNum">     393 </span><span class="lineCov">       9946 :         mono_profiler_gc_event (MONO_GC_EVENT_MARK_START, generation);</span>
+<span class="lineNum">     394 </span><span class="lineCov">       9946 : }</span>
+<a name="395"><span class="lineNum">     395 </span>            : </a>
+<span class="lineNum">     396 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     397 </span>            : sgen_client_binary_protocol_mark_end (int generation)
+<span class="lineNum">     398 </span>            : {
+<span class="lineNum">     399 </span><span class="lineCov">       9946 :         mono_profiler_gc_event (MONO_GC_EVENT_MARK_END, generation);</span>
+<span class="lineNum">     400 </span><span class="lineCov">       9946 : }</span>
+<a name="401"><span class="lineNum">     401 </span>            : </a>
+<span class="lineNum">     402 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     403 </span>            : sgen_client_binary_protocol_reclaim_start (int generation)
+<span class="lineNum">     404 </span>            : {
+<span class="lineNum">     405 </span><span class="lineCov">       9946 :         mono_profiler_gc_event (MONO_GC_EVENT_RECLAIM_START, generation);</span>
+<span class="lineNum">     406 </span><span class="lineCov">       9946 : }</span>
+<a name="407"><span class="lineNum">     407 </span>            : </a>
+<span class="lineNum">     408 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     409 </span>            : sgen_client_binary_protocol_reclaim_end (int generation)
+<span class="lineNum">     410 </span>            : {
+<span class="lineNum">     411 </span><span class="lineCov">       9946 :         mono_profiler_gc_event (MONO_GC_EVENT_RECLAIM_END, generation);</span>
+<span class="lineNum">     412 </span><span class="lineCov">       9946 : }</span>
+<span class="lineNum">     413 </span>            : 
+<span class="lineNum">     414 </span>            : static void
+<span class="lineNum">     415 </span>            : mono_binary_protocol_alloc_generic (gpointer obj, gpointer vtable, size_t size, gboolean pinned)
+<span class="lineNum">     416 </span>            : {
+<span class="lineNum">     417 </span>            : #ifdef ENABLE_DTRACE
+<span class="lineNum">     418 </span>            :         const char *namespace = sgen_client_vtable_get_namespace (vtable);
+<span class="lineNum">     419 </span>            :         const char *name = sgen_client_vtable_get_name (vtable);
+<span class="lineNum">     420 </span>            : 
+<span class="lineNum">     421 </span>            :         if (sgen_ptr_in_nursery (obj)) {
+<span class="lineNum">     422 </span>            :                 if (G_UNLIKELY (MONO_GC_NURSERY_OBJ_ALLOC_ENABLED ()))
+<span class="lineNum">     423 </span>            :                         MONO_GC_NURSERY_OBJ_ALLOC ((mword)obj, size, namespace, name);
+<span class="lineNum">     424 </span>            :         } else {
+<span class="lineNum">     425 </span>            :                 if (size &gt; SGEN_MAX_SMALL_OBJ_SIZE) {
+<span class="lineNum">     426 </span>            :                         if (G_UNLIKELY (MONO_GC_MAJOR_OBJ_ALLOC_LARGE_ENABLED ()))
+<span class="lineNum">     427 </span>            :                                 MONO_GC_MAJOR_OBJ_ALLOC_LARGE ((mword)obj, size, namespace, name);
+<span class="lineNum">     428 </span>            :                 } else if (pinned) {
+<span class="lineNum">     429 </span>            :                         MONO_GC_MAJOR_OBJ_ALLOC_PINNED ((mword)obj, size, namespace, name);
+<span class="lineNum">     430 </span>            :                 }
+<span class="lineNum">     431 </span>            :         }
+<span class="lineNum">     432 </span>            : #endif
+<span class="lineNum">     433 </span>            : }
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     436 </span>            : sgen_client_binary_protocol_alloc (gpointer obj, gpointer vtable, size_t size, gpointer provenance)
+<span class="lineNum">     437 </span>            : {
+<span class="lineNum">     438 </span>            :         mono_binary_protocol_alloc_generic (obj, vtable, size, FALSE);
+<span class="lineNum">     439 </span>            : }
+<span class="lineNum">     440 </span>            : 
+<span class="lineNum">     441 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     442 </span>            : sgen_client_binary_protocol_alloc_pinned (gpointer obj, gpointer vtable, size_t size, gpointer provenance)
+<span class="lineNum">     443 </span>            : {
+<span class="lineNum">     444 </span>            :         mono_binary_protocol_alloc_generic (obj, vtable, size, TRUE);
+<span class="lineNum">     445 </span>            : }
+<span class="lineNum">     446 </span>            : 
+<span class="lineNum">     447 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     448 </span>            : sgen_client_binary_protocol_alloc_degraded (gpointer obj, gpointer vtable, size_t size, gpointer provenance)
+<span class="lineNum">     449 </span>            : {
+<span class="lineNum">     450 </span>            :         MONO_GC_MAJOR_OBJ_ALLOC_DEGRADED ((mword)obj, size, sgen_client_vtable_get_namespace (vtable), sgen_client_vtable_get_name (vtable));
+<span class="lineNum">     451 </span>            : }
+<span class="lineNum">     452 </span>            : 
+<span class="lineNum">     453 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     454 </span>            : sgen_client_binary_protocol_card_scan (gpointer start, size_t size)
+<span class="lineNum">     455 </span>            : {
+<span class="lineNum">     456 </span>            : }
+<span class="lineNum">     457 </span>            : 
+<span class="lineNum">     458 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     459 </span>            : sgen_client_binary_protocol_pin_stage (gpointer addr_ptr, gpointer addr)
+<span class="lineNum">     460 </span>            : {
+<span class="lineNum">     461 </span>            : }
+<span class="lineNum">     462 </span>            : 
+<span class="lineNum">     463 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     464 </span>            : sgen_client_binary_protocol_cement_stage (gpointer addr)
+<span class="lineNum">     465 </span>            : {
+<span class="lineNum">     466 </span>            : }
+<span class="lineNum">     467 </span>            : 
+<span class="lineNum">     468 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     469 </span>            : sgen_client_binary_protocol_pin (gpointer obj, gpointer vtable, size_t size)
+<span class="lineNum">     470 </span>            : {
+<span class="lineNum">     471 </span>            : #ifdef ENABLE_DTRACE
+<span class="lineNum">     472 </span>            :         if (G_UNLIKELY (MONO_GC_OBJ_PINNED_ENABLED ())) {
+<span class="lineNum">     473 </span>            :                 int gen = sgen_ptr_in_nursery (obj) ? GENERATION_NURSERY : GENERATION_OLD;
+<span class="lineNum">     474 </span>            :                 MONO_GC_OBJ_PINNED ((mword)obj,
+<span class="lineNum">     475 </span>            :                                 sgen_safe_object_get_size (obj),
+<span class="lineNum">     476 </span>            :                                 sgen_client_vtable_get_namespace (vtable), sgen_client_vtable_get_name (vtable), gen);
+<span class="lineNum">     477 </span>            :         }
+<span class="lineNum">     478 </span>            : #endif
+<span class="lineNum">     479 </span>            : }
+<span class="lineNum">     480 </span>            : 
+<span class="lineNum">     481 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     482 </span>            : sgen_client_binary_protocol_mark (gpointer obj, gpointer vtable, size_t size)
+<span class="lineNum">     483 </span>            : {
+<span class="lineNum">     484 </span>            : }
+<span class="lineNum">     485 </span>            : 
+<span class="lineNum">     486 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     487 </span>            : sgen_client_binary_protocol_scan_begin (gpointer obj, gpointer vtable, size_t size)
+<span class="lineNum">     488 </span>            : {
+<span class="lineNum">     489 </span>            : }
+<span class="lineNum">     490 </span>            : 
+<span class="lineNum">     491 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     492 </span>            : sgen_client_binary_protocol_scan_vtype_begin (gpointer obj, size_t size)
+<span class="lineNum">     493 </span>            : {
+<span class="lineNum">     494 </span>            : }
+<span class="lineNum">     495 </span>            : 
+<span class="lineNum">     496 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     497 </span>            : sgen_client_binary_protocol_scan_process_reference (gpointer obj, gpointer ptr, gpointer value)
+<span class="lineNum">     498 </span>            : {
+<span class="lineNum">     499 </span>            : }
+<span class="lineNum">     500 </span>            : 
+<span class="lineNum">     501 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     502 </span>            : sgen_client_binary_protocol_scan_stack (gpointer thread, gpointer stack_start, gpointer stack_end, int skip_reason)
+<span class="lineNum">     503 </span>            : {
+<span class="lineNum">     504 </span>            : }
+<span class="lineNum">     505 </span>            : 
+<span class="lineNum">     506 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     507 </span>            : sgen_client_binary_protocol_wbarrier (gpointer ptr, gpointer value, gpointer value_vtable)
+<span class="lineNum">     508 </span>            : {
+<span class="lineNum">     509 </span>            : }
+<a name="510"><span class="lineNum">     510 </span>            : </a>
+<span class="lineNum">     511 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     512 </span>            : sgen_client_binary_protocol_cement (gpointer ptr, gpointer vtable, size_t size)
+<span class="lineNum">     513 </span>            : {
+<span class="lineNum">     514 </span>            : #ifdef ENABLE_DTRACE
+<span class="lineNum">     515 </span><span class="lineCov">       1119 :         if (G_UNLIKELY (MONO_GC_OBJ_CEMENTED_ENABLED())) {</span>
+<span class="lineNum">     516 </span><span class="lineNoCov">          0 :                 MONO_GC_OBJ_CEMENTED ((mword)ptr, sgen_safe_object_get_size ((GCObject*)ptr),</span>
+<span class="lineNum">     517 </span>            :                                 sgen_client_vtable_get_namespace (vtable), sgen_client_vtable_get_name (vtable));
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     519 </span>            : #endif
+<span class="lineNum">     520 </span><span class="lineCov">       1119 : }</span>
+<span class="lineNum">     521 </span>            : 
+<span class="lineNum">     522 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     523 </span>            : sgen_client_binary_protocol_copy (gpointer from, gpointer to, gpointer vtable, size_t size)
+<span class="lineNum">     524 </span>            : {
+<span class="lineNum">     525 </span>            : #ifdef ENABLE_DTRACE
+<span class="lineNum">     526 </span>            :         if (G_UNLIKELY (MONO_GC_OBJ_MOVED_ENABLED ())) {
+<span class="lineNum">     527 </span>            :                 int dest_gen = sgen_ptr_in_nursery (to) ? GENERATION_NURSERY : GENERATION_OLD;
+<span class="lineNum">     528 </span>            :                 int src_gen = sgen_ptr_in_nursery (from) ? GENERATION_NURSERY : GENERATION_OLD;
+<span class="lineNum">     529 </span>            :                 MONO_GC_OBJ_MOVED ((mword)to, (mword)from, dest_gen, src_gen, size, sgen_client_vtable_get_namespace (vtable), sgen_client_vtable_get_name (vtable));
+<span class="lineNum">     530 </span>            :         }
+<span class="lineNum">     531 </span>            : #endif
+<span class="lineNum">     532 </span>            : }
+<span class="lineNum">     533 </span>            : 
+<span class="lineNum">     534 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     535 </span>            : sgen_client_binary_protocol_global_remset (gpointer ptr, gpointer value, gpointer value_vtable)
+<span class="lineNum">     536 </span>            : {
+<span class="lineNum">     537 </span>            : #ifdef ENABLE_DTRACE
+<span class="lineNum">     538 </span>            :         if (G_UNLIKELY (MONO_GC_GLOBAL_REMSET_ADD_ENABLED ())) {
+<span class="lineNum">     539 </span>            :                 MONO_GC_GLOBAL_REMSET_ADD ((mword)ptr, (mword)value, sgen_safe_object_get_size (value),
+<span class="lineNum">     540 </span>            :                                 sgen_client_vtable_get_namespace (value_vtable), sgen_client_vtable_get_name (value_vtable));
+<span class="lineNum">     541 </span>            :         }
+<span class="lineNum">     542 </span>            : #endif
+<span class="lineNum">     543 </span>            : }
+<span class="lineNum">     544 </span>            : 
+<span class="lineNum">     545 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     546 </span>            : sgen_client_binary_protocol_mod_union_remset (gpointer obj, gpointer ptr, gpointer value, gpointer value_vtable)
+<span class="lineNum">     547 </span>            : {
+<span class="lineNum">     548 </span>            : }
+<span class="lineNum">     549 </span>            : 
+<span class="lineNum">     550 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     551 </span>            : sgen_client_binary_protocol_ptr_update (gpointer ptr, gpointer old_value, gpointer new_value, gpointer vtable, size_t size)
+<span class="lineNum">     552 </span>            : {
+<span class="lineNum">     553 </span>            : }
+<span class="lineNum">     554 </span>            : 
+<span class="lineNum">     555 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     556 </span>            : sgen_client_binary_protocol_cleanup (gpointer ptr, gpointer vtable, size_t size)
+<span class="lineNum">     557 </span>            : {
+<span class="lineNum">     558 </span>            : }
+<span class="lineNum">     559 </span>            : 
+<span class="lineNum">     560 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     561 </span>            : sgen_client_binary_protocol_dislink_add (gpointer link, gpointer obj, gboolean track)
+<span class="lineNum">     562 </span>            : {
+<span class="lineNum">     563 </span>            : }
+<span class="lineNum">     564 </span>            : 
+<span class="lineNum">     565 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     566 </span>            : sgen_client_binary_protocol_dislink_update (gpointer link, gpointer obj, gboolean track)
+<span class="lineNum">     567 </span>            : {
+<span class="lineNum">     568 </span>            : #ifdef ENABLE_DTRACE
+<span class="lineNum">     569 </span>            :         if (MONO_GC_WEAK_UPDATE_ENABLED ()) {
+<span class="lineNum">     570 </span>            :                 GCVTable vt = obj ? SGEN_LOAD_VTABLE (obj) : NULL;
+<span class="lineNum">     571 </span>            :                 MONO_GC_WEAK_UPDATE ((mword)link,
+<span class="lineNum">     572 </span>            :                                 (mword)obj,
+<span class="lineNum">     573 </span>            :                                 obj ? (mword)sgen_safe_object_get_size (obj) : (mword)0,
+<span class="lineNum">     574 </span>            :                                 obj ? sgen_client_vtable_get_namespace (vt) : NULL,
+<span class="lineNum">     575 </span>            :                                 obj ? sgen_client_vtable_get_name (vt) : NULL,
+<span class="lineNum">     576 </span>            :                                 track ? 1 : 0);
+<span class="lineNum">     577 </span>            :         }
+<span class="lineNum">     578 </span>            : #endif
+<span class="lineNum">     579 </span>            : }
+<span class="lineNum">     580 </span>            : 
+<span class="lineNum">     581 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     582 </span>            : sgen_client_binary_protocol_dislink_remove (gpointer link, gboolean track)
+<span class="lineNum">     583 </span>            : {
+<span class="lineNum">     584 </span>            : }
+<span class="lineNum">     585 </span>            : 
+<span class="lineNum">     586 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     587 </span>            : sgen_client_binary_protocol_empty (gpointer start, size_t size)
+<span class="lineNum">     588 </span>            : {
+<span class="lineNum">     589 </span>            :         if (sgen_ptr_in_nursery (start))
+<span class="lineNum">     590 </span>            :                 MONO_GC_NURSERY_SWEPT ((mword)start, size);
+<span class="lineNum">     591 </span>            :         else
+<span class="lineNum">     592 </span>            :                 MONO_GC_MAJOR_SWEPT ((mword)start, size);
+<span class="lineNum">     593 </span>            : }
+<a name="594"><span class="lineNum">     594 </span>            : </a>
+<span class="lineNum">     595 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     596 </span>            : sgen_client_binary_protocol_thread_suspend (gpointer thread, gpointer stopped_ip)
+<span class="lineNum">     597 </span>            : {
+<span class="lineNum">     598 </span><span class="lineCov">     460331 : }</span>
+<a name="599"><span class="lineNum">     599 </span>            : </a>
+<span class="lineNum">     600 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     601 </span>            : sgen_client_binary_protocol_thread_restart (gpointer thread)
+<span class="lineNum">     602 </span>            : {
+<span class="lineNum">     603 </span><span class="lineCov">     460331 : }</span>
+<a name="604"><span class="lineNum">     604 </span>            : </a>
+<span class="lineNum">     605 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     606 </span>            : sgen_client_binary_protocol_thread_register (gpointer thread)
+<span class="lineNum">     607 </span>            : {
+<span class="lineNum">     608 </span><span class="lineCov">      21155 : }</span>
+<a name="609"><span class="lineNum">     609 </span>            : </a>
+<span class="lineNum">     610 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     611 </span>            : sgen_client_binary_protocol_thread_unregister (gpointer thread)
+<span class="lineNum">     612 </span>            : {
+<span class="lineNum">     613 </span><span class="lineCov">      17806 : }</span>
+<a name="614"><span class="lineNum">     614 </span>            : </a>
+<span class="lineNum">     615 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     616 </span>            : sgen_client_binary_protocol_missing_remset (gpointer obj, gpointer obj_vtable, int offset, gpointer value, gpointer value_vtable, gboolean value_pinned)
+<span class="lineNum">     617 </span>            : {
+<span class="lineNum">     618 </span><span class="lineNoCov">          0 : }</span>
+<a name="619"><span class="lineNum">     619 </span>            : </a>
+<span class="lineNum">     620 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     621 </span>            : sgen_client_binary_protocol_cement_reset (void)
+<span class="lineNum">     622 </span>            : {
+<span class="lineNum">     623 </span><span class="lineCov">     179770 : }</span>
+<a name="624"><span class="lineNum">     624 </span>            : </a>
+<span class="lineNum">     625 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     626 </span>            : sgen_client_binary_protocol_domain_unload_begin (gpointer domain)
+<span class="lineNum">     627 </span>            : {
+<span class="lineNum">     628 </span><span class="lineCov">       3485 : }</span>
+<a name="629"><span class="lineNum">     629 </span>            : </a>
+<span class="lineNum">     630 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     631 </span>            : sgen_client_binary_protocol_domain_unload_end (gpointer domain)
+<span class="lineNum">     632 </span>            : {
+<span class="lineNum">     633 </span><span class="lineCov">       3485 : }</span>
+<span class="lineNum">     634 </span>            : 
+<span class="lineNum">     635 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     636 </span>            : sgen_client_binary_protocol_gray_enqueue (gpointer queue, gpointer cursor, gpointer value)
+<span class="lineNum">     637 </span>            : {
+<span class="lineNum">     638 </span>            : }
+<span class="lineNum">     639 </span>            : 
+<span class="lineNum">     640 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     641 </span>            : sgen_client_binary_protocol_gray_dequeue (gpointer queue, gpointer cursor, gpointer value)
+<span class="lineNum">     642 </span>            : {
+<span class="lineNum">     643 </span>            : }
+<a name="644"><span class="lineNum">     644 </span>            : </a>
+<span class="lineNum">     645 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     646 </span>            : sgen_client_binary_protocol_major_card_table_scan_start (long long timestamp, gboolean mod_union)
+<span class="lineNum">     647 </span>            : {
+<span class="lineNum">     648 </span><span class="lineCov">      10424 : }</span>
+<a name="649"><span class="lineNum">     649 </span>            : </a>
+<span class="lineNum">     650 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     651 </span>            : sgen_client_binary_protocol_major_card_table_scan_end (long long timestamp, gboolean mod_union)
+<span class="lineNum">     652 </span>            : {
+<span class="lineNum">     653 </span><span class="lineCov">      10424 : }</span>
+<a name="654"><span class="lineNum">     654 </span>            : </a>
+<span class="lineNum">     655 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     656 </span>            : sgen_client_binary_protocol_los_card_table_scan_start (long long timestamp, gboolean mod_union)
+<span class="lineNum">     657 </span>            : {
+<span class="lineNum">     658 </span><span class="lineCov">      10424 : }</span>
+<a name="659"><span class="lineNum">     659 </span>            : </a>
+<span class="lineNum">     660 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     661 </span>            : sgen_client_binary_protocol_los_card_table_scan_end (long long timestamp, gboolean mod_union)
+<span class="lineNum">     662 </span>            : {
+<span class="lineNum">     663 </span><span class="lineCov">      10424 : }</span>
+<a name="664"><span class="lineNum">     664 </span>            : </a>
+<span class="lineNum">     665 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     666 </span>            : sgen_client_binary_protocol_finish_gray_stack_start (long long timestamp, int generation)
+<span class="lineNum">     667 </span>            : {
+<span class="lineNum">     668 </span><span class="lineCov">     189716 : }</span>
+<a name="669"><span class="lineNum">     669 </span>            : </a>
+<span class="lineNum">     670 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     671 </span>            : sgen_client_binary_protocol_finish_gray_stack_end (long long timestamp, int generation)
+<span class="lineNum">     672 </span>            : {
+<span class="lineNum">     673 </span><span class="lineCov">     189716 : }</span>
+<a name="674"><span class="lineNum">     674 </span>            : </a>
+<span class="lineNum">     675 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     676 </span>            : sgen_client_binary_protocol_worker_finish (long long timestamp, gboolean forced)
+<span class="lineNum">     677 </span>            : {
+<span class="lineNum">     678 </span><span class="lineCov">        281 : }</span>
+<a name="679"><span class="lineNum">     679 </span>            : </a>
+<span class="lineNum">     680 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     681 </span>            : sgen_client_binary_protocol_evacuating_blocks (size_t block_size)
+<span class="lineNum">     682 </span>            : {
+<span class="lineNum">     683 </span><span class="lineCov">        204 : }</span>
+<a name="684"><span class="lineNum">     684 </span>            : </a>
+<span class="lineNum">     685 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     686 </span>            : sgen_client_binary_protocol_concurrent_sweep_end (long long timestamp)
+<span class="lineNum">     687 </span>            : {
+<span class="lineNum">     688 </span><span class="lineCov">     179770 : }</span>
+<a name="689"><span class="lineNum">     689 </span>            : </a>
+<span class="lineNum">     690 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     691 </span>            : sgen_client_binary_protocol_header (long long check, int version, int ptr_size, gboolean little_endian)
+<span class="lineNum">     692 </span>            : {
+<span class="lineNum">     693 </span><span class="lineNoCov">          0 : }</span>
+<a name="694"><span class="lineNum">     694 </span>            : </a>
+<span class="lineNum">     695 </span>            : static void G_GNUC_UNUSED
+<span class="lineNum">     696 </span>            : sgen_client_binary_protocol_pin_stats (int objects_pinned_in_nursery, size_t bytes_pinned_in_nursery, int objects_pinned_in_major, size_t bytes_pinned_in_major)
+<span class="lineNum">     697 </span>            : {
+<span class="lineNum">     698 </span><span class="lineCov">     193237 : }</span>
+<span class="lineNum">     699 </span>            : 
+<span class="lineNum">     700 </span>            : #define TLAB_ACCESS_INIT        SgenThreadInfo *__thread_info__ = (SgenThreadInfo*)mono_tls_get_sgen_thread_info ()
+<span class="lineNum">     701 </span>            : #define IN_CRITICAL_REGION (__thread_info__-&gt;client_info.in_critical_region)
+<span class="lineNum">     702 </span>            : 
+<span class="lineNum">     703 </span>            : /* Enter must be visible before anything is done in the critical region. */
+<span class="lineNum">     704 </span>            : #define ENTER_CRITICAL_REGION do { mono_atomic_store_acquire (&amp;IN_CRITICAL_REGION, 1); } while (0)
+<span class="lineNum">     705 </span>            : 
+<span class="lineNum">     706 </span>            : /* Exit must make sure all critical regions stores are visible before it signal the end of the region. 
+<span class="lineNum">     707 </span>            :  * We don't need to emit a full barrier since we
+<span class="lineNum">     708 </span>            :  */
+<span class="lineNum">     709 </span>            : #define EXIT_CRITICAL_REGION  do { mono_atomic_store_release (&amp;IN_CRITICAL_REGION, 0); } while (0)
+<span class="lineNum">     710 </span>            : 
+<span class="lineNum">     711 </span>            : #ifndef DISABLE_CRITICAL_REGION
+<span class="lineNum">     712 </span>            : /*
+<span class="lineNum">     713 </span>            :  * We can only use a critical region in the managed allocator if the JIT supports OP_ATOMIC_STORE_I4.
+<span class="lineNum">     714 </span>            :  *
+<span class="lineNum">     715 </span>            :  * TODO: Query the JIT instead of this ifdef hack.
+<span class="lineNum">     716 </span>            :  */
+<span class="lineNum">     717 </span>            : #if defined (TARGET_X86) || defined (TARGET_AMD64) || (defined (TARGET_ARM) &amp;&amp; defined (HAVE_ARMV7)) || defined (TARGET_ARM64)
+<span class="lineNum">     718 </span>            : #define MANAGED_ALLOCATOR_CAN_USE_CRITICAL_REGION
+<span class="lineNum">     719 </span>            : #endif
+<span class="lineNum">     720 </span>            : #endif
+<span class="lineNum">     721 </span>            : 
+<span class="lineNum">     722 </span>            : #define SGEN_TV_DECLARE(name) gint64 name
+<span class="lineNum">     723 </span>            : #define SGEN_TV_GETTIME(tv) tv = mono_100ns_ticks ()
+<span class="lineNum">     724 </span>            : #define SGEN_TV_ELAPSED(start,end) ((gint64)(end-start))
+<span class="lineNum">     725 </span>            : 
+<span class="lineNum">     726 </span>            : guint64 mono_time_since_last_stw (void);
+<span class="lineNum">     727 </span>            : 
+<span class="lineNum">     728 </span>            : typedef MonoSemType SgenSemaphore;
+<span class="lineNum">     729 </span>            : 
+<span class="lineNum">     730 </span>            : #define SGEN_SEMAPHORE_INIT(sem,initial)        mono_os_sem_init ((sem), (initial))
+<span class="lineNum">     731 </span>            : #define SGEN_SEMAPHORE_POST(sem)                mono_os_sem_post ((sem))
+<span class="lineNum">     732 </span>            : #define SGEN_SEMAPHORE_WAIT(sem)                mono_os_sem_wait ((sem), MONO_SEM_FLAGS_NONE)
+<span class="lineNum">     733 </span>            : 
+<span class="lineNum">     734 </span>            : gboolean sgen_has_critical_method (void);
+<span class="lineNum">     735 </span>            : gboolean sgen_is_critical_method (MonoMethod *method);
+<span class="lineNum">     736 </span>            : 
+<span class="lineNum">     737 </span>            : void sgen_set_use_managed_allocator (gboolean flag);
+<span class="lineNum">     738 </span>            : gboolean sgen_is_managed_allocator (MonoMethod *method);
+<span class="lineNum">     739 </span>            : gboolean sgen_has_managed_allocator (void);
+<span class="lineNum">     740 </span>            : 
+<span class="lineNum">     741 </span>            : void sgen_scan_for_registered_roots_in_domain (MonoDomain *domain, int root_type);
+<span class="lineNum">     742 </span>            : void sgen_null_links_for_domain (MonoDomain *domain);
+<span class="lineNum">     743 </span>            : 
+<span class="lineNum">     744 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

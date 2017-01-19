@@ -1,0 +1,472 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-io-portability.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-io-portability.c<span style="font-size: 80%;"> (source / <a href="mono-io-portability.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">81</td>
+            <td class="headerCovTableEntry">177</td>
+            <td class="headerCovTableEntryLo">45.8 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntryLo">66.7 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : #include &quot;config.h&quot;</a>
+<span class="lineNum">       2 </span>            : 
+<span class="lineNum">       3 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">       4 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">       5 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">       6 </span>            : #endif
+<span class="lineNum">       7 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">       8 </span>            : #include &lt;mono/utils/mono-io-portability.h&gt;
+<span class="lineNum">       9 </span>            : #include &lt;mono/metadata/profiler-private.h&gt;
+<span class="lineNum">      10 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #ifndef DISABLE_PORTABILITY
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &lt;dirent.h&gt;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : int mono_io_portability_helpers = PORTABILITY_UNKNOWN;
+<span class="lineNum">      17 </span>            : 
+<a name="18"><span class="lineNum">      18 </span>            : static inline gchar *mono_portability_find_file_internal (GString **report, const gchar *pathname, gboolean last_exists);</a>
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : void mono_portability_helpers_init (void)
+<span class="lineNum">      21 </span>            : {
+<span class="lineNum">      22 </span>            :         const gchar *env;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span><span class="lineCov">       3285 :         if (mono_io_portability_helpers != PORTABILITY_UNKNOWN)</span>
+<span class="lineNum">      25 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      26 </span>            :         
+<span class="lineNum">      27 </span><span class="lineCov">       3285 :         mono_io_portability_helpers = PORTABILITY_NONE;</span>
+<span class="lineNum">      28 </span>            :         
+<span class="lineNum">      29 </span><span class="lineCov">       3285 :         env = g_getenv (&quot;MONO_IOMAP&quot;);</span>
+<span class="lineNum">      30 </span><span class="lineCov">       3285 :         if (env != NULL) {</span>
+<span class="lineNum">      31 </span>            :                 /* parse the environment setting and set up some vars
+<span class="lineNum">      32 </span>            :                  * here
+<span class="lineNum">      33 </span>            :                  */
+<span class="lineNum">      34 </span><span class="lineCov">          1 :                 gchar **options = g_strsplit (env, &quot;:&quot;, 0);</span>
+<span class="lineNum">      35 </span>            :                 int i;
+<span class="lineNum">      36 </span>            :                 
+<span class="lineNum">      37 </span><span class="lineCov">          1 :                 if (options == NULL) {</span>
+<span class="lineNum">      38 </span>            :                         /* This shouldn't happen */
+<span class="lineNum">      39 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">      40 </span>            :                 }
+<span class="lineNum">      41 </span>            :                 
+<span class="lineNum">      42 </span><span class="lineCov">          4 :                 for (i = 0; options[i] != NULL; i++) {</span>
+<span class="lineNum">      43 </span>            : #ifdef DEBUG
+<span class="lineNum">      44 </span>            :                         g_message (&quot;%s: Setting option [%s]&quot;, __func__,
+<span class="lineNum">      45 </span>            :                                    options[i]);
+<span class="lineNum">      46 </span>            : #endif
+<span class="lineNum">      47 </span><span class="lineCov">          1 :                         if (!strncasecmp (options[i], &quot;drive&quot;, 5)) {</span>
+<span class="lineNum">      48 </span><span class="lineNoCov">          0 :                                 mono_io_portability_helpers |= PORTABILITY_DRIVE;</span>
+<span class="lineNum">      49 </span><span class="lineCov">          1 :                         } else if (!strncasecmp (options[i], &quot;case&quot;, 4)) {</span>
+<span class="lineNum">      50 </span><span class="lineNoCov">          0 :                                 mono_io_portability_helpers |= PORTABILITY_CASE;</span>
+<span class="lineNum">      51 </span><span class="lineCov">          1 :                         } else if (!strncasecmp (options[i], &quot;all&quot;, 3)) {</span>
+<span class="lineNum">      52 </span><span class="lineCov">          1 :                                 mono_io_portability_helpers |= (PORTABILITY_DRIVE | PORTABILITY_CASE);</span>
+<span class="lineNum">      53 </span><span class="lineCov">          1 :                         }</span>
+<span class="lineNum">      54 </span><span class="lineCov">          1 :                 }</span>
+<span class="lineNum">      55 </span><span class="lineCov">          1 :         }</span>
+<span class="lineNum">      56 </span><span class="lineCov">       3285 : }</span>
+<a name="57"><span class="lineNum">      57 </span>            : </a>
+<span class="lineNum">      58 </span>            : /* Returns newly allocated string, or NULL on failure */
+<span class="lineNum">      59 </span>            : static gchar *find_in_dir (DIR *current, const gchar *name)
+<span class="lineNum">      60 </span>            : {
+<span class="lineNum">      61 </span>            :         struct dirent *entry;
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span>            : #ifdef DEBUG
+<span class="lineNum">      64 </span>            :         g_message (&quot;%s: looking for [%s]\n&quot;, __func__, name);
+<span class="lineNum">      65 </span>            : #endif
+<span class="lineNum">      66 </span>            :         
+<span class="lineNum">      67 </span><span class="lineCov">       2142 :         while((entry = readdir (current)) != NULL) {</span>
+<span class="lineNum">      68 </span>            : #ifdef DEBUGX
+<span class="lineNum">      69 </span>            :                 g_message (&quot;%s: found [%s]\n&quot;, __func__, entry-&gt;d_name);
+<span class="lineNum">      70 </span>            : #endif
+<span class="lineNum">      71 </span>            :                 
+<span class="lineNum">      72 </span><span class="lineCov">       1070 :                 if (!g_ascii_strcasecmp (name, entry-&gt;d_name)) {</span>
+<span class="lineNum">      73 </span>            :                         char *ret;
+<span class="lineNum">      74 </span>            :                         
+<span class="lineNum">      75 </span>            : #ifdef DEBUG
+<span class="lineNum">      76 </span>            :                         g_message (&quot;%s: matched [%s] to [%s]\n&quot;, __func__,
+<span class="lineNum">      77 </span>            :                                    entry-&gt;d_name, name);
+<span class="lineNum">      78 </span>            : #endif
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineCov">          6 :                         ret = g_strdup (entry-&gt;d_name);</span>
+<span class="lineNum">      81 </span><span class="lineCov">          6 :                         closedir (current);</span>
+<span class="lineNum">      82 </span><span class="lineCov">          6 :                         return ret;</span>
+<span class="lineNum">      83 </span>            :                 }
+<span class="lineNum">      84 </span>            :         }
+<span class="lineNum">      85 </span>            :         
+<span class="lineNum">      86 </span>            : #ifdef DEBUG
+<span class="lineNum">      87 </span>            :         g_message (&quot;%s: returning NULL\n&quot;, __func__);
+<span class="lineNum">      88 </span>            : #endif
+<span class="lineNum">      89 </span>            :         
+<span class="lineNum">      90 </span><span class="lineCov">          1 :         closedir (current);</span>
+<span class="lineNum">      91 </span>            :         
+<span class="lineNum">      92 </span><span class="lineCov">          1 :         return(NULL);</span>
+<a name="93"><span class="lineNum">      93 </span><span class="lineCov">          7 : }</span></a>
+<span class="lineNum">      94 </span>            : 
+<span class="lineNum">      95 </span>            : static inline void append_report (GString **report, const gchar *format, ...)
+<span class="lineNum">      96 </span>            : {
+<span class="lineNum">      97 </span>            :         va_list ap;
+<span class="lineNum">      98 </span><span class="lineNoCov">          0 :         if (!*report)</span>
+<span class="lineNum">      99 </span><span class="lineNoCov">          0 :                 *report = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :         va_start (ap, format);</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :         g_string_append_vprintf (*report, format, ap);</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :         va_end (ap);</span>
+<a name="104"><span class="lineNum">     104 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span>            : static inline void do_mono_profiler_iomap (GString **report, const char *pathname, const char *new_pathname)
+<span class="lineNum">     107 </span>            : {
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :         char *rep = NULL;</span>
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :         GString *tmp = report ? *report : NULL;</span>
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :         if (tmp) {</span>
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :                 if (tmp-&gt;len &gt; 0)</span>
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :                         rep = g_string_free (tmp, FALSE);</span>
+<span class="lineNum">     114 </span>            :                 else
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :                         g_string_free (tmp, TRUE);</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :                 *report = NULL;</span>
+<span class="lineNum">     117 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :         mono_profiler_iomap (rep, pathname, new_pathname);</span>
+<span class="lineNum">     120 </span><span class="lineNoCov">          0 :         g_free (rep);</span>
+<a name="121"><span class="lineNum">     121 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span>            : gchar *mono_portability_find_file (const gchar *pathname, gboolean last_exists)
+<span class="lineNum">     124 </span>            : {
+<span class="lineNum">     125 </span><span class="lineCov">      11989 :         GString *report = NULL;</span>
+<span class="lineNum">     126 </span>            :         gchar *ret;
+<span class="lineNum">     127 </span>            :         
+<span class="lineNum">     128 </span><span class="lineCov">      23978 :         if (!pathname || !pathname [0])</span>
+<span class="lineNum">     129 </span><span class="lineCov">          2 :                 return NULL;</span>
+<span class="lineNum">     130 </span><span class="lineCov">      11987 :         ret = mono_portability_find_file_internal (&amp;report, pathname, last_exists);</span>
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineCov">      11987 :         if (report)</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :                 g_string_free (report, TRUE);</span>
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span><span class="lineCov">      11987 :         return ret;</span>
+<span class="lineNum">     136 </span><span class="lineCov">      11989 : }</span>
+<a name="137"><span class="lineNum">     137 </span>            : </a>
+<span class="lineNum">     138 </span>            : /* Returns newly-allocated string or NULL on failure */
+<span class="lineNum">     139 </span>            : static inline gchar *mono_portability_find_file_internal (GString **report, const gchar *pathname, gboolean last_exists)
+<span class="lineNum">     140 </span>            : {
+<span class="lineNum">     141 </span>            :         gchar *new_pathname, **components, **new_components;
+<span class="lineNum">     142 </span><span class="lineCov">      11987 :         int num_components = 0, component = 0;</span>
+<span class="lineNum">     143 </span><span class="lineCov">      11987 :         DIR *scanning = NULL;</span>
+<span class="lineNum">     144 </span>            :         size_t len;
+<span class="lineNum">     145 </span><span class="lineCov">      11987 :         gboolean drive_stripped = FALSE;</span>
+<span class="lineNum">     146 </span><span class="lineCov">      11987 :         gboolean do_report = (mono_profiler_get_events () &amp; MONO_PROFILE_IOMAP_EVENTS) != 0;</span>
+<span class="lineNum">     147 </span>            : 
+<span class="lineNum">     148 </span><span class="lineCov">      11987 :         if (IS_PORTABILITY_NONE) {</span>
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :                 return(NULL);</span>
+<span class="lineNum">     150 </span>            :         }
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span><span class="lineCov">      11987 :         if (do_report)</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                 append_report (report, &quot; - Requested file path: '%s'\n&quot;, pathname);</span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span><span class="lineCov">      11987 :         new_pathname = g_strdup (pathname);</span>
+<span class="lineNum">     156 </span>            :         
+<span class="lineNum">     157 </span>            : #ifdef DEBUG
+<span class="lineNum">     158 </span>            :         g_message (&quot;%s: Finding [%s] last_exists: %s\n&quot;, __func__, pathname,
+<span class="lineNum">     159 </span>            :                    last_exists?&quot;TRUE&quot;:&quot;FALSE&quot;);
+<span class="lineNum">     160 </span>            : #endif
+<span class="lineNum">     161 </span>            :         
+<span class="lineNum">     162 </span><span class="lineCov">      18959 :         if (last_exists &amp;&amp;</span>
+<span class="lineNum">     163 </span><span class="lineCov">       6972 :             access (new_pathname, F_OK) == 0) {</span>
+<span class="lineNum">     164 </span>            : #ifdef DEBUG
+<span class="lineNum">     165 </span>            :                 g_message (&quot;%s: Found it without doing anything\n&quot;, __func__);
+<span class="lineNum">     166 </span>            : #endif
+<span class="lineNum">     167 </span><span class="lineCov">       2104 :                 return(new_pathname);</span>
+<span class="lineNum">     168 </span>            :         }
+<span class="lineNum">     169 </span>            :         
+<span class="lineNum">     170 </span>            :         /* First turn '\' into '/' and strip any drive letters */
+<span class="lineNum">     171 </span><span class="lineCov">       9883 :         g_strdelimit (new_pathname, &quot;\\&quot;, '/');</span>
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span>            : #ifdef DEBUG
+<span class="lineNum">     174 </span>            :         g_message (&quot;%s: Fixed slashes, now have [%s]\n&quot;, __func__,
+<span class="lineNum">     175 </span>            :                    new_pathname);
+<span class="lineNum">     176 </span>            : #endif
+<span class="lineNum">     177 </span>            :         
+<span class="lineNum">     178 </span><span class="lineCov">       9883 :         if (IS_PORTABILITY_DRIVE &amp;&amp;</span>
+<span class="lineNum">     179 </span><span class="lineCov">          1 :             g_ascii_isalpha (new_pathname[0]) &amp;&amp;</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :             (new_pathname[1] == ':')) {</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :                 int len = strlen (new_pathname);</span>
+<span class="lineNum">     182 </span>            :                 
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :                 g_memmove (new_pathname, new_pathname+2, len - 2);</span>
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :                 new_pathname[len - 2] = '\0';</span>
+<span class="lineNum">     185 </span>            : 
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :                 if (do_report) {</span>
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :                         append_report (report, &quot; - Stripped drive letter.\n&quot;);</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :                         drive_stripped = TRUE;</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     190 </span>            : #ifdef DEBUG
+<span class="lineNum">     191 </span>            :                 g_message (&quot;%s: Stripped drive letter, now looking for [%s]\n&quot;,
+<span class="lineNum">     192 </span>            :                            __func__, new_pathname);
+<span class="lineNum">     193 </span>            : #endif
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     195 </span>            : 
+<span class="lineNum">     196 </span><span class="lineCov">       9883 :         len = strlen (new_pathname);</span>
+<span class="lineNum">     197 </span><span class="lineCov">      19766 :         if (len &gt; 1 &amp;&amp; new_pathname [len - 1] == '/') {</span>
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                 new_pathname [len - 1] = 0;</span>
+<span class="lineNum">     199 </span>            : #ifdef DEBUG
+<span class="lineNum">     200 </span>            :                 g_message (&quot;%s: requested name had a trailing /, rewritten to '%s'\n&quot;,
+<span class="lineNum">     201 </span>            :                            __func__, new_pathname);
+<span class="lineNum">     202 </span>            : #endif
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     204 </span>            : 
+<span class="lineNum">     205 </span><span class="lineCov">      14751 :         if (last_exists &amp;&amp;</span>
+<span class="lineNum">     206 </span><span class="lineCov">       4868 :             access (new_pathname, F_OK) == 0) {</span>
+<span class="lineNum">     207 </span>            : #ifdef DEBUG
+<span class="lineNum">     208 </span>            :                 g_message (&quot;%s: Found it\n&quot;, __func__);
+<span class="lineNum">     209 </span>            : #endif
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :                 if (do_report &amp;&amp; drive_stripped)</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :                         do_mono_profiler_iomap (report, pathname, new_pathname);</span>
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :                 return(new_pathname);</span>
+<span class="lineNum">     214 </span>            :         }
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span>            :         /* OK, have to work harder.  Take each path component in turn
+<span class="lineNum">     217 </span>            :          * and do a case-insensitive directory scan for it
+<span class="lineNum">     218 </span>            :          */
+<span class="lineNum">     219 </span>            : 
+<span class="lineNum">     220 </span><span class="lineCov">       9883 :         if (!(IS_PORTABILITY_CASE)) {</span>
+<span class="lineNum">     221 </span><span class="lineCov">       9882 :                 g_free (new_pathname);</span>
+<span class="lineNum">     222 </span><span class="lineCov">       9882 :                 return(NULL);</span>
+<span class="lineNum">     223 </span>            :         }
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span><span class="lineCov">          1 :         components = g_strsplit (new_pathname, &quot;/&quot;, 0);</span>
+<span class="lineNum">     226 </span><span class="lineCov">          1 :         if (components == NULL) {</span>
+<span class="lineNum">     227 </span>            :                 /* This shouldn't happen */
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :                 g_free (new_pathname);</span>
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :                 return(NULL);</span>
+<span class="lineNum">     230 </span>            :         }
+<span class="lineNum">     231 </span>            :         
+<span class="lineNum">     232 </span><span class="lineCov">         18 :         while(components[num_components] != NULL) {</span>
+<span class="lineNum">     233 </span><span class="lineCov">          8 :                 num_components++;</span>
+<span class="lineNum">     234 </span>            :         }
+<span class="lineNum">     235 </span><span class="lineCov">          1 :         g_free (new_pathname);</span>
+<span class="lineNum">     236 </span>            :         
+<span class="lineNum">     237 </span><span class="lineCov">          1 :         if (num_components == 0){</span>
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     239 </span>            :         }
+<span class="lineNum">     240 </span>            :         
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span><span class="lineCov">          1 :         new_components = (gchar **)g_new0 (gchar **, num_components + 1);</span>
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span><span class="lineCov">          1 :         if (num_components &gt; 1) {</span>
+<span class="lineNum">     245 </span><span class="lineCov">          1 :                 if (strcmp (components[0], &quot;&quot;) == 0) {</span>
+<span class="lineNum">     246 </span>            :                         /* first component blank, so start at / */
+<span class="lineNum">     247 </span><span class="lineCov">          1 :                         scanning = opendir (&quot;/&quot;);</span>
+<span class="lineNum">     248 </span><span class="lineCov">          1 :                         if (scanning == NULL) {</span>
+<span class="lineNum">     249 </span>            : #ifdef DEBUG
+<span class="lineNum">     250 </span>            :                                 g_message (&quot;%s: opendir 1 error: %s&quot;, __func__,
+<span class="lineNum">     251 </span>            :                                            g_strerror (errno));
+<span class="lineNum">     252 </span>            : #endif
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :                                 g_strfreev (new_components);</span>
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :                                 g_strfreev (components);</span>
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :                                 return(NULL);</span>
+<span class="lineNum">     256 </span>            :                         }
+<span class="lineNum">     257 </span>            :                 
+<span class="lineNum">     258 </span><span class="lineCov">          1 :                         new_components[component++] = g_strdup (&quot;&quot;);</span>
+<span class="lineNum">     259 </span><span class="lineCov">          1 :                 } else {</span>
+<span class="lineNum">     260 </span>            :                         DIR *current;
+<span class="lineNum">     261 </span>            :                         gchar *entry;
+<span class="lineNum">     262 </span>            :                 
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :                         current = opendir (&quot;.&quot;);</span>
+<span class="lineNum">     264 </span><span class="lineNoCov">          0 :                         if (current == NULL) {</span>
+<span class="lineNum">     265 </span>            : #ifdef DEBUG
+<span class="lineNum">     266 </span>            :                                 g_message (&quot;%s: opendir 2 error: %s&quot;, __func__,
+<span class="lineNum">     267 </span>            :                                            g_strerror (errno));
+<span class="lineNum">     268 </span>            : #endif
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :                                 g_strfreev (new_components);</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :                                 g_strfreev (components);</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                                 return(NULL);</span>
+<span class="lineNum">     272 </span>            :                         }
+<span class="lineNum">     273 </span>            :                 
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                         entry = find_in_dir (current, components[0]);</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                         if (entry == NULL) {</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                                 g_strfreev (new_components);</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :                                 g_strfreev (components);</span>
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :                                 return(NULL);</span>
+<span class="lineNum">     279 </span>            :                         }
+<span class="lineNum">     280 </span>            :                 
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 :                         scanning = opendir (entry);</span>
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :                         if (scanning == NULL) {</span>
+<span class="lineNum">     283 </span>            : #ifdef DEBUG
+<span class="lineNum">     284 </span>            :                                 g_message (&quot;%s: opendir 3 error: %s&quot;, __func__,
+<span class="lineNum">     285 </span>            :                                            g_strerror (errno));
+<span class="lineNum">     286 </span>            : #endif
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :                                 g_free (entry);</span>
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :                                 g_strfreev (new_components);</span>
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :                                 g_strfreev (components);</span>
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :                                 return(NULL);</span>
+<span class="lineNum">     291 </span>            :                         }
+<span class="lineNum">     292 </span>            :                 
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :                         new_components[component++] = entry;</span>
+<span class="lineNum">     294 </span>            :                 }
+<span class="lineNum">     295 </span><span class="lineCov">          1 :         } else {</span>
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :                 if (last_exists) {</span>
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :                         if (strcmp (components[0], &quot;&quot;) == 0) {</span>
+<span class="lineNum">     298 </span>            :                                 /* First and only component blank */
+<span class="lineNum">     299 </span><span class="lineNoCov">          0 :                                 new_components[component++] = g_strdup (&quot;&quot;);</span>
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     301 </span>            :                                 DIR *current;
+<span class="lineNum">     302 </span>            :                                 gchar *entry;
+<span class="lineNum">     303 </span>            :                                 
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :                                 current = opendir (&quot;.&quot;);</span>
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :                                 if (current == NULL) {</span>
+<span class="lineNum">     306 </span>            : #ifdef DEBUG
+<span class="lineNum">     307 </span>            :                                         g_message (&quot;%s: opendir 4 error: %s&quot;,
+<span class="lineNum">     308 </span>            :                                                    __func__,
+<span class="lineNum">     309 </span>            :                                                    g_strerror (errno));
+<span class="lineNum">     310 </span>            : #endif
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :                                         g_strfreev (new_components);</span>
+<span class="lineNum">     312 </span><span class="lineNoCov">          0 :                                         g_strfreev (components);</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :                                         return(NULL);</span>
+<span class="lineNum">     314 </span>            :                                 }
+<span class="lineNum">     315 </span>            :                                 
+<span class="lineNum">     316 </span><span class="lineNoCov">          0 :                                 entry = find_in_dir (current, components[0]);</span>
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :                                 if (entry == NULL) {</span>
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :                                         g_strfreev (new_components);</span>
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :                                         g_strfreev (components);</span>
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                                         return(NULL);</span>
+<span class="lineNum">     321 </span>            :                                 }
+<span class="lineNum">     322 </span>            :                                 
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :                                 new_components[component++] = entry;</span>
+<span class="lineNum">     324 </span>            :                         }
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     326 </span><span class="lineNoCov">          0 :                                 new_components[component++] = g_strdup (components[0]);</span>
+<span class="lineNum">     327 </span>            :                 }
+<span class="lineNum">     328 </span>            :         }
+<span class="lineNum">     329 </span>            : 
+<span class="lineNum">     330 </span>            : #ifdef DEBUG
+<span class="lineNum">     331 </span>            :         g_message (&quot;%s: Got first entry: [%s]\n&quot;, __func__, new_components[0]);
+<span class="lineNum">     332 </span>            : #endif
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span><span class="lineCov">          3 :         g_assert (component == 1);</span>
+<span class="lineNum">     335 </span>            :         
+<span class="lineNum">     336 </span><span class="lineCov">         14 :         for(; component &lt; num_components; component++) {</span>
+<span class="lineNum">     337 </span>            :                 gchar *entry;
+<span class="lineNum">     338 </span>            :                 gchar *path_so_far;
+<span class="lineNum">     339 </span>            :                 
+<span class="lineNum">     340 </span><span class="lineCov">          7 :                 if (!last_exists &amp;&amp;</span>
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :                     component == num_components -1) {</span>
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :                         entry = g_strdup (components[component]);</span>
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :                         closedir (scanning);</span>
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     345 </span><span class="lineCov">          7 :                         entry = find_in_dir (scanning, components[component]);</span>
+<span class="lineNum">     346 </span><span class="lineCov">          7 :                         if (entry == NULL) {</span>
+<span class="lineNum">     347 </span><span class="lineCov">          1 :                                 g_strfreev (new_components);</span>
+<span class="lineNum">     348 </span><span class="lineCov">          1 :                                 g_strfreev (components);</span>
+<span class="lineNum">     349 </span><span class="lineCov">          1 :                                 return(NULL);</span>
+<span class="lineNum">     350 </span>            :                         }
+<span class="lineNum">     351 </span>            :                 }
+<span class="lineNum">     352 </span>            :                 
+<span class="lineNum">     353 </span><span class="lineCov">          6 :                 new_components[component] = entry;</span>
+<span class="lineNum">     354 </span>            :                 
+<span class="lineNum">     355 </span><span class="lineCov">          6 :                 if (component &lt; num_components -1) {</span>
+<span class="lineNum">     356 </span><span class="lineCov">          6 :                         path_so_far = g_strjoinv (&quot;/&quot;, new_components);</span>
+<span class="lineNum">     357 </span>            : 
+<span class="lineNum">     358 </span><span class="lineCov">          6 :                         scanning = opendir (path_so_far);</span>
+<span class="lineNum">     359 </span><span class="lineCov">          6 :                         g_free (path_so_far);</span>
+<span class="lineNum">     360 </span><span class="lineCov">          6 :                         if (scanning == NULL) {</span>
+<span class="lineNum">     361 </span><span class="lineNoCov">          0 :                                 g_strfreev (new_components);</span>
+<span class="lineNum">     362 </span><span class="lineNoCov">          0 :                                 g_strfreev (components);</span>
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :                                 return(NULL);</span>
+<span class="lineNum">     364 </span>            :                         }
+<span class="lineNum">     365 </span><span class="lineCov">          6 :                 }</span>
+<span class="lineNum">     366 </span><span class="lineCov">          6 :         }</span>
+<span class="lineNum">     367 </span>            :         
+<span class="lineNum">     368 </span><span class="lineNoCov">          0 :         g_strfreev (components);</span>
+<span class="lineNum">     369 </span>            : 
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :         new_pathname = g_strjoinv (&quot;/&quot;, new_components);</span>
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span>            : #ifdef DEBUG
+<span class="lineNum">     373 </span>            :         g_message (&quot;%s: pathname [%s] became [%s]\n&quot;, __func__, pathname,
+<span class="lineNum">     374 </span>            :                    new_pathname);
+<span class="lineNum">     375 </span>            : #endif
+<span class="lineNum">     376 </span>            :         
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :         g_strfreev (new_components);</span>
+<span class="lineNum">     378 </span>            : 
+<span class="lineNum">     379 </span><span class="lineNoCov">          0 :         if ((last_exists &amp;&amp;</span>
+<span class="lineNum">     380 </span><span class="lineNoCov">          0 :              access (new_pathname, F_OK) == 0) ||</span>
+<span class="lineNum">     381 </span><span class="lineNoCov">          0 :             (!last_exists)) {</span>
+<span class="lineNum">     382 </span><span class="lineNoCov">          0 :                 if (do_report &amp;&amp; strcmp (pathname, new_pathname) != 0)</span>
+<span class="lineNum">     383 </span><span class="lineNoCov">          0 :                         do_mono_profiler_iomap (report, pathname, new_pathname);</span>
+<span class="lineNum">     384 </span>            : 
+<span class="lineNum">     385 </span><span class="lineNoCov">          0 :                 return(new_pathname);</span>
+<span class="lineNum">     386 </span>            :         }
+<span class="lineNum">     387 </span>            : 
+<span class="lineNum">     388 </span><span class="lineNoCov">          0 :         g_free (new_pathname);</span>
+<span class="lineNum">     389 </span><span class="lineNoCov">          0 :         return(NULL);</span>
+<span class="lineNum">     390 </span><span class="lineCov">      11987 : }</span>
+<span class="lineNum">     391 </span>            : 
+<span class="lineNum">     392 </span>            : #else /* DISABLE_PORTABILITY */
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span>            : MONO_EMPTY_SOURCE_FILE (mono_io_portability);
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span>            : #endif /* DISABLE_PORTABILITY */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,415 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-value-hash.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-value-hash.c<span style="font-size: 80%;"> (source / <a href="mono-value-hash.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">131</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">11</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-value-hash.c: A hash table which only stores values in the hash nodes.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Miguel de Icaza (miguel@novell.com)
+<span class="lineNum">       6 </span>            :  *   Zoltan Varga (vargaz@gmail.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * (C) 2006,2008 Novell, Inc.
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * Permission is hereby granted, free of charge, to any person obtaining
+<span class="lineNum">      11 </span>            :  * a copy of this software and associated documentation files (the
+<span class="lineNum">      12 </span>            :  * &quot;Software&quot;), to deal in the Software without restriction, including
+<span class="lineNum">      13 </span>            :  * without limitation the rights to use, copy, modify, merge, publish,
+<span class="lineNum">      14 </span>            :  * distribute, sublicense, and/or sell copies of the Software, and to
+<span class="lineNum">      15 </span>            :  * permit persons to whom the Software is furnished to do so, subject to
+<span class="lineNum">      16 </span>            :  * the following conditions:
+<span class="lineNum">      17 </span>            :  *
+<span class="lineNum">      18 </span>            :  * The above copyright notice and this permission notice shall be
+<span class="lineNum">      19 </span>            :  * included in all copies or substantial portions of the Software.
+<span class="lineNum">      20 </span>            :  *
+<span class="lineNum">      21 </span>            :  * THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+<span class="lineNum">      22 </span>            :  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+<span class="lineNum">      23 </span>            :  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+<span class="lineNum">      24 </span>            :  * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+<span class="lineNum">      25 </span>            :  * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+<span class="lineNum">      26 </span>            :  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+<span class="lineNum">      27 </span>            :  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+<span class="lineNum">      28 </span>            :  */
+<span class="lineNum">      29 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;math.h&gt;
+<span class="lineNum">      31 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : #include &quot;mono-value-hash.h&quot;
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span>            : #ifndef G_MAXINT32
+<span class="lineNum">      36 </span>            : #define G_MAXINT32 2147483647
+<span class="lineNum">      37 </span>            : #endif
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : /*
+<span class="lineNum">      40 </span>            :  * This code is based on eglib/ghashtable.c with work done by Hans Petter Jansson
+<span class="lineNum">      41 </span>            :  * (hpj@novell.com) to make it use internal probing instead of chaining.
+<span class="lineNum">      42 </span>            :  */
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span>            : #define HASH_TABLE_MIN_SHIFT 3  /* 1 &lt;&lt; 3 == 8 buckets */
+<span class="lineNum">      45 </span>            : 
+<span class="lineNum">      46 </span>            : typedef struct _Slot Slot;
+<span class="lineNum">      47 </span>            : 
+<span class="lineNum">      48 </span>            : #define GET_VALUE(slot) ((gpointer)((((gsize)((slot)-&gt;value)) &gt;&gt; 2) &lt;&lt; 2))
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span>            : #define SET_VALUE(slot,value) ((slot)-&gt;value = (value))
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span>            : #define IS_EMPTY(slot) ((gsize)((slot)-&gt;value) == 0)
+<span class="lineNum">      53 </span>            : #define IS_TOMBSTONE(slot) ((gsize)((slot)-&gt;value) &amp; 1)
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : #define MAKE_TOMBSTONE(slot) do { (slot)-&gt;value = (gpointer)((gsize)((slot)-&gt;value) | 1); } while (1)
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : #define HASH(table, key) ((table)-&gt;hash_func ((key)))
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span>            : struct _Slot {
+<span class="lineNum">      60 </span>            :         /* A NULL value means the slot is empty */
+<span class="lineNum">      61 </span>            :         /* The tombstone status is stored in the lowest order bit of the value. */
+<span class="lineNum">      62 </span>            :         gpointer value;
+<span class="lineNum">      63 </span>            : };
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : static gpointer KEYMARKER_REMOVED = &amp;KEYMARKER_REMOVED;
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            : struct _MonoValueHashTable {
+<span class="lineNum">      68 </span>            :         GHashFunc      hash_func;
+<span class="lineNum">      69 </span>            :         GEqualFunc     key_equal_func;
+<span class="lineNum">      70 </span>            :         MonoValueHashKeyExtractFunc key_extract_func;
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            :         Slot *table;
+<span class="lineNum">      73 </span>            :         int   table_size;
+<span class="lineNum">      74 </span>            :         int   table_mask;
+<span class="lineNum">      75 </span>            :         int   in_use;
+<span class="lineNum">      76 </span>            :         int   n_occupied;
+<span class="lineNum">      77 </span>            :         GDestroyNotify value_destroy_func, key_destroy_func;
+<span class="lineNum">      78 </span>            : };
+<a name="79"><span class="lineNum">      79 </span>            : </a>
+<span class="lineNum">      80 </span>            : static void
+<span class="lineNum">      81 </span>            : mono_value_hash_table_set_shift (MonoValueHashTable *hash_table, gint shift)
+<span class="lineNum">      82 </span>            : {
+<span class="lineNum">      83 </span>            :         gint i;
+<span class="lineNum">      84 </span><span class="lineNoCov">          0 :         guint mask = 0;</span>
+<span class="lineNum">      85 </span>            : 
+<span class="lineNum">      86 </span><span class="lineNoCov">          0 :         hash_table-&gt;table_size = 1 &lt;&lt; shift;</span>
+<span class="lineNum">      87 </span>            : 
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; shift; i++) {</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :                 mask &lt;&lt;= 1;</span>
+<span class="lineNum">      90 </span><span class="lineNoCov">          0 :                 mask |= 1;</span>
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :         hash_table-&gt;table_mask = mask;</span>
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 : }</span>
+<a name="95"><span class="lineNum">      95 </span>            : </a>
+<span class="lineNum">      96 </span>            : static gint
+<span class="lineNum">      97 </span>            : mono_value_hash_table_find_closest_shift (gint n)
+<span class="lineNum">      98 </span>            : {
+<span class="lineNum">      99 </span>            :         gint i;
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :         for (i = 0; n; i++)</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :                 n &gt;&gt;= 1;</span>
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         return i;</span>
+<span class="lineNum">     105 </span>            : }
+<a name="106"><span class="lineNum">     106 </span>            : </a>
+<span class="lineNum">     107 </span>            : static void
+<span class="lineNum">     108 </span>            : mono_value_hash_table_set_shift_from_size (MonoValueHashTable *hash_table, gint size)
+<span class="lineNum">     109 </span>            : {
+<span class="lineNum">     110 </span>            :         gint shift;
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :         shift = mono_value_hash_table_find_closest_shift (size);</span>
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :         shift = MAX (shift, HASH_TABLE_MIN_SHIFT);</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :         mono_value_hash_table_set_shift (hash_table, shift);</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 : }</span>
+<a name="117"><span class="lineNum">     117 </span>            : </a>
+<span class="lineNum">     118 </span>            : MonoValueHashTable *
+<span class="lineNum">     119 </span>            : mono_value_hash_table_new (GHashFunc hash_func, GEqualFunc key_equal_func, MonoValueHashKeyExtractFunc key_extract)
+<span class="lineNum">     120 </span>            : {
+<span class="lineNum">     121 </span>            :         MonoValueHashTable *hash;
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :         if (hash_func == NULL)</span>
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :                 hash_func = g_direct_hash;</span>
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :         if (key_equal_func == NULL)</span>
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :                 key_equal_func = g_direct_equal;</span>
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :         hash = g_new0 (MonoValueHashTable, 1);</span>
+<span class="lineNum">     128 </span>            : 
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :         hash-&gt;hash_func = hash_func;</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :         hash-&gt;key_equal_func = key_equal_func;</span>
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :         hash-&gt;key_extract_func = key_extract;</span>
+<span class="lineNum">     132 </span>            : 
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :         mono_value_hash_table_set_shift (hash, HASH_TABLE_MIN_SHIFT);</span>
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :         hash-&gt;table = g_new0 (Slot, hash-&gt;table_size);</span>
+<span class="lineNum">     135 </span>            :         
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         return hash;</span>
+<span class="lineNum">     137 </span>            : }
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span>            : #if 0
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span>            : MonoValueHashTable *
+<span class="lineNum">     142 </span>            : mono_value_hash_table_new_full (GHashFunc hash_func, GEqualFunc key_equal_func,
+<span class="lineNum">     143 </span>            :                                                                 GDestroyNotify key_destroy_func, GDestroyNotify value_destroy_func)
+<span class="lineNum">     144 </span>            : {
+<span class="lineNum">     145 </span>            :         MonoValueHashTable *hash = mono_value_hash_table_new (hash_func, key_equal_func);
+<span class="lineNum">     146 </span>            :         if (hash == NULL)
+<span class="lineNum">     147 </span>            :                 return NULL;
+<span class="lineNum">     148 </span>            :         
+<span class="lineNum">     149 </span>            :         hash-&gt;key_destroy_func = key_destroy_func;
+<span class="lineNum">     150 </span>            :         hash-&gt;value_destroy_func = value_destroy_func;
+<span class="lineNum">     151 </span>            :         
+<span class="lineNum">     152 </span>            :         return hash;
+<span class="lineNum">     153 </span>            : }
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            : #endif
+<a name="156"><span class="lineNum">     156 </span>            : </a>
+<span class="lineNum">     157 </span>            : static void
+<span class="lineNum">     158 </span>            : do_rehash (MonoValueHashTable *hash)
+<span class="lineNum">     159 </span>            : {
+<span class="lineNum">     160 </span>            :         int i;
+<span class="lineNum">     161 </span>            :         int old_size;
+<span class="lineNum">     162 </span>            :         Slot *old_table;
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :         old_size = hash-&gt;table_size;</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :         old_table = hash-&gt;table;</span>
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span><span class="lineNoCov">          0 :         mono_value_hash_table_set_shift_from_size (hash, hash-&gt;in_use * 2);</span>
+<span class="lineNum">     168 </span>            : 
+<span class="lineNum">     169 </span>            :         /* printf (&quot;New size: %d\n&quot;, hash-&gt;table_size); */
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :         hash-&gt;table = g_new0 (Slot, hash-&gt;table_size);</span>
+<span class="lineNum">     171 </span>            :         
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; old_size; i++){</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :                 Slot *s = &amp;old_table [i];</span>
+<span class="lineNum">     174 </span>            :                 Slot *new_s;
+<span class="lineNum">     175 </span>            :                 guint hash_val;
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :                 guint step = 0;</span>
+<span class="lineNum">     177 </span>            :                 gpointer s_value, s_key;
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :                 if (IS_EMPTY (s) || IS_TOMBSTONE (s))</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :                 s_value = GET_VALUE (s);</span>
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :                 s_key = hash-&gt;key_extract_func (s_value);</span>
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :                 hash_val = HASH (hash, s_key) &amp; hash-&gt;table_mask;</span>
+<span class="lineNum">     185 </span><span class="lineNoCov">          0 :                 new_s = &amp;hash-&gt;table [hash_val];</span>
+<span class="lineNum">     186 </span>            : 
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :                 while (!IS_EMPTY (new_s)) {</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :                         step++;</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                         hash_val += step;</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 :                         hash_val &amp;= hash-&gt;table_mask;</span>
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :                         new_s = &amp;hash-&gt;table [hash_val];</span>
+<span class="lineNum">     192 </span>            :                 }
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 :                 *new_s = *s;</span>
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :         g_free (old_table);</span>
+<span class="lineNum">     197 </span><span class="lineNoCov">          0 :         hash-&gt;n_occupied = hash-&gt;in_use;</span>
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 : }</span>
+<a name="199"><span class="lineNum">     199 </span>            : </a>
+<span class="lineNum">     200 </span>            : static void
+<span class="lineNum">     201 </span>            : rehash (MonoValueHashTable *hash)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :         int n_occupied = hash-&gt;n_occupied;</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :         int table_size = hash-&gt;table_size;</span>
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :         if ((table_size &gt; hash-&gt;in_use * 4 &amp;&amp; table_size &gt; 1 &lt;&lt; HASH_TABLE_MIN_SHIFT) ||</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :             (table_size &lt;= n_occupied + (n_occupied / 16)))</span>
+<span class="lineNum">     208 </span><span class="lineNoCov">          0 :                 do_rehash (hash);</span>
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 : }</span>
+<a name="210"><span class="lineNum">     210 </span>            : </a>
+<span class="lineNum">     211 </span>            : static void
+<span class="lineNum">     212 </span>            : mono_value_hash_table_insert_replace (MonoValueHashTable *hash, gpointer key, gpointer value, gboolean replace)
+<span class="lineNum">     213 </span>            : {
+<span class="lineNum">     214 </span>            :         guint hashcode;
+<span class="lineNum">     215 </span>            :         Slot *s;
+<span class="lineNum">     216 </span>            :         guint s_index;
+<span class="lineNum">     217 </span>            :         GEqualFunc equal;
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :         guint first_tombstone = 0;</span>
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :         gboolean have_tombstone = FALSE;</span>
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :         guint step = 0;</span>
+<span class="lineNum">     221 </span>            : 
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :         g_assert (value);</span>
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :         g_assert (hash-&gt;key_extract_func (value) == key);</span>
+<span class="lineNum">     224 </span>            :         
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :         g_return_if_fail (hash != NULL);</span>
+<span class="lineNum">     226 </span>            : 
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :         hashcode = HASH (hash, key);</span>
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :         s_index = hashcode &amp; hash-&gt;table_mask;</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :         s = &amp;hash-&gt;table [s_index];</span>
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :         equal = hash-&gt;key_equal_func;</span>
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :         while (!IS_EMPTY (s)) {</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                 gpointer s_value = GET_VALUE (s);</span>
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 :                 gpointer s_key = hash-&gt;key_extract_func (s_value);</span>
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :                 guint s_key_hash = HASH (hash, s_key);</span>
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :                 if (s_key_hash == hashcode &amp;&amp; (*equal) (s_key, key)) {</span>
+<span class="lineNum">     239 </span><span class="lineNoCov">          0 :                         if (replace){</span>
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :                                 if (hash-&gt;key_destroy_func != NULL)</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                                         (*hash-&gt;key_destroy_func)(s_key);</span>
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :                         if (hash-&gt;value_destroy_func != NULL)</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :                                 (*hash-&gt;value_destroy_func) (GET_VALUE (s));</span>
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :                         SET_VALUE (s, value);</span>
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :                 } else if (IS_TOMBSTONE (s) &amp;&amp; !have_tombstone) {</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :                         first_tombstone = s_index;</span>
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :                         have_tombstone = TRUE;</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :                 step++;</span>
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :                 s_index += step;</span>
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :                 s_index &amp;= hash-&gt;table_mask;</span>
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :                 s = &amp;hash-&gt;table [s_index];</span>
+<span class="lineNum">     256 </span>            :         }
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :         if (have_tombstone) {</span>
+<span class="lineNum">     259 </span><span class="lineNoCov">          0 :                 s = &amp;hash-&gt;table [first_tombstone];</span>
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :                 hash-&gt;n_occupied++;</span>
+<span class="lineNum">     262 </span>            :         }
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span><span class="lineNoCov">          0 :         SET_VALUE (s, value);</span>
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :         hash-&gt;in_use++;</span>
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :         rehash (hash);</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 : }</span>
+<a name="269"><span class="lineNum">     269 </span>            : </a>
+<span class="lineNum">     270 </span>            : void
+<span class="lineNum">     271 </span>            : mono_value_hash_table_insert (MonoValueHashTable *hash, gpointer key, gpointer value)
+<span class="lineNum">     272 </span>            : {
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :         mono_value_hash_table_insert_replace (hash, key, value, TRUE);</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 : }</span>
+<a name="275"><span class="lineNum">     275 </span>            : </a>
+<span class="lineNum">     276 </span>            : static Slot *
+<span class="lineNum">     277 </span>            : lookup_internal (MonoValueHashTable *hash, gconstpointer key)
+<span class="lineNum">     278 </span>            : {
+<span class="lineNum">     279 </span>            :         GEqualFunc equal;
+<span class="lineNum">     280 </span>            :         Slot *s;
+<span class="lineNum">     281 </span>            :         guint hashcode;
+<span class="lineNum">     282 </span>            :         guint s_index;
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :         guint step = 0;</span>
+<span class="lineNum">     284 </span>            :         
+<span class="lineNum">     285 </span><span class="lineNoCov">          0 :         hashcode = HASH (hash, key);</span>
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :         s_index = hashcode &amp; hash-&gt;table_mask;</span>
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :         s = &amp;hash-&gt;table [s_index];</span>
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :         equal = hash-&gt;key_equal_func;</span>
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :         while (!IS_EMPTY (s)) {</span>
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :                 gpointer s_value = GET_VALUE (s);</span>
+<span class="lineNum">     294 </span><span class="lineNoCov">          0 :                 gpointer s_key = hash-&gt;key_extract_func (s_value);</span>
+<span class="lineNum">     295 </span><span class="lineNoCov">          0 :                 guint s_key_hash = HASH (hash, s_key);</span>
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :                 if (s_key_hash == hashcode &amp;&amp; (*equal) (hash-&gt;key_extract_func (s_value), key))</span>
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :                         return s;</span>
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span><span class="lineNoCov">          0 :                 step++;</span>
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :                 s_index += step;</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :                 s_index &amp;= hash-&gt;table_mask;</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :                 s = &amp;hash-&gt;table [s_index];</span>
+<span class="lineNum">     303 </span>            :         }
+<span class="lineNum">     304 </span>            : 
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     306 </span><span class="lineNoCov">          0 : }</span>
+<a name="307"><span class="lineNum">     307 </span>            : </a>
+<span class="lineNum">     308 </span>            : gpointer
+<span class="lineNum">     309 </span>            : mono_value_hash_table_lookup (MonoValueHashTable *hash, gconstpointer key)
+<span class="lineNum">     310 </span>            : {
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :         Slot *slot = lookup_internal (hash, key);</span>
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :         if (slot)</span>
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :                 return GET_VALUE (slot);</span>
+<span class="lineNum">     315 </span>            :         else
+<span class="lineNum">     316 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 : }</span>
+<a name="318"><span class="lineNum">     318 </span>            : </a>
+<span class="lineNum">     319 </span>            : void
+<span class="lineNum">     320 </span>            : mono_value_hash_table_destroy (MonoValueHashTable *hash)
+<span class="lineNum">     321 </span>            : {
+<span class="lineNum">     322 </span>            :         int i;
+<span class="lineNum">     323 </span>            :         
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :         g_return_if_fail (hash != NULL);</span>
+<span class="lineNum">     325 </span>            : 
+<span class="lineNum">     326 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; hash-&gt;table_size; i++){</span>
+<span class="lineNum">     327 </span><span class="lineNoCov">          0 :                 Slot *s = &amp;hash-&gt;table [i];</span>
+<span class="lineNum">     328 </span>            : 
+<span class="lineNum">     329 </span><span class="lineNoCov">          0 :                 if (!IS_EMPTY (s) &amp;&amp; !IS_TOMBSTONE (s)) {</span>
+<span class="lineNum">     330 </span><span class="lineNoCov">          0 :                         if (hash-&gt;key_destroy_func != NULL)</span>
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :                                 (*hash-&gt;key_destroy_func)(hash-&gt;key_extract_func (GET_VALUE (s)));</span>
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :                         if (hash-&gt;value_destroy_func != NULL)</span>
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :                                 (*hash-&gt;value_destroy_func)(GET_VALUE (s));</span>
+<span class="lineNum">     334 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     335 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :         g_free (hash-&gt;table);</span>
+<span class="lineNum">     337 </span>            :         
+<span class="lineNum">     338 </span><span class="lineNoCov">          0 :         g_free (hash);</span>
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

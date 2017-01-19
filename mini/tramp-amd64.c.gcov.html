@@ -1,0 +1,1204 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/tramp-amd64.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - tramp-amd64.c<span style="font-size: 80%;"> (source / <a href="tramp-amd64.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">376</td>
+            <td class="headerCovTableEntry">457</td>
+            <td class="headerCovTableEntryMed">82.3 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">13</td>
+            <td class="headerCovTableEntry">16</td>
+            <td class="headerCovTableEntryMed">81.2 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * tramp-amd64.c: JIT trampoline code for amd64
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *   Dietmar Maurer (dietmar@ximian.com)
+<span class="lineNum">       6 </span>            :  *   Zoltan Varga (vargaz@gmail.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * (C) 2001 Ximian, Inc.
+<span class="lineNum">       9 </span>            :  * Copyright 2003-2011 Novell, Inc (http://www.novell.com)
+<span class="lineNum">      10 </span>            :  * Copyright 2011 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">      11 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      12 </span>            :  */
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : #include &lt;mono/metadata/abi-details.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/metadata/appdomain.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/marshal.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/metadata/tabledefs.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/metadata/mono-debug-debugger.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;mono/metadata/profiler-private.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/metadata/gc-internals.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;mono/arch/amd64/amd64-codegen.h&gt;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : #include &lt;mono/utils/memcheck.h&gt;
+<span class="lineNum">      27 </span>            : 
+<span class="lineNum">      28 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      29 </span>            : #include &quot;mini-amd64.h&quot;
+<span class="lineNum">      30 </span>            : #include &quot;debugger-agent.h&quot;
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : #define ALIGN_TO(val,align) ((((guint64)val) + ((align) - 1)) &amp; ~((align) - 1))
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : #define IS_REX(inst) (((inst) &gt;= 0x40) &amp;&amp; ((inst) &lt;= 0x4f))
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      37 </span>            : /*
+<span class="lineNum">      38 </span>            :  * mono_arch_get_unbox_trampoline:
+<span class="lineNum">      39 </span>            :  * @m: method pointer
+<span class="lineNum">      40 </span>            :  * @addr: pointer to native code for @m
+<span class="lineNum">      41 </span>            :  *
+<span class="lineNum">      42 </span>            :  * when value type methods are called through the vtable we need to unbox the
+<span class="lineNum">      43 </span>            :  * this argument. This method returns a pointer to a trampoline which does
+<span class="lineNum">      44 </span>            :  * unboxing before calling the method
+<a name="45"><span class="lineNum">      45 </span>            :  */</a>
+<span class="lineNum">      46 </span>            : gpointer
+<span class="lineNum">      47 </span>            : mono_arch_get_unbox_trampoline (MonoMethod *m, gpointer addr)
+<span class="lineNum">      48 </span>            : {
+<span class="lineNum">      49 </span>            :         guint8 *code, *start;
+<span class="lineNum">      50 </span>            :         GSList *unwind_ops;
+<span class="lineNum">      51 </span><span class="lineCov">     170390 :         int this_reg, size = 20;</span>
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span><span class="lineCov">     170390 :         MonoDomain *domain = mono_domain_get ();</span>
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span><span class="lineCov">     170390 :         this_reg = mono_arch_get_this_arg_reg (NULL);</span>
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span><span class="lineCov">     170390 :         start = code = (guint8 *)mono_domain_code_reserve (domain, size);</span>
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span><span class="lineCov">     170390 :         unwind_ops = mono_arch_get_cie_program ();</span>
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span><span class="lineCov">    2044721 :         amd64_alu_reg_imm (code, X86_ADD, this_reg, sizeof (MonoObject));</span>
+<span class="lineNum">      62 </span>            :         /* FIXME: Optimize this */
+<span class="lineNum">      63 </span><span class="lineCov">    2044710 :         amd64_mov_reg_imm (code, AMD64_RAX, addr);</span>
+<span class="lineNum">      64 </span><span class="lineCov">    1874307 :         amd64_jump_reg (code, AMD64_RAX);</span>
+<span class="lineNum">      65 </span><span class="lineCov">     511171 :         g_assert ((code - start) &lt; size);</span>
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span><span class="lineCov">     170388 :         mono_arch_flush_icache (start, code - start);</span>
+<span class="lineNum">      68 </span><span class="lineCov">     170388 :         mono_profiler_code_buffer_new (start, code - start, MONO_PROFILER_CODE_BUFFER_UNBOX_TRAMPOLINE, m);</span>
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span><span class="lineCov">     170388 :         mono_tramp_info_register (mono_tramp_info_create (NULL, start, code - start, NULL, unwind_ops), domain);</span>
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span><span class="lineCov">     170388 :         return start;</span>
+<span class="lineNum">      73 </span>            : }
+<span class="lineNum">      74 </span>            : 
+<span class="lineNum">      75 </span>            : /*
+<span class="lineNum">      76 </span>            :  * mono_arch_get_static_rgctx_trampoline:
+<span class="lineNum">      77 </span>            :  *
+<span class="lineNum">      78 </span>            :  *   Create a trampoline which sets RGCTX_REG to MRGCTX, then jumps to ADDR.
+<a name="79"><span class="lineNum">      79 </span>            :  */</a>
+<span class="lineNum">      80 </span>            : gpointer
+<span class="lineNum">      81 </span>            : mono_arch_get_static_rgctx_trampoline (MonoMethod *m, MonoMethodRuntimeGenericContext *mrgctx, gpointer addr)
+<span class="lineNum">      82 </span>            : {
+<span class="lineNum">      83 </span>            :         guint8 *code, *start;
+<span class="lineNum">      84 </span>            :         GSList *unwind_ops;
+<span class="lineNum">      85 </span>            :         int buf_len;
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span><span class="lineCov">     479536 :         MonoDomain *domain = mono_domain_get ();</span>
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : #ifdef MONO_ARCH_NOMAP32BIT
+<span class="lineNum">      90 </span><span class="lineCov">     479536 :         buf_len = 32;</span>
+<span class="lineNum">      91 </span>            : #else
+<span class="lineNum">      92 </span>            :         /* AOTed code could still have a non-32 bit address */
+<span class="lineNum">      93 </span>            :         if ((((guint64)addr) &gt;&gt; 32) == 0)
+<span class="lineNum">      94 </span>            :                 buf_len = 16;
+<span class="lineNum">      95 </span>            :         else
+<span class="lineNum">      96 </span>            :                 buf_len = 30;
+<span class="lineNum">      97 </span>            : #endif
+<span class="lineNum">      98 </span>            : 
+<span class="lineNum">      99 </span><span class="lineCov">     479536 :         start = code = (guint8 *)mono_domain_code_reserve (domain, buf_len);</span>
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span><span class="lineCov">     479536 :         unwind_ops = mono_arch_get_cie_program ();</span>
+<span class="lineNum">     102 </span>            : 
+<span class="lineNum">     103 </span><span class="lineCov">    5754417 :         amd64_mov_reg_imm (code, MONO_ARCH_RGCTX_REG, mrgctx);</span>
+<span class="lineNum">     104 </span><span class="lineCov">    8638212 :         amd64_jump_code (code, addr);</span>
+<span class="lineNum">     105 </span><span class="lineCov">    1438600 :         g_assert ((code - start) &lt; buf_len);</span>
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span><span class="lineCov">     479534 :         mono_arch_flush_icache (start, code - start);</span>
+<span class="lineNum">     108 </span><span class="lineCov">     479534 :         mono_profiler_code_buffer_new (start, code - start, MONO_PROFILER_CODE_BUFFER_GENERICS_TRAMPOLINE, NULL);</span>
+<span class="lineNum">     109 </span>            : 
+<span class="lineNum">     110 </span><span class="lineCov">     479534 :         mono_tramp_info_register (mono_tramp_info_create (NULL, start, code - start, NULL, unwind_ops), domain);</span>
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineCov">     479534 :         return start;</span>
+<span class="lineNum">     113 </span>            : }
+<span class="lineNum">     114 </span>            : #endif /* !DISABLE_JIT */
+<span class="lineNum">     115 </span>            : 
+<span class="lineNum">     116 </span>            : #ifdef _WIN64
+<span class="lineNum">     117 </span>            : // Workaround lack of Valgrind support for 64-bit Windows
+<span class="lineNum">     118 </span>            : #define VALGRIND_DISCARD_TRANSLATIONS(...)
+<span class="lineNum">     119 </span>            : #endif
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span>            : /*
+<span class="lineNum">     122 </span>            :  * mono_arch_patch_callsite:
+<span class="lineNum">     123 </span>            :  *
+<span class="lineNum">     124 </span>            :  *   Patch the callsite whose address is given by ORIG_CODE so it calls ADDR. ORIG_CODE
+<span class="lineNum">     125 </span>            :  * points to the pc right after the call.
+<a name="126"><span class="lineNum">     126 </span>            :  */</a>
+<span class="lineNum">     127 </span>            : void
+<span class="lineNum">     128 </span>            : mono_arch_patch_callsite (guint8 *method_start, guint8 *orig_code, guint8 *addr)
+<span class="lineNum">     129 </span>            : {
+<span class="lineNum">     130 </span>            :         guint8 *code;
+<span class="lineNum">     131 </span>            :         guint8 buf [16];
+<span class="lineNum">     132 </span><span class="lineCov">   24624093 :         gboolean can_write = mono_breakpoint_clean_code (method_start, orig_code, 14, buf, sizeof (buf));</span>
+<span class="lineNum">     133 </span>            : 
+<span class="lineNum">     134 </span><span class="lineCov">   24624093 :         code = buf + 14;</span>
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span>            :         /* mov 64-bit imm into r11 (followed by call reg?)  or direct call*/
+<span class="lineNum">     137 </span><span class="lineCov">   49250267 :         if (((code [-13] == 0x49) &amp;&amp; (code [-12] == 0xbb)) || (code [-5] == 0xe8)) {</span>
+<span class="lineNum">     138 </span><span class="lineCov">   24623966 :                 if (code [-5] != 0xe8) {</span>
+<span class="lineNum">     139 </span><span class="lineCov">   24428090 :                         if (can_write) {</span>
+<span class="lineNum">     140 </span><span class="lineCov">   24428130 :                                 InterlockedExchangePointer ((gpointer*)(orig_code - 11), addr);</span>
+<span class="lineNum">     141 </span><span class="lineCov">   48857235 :                                 VALGRIND_DISCARD_TRANSLATIONS (orig_code - 11, sizeof (gpointer));</span>
+<span class="lineNum">     142 </span><span class="lineCov">   24429144 :                         }</span>
+<span class="lineNum">     143 </span><span class="lineCov">   24429155 :                 } else {</span>
+<span class="lineNum">     144 </span><span class="lineCov">     589179 :                         gboolean disp_32bit = ((((gint64)addr - (gint64)orig_code)) &lt; (1 &lt;&lt; 30)) &amp;&amp; ((((gint64)addr - (gint64)orig_code)) &gt; -(1 &lt;&lt; 30));</span>
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span><span class="lineCov">     392786 :                         if ((((guint64)(addr)) &gt;&gt; 32) != 0 &amp;&amp; !disp_32bit) {</span>
+<span class="lineNum">     147 </span>            :                                 /* 
+<span class="lineNum">     148 </span>            :                                  * This might happen with LLVM or when calling AOTed code. Create a thunk.
+<span class="lineNum">     149 </span>            :                                  */
+<span class="lineNum">     150 </span>            :                                 guint8 *thunk_start, *thunk_code;
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :                                 thunk_start = thunk_code = (guint8 *)mono_domain_code_reserve (mono_domain_get (), 32);</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                                 amd64_jump_membase (thunk_code, AMD64_RIP, 0);</span>
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :                                 *(guint64*)thunk_code = (guint64)addr;</span>
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :                                 addr = thunk_start;</span>
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :                                 g_assert ((((guint64)(addr)) &gt;&gt; 32) == 0);</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :                                 mono_arch_flush_icache (thunk_start, thunk_code - thunk_start);</span>
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :                                 mono_profiler_code_buffer_new (thunk_start, thunk_code - thunk_start, MONO_PROFILER_CODE_BUFFER_HELPER, NULL);</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     160 </span><span class="lineCov">     196393 :                         if (can_write) {</span>
+<span class="lineNum">     161 </span><span class="lineCov">     196393 :                                 InterlockedExchange ((gint32*)(orig_code - 4), ((gint64)addr - (gint64)orig_code));</span>
+<span class="lineNum">     162 </span><span class="lineCov">     392786 :                                 VALGRIND_DISCARD_TRANSLATIONS (orig_code - 5, 4);</span>
+<span class="lineNum">     163 </span><span class="lineCov">     196393 :                         }</span>
+<span class="lineNum">     164 </span>            :                 }
+<span class="lineNum">     165 </span><span class="lineCov">   24625469 :         }</span>
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :         else if ((code [-7] == 0x41) &amp;&amp; (code [-6] == 0xff) &amp;&amp; (code [-5] == 0x15)) {</span>
+<span class="lineNum">     167 </span>            :                 /* call *&lt;OFFSET&gt;(%rip) */
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :                 gpointer *got_entry = (gpointer*)((guint8*)orig_code + (*(guint32*)(orig_code - 4)));</span>
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :                 if (can_write) {</span>
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :                         InterlockedExchangePointer (got_entry, addr);</span>
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :                         VALGRIND_DISCARD_TRANSLATIONS (orig_code - 5, sizeof (gpointer));</span>
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     174 </span><span class="lineCov">   24625373 : }</span>
+<span class="lineNum">     175 </span>            : 
+<a name="176"><span class="lineNum">     176 </span>            : #ifndef DISABLE_JIT</a>
+<span class="lineNum">     177 </span>            : guint8*
+<span class="lineNum">     178 </span>            : mono_arch_create_llvm_native_thunk (MonoDomain *domain, guint8 *addr)
+<span class="lineNum">     179 </span>            : {
+<span class="lineNum">     180 </span>            :         /*
+<span class="lineNum">     181 </span>            :          * The caller is LLVM code and the call displacement might exceed 32 bits. We can't determine the caller address, so
+<span class="lineNum">     182 </span>            :          * we add a thunk every time.
+<span class="lineNum">     183 </span>            :          * Since the caller is also allocated using the domain code manager, hopefully the displacement will fit into 32 bits.
+<span class="lineNum">     184 </span>            :          * FIXME: Avoid this if possible if !MONO_ARCH_NOMAP32BIT and ADDR is 32 bits.
+<span class="lineNum">     185 </span>            :          */
+<span class="lineNum">     186 </span>            :         guint8 *thunk_start, *thunk_code;
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span><span class="lineCov">         69 :         thunk_start = thunk_code = (guint8 *)mono_domain_code_reserve (mono_domain_get (), 32);</span>
+<span class="lineNum">     189 </span><span class="lineCov">        828 :         amd64_jump_membase (thunk_code, AMD64_RIP, 0);</span>
+<span class="lineNum">     190 </span><span class="lineCov">         69 :         *(guint64*)thunk_code = (guint64)addr;</span>
+<span class="lineNum">     191 </span><span class="lineCov">         69 :         addr = thunk_start;</span>
+<span class="lineNum">     192 </span><span class="lineCov">         69 :         mono_arch_flush_icache (thunk_start, thunk_code - thunk_start);</span>
+<span class="lineNum">     193 </span><span class="lineCov">         69 :         mono_profiler_code_buffer_new (thunk_start, thunk_code - thunk_start, MONO_PROFILER_CODE_BUFFER_HELPER, NULL);</span>
+<span class="lineNum">     194 </span><span class="lineCov">         69 :         return addr;</span>
+<span class="lineNum">     195 </span>            : }
+<span class="lineNum">     196 </span>            : #endif /* !DISABLE_JIT */
+<a name="197"><span class="lineNum">     197 </span>            : </a>
+<span class="lineNum">     198 </span>            : void
+<span class="lineNum">     199 </span>            : mono_arch_patch_plt_entry (guint8 *code, gpointer *got, mgreg_t *regs, guint8 *addr)
+<span class="lineNum">     200 </span>            : {
+<span class="lineNum">     201 </span>            :         gint32 disp;
+<span class="lineNum">     202 </span>            :         gpointer *plt_jump_table_entry;
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span>            :         /* A PLT entry: jmp *&lt;DISP&gt;(%rip) */
+<span class="lineNum">     205 </span><span class="lineCov">    4300682 :         g_assert (code [0] == 0xff);</span>
+<span class="lineNum">     206 </span><span class="lineCov">    4300683 :         g_assert (code [1] == 0x25);</span>
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span><span class="lineCov">    1433561 :         disp = *(gint32*)(code + 2);</span>
+<span class="lineNum">     209 </span>            : 
+<span class="lineNum">     210 </span><span class="lineCov">    1433561 :         plt_jump_table_entry = (gpointer*)(code + 6 + disp);</span>
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span><span class="lineCov">    1433561 :         InterlockedExchangePointer (plt_jump_table_entry, addr);</span>
+<span class="lineNum">     213 </span><span class="lineCov">    1433561 : }</span>
+<span class="lineNum">     214 </span>            : 
+<a name="215"><span class="lineNum">     215 </span>            : #ifndef DISABLE_JIT</a>
+<span class="lineNum">     216 </span>            : static void
+<span class="lineNum">     217 </span>            : stack_unaligned (MonoTrampolineType tramp_type)
+<span class="lineNum">     218 </span>            : {
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :         printf (&quot;%d\n&quot;, tramp_type);</span>
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :         g_assert_not_reached ();</span>
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 : }</span>
+<a name="222"><span class="lineNum">     222 </span>            : </a>
+<span class="lineNum">     223 </span>            : guchar*
+<span class="lineNum">     224 </span>            : mono_arch_create_generic_trampoline (MonoTrampolineType tramp_type, MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     225 </span>            : {
+<span class="lineNum">     226 </span>            :         char *tramp_name;
+<span class="lineNum">     227 </span>            :         guint8 *buf, *code, *tramp, *br [2], *r11_save_code, *after_r11_save_code, *br_ex_check;
+<span class="lineNum">     228 </span>            :         int i, lmf_offset, offset, res_offset, arg_offset, rax_offset, ex_offset, tramp_offset, ctx_offset, saved_regs_offset;
+<span class="lineNum">     229 </span>            :         int r11_save_offset, saved_fpregs_offset, rbp_offset, framesize, orig_rsp_to_rbp_offset, cfa_offset;
+<span class="lineNum">     230 </span>            :         gboolean has_caller;
+<span class="lineNum">     231 </span><span class="lineCov">      32850 :         GSList *unwind_ops = NULL;</span>
+<span class="lineNum">     232 </span><span class="lineCov">      32850 :         MonoJumpInfo *ji = NULL;</span>
+<span class="lineNum">     233 </span><span class="lineCov">      32850 :         const guint kMaxCodeSize = 630;</span>
+<span class="lineNum">     234 </span>            : 
+<span class="lineNum">     235 </span><span class="lineCov">      62415 :         if (tramp_type == MONO_TRAMPOLINE_JUMP || tramp_type == MONO_TRAMPOLINE_HANDLER_BLOCK_GUARD)</span>
+<span class="lineNum">     236 </span><span class="lineCov">       6570 :                 has_caller = FALSE;</span>
+<span class="lineNum">     237 </span>            :         else
+<span class="lineNum">     238 </span><span class="lineCov">      26280 :                 has_caller = TRUE;</span>
+<span class="lineNum">     239 </span>            : 
+<span class="lineNum">     240 </span><span class="lineCov">      32850 :         code = buf = (guint8 *)mono_global_codeman_reserve (kMaxCodeSize);</span>
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span>            :         /* Compute stack frame size and offsets */
+<span class="lineNum">     243 </span><span class="lineCov">      32850 :         offset = 0;</span>
+<span class="lineNum">     244 </span><span class="lineCov">      32850 :         rbp_offset = -offset;</span>
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">      32850 :         offset += sizeof(mgreg_t);</span>
+<span class="lineNum">     247 </span><span class="lineCov">      32850 :         rax_offset = -offset;</span>
+<span class="lineNum">     248 </span>            : 
+<span class="lineNum">     249 </span><span class="lineCov">      32850 :         offset += sizeof(mgreg_t);</span>
+<span class="lineNum">     250 </span><span class="lineCov">      32850 :         ex_offset = -offset;</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span><span class="lineCov">      32850 :         offset += sizeof(mgreg_t);</span>
+<span class="lineNum">     253 </span><span class="lineCov">      32850 :         r11_save_offset = -offset;</span>
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineCov">      32850 :         offset += sizeof(mgreg_t);</span>
+<span class="lineNum">     256 </span><span class="lineCov">      32850 :         tramp_offset = -offset;</span>
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span><span class="lineCov">      32850 :         offset += sizeof(gpointer);</span>
+<span class="lineNum">     259 </span><span class="lineCov">      32850 :         arg_offset = -offset;</span>
+<span class="lineNum">     260 </span>            : 
+<span class="lineNum">     261 </span><span class="lineCov">      32850 :         offset += sizeof(mgreg_t);</span>
+<span class="lineNum">     262 </span><span class="lineCov">      32850 :         res_offset = -offset;</span>
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span><span class="lineCov">      32850 :         offset += sizeof (MonoContext);</span>
+<span class="lineNum">     265 </span><span class="lineCov">      32850 :         ctx_offset = -offset;</span>
+<span class="lineNum">     266 </span><span class="lineCov">      32850 :         saved_regs_offset = ctx_offset + MONO_STRUCT_OFFSET (MonoContext, gregs);</span>
+<span class="lineNum">     267 </span><span class="lineCov">      32850 :         saved_fpregs_offset = ctx_offset + MONO_STRUCT_OFFSET (MonoContext, fregs);</span>
+<span class="lineNum">     268 </span>            : 
+<span class="lineNum">     269 </span><span class="lineCov">      32850 :         offset += sizeof (MonoLMFTramp);</span>
+<span class="lineNum">     270 </span><span class="lineCov">      32850 :         lmf_offset = -offset;</span>
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     273 </span>            :         /* Reserve space where the callee can save the argument registers */
+<span class="lineNum">     274 </span>            :         offset += 4 * sizeof (mgreg_t);
+<span class="lineNum">     275 </span>            : #endif
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span><span class="lineCov">      32850 :         framesize = ALIGN_TO (offset, MONO_ARCH_FRAME_ALIGNMENT);</span>
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span>            :         // CFA = sp + 16 (the trampoline address is on the stack)
+<span class="lineNum">     280 </span><span class="lineCov">      32850 :         cfa_offset = 16;</span>
+<span class="lineNum">     281 </span><span class="lineCov">      65700 :         mono_add_unwind_op_def_cfa (unwind_ops, code, buf, AMD64_RSP, 16);</span>
+<span class="lineNum">     282 </span>            :         // IP saved at CFA - 8
+<span class="lineNum">     283 </span><span class="lineCov">      65700 :         mono_add_unwind_op_offset (unwind_ops, code, buf, AMD64_RIP, -8);</span>
+<span class="lineNum">     284 </span>            : 
+<span class="lineNum">     285 </span><span class="lineCov">      32850 :         orig_rsp_to_rbp_offset = 0;</span>
+<span class="lineNum">     286 </span><span class="lineCov">      32850 :         r11_save_code = code;</span>
+<span class="lineNum">     287 </span>            :         /* Reserve space for the mov_membase_reg to save R11 */
+<span class="lineNum">     288 </span><span class="lineCov">      32850 :         code += 5;</span>
+<span class="lineNum">     289 </span><span class="lineCov">      32850 :         after_r11_save_code = code;</span>
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span>            :         /* Pop the return address off the stack */
+<span class="lineNum">     292 </span><span class="lineCov">     197100 :         amd64_pop_reg (code, AMD64_R11);</span>
+<span class="lineNum">     293 </span><span class="lineCov">      32850 :         orig_rsp_to_rbp_offset += sizeof(mgreg_t);</span>
+<span class="lineNum">     294 </span>            : 
+<span class="lineNum">     295 </span><span class="lineCov">      32850 :         cfa_offset -= sizeof(mgreg_t);</span>
+<span class="lineNum">     296 </span><span class="lineCov">      65700 :         mono_add_unwind_op_def_cfa_offset (unwind_ops, code, buf, cfa_offset);</span>
+<span class="lineNum">     297 </span>            : 
+<span class="lineNum">     298 </span>            :         /* 
+<span class="lineNum">     299 </span>            :          * Allocate a new stack frame
+<span class="lineNum">     300 </span>            :          */
+<span class="lineNum">     301 </span><span class="lineCov">     164250 :         amd64_push_reg (code, AMD64_RBP);</span>
+<span class="lineNum">     302 </span><span class="lineCov">      32850 :         cfa_offset += sizeof(mgreg_t);</span>
+<span class="lineNum">     303 </span><span class="lineCov">      65700 :         mono_add_unwind_op_def_cfa_offset (unwind_ops, code, buf, cfa_offset);</span>
+<span class="lineNum">     304 </span><span class="lineCov">      65700 :         mono_add_unwind_op_offset (unwind_ops, code, buf, AMD64_RBP, - cfa_offset);</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineCov">      32850 :         orig_rsp_to_rbp_offset -= sizeof(mgreg_t);</span>
+<span class="lineNum">     307 </span><span class="lineCov">     328500 :         amd64_mov_reg_reg (code, AMD64_RBP, AMD64_RSP, sizeof(mgreg_t));</span>
+<span class="lineNum">     308 </span><span class="lineCov">      65700 :         mono_add_unwind_op_def_cfa_reg (unwind_ops, code, buf, AMD64_RBP);</span>
+<span class="lineNum">     309 </span><span class="lineCov">     459900 :         amd64_alu_reg_imm (code, X86_SUB, AMD64_RSP, framesize);</span>
+<span class="lineNum">     310 </span>            : 
+<span class="lineNum">     311 </span>            :         /* Compute the trampoline address from the return address */
+<span class="lineNum">     312 </span><span class="lineCov">      32850 :         if (aot) {</span>
+<span class="lineNum">     313 </span>            :                 /* 7 = length of call *&lt;offset&gt;(rip) */
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :                 amd64_alu_reg_imm (code, X86_SUB, AMD64_R11, 7);</span>
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     316 </span>            :                 /* 5 = length of amd64_call_membase () */
+<span class="lineNum">     317 </span><span class="lineCov">     394200 :                 amd64_alu_reg_imm (code, X86_SUB, AMD64_R11, 5);</span>
+<span class="lineNum">     318 </span>            :         }
+<span class="lineNum">     319 </span><span class="lineCov">     591300 :         amd64_mov_membase_reg (code, AMD64_RBP, tramp_offset, AMD64_R11, sizeof(gpointer));</span>
+<span class="lineNum">     320 </span>            : 
+<span class="lineNum">     321 </span>            :         /* Save all registers */
+<span class="lineNum">     322 </span><span class="lineCov">    1182600 :         for (i = 0; i &lt; AMD64_NREG; ++i) {</span>
+<span class="lineNum">     323 </span><span class="lineCov">     558450 :                 if (i == AMD64_RBP) {</span>
+<span class="lineNum">     324 </span>            :                         /* RAX is already saved */
+<span class="lineNum">     325 </span><span class="lineCov">     755550 :                         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_RBP, rbp_offset, sizeof(mgreg_t));</span>
+<span class="lineNum">     326 </span><span class="lineCov">     525600 :                         amd64_mov_membase_reg (code, AMD64_RBP, saved_regs_offset + (i * sizeof(mgreg_t)), AMD64_RAX, sizeof(mgreg_t));</span>
+<span class="lineNum">     327 </span><span class="lineCov">     558450 :                 } else if (i == AMD64_RIP) {</span>
+<span class="lineNum">     328 </span><span class="lineCov">      32850 :                         if (has_caller)</span>
+<span class="lineNum">     329 </span><span class="lineCov">     499320 :                                 amd64_mov_reg_membase (code, AMD64_R11, AMD64_RBP, 8, sizeof(gpointer));</span>
+<span class="lineNum">     330 </span>            :                         else
+<span class="lineNum">     331 </span><span class="lineCov">      72270 :                                 amd64_mov_reg_imm (code, AMD64_R11, 0);</span>
+<span class="lineNum">     332 </span><span class="lineCov">     525600 :                         amd64_mov_membase_reg (code, AMD64_RBP, saved_regs_offset + (i * sizeof(mgreg_t)), AMD64_R11, sizeof(mgreg_t));</span>
+<span class="lineNum">     333 </span><span class="lineCov">     525600 :                 } else if (i == AMD64_RSP) {</span>
+<span class="lineNum">     334 </span><span class="lineCov">     328500 :                         amd64_mov_reg_reg (code, AMD64_R11, AMD64_RSP, sizeof(mgreg_t));</span>
+<span class="lineNum">     335 </span><span class="lineCov">     459900 :                         amd64_alu_reg_imm (code, X86_ADD, AMD64_R11, framesize + 16);</span>
+<span class="lineNum">     336 </span><span class="lineCov">     525600 :                         amd64_mov_membase_reg (code, AMD64_RBP, saved_regs_offset + (i * sizeof(mgreg_t)), AMD64_R11, sizeof(mgreg_t));</span>
+<span class="lineNum">     337 </span><span class="lineCov">     492750 :                 } else if (i != AMD64_R11) {</span>
+<span class="lineNum">     338 </span><span class="lineCov">    6832800 :                         amd64_mov_membase_reg (code, AMD64_RBP, saved_regs_offset + (i * sizeof(mgreg_t)), i, sizeof(mgreg_t));</span>
+<span class="lineNum">     339 </span><span class="lineCov">     427050 :                 } else {</span>
+<span class="lineNum">     340 </span>            :                         /* We have to save R11 right at the start of
+<span class="lineNum">     341 </span>            :                            the trampoline code because it's used as a
+<span class="lineNum">     342 </span>            :                            scratch register */
+<span class="lineNum">     343 </span>            :                         /* This happens before the frame is set up, so it goes into the redzone */
+<span class="lineNum">     344 </span><span class="lineCov">     657000 :                         amd64_mov_membase_reg (r11_save_code, AMD64_RSP, r11_save_offset + orig_rsp_to_rbp_offset, i, sizeof(mgreg_t));</span>
+<span class="lineNum">     345 </span><span class="lineCov">      98550 :                         g_assert (r11_save_code == after_r11_save_code);</span>
+<span class="lineNum">     346 </span>            : 
+<span class="lineNum">     347 </span>            :                         /* Copy from the save slot into the register array slot */
+<span class="lineNum">     348 </span><span class="lineCov">     788400 :                         amd64_mov_reg_membase (code, i, AMD64_RSP, r11_save_offset + orig_rsp_to_rbp_offset, sizeof(mgreg_t));</span>
+<span class="lineNum">     349 </span><span class="lineCov">     525600 :                         amd64_mov_membase_reg (code, AMD64_RBP, saved_regs_offset + (i * sizeof(mgreg_t)), i, sizeof(mgreg_t));</span>
+<span class="lineNum">     350 </span>            :                 }
+<span class="lineNum">     351 </span>            :                 /* cfa = rbp + cfa_offset */
+<span class="lineNum">     352 </span><span class="lineCov">    1116900 :                 mono_add_unwind_op_offset (unwind_ops, code, buf, i, - cfa_offset + saved_regs_offset + (i * sizeof (mgreg_t)));</span>
+<span class="lineNum">     353 </span><span class="lineCov">     558450 :         }</span>
+<span class="lineNum">     354 </span><span class="lineCov">     591300 :         for (i = 0; i &lt; 8; ++i)</span>
+<span class="lineNum">     355 </span><span class="lineCov">    4730400 :                 amd64_movsd_membase_reg (code, AMD64_RBP, saved_fpregs_offset + (i * sizeof(mgreg_t)), i);</span>
+<span class="lineNum">     356 </span>            : 
+<span class="lineNum">     357 </span>            :         /* Check that the stack is aligned */
+<span class="lineNum">     358 </span><span class="lineCov">     328500 :         amd64_mov_reg_reg (code, AMD64_R11, AMD64_RSP, sizeof (mgreg_t));</span>
+<span class="lineNum">     359 </span><span class="lineCov">     394200 :         amd64_alu_reg_imm (code, X86_AND, AMD64_R11, 15);</span>
+<span class="lineNum">     360 </span><span class="lineCov">     394200 :         amd64_alu_reg_imm (code, X86_CMP, AMD64_R11, 0);</span>
+<span class="lineNum">     361 </span><span class="lineCov">      32850 :         br [0] = code;</span>
+<span class="lineNum">     362 </span><span class="lineCov">     492750 :         amd64_branch_disp (code, X86_CC_Z, 0, FALSE);</span>
+<span class="lineNum">     363 </span><span class="lineCov">      32850 :         if (aot) {</span>
+<span class="lineNum">     364 </span><span class="lineNoCov">          0 :                 amd64_mov_reg_imm (code, AMD64_R11, 0);</span>
+<span class="lineNum">     365 </span><span class="lineNoCov">          0 :                 amd64_mov_reg_membase (code, AMD64_R11, AMD64_R11, 0, 8);</span>
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     367 </span><span class="lineCov">     361350 :                 amd64_mov_reg_imm (code, MONO_AMD64_ARG_REG1, tramp_type);</span>
+<span class="lineNum">     368 </span><span class="lineCov">     394200 :                 amd64_mov_reg_imm (code, AMD64_R11, stack_unaligned);</span>
+<span class="lineNum">     369 </span><span class="lineCov">     328500 :                 amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     370 </span>            :         }
+<span class="lineNum">     371 </span><span class="lineCov">      32850 :         mono_amd64_patch (br [0], code);</span>
+<span class="lineNum">     372 </span>            :         //amd64_breakpoint (code);
+<span class="lineNum">     373 </span>            : 
+<span class="lineNum">     374 </span><span class="lineCov">      32850 :         if (tramp_type != MONO_TRAMPOLINE_HANDLER_BLOCK_GUARD) {</span>
+<span class="lineNum">     375 </span>            :                 /* Obtain the trampoline argument which is encoded in the instruction stream */
+<span class="lineNum">     376 </span><span class="lineCov">      29565 :                 if (aot) {</span>
+<span class="lineNum">     377 </span>            :                         /* Load the GOT offset */
+<span class="lineNum">     378 </span><span class="lineNoCov">          0 :                         amd64_mov_reg_membase (code, AMD64_R11, AMD64_RBP, tramp_offset, sizeof(gpointer));</span>
+<span class="lineNum">     379 </span>            :                         /*
+<span class="lineNum">     380 </span>            :                          * r11 points to a call *&lt;offset&gt;(%rip) instruction, load the
+<span class="lineNum">     381 </span>            :                          * pc-relative offset from the instruction itself.
+<span class="lineNum">     382 </span>            :                          */
+<span class="lineNum">     383 </span><span class="lineNoCov">          0 :                         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_R11, 3, 4);</span>
+<span class="lineNum">     384 </span>            :                         /* 7 is the length of the call, 8 is the offset to the next got slot */
+<span class="lineNum">     385 </span><span class="lineNoCov">          0 :                         amd64_alu_reg_imm_size (code, X86_ADD, AMD64_RAX, 7 + sizeof (gpointer), sizeof(gpointer));</span>
+<span class="lineNum">     386 </span>            :                         /* Compute the address of the GOT slot */
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :                         amd64_alu_reg_reg_size (code, X86_ADD, AMD64_R11, AMD64_RAX, sizeof(gpointer));</span>
+<span class="lineNum">     388 </span>            :                         /* Load the value */
+<span class="lineNum">     389 </span><span class="lineNoCov">          0 :                         amd64_mov_reg_membase (code, AMD64_R11, AMD64_R11, 0, sizeof(gpointer));</span>
+<span class="lineNum">     390 </span><span class="lineNoCov">          0 :                 } else {                        </span>
+<span class="lineNum">     391 </span><span class="lineCov">     650430 :                         amd64_mov_reg_membase (code, AMD64_R11, AMD64_RBP, tramp_offset, sizeof(gpointer));</span>
+<span class="lineNum">     392 </span><span class="lineCov">     532170 :                         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_R11, 5, 1);</span>
+<span class="lineNum">     393 </span><span class="lineCov">     473040 :                         amd64_widen_reg (code, AMD64_RAX, AMD64_RAX, TRUE, FALSE);</span>
+<span class="lineNum">     394 </span><span class="lineCov">     384345 :                         amd64_alu_reg_imm_size (code, X86_CMP, AMD64_RAX, 4, 1);</span>
+<span class="lineNum">     395 </span><span class="lineCov">      29565 :                         br [0] = code;</span>
+<span class="lineNum">     396 </span><span class="lineCov">     118260 :                         x86_branch8 (code, X86_CC_NE, 6, FALSE);</span>
+<span class="lineNum">     397 </span>            :                         /* 32 bit immediate */
+<span class="lineNum">     398 </span><span class="lineCov">     532170 :                         amd64_mov_reg_membase (code, AMD64_R11, AMD64_R11, 6, 4);</span>
+<span class="lineNum">     399 </span><span class="lineCov">      29565 :                         br [1] = code;</span>
+<span class="lineNum">     400 </span><span class="lineCov">     118260 :                         x86_jump8 (code, 10);</span>
+<span class="lineNum">     401 </span>            :                         /* 64 bit immediate */
+<span class="lineNum">     402 </span><span class="lineCov">      29565 :                         mono_amd64_patch (br [0], code);</span>
+<span class="lineNum">     403 </span><span class="lineCov">     532170 :                         amd64_mov_reg_membase (code, AMD64_R11, AMD64_R11, 6, 8);</span>
+<span class="lineNum">     404 </span><span class="lineCov">      29565 :                         mono_amd64_patch (br [1], code);</span>
+<span class="lineNum">     405 </span>            :                 }
+<span class="lineNum">     406 </span><span class="lineCov">     532170 :                 amd64_mov_membase_reg (code, AMD64_RBP, arg_offset, AMD64_R11, sizeof(gpointer));</span>
+<span class="lineNum">     407 </span><span class="lineCov">      29565 :         } else {</span>
+<span class="lineNum">     408 </span><span class="lineCov">      65700 :                 amd64_mov_reg_membase (code, AMD64_R11, AMD64_RBP, saved_regs_offset + (MONO_AMD64_ARG_REG1 * sizeof(mgreg_t)), sizeof(mgreg_t));</span>
+<span class="lineNum">     409 </span><span class="lineCov">      59130 :                 amd64_mov_membase_reg (code, AMD64_RBP, arg_offset, AMD64_R11, sizeof(gpointer));</span>
+<span class="lineNum">     410 </span>            :         }
+<span class="lineNum">     411 </span>            : 
+<span class="lineNum">     412 </span>            :         /* Save LMF begin */
+<span class="lineNum">     413 </span>            : 
+<span class="lineNum">     414 </span>            :         /* Save ip */
+<span class="lineNum">     415 </span><span class="lineCov">      32850 :         if (has_caller)</span>
+<span class="lineNum">     416 </span><span class="lineCov">     499320 :                 amd64_mov_reg_membase (code, AMD64_R11, AMD64_RBP, 8, sizeof(gpointer));</span>
+<span class="lineNum">     417 </span>            :         else
+<span class="lineNum">     418 </span><span class="lineCov">      72270 :                 amd64_mov_reg_imm (code, AMD64_R11, 0);</span>
+<span class="lineNum">     419 </span><span class="lineCov">     525600 :         amd64_mov_membase_reg (code, AMD64_RBP, lmf_offset + MONO_STRUCT_OFFSET (MonoLMF, rip), AMD64_R11, sizeof(mgreg_t));</span>
+<span class="lineNum">     420 </span>            :         /* Save sp */
+<span class="lineNum">     421 </span><span class="lineCov">     328500 :         amd64_mov_reg_reg (code, AMD64_R11, AMD64_RSP, sizeof(mgreg_t));</span>
+<span class="lineNum">     422 </span><span class="lineCov">     459900 :         amd64_alu_reg_imm (code, X86_ADD, AMD64_R11, framesize + 16);</span>
+<span class="lineNum">     423 </span><span class="lineCov">     525600 :         amd64_mov_membase_reg (code, AMD64_RBP, lmf_offset + MONO_STRUCT_OFFSET (MonoLMF, rsp), AMD64_R11, sizeof(mgreg_t));</span>
+<span class="lineNum">     424 </span>            :         /* Save pointer to context */
+<span class="lineNum">     425 </span><span class="lineCov">     591300 :         amd64_lea_membase (code, AMD64_R11, AMD64_RBP, ctx_offset);</span>
+<span class="lineNum">     426 </span><span class="lineCov">     525600 :         amd64_mov_membase_reg (code, AMD64_RBP, lmf_offset + MONO_STRUCT_OFFSET (MonoLMFTramp, ctx), AMD64_R11, sizeof(mgreg_t));</span>
+<span class="lineNum">     427 </span>            : 
+<span class="lineNum">     428 </span><span class="lineCov">      32850 :         if (aot) {</span>
+<span class="lineNum">     429 </span><span class="lineNoCov">          0 :                 code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, &quot;mono_get_lmf_addr&quot;);</span>
+<span class="lineNum">     430 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     431 </span><span class="lineCov">     394200 :                 amd64_mov_reg_imm (code, AMD64_R11, mono_get_lmf_addr);</span>
+<span class="lineNum">     432 </span>            :         }
+<span class="lineNum">     433 </span><span class="lineCov">     328500 :         amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span>            :         /* Save lmf_addr */
+<span class="lineNum">     436 </span><span class="lineCov">     525600 :         amd64_mov_membase_reg (code, AMD64_RBP, lmf_offset + MONO_STRUCT_OFFSET (MonoLMFTramp, lmf_addr), AMD64_RAX, sizeof(gpointer));</span>
+<span class="lineNum">     437 </span>            :         /* Save previous_lmf */
+<span class="lineNum">     438 </span>            :         /* Set the lowest bit to signal that this LMF has the ip field set */
+<span class="lineNum">     439 </span>            :         /* Set the third lowest bit to signal that this is a MonoLMFTramp structure */
+<span class="lineNum">     440 </span><span class="lineCov">     525600 :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_RAX, 0, sizeof(gpointer));</span>
+<span class="lineNum">     441 </span><span class="lineCov">     394200 :         amd64_alu_reg_imm_size (code, X86_ADD, AMD64_R11, 0x5, sizeof(gpointer));</span>
+<span class="lineNum">     442 </span><span class="lineCov">     525600 :         amd64_mov_membase_reg (code, AMD64_RBP, lmf_offset + MONO_STRUCT_OFFSET (MonoLMF, previous_lmf), AMD64_R11, sizeof(gpointer));</span>
+<span class="lineNum">     443 </span>            :         /* Set new lmf */
+<span class="lineNum">     444 </span><span class="lineCov">     591300 :         amd64_lea_membase (code, AMD64_R11, AMD64_RBP, lmf_offset);</span>
+<span class="lineNum">     445 </span><span class="lineCov">     394200 :         amd64_mov_membase_reg (code, AMD64_RAX, 0, AMD64_R11, sizeof(gpointer));</span>
+<span class="lineNum">     446 </span>            : 
+<span class="lineNum">     447 </span>            :         /* Save LMF end */
+<span class="lineNum">     448 </span>            : 
+<span class="lineNum">     449 </span>            :         /* Arg1 is the pointer to the saved registers */
+<span class="lineNum">     450 </span><span class="lineCov">     591300 :         amd64_lea_membase (code, AMD64_ARG_REG1, AMD64_RBP, saved_regs_offset);</span>
+<span class="lineNum">     451 </span>            : 
+<span class="lineNum">     452 </span>            :         /* Arg2 is the address of the calling code */
+<span class="lineNum">     453 </span><span class="lineCov">      32850 :         if (has_caller)</span>
+<span class="lineNum">     454 </span><span class="lineCov">     499320 :                 amd64_mov_reg_membase (code, AMD64_ARG_REG2, AMD64_RBP, 8, sizeof(gpointer));</span>
+<span class="lineNum">     455 </span>            :         else
+<span class="lineNum">     456 </span><span class="lineCov">      72270 :                 amd64_mov_reg_imm (code, AMD64_ARG_REG2, 0);</span>
+<span class="lineNum">     457 </span>            : 
+<span class="lineNum">     458 </span>            :         /* Arg3 is the method/vtable ptr */
+<span class="lineNum">     459 </span><span class="lineCov">     722700 :         amd64_mov_reg_membase (code, AMD64_ARG_REG3, AMD64_RBP, arg_offset, sizeof(gpointer));</span>
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span>            :         /* Arg4 is the trampoline address */
+<span class="lineNum">     462 </span><span class="lineCov">     722700 :         amd64_mov_reg_membase (code, AMD64_ARG_REG4, AMD64_RBP, tramp_offset, sizeof(gpointer));</span>
+<span class="lineNum">     463 </span>            : 
+<span class="lineNum">     464 </span><span class="lineCov">      32850 :         if (aot) {</span>
+<span class="lineNum">     465 </span><span class="lineNoCov">          0 :                 char *icall_name = g_strdup_printf (&quot;trampoline_func_%d&quot;, tramp_type);</span>
+<span class="lineNum">     466 </span><span class="lineNoCov">          0 :                 code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, icall_name);</span>
+<span class="lineNum">     467 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     468 </span><span class="lineCov">      32850 :                 tramp = (guint8*)mono_get_trampoline_func (tramp_type);</span>
+<span class="lineNum">     469 </span><span class="lineCov">     394200 :                 amd64_mov_reg_imm (code, AMD64_R11, tramp);</span>
+<span class="lineNum">     470 </span>            :         }
+<span class="lineNum">     471 </span><span class="lineCov">     328500 :         amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     472 </span><span class="lineCov">     591300 :         amd64_mov_membase_reg (code, AMD64_RBP, res_offset, AMD64_RAX, sizeof(mgreg_t));</span>
+<span class="lineNum">     473 </span>            : 
+<span class="lineNum">     474 </span>            :         /* Restore LMF */
+<span class="lineNum">     475 </span><span class="lineCov">     657000 :         amd64_mov_reg_membase (code, AMD64_RCX, AMD64_RBP, lmf_offset + MONO_STRUCT_OFFSET (MonoLMF, previous_lmf), sizeof(gpointer));</span>
+<span class="lineNum">     476 </span><span class="lineCov">     394200 :         amd64_alu_reg_imm_size (code, X86_SUB, AMD64_RCX, 0x5, sizeof(gpointer));</span>
+<span class="lineNum">     477 </span><span class="lineCov">     657000 :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_RBP, lmf_offset + MONO_STRUCT_OFFSET (MonoLMFTramp, lmf_addr), sizeof(gpointer));</span>
+<span class="lineNum">     478 </span><span class="lineCov">     394200 :         amd64_mov_membase_reg (code, AMD64_R11, 0, AMD64_RCX, sizeof(gpointer));</span>
+<span class="lineNum">     479 </span>            : 
+<span class="lineNum">     480 </span>            :         /* 
+<span class="lineNum">     481 </span>            :          * Save rax to the stack, after the leave instruction, this will become part of
+<span class="lineNum">     482 </span>            :          * the red zone.
+<span class="lineNum">     483 </span>            :          */
+<span class="lineNum">     484 </span><span class="lineCov">     722700 :         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_RBP, res_offset, sizeof(mgreg_t));</span>
+<span class="lineNum">     485 </span><span class="lineCov">     591300 :         amd64_mov_membase_reg (code, AMD64_RBP, rax_offset, AMD64_RAX, sizeof(mgreg_t));</span>
+<span class="lineNum">     486 </span>            : 
+<span class="lineNum">     487 </span>            :         /* Check for thread interruption */
+<span class="lineNum">     488 </span>            :         /* This is not perf critical code so no need to check the interrupt flag */
+<span class="lineNum">     489 </span>            :         /* 
+<span class="lineNum">     490 </span>            :          * Have to call the _force_ variant, since there could be a protected wrapper on the top of the stack.
+<span class="lineNum">     491 </span>            :          */
+<span class="lineNum">     492 </span><span class="lineCov">      32850 :         if (aot) {</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 :                 code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, &quot;mono_thread_force_interruption_checkpoint_noraise&quot;);</span>
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     495 </span><span class="lineCov">     394200 :                 amd64_mov_reg_imm (code, AMD64_R11, (guint8*)mono_thread_force_interruption_checkpoint_noraise);</span>
+<span class="lineNum">     496 </span>            :         }
+<span class="lineNum">     497 </span><span class="lineCov">     328500 :         amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     498 </span>            : 
+<span class="lineNum">     499 </span><span class="lineCov">     459900 :         amd64_test_reg_reg (code, AMD64_RAX, AMD64_RAX);</span>
+<span class="lineNum">     500 </span><span class="lineCov">      32850 :         br_ex_check = code;</span>
+<span class="lineNum">     501 </span><span class="lineCov">     197100 :         amd64_branch8 (code, X86_CC_Z, -1, 1);</span>
+<span class="lineNum">     502 </span>            : 
+<span class="lineNum">     503 </span>            :         /*
+<span class="lineNum">     504 </span>            :          * Exception case:
+<span class="lineNum">     505 </span>            :          * We have an exception we want to throw in the caller's frame, so pop
+<span class="lineNum">     506 </span>            :          * the trampoline frame and throw from the caller.
+<span class="lineNum">     507 </span>            :          */
+<span class="lineNum">     508 </span><span class="lineCov">      65700 :         amd64_leave (code);</span>
+<span class="lineNum">     509 </span>            :         /* We are in the parent frame, the exception is in rax */
+<span class="lineNum">     510 </span>            :         /*
+<span class="lineNum">     511 </span>            :          * EH is initialized after trampolines, so get the address of the variable
+<span class="lineNum">     512 </span>            :          * which contains throw_exception, and load it from there.
+<span class="lineNum">     513 </span>            :          */
+<span class="lineNum">     514 </span><span class="lineCov">      32850 :         if (aot) {</span>
+<span class="lineNum">     515 </span>            :                 /* Not really a jit icall */
+<span class="lineNum">     516 </span><span class="lineNoCov">          0 :                 code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, &quot;throw_exception_addr&quot;);</span>
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     518 </span><span class="lineCov">     394200 :                 amd64_mov_reg_imm (code, AMD64_R11, (guint8*)mono_get_throw_exception_addr ());</span>
+<span class="lineNum">     519 </span>            :         }
+<span class="lineNum">     520 </span><span class="lineCov">     525600 :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_R11, 0, sizeof(gpointer));</span>
+<span class="lineNum">     521 </span><span class="lineCov">     328500 :         amd64_mov_reg_reg (code, AMD64_ARG_REG1, AMD64_RAX, sizeof(mgreg_t));</span>
+<span class="lineNum">     522 </span>            :         /*
+<span class="lineNum">     523 </span>            :          * We still have the original return value on the top of the stack, so the
+<span class="lineNum">     524 </span>            :          * throw trampoline will use that as the throw site.
+<span class="lineNum">     525 </span>            :          */
+<span class="lineNum">     526 </span><span class="lineCov">     394200 :         amd64_jump_reg (code, AMD64_R11);</span>
+<span class="lineNum">     527 </span>            : 
+<span class="lineNum">     528 </span>            :         /* Normal case */
+<span class="lineNum">     529 </span><span class="lineCov">      32850 :         mono_amd64_patch (br_ex_check, code);</span>
+<span class="lineNum">     530 </span>            : 
+<span class="lineNum">     531 </span>            :         /* Restore argument registers, r10 (imt method/rgxtx)
+<span class="lineNum">     532 </span>            :            and rax (needed for direct calls to C vararg functions). */
+<span class="lineNum">     533 </span><span class="lineCov">    1182600 :         for (i = 0; i &lt; AMD64_NREG; ++i)</span>
+<span class="lineNum">     534 </span><span class="lineCov">    1806750 :                 if (AMD64_IS_ARGUMENT_REG (i) || i == AMD64_R10 || i == AMD64_RAX)</span>
+<span class="lineNum">     535 </span><span class="lineCov">    5518800 :                         amd64_mov_reg_membase (code, i, AMD64_RBP, saved_regs_offset + (i * sizeof(mgreg_t)), sizeof(mgreg_t));</span>
+<span class="lineNum">     536 </span><span class="lineCov">     591300 :         for (i = 0; i &lt; 8; ++i)</span>
+<span class="lineNum">     537 </span><span class="lineCov">    4730400 :                 amd64_movsd_reg_membase (code, i, AMD64_RBP, saved_fpregs_offset + (i * sizeof(mgreg_t)));</span>
+<span class="lineNum">     538 </span>            : 
+<span class="lineNum">     539 </span>            :         /* Restore stack */
+<span class="lineNum">     540 </span><span class="lineCov">      65700 :         amd64_leave (code);</span>
+<span class="lineNum">     541 </span><span class="lineCov">      32850 :         cfa_offset -= sizeof (mgreg_t);</span>
+<span class="lineNum">     542 </span><span class="lineCov">      65700 :         mono_add_unwind_op_def_cfa (unwind_ops, code, buf, AMD64_RSP, cfa_offset);</span>
+<span class="lineNum">     543 </span>            : 
+<span class="lineNum">     544 </span><span class="lineCov">      62415 :         if (MONO_TRAMPOLINE_TYPE_MUST_RETURN (tramp_type)) {</span>
+<span class="lineNum">     545 </span>            :                 /* Load result */
+<span class="lineNum">     546 </span><span class="lineCov">     157680 :                 amd64_mov_reg_membase (code, AMD64_RAX, AMD64_RSP, rax_offset - sizeof(mgreg_t), sizeof(mgreg_t));</span>
+<span class="lineNum">     547 </span><span class="lineCov">      13140 :                 amd64_ret (code);</span>
+<span class="lineNum">     548 </span><span class="lineCov">       6570 :         } else {</span>
+<span class="lineNum">     549 </span>            :                 /* call the compiled method using the saved rax */
+<span class="lineNum">     550 </span><span class="lineCov">     551880 :                 amd64_jump_membase (code, AMD64_RSP, rax_offset - sizeof(mgreg_t));</span>
+<span class="lineNum">     551 </span>            :         }
+<span class="lineNum">     552 </span>            : 
+<span class="lineNum">     553 </span><span class="lineCov">      98550 :         g_assert ((code - buf) &lt;= kMaxCodeSize);</span>
+<span class="lineNum">     554 </span>            : 
+<span class="lineNum">     555 </span><span class="lineCov">      32850 :         mono_arch_flush_icache (buf, code - buf);</span>
+<span class="lineNum">     556 </span><span class="lineCov">      32850 :         mono_profiler_code_buffer_new (buf, code - buf, MONO_PROFILER_CODE_BUFFER_HELPER, NULL);</span>
+<span class="lineNum">     557 </span>            : 
+<span class="lineNum">     558 </span><span class="lineCov">      32850 :         tramp_name = mono_get_generic_trampoline_name (tramp_type);</span>
+<span class="lineNum">     559 </span><span class="lineCov">      32850 :         *info = mono_tramp_info_create (tramp_name, buf, code - buf, ji, unwind_ops);</span>
+<span class="lineNum">     560 </span><span class="lineCov">      32850 :         g_free (tramp_name);</span>
+<span class="lineNum">     561 </span>            : 
+<span class="lineNum">     562 </span><span class="lineCov">      32850 :         return buf;</span>
+<span class="lineNum">     563 </span>            : }
+<a name="564"><span class="lineNum">     564 </span>            : </a>
+<span class="lineNum">     565 </span>            : gpointer
+<span class="lineNum">     566 </span>            : mono_arch_create_specific_trampoline (gpointer arg1, MonoTrampolineType tramp_type, MonoDomain *domain, guint32 *code_len)
+<span class="lineNum">     567 </span>            : {
+<span class="lineNum">     568 </span>            :         guint8 *code, *buf, *tramp;
+<span class="lineNum">     569 </span>            :         int size;
+<span class="lineNum">     570 </span><span class="lineCov">   15463085 :         gboolean far_addr = FALSE;</span>
+<span class="lineNum">     571 </span>            : 
+<span class="lineNum">     572 </span><span class="lineCov">   15463085 :         tramp = mono_get_trampoline_code (tramp_type);</span>
+<span class="lineNum">     573 </span>            : 
+<span class="lineNum">     574 </span><span class="lineCov">   15463085 :         if ((((guint64)arg1) &gt;&gt; 32) == 0)</span>
+<span class="lineNum">     575 </span><span class="lineCov">    1000351 :                 size = 5 + 1 + 4;</span>
+<span class="lineNum">     576 </span>            :         else
+<span class="lineNum">     577 </span><span class="lineCov">   14462738 :                 size = 5 + 1 + 8;</span>
+<span class="lineNum">     578 </span>            : 
+<span class="lineNum">     579 </span><span class="lineCov">   15463067 :         code = buf = (guint8 *)mono_domain_code_reserve_align (domain, size, 1);</span>
+<span class="lineNum">     580 </span>            : 
+<span class="lineNum">     581 </span><span class="lineCov">   30926189 :         if (((gint64)tramp - (gint64)code) &gt;&gt; 31 != 0 &amp;&amp; ((gint64)tramp - (gint64)code) &gt;&gt; 31 != -1) {</span>
+<span class="lineNum">     582 </span>            : #ifndef MONO_ARCH_NOMAP32BIT
+<span class="lineNum">     583 </span>            :                 g_assert_not_reached ();
+<span class="lineNum">     584 </span>            : #endif
+<span class="lineNum">     585 </span><span class="lineNoCov">          0 :                 far_addr = TRUE;</span>
+<span class="lineNum">     586 </span><span class="lineNoCov">          0 :                 size += 16;</span>
+<span class="lineNum">     587 </span><span class="lineNoCov">          0 :                 code = buf = (guint8 *)mono_domain_code_reserve_align (domain, size, 1);</span>
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     589 </span>            : 
+<span class="lineNum">     590 </span><span class="lineCov">   15463133 :         if (far_addr) {</span>
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 :                 amd64_mov_reg_imm (code, AMD64_R11, tramp);</span>
+<span class="lineNum">     592 </span><span class="lineNoCov">          0 :                 amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     593 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     594 </span><span class="lineCov">  123704827 :                 amd64_call_code (code, tramp);</span>
+<span class="lineNum">     595 </span>            :         }
+<span class="lineNum">     596 </span>            :         /* The trampoline code will obtain the argument from the instruction stream */
+<span class="lineNum">     597 </span><span class="lineCov">   15463110 :         if ((((guint64)arg1) &gt;&gt; 32) == 0) {</span>
+<span class="lineNum">     598 </span><span class="lineCov">    1000351 :                 *code = 0x4;</span>
+<span class="lineNum">     599 </span><span class="lineCov">    1000351 :                 *(guint32*)(code + 1) = (gint64)arg1;</span>
+<span class="lineNum">     600 </span><span class="lineCov">    1000351 :                 code += 5;</span>
+<span class="lineNum">     601 </span><span class="lineCov">    1000351 :         } else {</span>
+<span class="lineNum">     602 </span><span class="lineCov">   14462750 :                 *code = 0x8;</span>
+<span class="lineNum">     603 </span><span class="lineCov">   14462750 :                 *(guint64*)(code + 1) = (gint64)arg1;</span>
+<span class="lineNum">     604 </span><span class="lineCov">   14462750 :                 code += 9;</span>
+<span class="lineNum">     605 </span>            :         }
+<span class="lineNum">     606 </span>            : 
+<span class="lineNum">     607 </span><span class="lineCov">   46389286 :         g_assert ((code - buf) &lt;= size);</span>
+<span class="lineNum">     608 </span>            : 
+<span class="lineNum">     609 </span><span class="lineCov">   15463099 :         if (code_len)</span>
+<span class="lineNum">     610 </span><span class="lineCov">   15347380 :                 *code_len = size;</span>
+<span class="lineNum">     611 </span>            : 
+<span class="lineNum">     612 </span><span class="lineCov">   15463092 :         mono_arch_flush_icache (buf, size);</span>
+<span class="lineNum">     613 </span><span class="lineCov">   15463092 :         mono_profiler_code_buffer_new (buf, code - buf, MONO_PROFILER_CODE_BUFFER_SPECIFIC_TRAMPOLINE, mono_get_generic_trampoline_simple_name (tramp_type));</span>
+<span class="lineNum">     614 </span>            : 
+<span class="lineNum">     615 </span><span class="lineCov">   15463092 :         return buf;</span>
+<span class="lineNum">     616 </span>            : }       
+<a name="617"><span class="lineNum">     617 </span>            : </a>
+<span class="lineNum">     618 </span>            : gpointer
+<span class="lineNum">     619 </span>            : mono_arch_create_rgctx_lazy_fetch_trampoline (guint32 slot, MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     620 </span>            : {
+<span class="lineNum">     621 </span>            :         guint8 *tramp;
+<span class="lineNum">     622 </span>            :         guint8 *code, *buf;
+<span class="lineNum">     623 </span>            :         guint8 **rgctx_null_jumps;
+<span class="lineNum">     624 </span>            :         int tramp_size;
+<span class="lineNum">     625 </span>            :         int depth, index;
+<span class="lineNum">     626 </span>            :         int i;
+<span class="lineNum">     627 </span>            :         gboolean mrgctx;
+<span class="lineNum">     628 </span><span class="lineCov">     115692 :         MonoJumpInfo *ji = NULL;</span>
+<span class="lineNum">     629 </span>            :         GSList *unwind_ops;
+<span class="lineNum">     630 </span>            : 
+<span class="lineNum">     631 </span><span class="lineCov">     115692 :         mrgctx = MONO_RGCTX_SLOT_IS_MRGCTX (slot);</span>
+<span class="lineNum">     632 </span><span class="lineCov">     115692 :         index = MONO_RGCTX_SLOT_INDEX (slot);</span>
+<span class="lineNum">     633 </span><span class="lineCov">     115692 :         if (mrgctx)</span>
+<span class="lineNum">     634 </span><span class="lineCov">      57387 :                 index += MONO_SIZEOF_METHOD_RUNTIME_GENERIC_CONTEXT / sizeof (gpointer);</span>
+<span class="lineNum">     635 </span><span class="lineCov">     318923 :         for (depth = 0; ; ++depth) {</span>
+<span class="lineNum">     636 </span><span class="lineCov">     318923 :                 int size = mono_class_rgctx_get_array_size (depth, mrgctx);</span>
+<span class="lineNum">     637 </span>            : 
+<span class="lineNum">     638 </span><span class="lineCov">     318923 :                 if (index &lt; size - 1)</span>
+<span class="lineNum">     639 </span><span class="lineCov">     115692 :                         break;</span>
+<span class="lineNum">     640 </span><span class="lineCov">     203231 :                 index -= size - 1;</span>
+<span class="lineNum">     641 </span><span class="lineCov">     203231 :         }</span>
+<span class="lineNum">     642 </span>            : 
+<span class="lineNum">     643 </span><span class="lineCov">     115692 :         tramp_size = 64 + 8 * depth;</span>
+<span class="lineNum">     644 </span>            : 
+<span class="lineNum">     645 </span><span class="lineCov">     115692 :         code = buf = (guint8 *)mono_global_codeman_reserve (tramp_size);</span>
+<span class="lineNum">     646 </span>            : 
+<span class="lineNum">     647 </span><span class="lineCov">     115692 :         unwind_ops = mono_arch_get_cie_program ();</span>
+<span class="lineNum">     648 </span>            : 
+<span class="lineNum">     649 </span><span class="lineCov">     115692 :         rgctx_null_jumps = (guint8 **)g_malloc (sizeof (guint8*) * (depth + 2));</span>
+<span class="lineNum">     650 </span>            : 
+<span class="lineNum">     651 </span><span class="lineCov">     115692 :         if (mrgctx) {</span>
+<span class="lineNum">     652 </span>            :                 /* get mrgctx ptr */
+<span class="lineNum">     653 </span><span class="lineCov">     573870 :                 amd64_mov_reg_reg (code, AMD64_RAX, AMD64_ARG_REG1, 8);</span>
+<span class="lineNum">     654 </span><span class="lineCov">      57387 :         } else {</span>
+<span class="lineNum">     655 </span>            :                 /* load rgctx ptr from vtable */
+<span class="lineNum">     656 </span><span class="lineCov">    1049490 :                 amd64_mov_reg_membase (code, AMD64_RAX, AMD64_ARG_REG1, MONO_STRUCT_OFFSET (MonoVTable, runtime_generic_context), sizeof(gpointer));</span>
+<span class="lineNum">     657 </span>            :                 /* is the rgctx ptr null? */
+<span class="lineNum">     658 </span><span class="lineCov">     816270 :                 amd64_test_reg_reg (code, AMD64_RAX, AMD64_RAX);</span>
+<span class="lineNum">     659 </span>            :                 /* if yes, jump to actual trampoline */
+<span class="lineNum">     660 </span><span class="lineCov">      58305 :                 rgctx_null_jumps [0] = code;</span>
+<span class="lineNum">     661 </span><span class="lineCov">     349830 :                 amd64_branch8 (code, X86_CC_Z, -1, 1);</span>
+<span class="lineNum">     662 </span>            :         }
+<span class="lineNum">     663 </span>            : 
+<span class="lineNum">     664 </span><span class="lineCov">     637846 :         for (i = 0; i &lt; depth; ++i) {</span>
+<span class="lineNum">     665 </span>            :                 /* load ptr to next array */
+<span class="lineNum">     666 </span><span class="lineCov">     303573 :                 if (mrgctx &amp;&amp; i == 0)</span>
+<span class="lineNum">     667 </span><span class="lineCov">     991762 :                         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_RAX, MONO_SIZEOF_METHOD_RUNTIME_GENERIC_CONTEXT, sizeof(gpointer));</span>
+<span class="lineNum">     668 </span>            :                 else
+<span class="lineNum">     669 </span><span class="lineCov">    2416528 :                         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_RAX, 0, sizeof(gpointer));</span>
+<span class="lineNum">     670 </span>            :                 /* is the ptr null? */
+<span class="lineNum">     671 </span><span class="lineCov">    2845234 :                 amd64_test_reg_reg (code, AMD64_RAX, AMD64_RAX);</span>
+<span class="lineNum">     672 </span>            :                 /* if yes, jump to actual trampoline */
+<span class="lineNum">     673 </span><span class="lineCov">     203231 :                 rgctx_null_jumps [i + 1] = code;</span>
+<span class="lineNum">     674 </span><span class="lineCov">    1219386 :                 amd64_branch8 (code, X86_CC_Z, -1, 1);</span>
+<span class="lineNum">     675 </span><span class="lineCov">     203231 :         }</span>
+<span class="lineNum">     676 </span>            : 
+<span class="lineNum">     677 </span>            :         /* fetch slot */
+<span class="lineNum">     678 </span><span class="lineCov">    2530640 :         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_RAX, sizeof (gpointer) * (index + 1), sizeof(gpointer));</span>
+<span class="lineNum">     679 </span>            :         /* is the slot null? */
+<span class="lineNum">     680 </span><span class="lineCov">    1619688 :         amd64_test_reg_reg (code, AMD64_RAX, AMD64_RAX);</span>
+<span class="lineNum">     681 </span>            :         /* if yes, jump to actual trampoline */
+<span class="lineNum">     682 </span><span class="lineCov">     115692 :         rgctx_null_jumps [depth + 1] = code;</span>
+<span class="lineNum">     683 </span><span class="lineCov">     694152 :         amd64_branch8 (code, X86_CC_Z, -1, 1);</span>
+<span class="lineNum">     684 </span>            :         /* otherwise return */
+<span class="lineNum">     685 </span><span class="lineCov">     231384 :         amd64_ret (code);</span>
+<span class="lineNum">     686 </span>            : 
+<span class="lineNum">     687 </span><span class="lineCov">     985840 :         for (i = mrgctx ? 1 : 0; i &lt;= depth + 1; ++i)</span>
+<span class="lineNum">     688 </span><span class="lineCov">     377228 :                 mono_amd64_patch (rgctx_null_jumps [i], code);</span>
+<span class="lineNum">     689 </span>            : 
+<span class="lineNum">     690 </span><span class="lineCov">     115692 :         g_free (rgctx_null_jumps);</span>
+<span class="lineNum">     691 </span>            : 
+<span class="lineNum">     692 </span>            :         /* move the rgctx pointer to the VTABLE register */
+<span class="lineNum">     693 </span><span class="lineCov">    1156920 :         amd64_mov_reg_reg (code, MONO_ARCH_VTABLE_REG, AMD64_ARG_REG1, sizeof(gpointer));</span>
+<span class="lineNum">     694 </span>            : 
+<span class="lineNum">     695 </span><span class="lineCov">     115692 :         if (aot) {</span>
+<span class="lineNum">     696 </span><span class="lineNoCov">          0 :                 code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, g_strdup_printf (&quot;specific_trampoline_lazy_fetch_%u&quot;, slot));</span>
+<span class="lineNum">     697 </span><span class="lineNoCov">          0 :                 amd64_jump_reg (code, AMD64_R11);</span>
+<span class="lineNum">     698 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     699 </span><span class="lineCov">     115692 :                 tramp = (guint8 *)mono_arch_create_specific_trampoline (GUINT_TO_POINTER (slot), MONO_TRAMPOLINE_RGCTX_LAZY_FETCH, mono_get_root_domain (), NULL);</span>
+<span class="lineNum">     700 </span>            : 
+<span class="lineNum">     701 </span>            :                 /* jump to the actual trampoline */
+<span class="lineNum">     702 </span><span class="lineCov">    2198148 :                 amd64_jump_code (code, tramp);</span>
+<span class="lineNum">     703 </span>            :         }
+<span class="lineNum">     704 </span>            : 
+<span class="lineNum">     705 </span><span class="lineCov">     115692 :         mono_arch_flush_icache (buf, code - buf);</span>
+<span class="lineNum">     706 </span><span class="lineCov">     115692 :         mono_profiler_code_buffer_new (buf, code - buf, MONO_PROFILER_CODE_BUFFER_GENERICS_TRAMPOLINE, NULL);</span>
+<span class="lineNum">     707 </span>            : 
+<span class="lineNum">     708 </span><span class="lineCov">     347076 :         g_assert (code - buf &lt;= tramp_size);</span>
+<span class="lineNum">     709 </span>            : 
+<span class="lineNum">     710 </span><span class="lineCov">     115692 :         char *name = mono_get_rgctx_fetch_trampoline_name (slot);</span>
+<span class="lineNum">     711 </span><span class="lineCov">     115692 :         *info = mono_tramp_info_create (name, buf, code - buf, ji, unwind_ops);</span>
+<span class="lineNum">     712 </span><span class="lineCov">     115692 :         g_free (name);</span>
+<span class="lineNum">     713 </span>            : 
+<span class="lineNum">     714 </span><span class="lineCov">     115692 :         return buf;</span>
+<span class="lineNum">     715 </span>            : }
+<a name="716"><span class="lineNum">     716 </span>            : </a>
+<span class="lineNum">     717 </span>            : gpointer
+<span class="lineNum">     718 </span>            : mono_arch_create_general_rgctx_lazy_fetch_trampoline (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     719 </span>            : {
+<span class="lineNum">     720 </span>            :         guint8 *code, *buf;
+<span class="lineNum">     721 </span>            :         int tramp_size;
+<span class="lineNum">     722 </span><span class="lineNoCov">          0 :         MonoJumpInfo *ji = NULL;</span>
+<span class="lineNum">     723 </span>            :         GSList *unwind_ops;
+<span class="lineNum">     724 </span>            : 
+<span class="lineNum">     725 </span><span class="lineNoCov">          0 :         g_assert (aot);</span>
+<span class="lineNum">     726 </span><span class="lineNoCov">          0 :         tramp_size = 64;</span>
+<span class="lineNum">     727 </span>            : 
+<span class="lineNum">     728 </span><span class="lineNoCov">          0 :         code = buf = (guint8 *)mono_global_codeman_reserve (tramp_size);</span>
+<span class="lineNum">     729 </span>            : 
+<span class="lineNum">     730 </span><span class="lineNoCov">          0 :         unwind_ops = mono_arch_get_cie_program ();</span>
+<span class="lineNum">     731 </span>            : 
+<span class="lineNum">     732 </span>            :         // FIXME: Currently, we always go to the slow path.
+<span class="lineNum">     733 </span>            :         /* This receives a &lt;slot, trampoline&gt; in the rgctx arg reg. */
+<span class="lineNum">     734 </span>            :         /* Load trampoline addr */
+<span class="lineNum">     735 </span><span class="lineNoCov">          0 :         amd64_mov_reg_membase (code, AMD64_R11, MONO_ARCH_RGCTX_REG, 8, 8);</span>
+<span class="lineNum">     736 </span>            :         /* move the rgctx pointer to the VTABLE register */
+<span class="lineNum">     737 </span><span class="lineNoCov">          0 :         amd64_mov_reg_reg (code, MONO_ARCH_VTABLE_REG, AMD64_ARG_REG1, sizeof(gpointer));</span>
+<span class="lineNum">     738 </span>            :         /* Jump to the trampoline */
+<span class="lineNum">     739 </span><span class="lineNoCov">          0 :         amd64_jump_reg (code, AMD64_R11);</span>
+<span class="lineNum">     740 </span>            : 
+<span class="lineNum">     741 </span><span class="lineNoCov">          0 :         mono_arch_flush_icache (buf, code - buf);</span>
+<span class="lineNum">     742 </span><span class="lineNoCov">          0 :         mono_profiler_code_buffer_new (buf, code - buf, MONO_PROFILER_CODE_BUFFER_GENERICS_TRAMPOLINE, NULL);</span>
+<span class="lineNum">     743 </span>            : 
+<span class="lineNum">     744 </span><span class="lineNoCov">          0 :         g_assert (code - buf &lt;= tramp_size);</span>
+<span class="lineNum">     745 </span>            : 
+<span class="lineNum">     746 </span><span class="lineNoCov">          0 :         if (info)</span>
+<span class="lineNum">     747 </span><span class="lineNoCov">          0 :                 *info = mono_tramp_info_create (&quot;rgctx_fetch_trampoline_general&quot;, buf, code - buf, ji, unwind_ops);</span>
+<span class="lineNum">     748 </span>            : 
+<span class="lineNum">     749 </span><span class="lineNoCov">          0 :         return buf;</span>
+<span class="lineNum">     750 </span>            : }
+<a name="751"><span class="lineNum">     751 </span>            : </a>
+<span class="lineNum">     752 </span>            : void
+<span class="lineNum">     753 </span>            : mono_arch_invalidate_method (MonoJitInfo *ji, void *func, gpointer func_arg)
+<span class="lineNum">     754 </span>            : {
+<span class="lineNum">     755 </span>            :         /* FIXME: This is not thread safe */
+<span class="lineNum">     756 </span><span class="lineNoCov">          0 :         guint8 *code = (guint8 *)ji-&gt;code_start;</span>
+<span class="lineNum">     757 </span>            : 
+<span class="lineNum">     758 </span><span class="lineNoCov">          0 :         amd64_mov_reg_imm (code, AMD64_ARG_REG1, func_arg);</span>
+<span class="lineNum">     759 </span><span class="lineNoCov">          0 :         amd64_mov_reg_imm (code, AMD64_R11, func);</span>
+<span class="lineNum">     760 </span>            : 
+<span class="lineNum">     761 </span><span class="lineNoCov">          0 :         x86_push_imm (code, (guint64)func_arg);</span>
+<span class="lineNum">     762 </span><span class="lineNoCov">          0 :         amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     763 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     764 </span>            : #endif /* !DISABLE_JIT */
+<a name="765"><span class="lineNum">     765 </span>            : </a>
+<span class="lineNum">     766 </span>            : gpointer
+<span class="lineNum">     767 </span>            : mono_amd64_handler_block_trampoline_helper (void)
+<span class="lineNum">     768 </span>            : {
+<span class="lineNum">     769 </span><span class="lineCov">          8 :         MonoJitTlsData *jit_tls = (MonoJitTlsData *)mono_tls_get_jit_tls ();</span>
+<span class="lineNum">     770 </span><span class="lineCov">          8 :         return jit_tls-&gt;handler_block_return_address;</span>
+<span class="lineNum">     771 </span>            : }
+<span class="lineNum">     772 </span>            : 
+<a name="773"><span class="lineNum">     773 </span>            : #ifndef DISABLE_JIT</a>
+<span class="lineNum">     774 </span>            : gpointer
+<span class="lineNum">     775 </span>            : mono_arch_create_handler_block_trampoline (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     776 </span>            : {
+<span class="lineNum">     777 </span>            :         guint8 *code, *buf;
+<span class="lineNum">     778 </span><span class="lineCov">       3285 :         int tramp_size = 64;</span>
+<span class="lineNum">     779 </span><span class="lineCov">       3285 :         MonoJumpInfo *ji = NULL;</span>
+<span class="lineNum">     780 </span>            :         GSList *unwind_ops;
+<span class="lineNum">     781 </span>            : 
+<span class="lineNum">     782 </span><span class="lineCov">       3285 :         code = buf = (guint8 *)mono_global_codeman_reserve (tramp_size);</span>
+<span class="lineNum">     783 </span>            : 
+<span class="lineNum">     784 </span><span class="lineCov">       3285 :         unwind_ops = mono_arch_get_cie_program ();</span>
+<span class="lineNum">     785 </span>            : 
+<span class="lineNum">     786 </span>            :         /*
+<span class="lineNum">     787 </span>            :          * This trampoline restore the call chain of the handler block then jumps into the code that deals with it.
+<span class="lineNum">     788 </span>            :          * We get here from the ret emitted by CEE_ENDFINALLY.
+<span class="lineNum">     789 </span>            :          * The stack is misaligned.
+<span class="lineNum">     790 </span>            :          */
+<span class="lineNum">     791 </span>            :         /* Align the stack before the call to mono_amd64_handler_block_trampoline_helper() */
+<span class="lineNum">     792 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     793 </span>            :         /* Also make room for the &quot;register parameter stack area&quot; as specified by the Windows x64 ABI (4 64-bit registers) */
+<span class="lineNum">     794 </span>            :         amd64_alu_reg_imm (code, X86_SUB, AMD64_RSP, 8 + 4 * 8);
+<span class="lineNum">     795 </span>            : #else
+<span class="lineNum">     796 </span><span class="lineCov">      39420 :         amd64_alu_reg_imm (code, X86_SUB, AMD64_RSP, 8);</span>
+<span class="lineNum">     797 </span>            : #endif
+<span class="lineNum">     798 </span><span class="lineCov">       3285 :         if (aot) {</span>
+<span class="lineNum">     799 </span><span class="lineNoCov">          0 :                 code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, &quot;mono_amd64_handler_block_trampoline_helper&quot;);</span>
+<span class="lineNum">     800 </span><span class="lineNoCov">          0 :                 amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     801 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     802 </span><span class="lineCov">      39420 :                 amd64_mov_reg_imm (code, AMD64_RAX, mono_amd64_handler_block_trampoline_helper);</span>
+<span class="lineNum">     803 </span><span class="lineCov">      29565 :                 amd64_call_reg (code, AMD64_RAX);</span>
+<span class="lineNum">     804 </span>            :         }
+<span class="lineNum">     805 </span>            :         /* Undo stack alignment */
+<span class="lineNum">     806 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     807 </span>            :         amd64_alu_reg_imm (code, X86_ADD, AMD64_RSP, 8 + 4 * 8);
+<span class="lineNum">     808 </span>            : #else
+<span class="lineNum">     809 </span><span class="lineCov">      39420 :         amd64_alu_reg_imm (code, X86_ADD, AMD64_RSP, 8);</span>
+<span class="lineNum">     810 </span>            : #endif
+<span class="lineNum">     811 </span>            :         /* Save the result to the stack */
+<span class="lineNum">     812 </span><span class="lineCov">      16425 :         amd64_push_reg (code, AMD64_RAX);</span>
+<span class="lineNum">     813 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     814 </span>            :         /* Make room for the &quot;register parameter stack area&quot; as specified by the Windows x64 ABI (4 64-bit registers) */
+<span class="lineNum">     815 </span>            :         amd64_alu_reg_imm (code, X86_SUB, AMD64_RSP, 4 * 8);
+<span class="lineNum">     816 </span>            : #endif
+<span class="lineNum">     817 </span><span class="lineCov">       3285 :         if (aot) {</span>
+<span class="lineNum">     818 </span><span class="lineNoCov">          0 :                 char *name = g_strdup_printf (&quot;trampoline_func_%d&quot;, MONO_TRAMPOLINE_HANDLER_BLOCK_GUARD);</span>
+<span class="lineNum">     819 </span><span class="lineNoCov">          0 :                 code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, name);</span>
+<span class="lineNum">     820 </span><span class="lineNoCov">          0 :                 amd64_mov_reg_reg (code, AMD64_RAX, AMD64_R11, 8);</span>
+<span class="lineNum">     821 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     822 </span><span class="lineCov">      39420 :                 amd64_mov_reg_imm (code, AMD64_RAX, mono_get_trampoline_func (MONO_TRAMPOLINE_HANDLER_BLOCK_GUARD));</span>
+<span class="lineNum">     823 </span>            :         }
+<span class="lineNum">     824 </span>            :         /* The stack is aligned */
+<span class="lineNum">     825 </span><span class="lineCov">      29565 :         amd64_call_reg (code, AMD64_RAX);</span>
+<span class="lineNum">     826 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     827 </span>            :         amd64_alu_reg_imm (code, X86_ADD, AMD64_RSP, 4 * 8);
+<span class="lineNum">     828 </span>            : #endif
+<span class="lineNum">     829 </span>            :         /* Load return address */
+<span class="lineNum">     830 </span><span class="lineCov">      16425 :         amd64_pop_reg (code, AMD64_RAX);</span>
+<span class="lineNum">     831 </span>            :         /* The stack is misaligned, thats what the code we branch to expects */
+<span class="lineNum">     832 </span><span class="lineCov">      36135 :         amd64_jump_reg (code, AMD64_RAX);</span>
+<span class="lineNum">     833 </span>            : 
+<span class="lineNum">     834 </span><span class="lineCov">       3285 :         mono_arch_flush_icache (buf, code - buf);</span>
+<span class="lineNum">     835 </span><span class="lineCov">       3285 :         mono_profiler_code_buffer_new (buf, code - buf, MONO_PROFILER_CODE_BUFFER_HELPER, NULL);</span>
+<span class="lineNum">     836 </span><span class="lineCov">       9855 :         g_assert (code - buf &lt;= tramp_size);</span>
+<span class="lineNum">     837 </span>            : 
+<span class="lineNum">     838 </span><span class="lineCov">       3285 :         *info = mono_tramp_info_create (&quot;handler_block_trampoline&quot;, buf, code - buf, ji, unwind_ops);</span>
+<span class="lineNum">     839 </span>            : 
+<span class="lineNum">     840 </span><span class="lineCov">       3285 :         return buf;</span>
+<span class="lineNum">     841 </span>            : }
+<span class="lineNum">     842 </span>            : #endif /* !DISABLE_JIT */
+<span class="lineNum">     843 </span>            : 
+<span class="lineNum">     844 </span>            : /*
+<span class="lineNum">     845 </span>            :  * mono_arch_get_call_target:
+<span class="lineNum">     846 </span>            :  *
+<span class="lineNum">     847 </span>            :  *   Return the address called by the code before CODE if exists.
+<a name="848"><span class="lineNum">     848 </span>            :  */</a>
+<span class="lineNum">     849 </span>            : guint8*
+<span class="lineNum">     850 </span>            : mono_arch_get_call_target (guint8 *code)
+<span class="lineNum">     851 </span>            : {
+<span class="lineNum">     852 </span><span class="lineCov">   47891876 :         if (code [-5] == 0xe8) {</span>
+<span class="lineNum">     853 </span><span class="lineCov">   47891876 :                 gint32 disp = *(gint32*)(code - 4);</span>
+<span class="lineNum">     854 </span><span class="lineCov">   47891876 :                 guint8 *target = code + disp;</span>
+<span class="lineNum">     855 </span>            : 
+<span class="lineNum">     856 </span><span class="lineCov">   47891876 :                 return target;</span>
+<span class="lineNum">     857 </span>            :         } else {
+<span class="lineNum">     858 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     859 </span>            :         }
+<span class="lineNum">     860 </span><span class="lineCov">   47891876 : }</span>
+<span class="lineNum">     861 </span>            : 
+<span class="lineNum">     862 </span>            : /*
+<span class="lineNum">     863 </span>            :  * mono_arch_get_plt_info_offset:
+<span class="lineNum">     864 </span>            :  *
+<span class="lineNum">     865 </span>            :  *   Return the PLT info offset belonging to the plt entry PLT_ENTRY.
+<a name="866"><span class="lineNum">     866 </span>            :  */</a>
+<span class="lineNum">     867 </span>            : guint32
+<span class="lineNum">     868 </span>            : mono_arch_get_plt_info_offset (guint8 *plt_entry, mgreg_t *regs, guint8 *code)
+<span class="lineNum">     869 </span>            : {
+<span class="lineNum">     870 </span><span class="lineCov">     868411 :         return *(guint32*)(plt_entry + 6);</span>
+<span class="lineNum">     871 </span>            : }
+<span class="lineNum">     872 </span>            : 
+<span class="lineNum">     873 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     874 </span>            : /*
+<span class="lineNum">     875 </span>            :  * mono_arch_create_sdb_trampoline:
+<span class="lineNum">     876 </span>            :  *
+<span class="lineNum">     877 </span>            :  *   Return a trampoline which captures the current context, passes it to
+<span class="lineNum">     878 </span>            :  * debugger_agent_single_step_from_context ()/debugger_agent_breakpoint_from_context (),
+<span class="lineNum">     879 </span>            :  * then restores the (potentially changed) context.
+<a name="880"><span class="lineNum">     880 </span>            :  */</a>
+<span class="lineNum">     881 </span>            : guint8*
+<span class="lineNum">     882 </span>            : mono_arch_create_sdb_trampoline (gboolean single_step, MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">     883 </span>            : {
+<span class="lineNum">     884 </span><span class="lineCov">       3285 :         int tramp_size = 512;</span>
+<span class="lineNum">     885 </span>            :         int i, framesize, ctx_offset, cfa_offset, gregs_offset;
+<span class="lineNum">     886 </span>            :         guint8 *code, *buf;
+<span class="lineNum">     887 </span><span class="lineCov">       3285 :         GSList *unwind_ops = NULL;</span>
+<span class="lineNum">     888 </span><span class="lineCov">       3285 :         MonoJumpInfo *ji = NULL;</span>
+<span class="lineNum">     889 </span>            : 
+<span class="lineNum">     890 </span><span class="lineCov">       3285 :         code = buf = (guint8 *)mono_global_codeman_reserve (tramp_size);</span>
+<span class="lineNum">     891 </span>            : 
+<span class="lineNum">     892 </span><span class="lineCov">       3285 :         framesize = 0;</span>
+<span class="lineNum">     893 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     894 </span>            :         /* Reserve space where the callee can save the argument registers */
+<span class="lineNum">     895 </span>            :         framesize += 4 * sizeof (mgreg_t);
+<span class="lineNum">     896 </span>            : #endif
+<span class="lineNum">     897 </span>            : 
+<span class="lineNum">     898 </span><span class="lineCov">       3285 :         ctx_offset = framesize;</span>
+<span class="lineNum">     899 </span><span class="lineCov">       3285 :         framesize += sizeof (MonoContext);</span>
+<span class="lineNum">     900 </span>            : 
+<span class="lineNum">     901 </span><span class="lineCov">       3285 :         framesize = ALIGN_TO (framesize, MONO_ARCH_FRAME_ALIGNMENT);</span>
+<span class="lineNum">     902 </span>            : 
+<span class="lineNum">     903 </span>            :         // CFA = sp + 8
+<span class="lineNum">     904 </span><span class="lineCov">       3285 :         cfa_offset = 8;</span>
+<span class="lineNum">     905 </span><span class="lineCov">       6570 :         mono_add_unwind_op_def_cfa (unwind_ops, code, buf, AMD64_RSP, 8);</span>
+<span class="lineNum">     906 </span>            :         // IP saved at CFA - 8
+<span class="lineNum">     907 </span><span class="lineCov">       6570 :         mono_add_unwind_op_offset (unwind_ops, code, buf, AMD64_RIP, -cfa_offset);</span>
+<span class="lineNum">     908 </span>            : 
+<span class="lineNum">     909 </span><span class="lineCov">      16425 :         amd64_push_reg (code, AMD64_RBP);</span>
+<span class="lineNum">     910 </span><span class="lineCov">       3285 :         cfa_offset += sizeof(mgreg_t);</span>
+<span class="lineNum">     911 </span><span class="lineCov">       6570 :         mono_add_unwind_op_def_cfa_offset (unwind_ops, code, buf, cfa_offset);</span>
+<span class="lineNum">     912 </span><span class="lineCov">       6570 :         mono_add_unwind_op_offset (unwind_ops, code, buf, AMD64_RBP, - cfa_offset);</span>
+<span class="lineNum">     913 </span>            : 
+<span class="lineNum">     914 </span><span class="lineCov">      32850 :         amd64_mov_reg_reg (code, AMD64_RBP, AMD64_RSP, sizeof(mgreg_t));</span>
+<span class="lineNum">     915 </span><span class="lineCov">       6570 :         mono_add_unwind_op_def_cfa_reg (unwind_ops, code, buf, AMD64_RBP);</span>
+<span class="lineNum">     916 </span><span class="lineCov">      45990 :         amd64_alu_reg_imm (code, X86_SUB, AMD64_RSP, framesize);</span>
+<span class="lineNum">     917 </span>            : 
+<span class="lineNum">     918 </span><span class="lineCov">       3285 :         gregs_offset = ctx_offset + MONO_STRUCT_OFFSET (MonoContext, gregs);</span>
+<span class="lineNum">     919 </span>            : 
+<span class="lineNum">     920 </span>            :         /* Initialize a MonoContext structure on the stack */
+<span class="lineNum">     921 </span><span class="lineCov">     118260 :         for (i = 0; i &lt; AMD64_NREG; ++i) {</span>
+<span class="lineNum">     922 </span><span class="lineCov">     157680 :                 if (i != AMD64_RIP &amp;&amp; i != AMD64_RSP &amp;&amp; i != AMD64_RBP)</span>
+<span class="lineNum">     923 </span><span class="lineCov">     952650 :                         amd64_mov_membase_reg (code, AMD64_RSP, gregs_offset + (i * sizeof (mgreg_t)), i, sizeof (mgreg_t));</span>
+<span class="lineNum">     924 </span><span class="lineCov">      55845 :         }</span>
+<span class="lineNum">     925 </span><span class="lineCov">      59130 :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_RBP, 0, sizeof (mgreg_t));</span>
+<span class="lineNum">     926 </span><span class="lineCov">      65700 :         amd64_mov_membase_reg (code, AMD64_RSP, gregs_offset + (AMD64_RBP * sizeof (mgreg_t)), AMD64_R11, sizeof (mgreg_t));</span>
+<span class="lineNum">     927 </span><span class="lineCov">      52560 :         amd64_lea_membase (code, AMD64_R11, AMD64_RBP, 2 * sizeof (mgreg_t));</span>
+<span class="lineNum">     928 </span><span class="lineCov">      65700 :         amd64_mov_membase_reg (code, AMD64_RSP, gregs_offset + (AMD64_RSP * sizeof (mgreg_t)), AMD64_R11, sizeof (mgreg_t));</span>
+<span class="lineNum">     929 </span><span class="lineCov">      59130 :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_RBP, sizeof (mgreg_t), sizeof (mgreg_t));</span>
+<span class="lineNum">     930 </span><span class="lineCov">      62415 :         amd64_mov_membase_reg (code, AMD64_RSP, gregs_offset + (AMD64_RIP * sizeof (mgreg_t)), AMD64_R11, sizeof (mgreg_t));</span>
+<span class="lineNum">     931 </span>            : 
+<span class="lineNum">     932 </span>            :         /* Call the single step/breakpoint function in sdb */
+<span class="lineNum">     933 </span><span class="lineCov">      59130 :         amd64_lea_membase (code, AMD64_ARG_REG1, AMD64_RSP, ctx_offset);</span>
+<span class="lineNum">     934 </span>            : 
+<span class="lineNum">     935 </span><span class="lineCov">       3285 :         if (aot) {</span>
+<span class="lineNum">     936 </span><span class="lineNoCov">          0 :                 if (single_step)</span>
+<span class="lineNum">     937 </span><span class="lineNoCov">          0 :                         code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, &quot;debugger_agent_single_step_from_context&quot;);</span>
+<span class="lineNum">     938 </span>            :                 else
+<span class="lineNum">     939 </span><span class="lineNoCov">          0 :                         code = mono_arch_emit_load_aotconst (buf, code, &amp;ji, MONO_PATCH_INFO_JIT_ICALL_ADDR, &quot;debugger_agent_breakpoint_from_context&quot;);</span>
+<span class="lineNum">     940 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     941 </span><span class="lineCov">       3285 :                 if (single_step)</span>
+<span class="lineNum">     942 </span><span class="lineNoCov">          0 :                         amd64_mov_reg_imm (code, AMD64_R11, debugger_agent_single_step_from_context);</span>
+<span class="lineNum">     943 </span>            :                 else
+<span class="lineNum">     944 </span><span class="lineCov">      39420 :                         amd64_mov_reg_imm (code, AMD64_R11, debugger_agent_breakpoint_from_context);</span>
+<span class="lineNum">     945 </span>            :         }       
+<span class="lineNum">     946 </span><span class="lineCov">      32850 :         amd64_call_reg (code, AMD64_R11);</span>
+<span class="lineNum">     947 </span>            : 
+<span class="lineNum">     948 </span>            :         /* Restore registers from ctx */
+<span class="lineNum">     949 </span><span class="lineCov">     118260 :         for (i = 0; i &lt; AMD64_NREG; ++i) {</span>
+<span class="lineNum">     950 </span><span class="lineCov">     157680 :                 if (i != AMD64_RIP &amp;&amp; i != AMD64_RSP &amp;&amp; i != AMD64_RBP)</span>
+<span class="lineNum">     951 </span><span class="lineCov">    1136610 :                         amd64_mov_reg_membase (code, i, AMD64_RSP, gregs_offset + (i * sizeof (mgreg_t)), sizeof (mgreg_t));</span>
+<span class="lineNum">     952 </span><span class="lineCov">      55845 :         }</span>
+<span class="lineNum">     953 </span><span class="lineCov">      78840 :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_RSP, gregs_offset + (AMD64_RBP * sizeof (mgreg_t)), sizeof (mgreg_t));</span>
+<span class="lineNum">     954 </span><span class="lineCov">      45990 :         amd64_mov_membase_reg (code, AMD64_RBP, 0, AMD64_R11, sizeof (mgreg_t));</span>
+<span class="lineNum">     955 </span><span class="lineCov">      75555 :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_RSP, gregs_offset + (AMD64_RIP * sizeof (mgreg_t)), sizeof (mgreg_t));</span>
+<span class="lineNum">     956 </span><span class="lineCov">      45990 :         amd64_mov_membase_reg (code, AMD64_RBP, sizeof (mgreg_t), AMD64_R11, sizeof (mgreg_t));</span>
+<span class="lineNum">     957 </span>            : 
+<span class="lineNum">     958 </span><span class="lineCov">       6570 :         amd64_leave (code);</span>
+<span class="lineNum">     959 </span><span class="lineCov">       3285 :         cfa_offset -= sizeof (mgreg_t);</span>
+<span class="lineNum">     960 </span><span class="lineCov">       6570 :         mono_add_unwind_op_def_cfa (unwind_ops, code, buf, AMD64_RSP, cfa_offset);</span>
+<span class="lineNum">     961 </span><span class="lineCov">       6570 :         amd64_ret (code);</span>
+<span class="lineNum">     962 </span>            : 
+<span class="lineNum">     963 </span><span class="lineCov">       3285 :         mono_arch_flush_icache (code, code - buf);</span>
+<span class="lineNum">     964 </span><span class="lineCov">       3285 :         mono_profiler_code_buffer_new (buf, code - buf, MONO_PROFILER_CODE_BUFFER_HELPER, NULL);</span>
+<span class="lineNum">     965 </span><span class="lineCov">       9855 :         g_assert (code - buf &lt;= tramp_size);</span>
+<span class="lineNum">     966 </span>            : 
+<span class="lineNum">     967 </span><span class="lineCov">       3285 :         const char *tramp_name = single_step ? &quot;sdb_single_step_trampoline&quot; : &quot;sdb_breakpoint_trampoline&quot;;</span>
+<span class="lineNum">     968 </span><span class="lineCov">       3285 :         *info = mono_tramp_info_create (tramp_name, buf, code - buf, ji, unwind_ops);</span>
+<span class="lineNum">     969 </span>            : 
+<span class="lineNum">     970 </span><span class="lineCov">       3285 :         return buf;</span>
+<span class="lineNum">     971 </span>            : }
+<span class="lineNum">     972 </span>            : 
+<span class="lineNum">     973 </span>            : 
+<span class="lineNum">     974 </span>            : #ifdef ENABLE_INTERPRETER
+<span class="lineNum">     975 </span>            : /*
+<span class="lineNum">     976 </span>            :  * mono_arch_get_enter_icall_trampoline:
+<span class="lineNum">     977 </span>            :  *
+<span class="lineNum">     978 </span>            :  *   A trampoline that handles the transition from interpreter into native world.
+<span class="lineNum">     979 </span>            :  *   It requiers to set up a descriptor (MethodArguments) that describes the
+<span class="lineNum">     980 </span>            :  *   required arguments passed to the callee.
+<span class="lineNum">     981 </span>            :  */
+<span class="lineNum">     982 </span>            : gpointer
+<span class="lineNum">     983 </span>            : mono_arch_get_enter_icall_trampoline (MonoTrampInfo **info)
+<span class="lineNum">     984 </span>            : {
+<span class="lineNum">     985 </span>            :         guint8 *start = NULL, *code, *exits[4], *leave_tramp;
+<span class="lineNum">     986 </span>            :         MonoJumpInfo *ji = NULL;
+<span class="lineNum">     987 </span>            :         GSList *unwind_ops = NULL;
+<span class="lineNum">     988 </span>            :         static int arg_regs[] = {AMD64_ARG_REG1, AMD64_ARG_REG2, AMD64_ARG_REG3, AMD64_ARG_REG4};
+<span class="lineNum">     989 </span>            :         int i;
+<span class="lineNum">     990 </span>            : 
+<span class="lineNum">     991 </span>            :         start = code = (guint8 *) mono_global_codeman_reserve (256);
+<span class="lineNum">     992 </span>            : 
+<span class="lineNum">     993 </span>            :         /* save MethodArguments* onto stack */
+<span class="lineNum">     994 </span>            :         amd64_push_reg (code, AMD64_ARG_REG2);
+<span class="lineNum">     995 </span>            : 
+<span class="lineNum">     996 </span>            :         /* save target address on stack */
+<span class="lineNum">     997 </span>            :         amd64_push_reg (code, AMD64_ARG_REG1);
+<span class="lineNum">     998 </span>            :         amd64_push_reg (code, AMD64_RAX);
+<span class="lineNum">     999 </span>            : 
+<span class="lineNum">    1000 </span>            :         /* load pointer to MethodArguments* into R11 */
+<span class="lineNum">    1001 </span>            :         amd64_mov_reg_reg (code, AMD64_R11, AMD64_ARG_REG2, 8);
+<span class="lineNum">    1002 </span>            :         
+<span class="lineNum">    1003 </span>            :         /* TODO: do float stuff first */
+<span class="lineNum">    1004 </span>            : 
+<span class="lineNum">    1005 </span>            :         /* move ilen into RAX */ // TODO: struct offset
+<span class="lineNum">    1006 </span>            :         amd64_mov_reg_membase (code, AMD64_RAX, AMD64_R11, 0, 8);
+<span class="lineNum">    1007 </span>            :         /* load pointer to iregs into R11 */ // TODO: struct offset
+<span class="lineNum">    1008 </span>            :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_R11, 8, 8);
+<span class="lineNum">    1009 </span>            : 
+<span class="lineNum">    1010 </span>            :         for (i = 0; i &lt; 4; i++) {
+<span class="lineNum">    1011 </span>            :                 amd64_test_reg_reg (code, AMD64_RAX, AMD64_RAX);
+<span class="lineNum">    1012 </span>            :                 exits [i] = code;
+<span class="lineNum">    1013 </span>            :                 x86_branch8 (code, X86_CC_Z, 0, FALSE);
+<span class="lineNum">    1014 </span>            : 
+<span class="lineNum">    1015 </span>            :                 amd64_mov_reg_membase (code, arg_regs [i], AMD64_R11, i * sizeof (gpointer), 8);
+<span class="lineNum">    1016 </span>            :                 amd64_dec_reg_size (code, AMD64_RAX, 1);
+<span class="lineNum">    1017 </span>            :         }
+<span class="lineNum">    1018 </span>            : 
+<span class="lineNum">    1019 </span>            :         for (i = 0; i &lt; 4; i++) {
+<span class="lineNum">    1020 </span>            :                 x86_patch (exits [i], code);
+<span class="lineNum">    1021 </span>            :         }
+<span class="lineNum">    1022 </span>            : 
+<span class="lineNum">    1023 </span>            : 
+<span class="lineNum">    1024 </span>            :         amd64_pop_reg (code, AMD64_RAX);
+<span class="lineNum">    1025 </span>            :         amd64_pop_reg (code, AMD64_R11);
+<span class="lineNum">    1026 </span>            : 
+<span class="lineNum">    1027 </span>            :         /* call into native function */
+<span class="lineNum">    1028 </span>            :         amd64_call_reg (code, AMD64_R11);
+<span class="lineNum">    1029 </span>            : 
+<span class="lineNum">    1030 </span>            :         /* load MethodArguments */
+<span class="lineNum">    1031 </span>            :         amd64_pop_reg (code, AMD64_R11);
+<span class="lineNum">    1032 </span>            :         /* load retval */ // TODO: struct offset
+<span class="lineNum">    1033 </span>            :         amd64_mov_reg_membase (code, AMD64_R11, AMD64_R11, 0x20, 8);
+<span class="lineNum">    1034 </span>            : 
+<span class="lineNum">    1035 </span>            :         amd64_test_reg_reg (code, AMD64_R11, AMD64_R11);
+<span class="lineNum">    1036 </span>            :         leave_tramp = code;
+<span class="lineNum">    1037 </span>            :         x86_branch8 (code, X86_CC_Z, 0, FALSE);
+<span class="lineNum">    1038 </span>            : 
+<span class="lineNum">    1039 </span>            :         amd64_mov_membase_reg (code, AMD64_R11, 0, AMD64_RAX, 8);
+<span class="lineNum">    1040 </span>            : 
+<span class="lineNum">    1041 </span>            :         x86_patch (leave_tramp, code);
+<span class="lineNum">    1042 </span>            :         amd64_ret (code);
+<span class="lineNum">    1043 </span>            : 
+<span class="lineNum">    1044 </span>            : 
+<span class="lineNum">    1045 </span>            :         mono_arch_flush_icache (start, code - start);
+<span class="lineNum">    1046 </span>            :         mono_profiler_code_buffer_new (start, code - start, MONO_PROFILER_CODE_BUFFER_EXCEPTION_HANDLING, NULL);
+<span class="lineNum">    1047 </span>            : 
+<span class="lineNum">    1048 </span>            :         if (info)
+<span class="lineNum">    1049 </span>            :                 *info = mono_tramp_info_create (&quot;enter_icall_trampoline&quot;, start, code - start, ji, unwind_ops);
+<span class="lineNum">    1050 </span>            : 
+<span class="lineNum">    1051 </span>            :         return start;
+<span class="lineNum">    1052 </span>            : }
+<span class="lineNum">    1053 </span>            : #endif
+<span class="lineNum">    1054 </span>            : #endif /* !DISABLE_JIT */
+<span class="lineNum">    1055 </span>            : 
+<span class="lineNum">    1056 </span>            : #ifdef DISABLE_JIT
+<span class="lineNum">    1057 </span>            : gpointer
+<span class="lineNum">    1058 </span>            : mono_arch_get_unbox_trampoline (MonoMethod *m, gpointer addr)
+<span class="lineNum">    1059 </span>            : {
+<span class="lineNum">    1060 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1061 </span>            :         return NULL;
+<span class="lineNum">    1062 </span>            : }
+<span class="lineNum">    1063 </span>            : 
+<span class="lineNum">    1064 </span>            : gpointer
+<span class="lineNum">    1065 </span>            : mono_arch_get_static_rgctx_trampoline (MonoMethod *m, MonoMethodRuntimeGenericContext *mrgctx, gpointer addr)
+<span class="lineNum">    1066 </span>            : {
+<span class="lineNum">    1067 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1068 </span>            :         return NULL;
+<span class="lineNum">    1069 </span>            : }
+<span class="lineNum">    1070 </span>            : 
+<span class="lineNum">    1071 </span>            : gpointer
+<span class="lineNum">    1072 </span>            : mono_arch_create_rgctx_lazy_fetch_trampoline (guint32 slot, MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1073 </span>            : {
+<span class="lineNum">    1074 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1075 </span>            :         return NULL;
+<span class="lineNum">    1076 </span>            : }
+<span class="lineNum">    1077 </span>            : 
+<span class="lineNum">    1078 </span>            : guchar*
+<span class="lineNum">    1079 </span>            : mono_arch_create_generic_trampoline (MonoTrampolineType tramp_type, MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1080 </span>            : {
+<span class="lineNum">    1081 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1082 </span>            :         return NULL;
+<span class="lineNum">    1083 </span>            : }
+<span class="lineNum">    1084 </span>            : 
+<span class="lineNum">    1085 </span>            : gpointer
+<span class="lineNum">    1086 </span>            : mono_arch_create_specific_trampoline (gpointer arg1, MonoTrampolineType tramp_type, MonoDomain *domain, guint32 *code_len)
+<span class="lineNum">    1087 </span>            : {
+<span class="lineNum">    1088 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1089 </span>            :         return NULL;
+<span class="lineNum">    1090 </span>            : }
+<span class="lineNum">    1091 </span>            : 
+<span class="lineNum">    1092 </span>            : gpointer
+<span class="lineNum">    1093 </span>            : mono_arch_create_general_rgctx_lazy_fetch_trampoline (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1094 </span>            : {
+<span class="lineNum">    1095 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1096 </span>            :         return NULL;
+<span class="lineNum">    1097 </span>            : }
+<span class="lineNum">    1098 </span>            : 
+<span class="lineNum">    1099 </span>            : gpointer
+<span class="lineNum">    1100 </span>            : mono_arch_create_handler_block_trampoline (MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1101 </span>            : {
+<span class="lineNum">    1102 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1103 </span>            :         return NULL;
+<span class="lineNum">    1104 </span>            : }
+<span class="lineNum">    1105 </span>            : 
+<span class="lineNum">    1106 </span>            : void
+<span class="lineNum">    1107 </span>            : mono_arch_invalidate_method (MonoJitInfo *ji, void *func, gpointer func_arg)
+<span class="lineNum">    1108 </span>            : {
+<span class="lineNum">    1109 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1110 </span>            :         return;
+<span class="lineNum">    1111 </span>            : }
+<span class="lineNum">    1112 </span>            : 
+<span class="lineNum">    1113 </span>            : guint8*
+<span class="lineNum">    1114 </span>            : mono_arch_create_sdb_trampoline (gboolean single_step, MonoTrampInfo **info, gboolean aot)
+<span class="lineNum">    1115 </span>            : {
+<span class="lineNum">    1116 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1117 </span>            :         return NULL;
+<span class="lineNum">    1118 </span>            : }
+<span class="lineNum">    1119 </span>            : 
+<span class="lineNum">    1120 </span>            : #ifdef ENABLE_INTERPRETER
+<span class="lineNum">    1121 </span>            : gpointer
+<span class="lineNum">    1122 </span>            : mono_arch_get_enter_icall_trampoline (MonoTrampInfo **info)
+<span class="lineNum">    1123 </span>            : {
+<span class="lineNum">    1124 </span>            :         g_assert_not_reached ();
+<span class="lineNum">    1125 </span>            :         return NULL;
+<span class="lineNum">    1126 </span>            : }
+<span class="lineNum">    1127 </span>            : #endif
+<span class="lineNum">    1128 </span>            : #endif /* DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

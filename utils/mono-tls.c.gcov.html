@@ -1,0 +1,457 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-tls.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-tls.c<span style="font-size: 80%;"> (source / <a href="mono-tls.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">60</td>
+            <td class="headerCovTableEntry">66</td>
+            <td class="headerCovTableEntryHi">90.9 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">19</td>
+            <td class="headerCovTableEntry">19</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-tls.c: Low-level TLS support
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Thread local variables that are accessed both from native and managed code
+<span class="lineNum">       5 </span>            :  * are defined here and should be accessed only through this APIs
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2013 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &lt;mono/utils/mach-support.h&gt;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &quot;mono-tls.h&quot;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : /*
+<span class="lineNum">      15 </span>            :  * On all platforms we should be able to use either __thread or pthread/TlsGetValue.
+<span class="lineNum">      16 </span>            :  * Certain platforms will support fast tls only when using one of the thread local
+<span class="lineNum">      17 </span>            :  * storage backends. By default this is __thread if we have HAVE_KW_THREAD defined.
+<span class="lineNum">      18 </span>            :  *
+<span class="lineNum">      19 </span>            :  * By default all platforms will call into these native getters whenever they need
+<span class="lineNum">      20 </span>            :  * to get a tls value. On certain platforms we can try to be faster than this and
+<span class="lineNum">      21 </span>            :  * avoid the call. We call this fast tls and each platform defines its own way to
+<span class="lineNum">      22 </span>            :  * achieve this. For this, a platform has to define MONO_ARCH_HAVE_INLINED_TLS,
+<span class="lineNum">      23 </span>            :  * and provide alternative getters/setters for a MonoTlsKey. In order to have fast
+<span class="lineNum">      24 </span>            :  * getter/setters, the platform has to declare a way to fetch an internal offset
+<span class="lineNum">      25 </span>            :  * (MONO_THREAD_VAR_OFFSET) which is stored here, and in the arch specific file
+<span class="lineNum">      26 </span>            :  * probe the system to see if we can use the offset initialized here. If these
+<span class="lineNum">      27 </span>            :  * run-time checks don't succeed we just use the fallbacks.
+<span class="lineNum">      28 </span>            :  *
+<span class="lineNum">      29 </span>            :  * In case we would wish to provide fast inlined tls for aot code, we would need
+<span class="lineNum">      30 </span>            :  * to be sure that, at run-time, these two platform checks would never fail
+<span class="lineNum">      31 </span>            :  * otherwise the tls getter/setters that we emitted would not work. Normally,
+<span class="lineNum">      32 </span>            :  * there is little incentive to support this since tls access is most common in
+<span class="lineNum">      33 </span>            :  * wrappers and managed allocators, both of which are not aot-ed by default.
+<span class="lineNum">      34 </span>            :  * So far, we never supported inlined fast tls on full-aot systems.
+<span class="lineNum">      35 </span>            :  */
+<span class="lineNum">      36 </span>            : 
+<span class="lineNum">      37 </span>            : #ifdef USE_KW_THREAD
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : /* tls attribute */
+<span class="lineNum">      40 </span>            : #if HAVE_TLS_MODEL_ATTR
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : #if defined(__PIC__) &amp;&amp; !defined(PIC)
+<span class="lineNum">      43 </span>            : /*
+<span class="lineNum">      44 </span>            :  * Must be compiling -fPIE, for executables.  Build PIC
+<span class="lineNum">      45 </span>            :  * but with initial-exec.
+<span class="lineNum">      46 </span>            :  * http://bugs.gentoo.org/show_bug.cgi?id=165547
+<span class="lineNum">      47 </span>            :  */
+<span class="lineNum">      48 </span>            : #define PIC
+<span class="lineNum">      49 </span>            : #define PIC_INITIAL_EXEC
+<span class="lineNum">      50 </span>            : #endif
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span>            : /*
+<span class="lineNum">      53 </span>            :  * Define this if you want a faster libmono, which cannot be loaded dynamically as a
+<span class="lineNum">      54 </span>            :  * module.
+<span class="lineNum">      55 </span>            :  */
+<span class="lineNum">      56 </span>            : //#define PIC_INITIAL_EXEC
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            : #if defined(PIC)
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : #ifdef PIC_INITIAL_EXEC
+<span class="lineNum">      61 </span>            : #define MONO_TLS_FAST __attribute__((tls_model(&quot;initial-exec&quot;)))
+<span class="lineNum">      62 </span>            : #else
+<span class="lineNum">      63 </span>            : #if defined (__powerpc__)
+<span class="lineNum">      64 </span>            : /* local dynamic requires a call to __tls_get_addr to look up the
+<span class="lineNum">      65 </span>            :    TLS block address via the Dynamic Thread Vector. In this case Thread
+<span class="lineNum">      66 </span>            :    Pointer relative offsets can't be used as this modules TLS was
+<span class="lineNum">      67 </span>            :    allocated separately (none contiguoiusly) from the initial TLS
+<span class="lineNum">      68 </span>            :    block.
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span>            :    For now we will disable this. */
+<span class="lineNum">      71 </span>            : #define MONO_TLS_FAST
+<span class="lineNum">      72 </span>            : #else
+<span class="lineNum">      73 </span>            : #define MONO_TLS_FAST __attribute__((tls_model(&quot;local-dynamic&quot;)))
+<span class="lineNum">      74 </span>            : #endif
+<span class="lineNum">      75 </span>            : #endif
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span>            : #else
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            : #define MONO_TLS_FAST __attribute__((tls_model(&quot;local-exec&quot;)))
+<span class="lineNum">      80 </span>            : 
+<span class="lineNum">      81 </span>            : #endif
+<span class="lineNum">      82 </span>            : 
+<span class="lineNum">      83 </span>            : #else
+<span class="lineNum">      84 </span>            : #define MONO_TLS_FAST
+<span class="lineNum">      85 </span>            : #endif
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span>            : /* Runtime offset detection */
+<span class="lineNum">      88 </span>            : #if defined(TARGET_AMD64) &amp;&amp; !defined(TARGET_MACH) &amp;&amp; !defined(HOST_WIN32) /* __thread likely not tested on mac/win */
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span>            : #if defined(PIC)
+<span class="lineNum">      91 </span>            : // This only works if libmono is linked into the application
+<span class="lineNum">      92 </span>            : #define MONO_THREAD_VAR_OFFSET(var,offset) do { guint64 foo;  __asm (&quot;movq &quot; #var &quot;@GOTTPOFF(%%rip), %0&quot; : &quot;=r&quot; (foo)); offset = foo; } while (0)
+<span class="lineNum">      93 </span>            : #else
+<span class="lineNum">      94 </span>            : #define MONO_THREAD_VAR_OFFSET(var,offset) do { guint64 foo;  __asm (&quot;movq $&quot; #var &quot;@TPOFF, %0&quot; : &quot;=r&quot; (foo)); offset = foo; } while (0)
+<span class="lineNum">      95 </span>            : #endif
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span>            : #elif defined(TARGET_X86) &amp;&amp; !defined(TARGET_MACH) &amp;&amp; !defined(HOST_WIN32) &amp;&amp; defined(__GNUC__)
+<span class="lineNum">      98 </span>            : 
+<span class="lineNum">      99 </span>            : #if defined(PIC)
+<span class="lineNum">     100 </span>            : #define MONO_THREAD_VAR_OFFSET(var,offset) do { int tmp; __asm (&quot;call 1f; 1: popl %0; addl $_GLOBAL_OFFSET_TABLE_+[.-1b], %0; movl &quot; #var &quot;@gotntpoff(%0), %1&quot; : &quot;=r&quot; (tmp), &quot;=r&quot; (offset)); } while (0)
+<span class="lineNum">     101 </span>            : #else
+<span class="lineNum">     102 </span>            : #define MONO_THREAD_VAR_OFFSET(var,offset) __asm (&quot;movl $&quot; #var &quot;@ntpoff, %0&quot; : &quot;=r&quot; (offset))
+<span class="lineNum">     103 </span>            : #endif
+<span class="lineNum">     104 </span>            : 
+<span class="lineNum">     105 </span>            : #elif defined(TARGET_ARM64) &amp;&amp; !defined(PIC)
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span>            : #define MONO_THREAD_VAR_OFFSET(var,offset) \
+<span class="lineNum">     108 </span>            :         __asm ( &quot;mov %0, #0\n add %0, %0, #:tprel_hi12:&quot; #var &quot;\n add %0, %0, #:tprel_lo12_nc:&quot; #var &quot;\n&quot; \
+<span class="lineNum">     109 </span>            :                 : &quot;=r&quot; (offset))
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span>            : #elif defined(TARGET_ARM) &amp;&amp; defined(__ARM_EABI__) &amp;&amp; !defined(PIC)
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span>            : #define MONO_THREAD_VAR_OFFSET(var,offset) __asm (&quot;     ldr     %0, 1f; b 2f; 1: .word &quot; #var &quot;(tpoff); 2:&quot; : &quot;=r&quot; (offset))
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span>            : #elif defined(TARGET_S390X)
+<span class="lineNum">     116 </span>            : # if defined(__PIC__)
+<span class="lineNum">     117 </span>            : #  if !defined(__PIE__)
+<span class="lineNum">     118 </span>            : // This only works if libmono is linked into the application
+<span class="lineNum">     119 </span>            : #   define MONO_THREAD_VAR_OFFSET(var,offset) do { guint64 foo;                                 \
+<span class="lineNum">     120 </span>            :                                                 __asm__ (&quot;basr  %%r1,0\n\t&quot;                   \
+<span class="lineNum">     121 </span>            :                                                          &quot;j     0f\n\t&quot;                               \
+<span class="lineNum">     122 </span>            :                                                          &quot;.quad &quot; #var &quot;@TLSGD\n&quot;           \
+<span class="lineNum">     123 </span>            :                                                          &quot;0:\n\t&quot;                             \
+<span class="lineNum">     124 </span>            :                                                          &quot;lg    %%r2,4(%%r1)\n\t&quot;             \
+<span class="lineNum">     125 </span>            :                                                          &quot;brasl    %%r14,__tls_get_offset@PLT:tls_gdcall:&quot;#var&quot;\n\t&quot; \
+<span class="lineNum">     126 </span>            :                                                          &quot;lgr      %0,%%r2\n\t&quot;                       \
+<span class="lineNum">     127 </span>            :                                                         : &quot;=r&quot; (foo) :                                \
+<span class="lineNum">     128 </span>            :                                                         : &quot;1&quot;, &quot;2&quot;, &quot;14&quot;, &quot;cc&quot;);                \
+<span class="lineNum">     129 </span>            :                                                 offset = foo; } while (0)
+<span class="lineNum">     130 </span>            : #  elif __PIE__ == 1
+<span class="lineNum">     131 </span>            : #   define MONO_THREAD_VAR_OFFSET(var,offset) do { guint64 foo;                                         \
+<span class="lineNum">     132 </span>            :                                                 __asm__ (&quot;lg       %0,&quot; #var &quot;@GOTNTPOFF(%%r12)\n\t&quot;        \
+<span class="lineNum">     133 </span>            :                                                          : &quot;=r&quot; (foo));                                       \
+<span class="lineNum">     134 </span>            :                                                 offset = foo; } while (0)
+<span class="lineNum">     135 </span>            : #  elif __PIE__ == 2
+<span class="lineNum">     136 </span>            : #   define MONO_THREAD_VAR_OFFSET(var,offset) do { guint64 foo;                                 \
+<span class="lineNum">     137 </span>            :                                                 __asm__ (&quot;larl     %%r1,&quot; #var &quot;@INDNTPOFF\n\t&quot;     \
+<span class="lineNum">     138 </span>            :                                                          &quot;lg       %0,0(%%r1)\n\t&quot;                    \
+<span class="lineNum">     139 </span>            :                                                          : &quot;=r&quot; (foo) :                               \
+<span class="lineNum">     140 </span>            :                                                          : &quot;1&quot;, &quot;cc&quot;);                              \
+<span class="lineNum">     141 </span>            :                                                 offset = foo; } while (0)
+<span class="lineNum">     142 </span>            : #  endif
+<span class="lineNum">     143 </span>            : # else
+<span class="lineNum">     144 </span>            : #  define MONO_THREAD_VAR_OFFSET(var,offset) do { guint64 foo;                          \
+<span class="lineNum">     145 </span>            :                                                 __asm__ (&quot;basr  %%r1,0\n\t&quot;           \
+<span class="lineNum">     146 </span>            :                                                          &quot;j     0f\n\t&quot;                       \
+<span class="lineNum">     147 </span>            :                                                          &quot;.quad &quot; #var &quot;@NTPOFF\n&quot;  \
+<span class="lineNum">     148 </span>            :                                                          &quot;0:\n\t&quot;                     \
+<span class="lineNum">     149 </span>            :                                                          &quot;lg    %0,4(%%r1)\n\t&quot;               \
+<span class="lineNum">     150 </span>            :                                                         : &quot;=r&quot; (foo) : : &quot;1&quot;);              \
+<span class="lineNum">     151 </span>            :                                                 offset = foo; } while (0)
+<span class="lineNum">     152 </span>            : # endif
+<span class="lineNum">     153 </span>            : #else
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            : #define MONO_THREAD_VAR_OFFSET(var,offset) (offset) = -1
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span>            : #endif
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span>            : /* Tls variables for each MonoTlsKey */
+<span class="lineNum">     160 </span>            : 
+<span class="lineNum">     161 </span>            : static __thread gpointer mono_tls_thread MONO_TLS_FAST;
+<span class="lineNum">     162 </span>            : static __thread gpointer mono_tls_jit_tls MONO_TLS_FAST;
+<span class="lineNum">     163 </span>            : static __thread gpointer mono_tls_domain MONO_TLS_FAST;
+<span class="lineNum">     164 </span>            : static __thread gpointer mono_tls_lmf MONO_TLS_FAST;
+<span class="lineNum">     165 </span>            : static __thread gpointer mono_tls_sgen_thread_info MONO_TLS_FAST;
+<span class="lineNum">     166 </span>            : static __thread gpointer mono_tls_lmf_addr MONO_TLS_FAST;
+<span class="lineNum">     167 </span>            : 
+<span class="lineNum">     168 </span>            : #else
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span>            : #if defined(TARGET_AMD64) &amp;&amp; (defined(TARGET_MACH) || defined(HOST_WIN32))
+<span class="lineNum">     171 </span>            : #define MONO_THREAD_VAR_OFFSET(key,offset) (offset) = (gint32)key
+<span class="lineNum">     172 </span>            : #elif defined(TARGET_X86) &amp;&amp; (defined(TARGET_MACH) || defined(HOST_WIN32))
+<span class="lineNum">     173 </span>            : #define MONO_THREAD_VAR_OFFSET(key,offset) (offset) = (gint32)key
+<span class="lineNum">     174 </span>            : #else
+<span class="lineNum">     175 </span>            : #define MONO_THREAD_VAR_OFFSET(var,offset) (offset) = -1
+<span class="lineNum">     176 </span>            : #endif
+<span class="lineNum">     177 </span>            : 
+<span class="lineNum">     178 </span>            : static MonoNativeTlsKey mono_tls_key_thread;
+<span class="lineNum">     179 </span>            : static MonoNativeTlsKey mono_tls_key_jit_tls;
+<span class="lineNum">     180 </span>            : static MonoNativeTlsKey mono_tls_key_domain;
+<span class="lineNum">     181 </span>            : static MonoNativeTlsKey mono_tls_key_lmf;
+<span class="lineNum">     182 </span>            : static MonoNativeTlsKey mono_tls_key_sgen_thread_info;
+<span class="lineNum">     183 </span>            : static MonoNativeTlsKey mono_tls_key_lmf_addr;
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span>            : #endif
+<span class="lineNum">     186 </span>            : 
+<span class="lineNum">     187 </span>            : static gint32 tls_offsets [TLS_KEY_NUM];
+<span class="lineNum">     188 </span>            : 
+<span class="lineNum">     189 </span>            : #ifdef USE_KW_THREAD
+<span class="lineNum">     190 </span>            : #define MONO_TLS_GET_VALUE(tls_var,tls_key) (tls_var)
+<span class="lineNum">     191 </span>            : #define MONO_TLS_SET_VALUE(tls_var,tls_key,value) (tls_var = value)
+<span class="lineNum">     192 </span>            : #else
+<span class="lineNum">     193 </span>            : #define MONO_TLS_GET_VALUE(tls_var,tls_key) (mono_native_tls_get_value (tls_key))
+<span class="lineNum">     194 </span>            : #define MONO_TLS_SET_VALUE(tls_var,tls_key,value) (mono_native_tls_set_value (tls_key, value))
+<span class="lineNum">     195 </span>            : #endif
+<a name="196"><span class="lineNum">     196 </span>            : </a>
+<span class="lineNum">     197 </span>            : void
+<span class="lineNum">     198 </span>            : mono_tls_init_gc_keys (void)
+<span class="lineNum">     199 </span>            : {
+<span class="lineNum">     200 </span>            : #ifdef USE_KW_THREAD
+<span class="lineNum">     201 </span>            :         MONO_THREAD_VAR_OFFSET (mono_tls_sgen_thread_info, tls_offsets [TLS_KEY_SGEN_THREAD_INFO]);
+<span class="lineNum">     202 </span>            : #else
+<span class="lineNum">     203 </span><span class="lineCov">       3285 :         mono_native_tls_alloc (&amp;mono_tls_key_sgen_thread_info, NULL);</span>
+<span class="lineNum">     204 </span><span class="lineCov">       3285 :         MONO_THREAD_VAR_OFFSET (mono_tls_key_sgen_thread_info, tls_offsets [TLS_KEY_SGEN_THREAD_INFO]);</span>
+<span class="lineNum">     205 </span>            : #endif
+<span class="lineNum">     206 </span><span class="lineCov">       3285 : }</span>
+<a name="207"><span class="lineNum">     207 </span>            : </a>
+<span class="lineNum">     208 </span>            : void
+<span class="lineNum">     209 </span>            : mono_tls_init_runtime_keys (void)
+<span class="lineNum">     210 </span>            : {
+<span class="lineNum">     211 </span>            : #ifdef USE_KW_THREAD
+<span class="lineNum">     212 </span>            :         MONO_THREAD_VAR_OFFSET (mono_tls_thread, tls_offsets [TLS_KEY_THREAD]);
+<span class="lineNum">     213 </span>            :         MONO_THREAD_VAR_OFFSET (mono_tls_jit_tls, tls_offsets [TLS_KEY_JIT_TLS]);
+<span class="lineNum">     214 </span>            :         MONO_THREAD_VAR_OFFSET (mono_tls_domain, tls_offsets [TLS_KEY_DOMAIN]);
+<span class="lineNum">     215 </span>            :         MONO_THREAD_VAR_OFFSET (mono_tls_lmf, tls_offsets [TLS_KEY_LMF]);
+<span class="lineNum">     216 </span>            :         MONO_THREAD_VAR_OFFSET (mono_tls_lmf_addr, tls_offsets [TLS_KEY_LMF_ADDR]);
+<span class="lineNum">     217 </span>            : #else
+<span class="lineNum">     218 </span><span class="lineCov">       3285 :         mono_native_tls_alloc (&amp;mono_tls_key_thread, NULL);</span>
+<span class="lineNum">     219 </span><span class="lineCov">       3285 :         MONO_THREAD_VAR_OFFSET (mono_tls_key_thread, tls_offsets [TLS_KEY_THREAD]);</span>
+<span class="lineNum">     220 </span><span class="lineCov">       3285 :         mono_native_tls_alloc (&amp;mono_tls_key_jit_tls, NULL);</span>
+<span class="lineNum">     221 </span><span class="lineCov">       3285 :         MONO_THREAD_VAR_OFFSET (mono_tls_key_jit_tls, tls_offsets [TLS_KEY_JIT_TLS]);</span>
+<span class="lineNum">     222 </span><span class="lineCov">       3285 :         mono_native_tls_alloc (&amp;mono_tls_key_domain, NULL);</span>
+<span class="lineNum">     223 </span><span class="lineCov">       3285 :         MONO_THREAD_VAR_OFFSET (mono_tls_key_domain, tls_offsets [TLS_KEY_DOMAIN]);</span>
+<span class="lineNum">     224 </span><span class="lineCov">       3285 :         mono_native_tls_alloc (&amp;mono_tls_key_lmf, NULL);</span>
+<span class="lineNum">     225 </span><span class="lineCov">       3285 :         MONO_THREAD_VAR_OFFSET (mono_tls_key_lmf, tls_offsets [TLS_KEY_LMF]);</span>
+<span class="lineNum">     226 </span><span class="lineCov">       3285 :         mono_native_tls_alloc (&amp;mono_tls_key_lmf_addr, NULL);</span>
+<span class="lineNum">     227 </span><span class="lineCov">       3285 :         MONO_THREAD_VAR_OFFSET (mono_tls_key_lmf_addr, tls_offsets [TLS_KEY_LMF_ADDR]);</span>
+<span class="lineNum">     228 </span>            : #endif
+<span class="lineNum">     229 </span><span class="lineCov">       3285 : }</span>
+<a name="230"><span class="lineNum">     230 </span>            : </a>
+<span class="lineNum">     231 </span>            : void
+<span class="lineNum">     232 </span>            : mono_tls_free_keys (void)
+<span class="lineNum">     233 </span>            : {
+<span class="lineNum">     234 </span>            : #ifndef USE_KW_THREAD
+<span class="lineNum">     235 </span><span class="lineCov">       3272 :         mono_native_tls_free (mono_tls_key_thread);</span>
+<span class="lineNum">     236 </span><span class="lineCov">       3272 :         mono_native_tls_free (mono_tls_key_jit_tls);</span>
+<span class="lineNum">     237 </span><span class="lineCov">       3272 :         mono_native_tls_free (mono_tls_key_domain);</span>
+<span class="lineNum">     238 </span><span class="lineCov">       3272 :         mono_native_tls_free (mono_tls_key_lmf);</span>
+<span class="lineNum">     239 </span><span class="lineCov">       3272 :         mono_native_tls_free (mono_tls_key_sgen_thread_info);</span>
+<span class="lineNum">     240 </span><span class="lineCov">       3272 :         mono_native_tls_free (mono_tls_key_lmf_addr);</span>
+<span class="lineNum">     241 </span>            : #endif
+<span class="lineNum">     242 </span><span class="lineCov">       3272 : }</span>
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span>            : /*
+<span class="lineNum">     246 </span>            :  * Gets the tls offset associated with the key. This offset is set at key
+<span class="lineNum">     247 </span>            :  * initialization (at runtime). Certain targets can implement computing
+<span class="lineNum">     248 </span>            :  * this offset and using it at runtime for fast inlined tls access.
+<a name="249"><span class="lineNum">     249 </span>            :  */</a>
+<span class="lineNum">     250 </span>            : gint32
+<span class="lineNum">     251 </span>            : mono_tls_get_tls_offset (MonoTlsKey key)
+<span class="lineNum">     252 </span>            : {
+<span class="lineNum">     253 </span><span class="lineCov">    4943974 :         g_assert (tls_offsets [key]);</span>
+<span class="lineNum">     254 </span><span class="lineCov">    1648033 :         return tls_offsets [key];</span>
+<span class="lineNum">     255 </span>            : }
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span>            : /*
+<span class="lineNum">     258 </span>            :  * Returns the getter (gpointer (*)(void)) for the mono tls key.
+<span class="lineNum">     259 </span>            :  * Managed code will always get the value by calling this getter.
+<a name="260"><span class="lineNum">     260 </span>            :  */</a>
+<span class="lineNum">     261 </span>            : gpointer
+<span class="lineNum">     262 </span>            : mono_tls_get_tls_getter (MonoTlsKey key, gboolean name)
+<span class="lineNum">     263 </span>            : {
+<span class="lineNum">     264 </span><span class="lineCov">      26436 :         switch (key) {</span>
+<span class="lineNum">     265 </span>            :         case TLS_KEY_THREAD:
+<span class="lineNum">     266 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_get_thread&quot; : (gpointer)mono_tls_get_thread;</span>
+<span class="lineNum">     267 </span>            :         case TLS_KEY_JIT_TLS:
+<span class="lineNum">     268 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_get_jit_tls&quot; : (gpointer)mono_tls_get_jit_tls;</span>
+<span class="lineNum">     269 </span>            :         case TLS_KEY_DOMAIN:
+<span class="lineNum">     270 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_get_domain&quot; : (gpointer)mono_tls_get_domain;</span>
+<span class="lineNum">     271 </span>            :         case TLS_KEY_LMF:
+<span class="lineNum">     272 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_get_lmf&quot; : (gpointer)mono_tls_get_lmf;</span>
+<span class="lineNum">     273 </span>            :         case TLS_KEY_SGEN_THREAD_INFO:
+<span class="lineNum">     274 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_get_sgen_thread_info&quot; : (gpointer)mono_tls_get_sgen_thread_info;</span>
+<span class="lineNum">     275 </span>            :         case TLS_KEY_LMF_ADDR:
+<span class="lineNum">     276 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_get_lmf_addr&quot; : (gpointer)mono_tls_get_lmf_addr;</span>
+<span class="lineNum">     277 </span>            :         }
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :         g_assert_not_reached ();</span>
+<span class="lineNum">     279 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     280 </span><span class="lineCov">      26436 : }</span>
+<span class="lineNum">     281 </span>            : 
+<a name="282"><span class="lineNum">     282 </span>            : /* Returns the setter (void (*)(gpointer)) for the mono tls key */</a>
+<span class="lineNum">     283 </span>            : gpointer
+<span class="lineNum">     284 </span>            : mono_tls_get_tls_setter (MonoTlsKey key, gboolean name)
+<span class="lineNum">     285 </span>            : {
+<span class="lineNum">     286 </span><span class="lineCov">      26436 :         switch (key) {</span>
+<span class="lineNum">     287 </span>            :         case TLS_KEY_THREAD:
+<span class="lineNum">     288 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_set_thread&quot; : (gpointer)mono_tls_set_thread;</span>
+<span class="lineNum">     289 </span>            :         case TLS_KEY_JIT_TLS:
+<span class="lineNum">     290 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_set_jit_tls&quot; : (gpointer)mono_tls_set_jit_tls;</span>
+<span class="lineNum">     291 </span>            :         case TLS_KEY_DOMAIN:
+<span class="lineNum">     292 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_set_domain&quot; : (gpointer)mono_tls_set_domain;</span>
+<span class="lineNum">     293 </span>            :         case TLS_KEY_LMF:
+<span class="lineNum">     294 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_set_lmf&quot; : (gpointer)mono_tls_set_lmf;</span>
+<span class="lineNum">     295 </span>            :         case TLS_KEY_SGEN_THREAD_INFO:
+<span class="lineNum">     296 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_set_sgen_thread_info&quot; : (gpointer)mono_tls_set_sgen_thread_info;</span>
+<span class="lineNum">     297 </span>            :         case TLS_KEY_LMF_ADDR:
+<span class="lineNum">     298 </span><span class="lineCov">       4406 :                 return name ? (gpointer)&quot;mono_tls_set_lmf_addr&quot; : (gpointer)mono_tls_set_lmf_addr;</span>
+<span class="lineNum">     299 </span>            :         }
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :         g_assert_not_reached ();</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     302 </span><span class="lineCov">      26436 : }</span>
+<a name="303"><span class="lineNum">     303 </span>            : </a>
+<span class="lineNum">     304 </span>            : gpointer
+<span class="lineNum">     305 </span>            : mono_tls_get_tls_addr (MonoTlsKey key)
+<span class="lineNum">     306 </span>            : {
+<span class="lineNum">     307 </span>            : #ifdef HAVE_GET_TLS_ADDR
+<span class="lineNum">     308 </span><span class="lineCov">      21099 :         if (key == TLS_KEY_LMF) {</span>
+<span class="lineNum">     309 </span>            : #if defined(USE_KW_THREAD)
+<span class="lineNum">     310 </span>            :                 return &amp;mono_tls_lmf;
+<span class="lineNum">     311 </span>            : #elif defined(TARGET_MACH)
+<span class="lineNum">     312 </span><span class="lineCov">      21099 :                 return mono_mach_get_tls_address_from_thread (pthread_self (), mono_tls_key_lmf);</span>
+<span class="lineNum">     313 </span>            : #endif
+<span class="lineNum">     314 </span>            :         }
+<span class="lineNum">     315 </span>            : #endif
+<span class="lineNum">     316 </span>            :         /* Implement if we ever need for other targets/keys */
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :         g_assert_not_reached ();</span>
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     319 </span><span class="lineCov">      21099 : }</span>
+<a name="320"><span class="lineNum">     320 </span>            : </a>
+<span class="lineNum">     321 </span>            : /* Getters for each tls key */
+<span class="lineNum">     322 </span>            : gpointer mono_tls_get_thread (void)
+<span class="lineNum">     323 </span>            : {
+<span class="lineNum">     324 </span><span class="lineCov">  173034337 :         return MONO_TLS_GET_VALUE (mono_tls_thread, mono_tls_key_thread);</span>
+<a name="325"><span class="lineNum">     325 </span>            : }</a>
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span>            : gpointer mono_tls_get_jit_tls (void)
+<span class="lineNum">     328 </span>            : {
+<span class="lineNum">     329 </span><span class="lineCov">    2643711 :         return MONO_TLS_GET_VALUE (mono_tls_jit_tls, mono_tls_key_jit_tls);</span>
+<a name="330"><span class="lineNum">     330 </span>            : }</a>
+<span class="lineNum">     331 </span>            : 
+<span class="lineNum">     332 </span>            : gpointer mono_tls_get_domain (void)
+<span class="lineNum">     333 </span>            : {
+<span class="lineNum">     334 </span><span class="lineCov">  207613654 :         return MONO_TLS_GET_VALUE (mono_tls_domain, mono_tls_key_domain);</span>
+<a name="335"><span class="lineNum">     335 </span>            : }</a>
+<span class="lineNum">     336 </span>            : 
+<span class="lineNum">     337 </span>            : gpointer mono_tls_get_lmf (void)
+<span class="lineNum">     338 </span>            : {
+<span class="lineNum">     339 </span><span class="lineCov">    1980694 :         return MONO_TLS_GET_VALUE (mono_tls_lmf, mono_tls_key_lmf);</span>
+<a name="340"><span class="lineNum">     340 </span>            : }</a>
+<span class="lineNum">     341 </span>            : 
+<span class="lineNum">     342 </span>            : gpointer mono_tls_get_sgen_thread_info (void)
+<span class="lineNum">     343 </span>            : {
+<span class="lineNum">     344 </span><span class="lineCov">  123710386 :         return MONO_TLS_GET_VALUE (mono_tls_sgen_thread_info, mono_tls_key_sgen_thread_info);</span>
+<a name="345"><span class="lineNum">     345 </span>            : }</a>
+<span class="lineNum">     346 </span>            : 
+<span class="lineNum">     347 </span>            : gpointer mono_tls_get_lmf_addr (void)
+<span class="lineNum">     348 </span>            : {
+<span class="lineNum">     349 </span><span class="lineCov">   36198905 :         return MONO_TLS_GET_VALUE (mono_tls_lmf_addr, mono_tls_key_lmf_addr);</span>
+<span class="lineNum">     350 </span>            : }
+<a name="351"><span class="lineNum">     351 </span>            : </a>
+<span class="lineNum">     352 </span>            : /* Setters for each tls key */
+<span class="lineNum">     353 </span>            : void mono_tls_set_thread (gpointer value)
+<span class="lineNum">     354 </span>            : {
+<span class="lineNum">     355 </span><span class="lineCov">      37845 :         MONO_TLS_SET_VALUE (mono_tls_thread, mono_tls_key_thread, value);</span>
+<a name="356"><span class="lineNum">     356 </span><span class="lineCov">      37845 : }</span></a>
+<span class="lineNum">     357 </span>            : 
+<span class="lineNum">     358 </span>            : void mono_tls_set_jit_tls (gpointer value)
+<span class="lineNum">     359 </span>            : {
+<span class="lineNum">     360 </span><span class="lineCov">      37844 :         MONO_TLS_SET_VALUE (mono_tls_jit_tls, mono_tls_key_jit_tls, value);</span>
+<a name="361"><span class="lineNum">     361 </span><span class="lineCov">      37844 : }</span></a>
+<span class="lineNum">     362 </span>            : 
+<span class="lineNum">     363 </span>            : void mono_tls_set_domain (gpointer value)
+<span class="lineNum">     364 </span>            : {
+<span class="lineNum">     365 </span><span class="lineCov">      63090 :         MONO_TLS_SET_VALUE (mono_tls_domain, mono_tls_key_domain, value);</span>
+<a name="366"><span class="lineNum">     366 </span><span class="lineCov">      63090 : }</span></a>
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span>            : void mono_tls_set_lmf (gpointer value)
+<span class="lineNum">     369 </span>            : {
+<span class="lineNum">     370 </span><span class="lineCov">     618890 :         MONO_TLS_SET_VALUE (mono_tls_lmf, mono_tls_key_lmf, value);</span>
+<a name="371"><span class="lineNum">     371 </span><span class="lineCov">     618890 : }</span></a>
+<span class="lineNum">     372 </span>            : 
+<span class="lineNum">     373 </span>            : void mono_tls_set_sgen_thread_info (gpointer value)
+<span class="lineNum">     374 </span>            : {
+<span class="lineNum">     375 </span><span class="lineCov">      38961 :         MONO_TLS_SET_VALUE (mono_tls_sgen_thread_info, mono_tls_key_sgen_thread_info, value);</span>
+<a name="376"><span class="lineNum">     376 </span><span class="lineCov">      38961 : }</span></a>
+<span class="lineNum">     377 </span>            : 
+<span class="lineNum">     378 </span>            : void mono_tls_set_lmf_addr (gpointer value)
+<span class="lineNum">     379 </span>            : {
+<span class="lineNum">     380 </span><span class="lineCov">      37845 :         MONO_TLS_SET_VALUE (mono_tls_lmf_addr, mono_tls_key_lmf_addr, value);</span>
+<span class="lineNum">     381 </span><span class="lineCov">      37845 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

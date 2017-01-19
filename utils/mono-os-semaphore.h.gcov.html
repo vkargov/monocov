@@ -1,0 +1,435 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-os-semaphore.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-os-semaphore.h<span style="font-size: 80%;"> (source / <a href="mono-os-semaphore.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">32</td>
+            <td class="headerCovTableEntry">62</td>
+            <td class="headerCovTableEntryLo">51.6 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">5</td>
+            <td class="headerCovTableEntry">5</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-os-semaphore.h:  Definitions for generic semaphore usage
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Geoff Norton  &lt;gnorton@novell.com&gt;
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2009 Novell, Inc.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #ifndef _MONO_SEMAPHORE_H_
+<span class="lineNum">      11 </span>            : #define _MONO_SEMAPHORE_H_
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #ifdef HAVE_SYS_TIME_H
+<span class="lineNum">      19 </span>            : #include &lt;sys/time.h&gt;
+<span class="lineNum">      20 </span>            : #endif
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">      23 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      24 </span>            : #endif
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : #if defined(USE_MACH_SEMA)
+<span class="lineNum">      27 </span>            : #include &lt;mach/mach_init.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;mach/task.h&gt;
+<span class="lineNum">      29 </span>            : #include &lt;mach/semaphore.h&gt;
+<span class="lineNum">      30 </span>            : #elif !defined(HOST_WIN32) &amp;&amp; defined(HAVE_SEMAPHORE_H)
+<span class="lineNum">      31 </span>            : #include &lt;semaphore.h&gt;
+<span class="lineNum">      32 </span>            : #else
+<span class="lineNum">      33 </span>            : #include &lt;winsock2.h&gt;
+<span class="lineNum">      34 </span>            : #include &lt;windows.h&gt;
+<span class="lineNum">      35 </span>            : #endif
+<span class="lineNum">      36 </span>            : 
+<span class="lineNum">      37 </span>            : #define MONO_HAS_SEMAPHORES 1
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : #ifndef NSEC_PER_SEC
+<span class="lineNum">      40 </span>            : #define NSEC_PER_SEC (1000 * 1000 * 1000)
+<span class="lineNum">      41 </span>            : #endif
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : #ifndef MONO_INFINITE_WAIT
+<span class="lineNum">      44 </span>            : #define MONO_INFINITE_WAIT ((guint32) 0xFFFFFFFF)
+<span class="lineNum">      45 </span>            : #endif
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : G_BEGIN_DECLS
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span>            : typedef enum {
+<span class="lineNum">      50 </span>            :         MONO_SEM_FLAGS_NONE      = 0,
+<span class="lineNum">      51 </span>            :         MONO_SEM_FLAGS_ALERTABLE = 1 &lt;&lt; 0,
+<span class="lineNum">      52 </span>            : } MonoSemFlags;
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span>            : typedef enum {
+<span class="lineNum">      55 </span>            :         MONO_SEM_TIMEDWAIT_RET_SUCCESS  =  0,
+<span class="lineNum">      56 </span>            :         MONO_SEM_TIMEDWAIT_RET_ALERTED  = -1,
+<span class="lineNum">      57 </span>            :         MONO_SEM_TIMEDWAIT_RET_TIMEDOUT = -2,
+<span class="lineNum">      58 </span>            : } MonoSemTimedwaitRet;
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : #if defined(USE_MACH_SEMA)
+<span class="lineNum">      61 </span>            : 
+<span class="lineNum">      62 </span>            : typedef semaphore_t MonoSemType;
+<a name="63"><span class="lineNum">      63 </span>            : </a>
+<span class="lineNum">      64 </span>            : static inline void
+<span class="lineNum">      65 </span>            : mono_os_sem_init (MonoSemType *sem, int value)
+<span class="lineNum">      66 </span>            : {
+<span class="lineNum">      67 </span>            :         kern_return_t res;
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span><span class="lineCov">      97347 :         res = semaphore_create (current_task (), sem, SYNC_POLICY_FIFO, value);</span>
+<span class="lineNum">      70 </span><span class="lineCov">      97347 :         if (G_UNLIKELY (res != KERN_SUCCESS))</span>
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: semaphore_create failed with error %d&quot;, __func__, res);</span>
+<span class="lineNum">      72 </span><span class="lineCov">      97347 : }</span>
+<a name="73"><span class="lineNum">      73 </span>            : </a>
+<span class="lineNum">      74 </span>            : static inline void
+<span class="lineNum">      75 </span>            : mono_os_sem_destroy (MonoSemType *sem)
+<span class="lineNum">      76 </span>            : {
+<span class="lineNum">      77 </span>            :         kern_return_t res;
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span><span class="lineCov">      74084 :         res = semaphore_destroy (current_task (), *sem);</span>
+<span class="lineNum">      80 </span><span class="lineCov">      74084 :         if (G_UNLIKELY (res != KERN_SUCCESS))</span>
+<span class="lineNum">      81 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: semaphore_destroy failed with error %d&quot;, __func__, res);</span>
+<span class="lineNum">      82 </span><span class="lineCov">      74083 : }</span>
+<a name="83"><span class="lineNum">      83 </span>            : </a>
+<span class="lineNum">      84 </span>            : static inline int
+<span class="lineNum">      85 </span>            : mono_os_sem_wait (MonoSemType *sem, MonoSemFlags flags)
+<span class="lineNum">      86 </span>            : {
+<span class="lineNum">      87 </span><span class="lineCov">    1373451 :         kern_return_t res;</span>
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : retry:
+<span class="lineNum">      90 </span><span class="lineCov">    1373514 :         res = semaphore_wait (*sem);</span>
+<span class="lineNum">      91 </span><span class="lineCov">    2747551 :         if (G_UNLIKELY (res != KERN_SUCCESS &amp;&amp; res != KERN_ABORTED))</span>
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: semaphore_wait failed with error %d&quot;, __func__, res);</span>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineCov">    1374043 :         if (res == KERN_ABORTED &amp;&amp; !(flags &amp; MONO_SEM_FLAGS_ALERTABLE))</span>
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :                 goto retry;</span>
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span><span class="lineCov">    1373538 :         return res != KERN_SUCCESS ? -1 : 0;</span>
+<span class="lineNum">      98 </span>            : }
+<a name="99"><span class="lineNum">      99 </span>            : </a>
+<span class="lineNum">     100 </span>            : static inline MonoSemTimedwaitRet
+<span class="lineNum">     101 </span>            : mono_os_sem_timedwait (MonoSemType *sem, guint32 timeout_ms, MonoSemFlags flags)
+<span class="lineNum">     102 </span>            : {
+<span class="lineNum">     103 </span>            :         kern_return_t res;
+<span class="lineNum">     104 </span>            :         int resint;
+<span class="lineNum">     105 </span>            :         mach_timespec_t ts, copy;
+<span class="lineNum">     106 </span>            :         struct timeval start, current;
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span><span class="lineCov">     954660 :         if (timeout_ms == MONO_INFINITE_WAIT)</span>
+<span class="lineNum">     109 </span><span class="lineCov">     912885 :                 return (MonoSemTimedwaitRet) mono_os_sem_wait (sem, flags);</span>
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span><span class="lineCov">      41777 :         ts.tv_sec = timeout_ms / 1000;</span>
+<span class="lineNum">     112 </span><span class="lineCov">      41777 :         ts.tv_nsec = (timeout_ms % 1000) * 1000000;</span>
+<span class="lineNum">     113 </span><span class="lineCov">      83563 :         while (ts.tv_nsec &gt;= NSEC_PER_SEC) {</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :                 ts.tv_nsec -= NSEC_PER_SEC;</span>
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :                 ts.tv_sec++;</span>
+<span class="lineNum">     116 </span>            :         }
+<span class="lineNum">     117 </span>            : 
+<span class="lineNum">     118 </span><span class="lineCov">      41800 :         copy = ts;</span>
+<span class="lineNum">     119 </span><span class="lineCov">      41800 :         resint = gettimeofday (&amp;start, NULL);</span>
+<span class="lineNum">     120 </span><span class="lineCov">      83571 :         if (G_UNLIKELY (resint != 0))</span>
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: gettimeofday failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);</span>
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span>            : retry:
+<span class="lineNum">     124 </span><span class="lineCov">      41796 :         res = semaphore_timedwait (*sem, ts);</span>
+<span class="lineNum">     125 </span><span class="lineCov">     115651 :         if (G_UNLIKELY (res != KERN_SUCCESS &amp;&amp; res != KERN_ABORTED &amp;&amp; res != KERN_OPERATION_TIMED_OUT))</span>
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: semaphore_timedwait failed with error %d&quot;, __func__, res);</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span><span class="lineCov">      45180 :         if (res == KERN_ABORTED &amp;&amp; !(flags &amp; MONO_SEM_FLAGS_ALERTABLE)) {</span>
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :                 ts = copy;</span>
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :                 resint = gettimeofday (&amp;current, NULL);</span>
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :                 if (G_UNLIKELY (resint != 0))</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :                         g_error (&quot;%s: gettimeofday failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);</span>
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :                 ts.tv_sec -= (current.tv_sec - start.tv_sec);</span>
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :                 ts.tv_nsec -= (current.tv_usec - start.tv_usec) * 1000;</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :                 if (ts.tv_nsec &lt; 0) {</span>
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :                         if (ts.tv_sec &lt;= 0) {</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :                                 ts.tv_nsec = 0;</span>
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :                                 ts.tv_sec--;</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                                 ts.tv_nsec += NSEC_PER_SEC;</span>
+<span class="lineNum">     143 </span>            :                         }
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :                 if (ts.tv_sec &lt; 0) {</span>
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :                         ts.tv_sec = 0;</span>
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :                         ts.tv_nsec = 0;</span>
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :                 goto retry;</span>
+<span class="lineNum">     151 </span>            :         }
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span><span class="lineCov">      41775 :         switch (res) {</span>
+<span class="lineNum">     154 </span>            :         case KERN_SUCCESS:
+<span class="lineNum">     155 </span><span class="lineCov">      24037 :                 return MONO_SEM_TIMEDWAIT_RET_SUCCESS;</span>
+<span class="lineNum">     156 </span>            :         case KERN_ABORTED:
+<span class="lineNum">     157 </span><span class="lineCov">       3395 :                 return MONO_SEM_TIMEDWAIT_RET_ALERTED;</span>
+<span class="lineNum">     158 </span>            :         case KERN_OPERATION_TIMED_OUT:
+<span class="lineNum">     159 </span><span class="lineCov">      14345 :                 return MONO_SEM_TIMEDWAIT_RET_TIMEDOUT;</span>
+<span class="lineNum">     160 </span>            :         default:
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     163 </span><span class="lineCov">     954575 : }</span>
+<a name="164"><span class="lineNum">     164 </span>            : </a>
+<span class="lineNum">     165 </span>            : static inline void
+<span class="lineNum">     166 </span>            : mono_os_sem_post (MonoSemType *sem)
+<span class="lineNum">     167 </span>            : {
+<span class="lineNum">     168 </span><span class="lineCov">    1420189 :         kern_return_t res;</span>
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span>            : retry:
+<span class="lineNum">     171 </span><span class="lineCov">    1420166 :         res = semaphore_signal (*sem);</span>
+<span class="lineNum">     172 </span><span class="lineCov">    2840353 :         if (G_UNLIKELY (res != KERN_SUCCESS &amp;&amp; res != KERN_ABORTED))</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: semaphore_signal failed with error %d&quot;, __func__, res);</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span><span class="lineCov">    1420185 :         if (res == KERN_ABORTED)</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :                 goto retry;</span>
+<span class="lineNum">     177 </span><span class="lineCov">    1420184 : }</span>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span>            : #elif !defined(HOST_WIN32) &amp;&amp; defined(HAVE_SEMAPHORE_H)
+<span class="lineNum">     180 </span>            : 
+<span class="lineNum">     181 </span>            : typedef sem_t MonoSemType;
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span>            : static inline void
+<span class="lineNum">     184 </span>            : mono_os_sem_init (MonoSemType *sem, int value)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span>            :         int res;
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span>            :         res = sem_init (sem, 0, value);
+<span class="lineNum">     189 </span>            :         if (G_UNLIKELY (res != 0))
+<span class="lineNum">     190 </span>            :                 g_error (&quot;%s: sem_init failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);
+<span class="lineNum">     191 </span>            : }
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span>            : static inline void
+<span class="lineNum">     194 </span>            : mono_os_sem_destroy (MonoSemType *sem)
+<span class="lineNum">     195 </span>            : {
+<span class="lineNum">     196 </span>            :         int res;
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span>            :         res = sem_destroy (sem);
+<span class="lineNum">     199 </span>            :         if (G_UNLIKELY (res != 0))
+<span class="lineNum">     200 </span>            :                 g_error (&quot;%s: sem_destroy failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);
+<span class="lineNum">     201 </span>            : }
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span>            : static inline int
+<span class="lineNum">     204 </span>            : mono_os_sem_wait (MonoSemType *sem, MonoSemFlags flags)
+<span class="lineNum">     205 </span>            : {
+<span class="lineNum">     206 </span>            :         int res;
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span>            : retry:
+<span class="lineNum">     209 </span>            :         res = sem_wait (sem);
+<span class="lineNum">     210 </span>            :         if (G_UNLIKELY (res != 0 &amp;&amp; errno != EINTR))
+<span class="lineNum">     211 </span>            :                 g_error (&quot;%s: sem_wait failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span>            :         if (res != 0 &amp;&amp; errno == EINTR &amp;&amp; !(flags &amp; MONO_SEM_FLAGS_ALERTABLE))
+<span class="lineNum">     214 </span>            :                 goto retry;
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span>            :         return res != 0 ? -1 : 0;
+<span class="lineNum">     217 </span>            : }
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span>            : static inline MonoSemTimedwaitRet
+<span class="lineNum">     220 </span>            : mono_os_sem_timedwait (MonoSemType *sem, guint32 timeout_ms, MonoSemFlags flags)
+<span class="lineNum">     221 </span>            : {
+<span class="lineNum">     222 </span>            :         struct timespec ts, copy;
+<span class="lineNum">     223 </span>            :         struct timeval t;
+<span class="lineNum">     224 </span>            :         int res;
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span>            :         if (timeout_ms == 0) {
+<span class="lineNum">     227 </span>            :                 res = sem_trywait (sem);
+<span class="lineNum">     228 </span>            :                 if (G_UNLIKELY (res != 0 &amp;&amp; errno != EINTR &amp;&amp; errno != EAGAIN))
+<span class="lineNum">     229 </span>            :                         g_error (&quot;%s: sem_trywait failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);
+<span class="lineNum">     230 </span>            : 
+<span class="lineNum">     231 </span>            :                 if (res == 0)
+<span class="lineNum">     232 </span>            :                         return MONO_SEM_TIMEDWAIT_RET_SUCCESS;
+<span class="lineNum">     233 </span>            :                 else if (errno == EINTR)
+<span class="lineNum">     234 </span>            :                         return MONO_SEM_TIMEDWAIT_RET_ALERTED;
+<span class="lineNum">     235 </span>            :                 else if (errno == EAGAIN)
+<span class="lineNum">     236 </span>            :                         return MONO_SEM_TIMEDWAIT_RET_TIMEDOUT;
+<span class="lineNum">     237 </span>            :                 else
+<span class="lineNum">     238 </span>            :                         g_assert_not_reached ();
+<span class="lineNum">     239 </span>            :         }
+<span class="lineNum">     240 </span>            : 
+<span class="lineNum">     241 </span>            :         if (timeout_ms == MONO_INFINITE_WAIT)
+<span class="lineNum">     242 </span>            :                 return (MonoSemTimedwaitRet) mono_os_sem_wait (sem, flags);
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span>            :         res = gettimeofday (&amp;t, NULL);
+<span class="lineNum">     245 </span>            :         if (G_UNLIKELY (res != 0))
+<span class="lineNum">     246 </span>            :                 g_error (&quot;%s: gettimeofday failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);
+<span class="lineNum">     247 </span>            : 
+<span class="lineNum">     248 </span>            :         ts.tv_sec = timeout_ms / 1000 + t.tv_sec;
+<span class="lineNum">     249 </span>            :         ts.tv_nsec = (timeout_ms % 1000) * 1000000 + t.tv_usec * 1000;
+<span class="lineNum">     250 </span>            :         while (ts.tv_nsec &gt;= NSEC_PER_SEC) {
+<span class="lineNum">     251 </span>            :                 ts.tv_nsec -= NSEC_PER_SEC;
+<span class="lineNum">     252 </span>            :                 ts.tv_sec++;
+<span class="lineNum">     253 </span>            :         }
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span>            :         copy = ts;
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span>            : retry:
+<span class="lineNum">     258 </span>            :         res = sem_timedwait (sem, &amp;ts);
+<span class="lineNum">     259 </span>            :         if (G_UNLIKELY (res != 0 &amp;&amp; errno != EINTR &amp;&amp; errno != ETIMEDOUT))
+<span class="lineNum">     260 </span>            :                 g_error (&quot;%s: sem_timedwait failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);
+<span class="lineNum">     261 </span>            : 
+<span class="lineNum">     262 </span>            :         if (res != 0 &amp;&amp; errno == EINTR &amp;&amp; !(flags &amp; MONO_SEM_FLAGS_ALERTABLE)) {
+<span class="lineNum">     263 </span>            :                 ts = copy;
+<span class="lineNum">     264 </span>            :                 goto retry;
+<span class="lineNum">     265 </span>            :         }
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span>            :         if (res == 0)
+<span class="lineNum">     268 </span>            :                 return MONO_SEM_TIMEDWAIT_RET_SUCCESS;
+<span class="lineNum">     269 </span>            :         else if (errno == EINTR)
+<span class="lineNum">     270 </span>            :                 return MONO_SEM_TIMEDWAIT_RET_ALERTED;
+<span class="lineNum">     271 </span>            :         else if (errno == ETIMEDOUT)
+<span class="lineNum">     272 </span>            :                 return MONO_SEM_TIMEDWAIT_RET_TIMEDOUT;
+<span class="lineNum">     273 </span>            :         else
+<span class="lineNum">     274 </span>            :                 g_assert_not_reached ();
+<span class="lineNum">     275 </span>            : }
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span>            : static inline void
+<span class="lineNum">     278 </span>            : mono_os_sem_post (MonoSemType *sem)
+<span class="lineNum">     279 </span>            : {
+<span class="lineNum">     280 </span>            :         int res;
+<span class="lineNum">     281 </span>            : 
+<span class="lineNum">     282 </span>            :         res = sem_post (sem);
+<span class="lineNum">     283 </span>            :         if (G_UNLIKELY (res != 0))
+<span class="lineNum">     284 </span>            :                 g_error (&quot;%s: sem_post failed with \&quot;%s\&quot; (%d)&quot;, __func__, g_strerror (errno), errno);
+<span class="lineNum">     285 </span>            : }
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span>            : #else
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span>            : typedef HANDLE MonoSemType;
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span>            : static inline void
+<span class="lineNum">     292 </span>            : mono_os_sem_init (MonoSemType *sem, int value)
+<span class="lineNum">     293 </span>            : {
+<span class="lineNum">     294 </span>            : #if G_HAVE_API_SUPPORT(HAVE_CLASSIC_WINAPI_SUPPORT)
+<span class="lineNum">     295 </span>            :         *sem = CreateSemaphore (NULL, value, 0x7FFFFFFF, NULL);
+<span class="lineNum">     296 </span>            : #else
+<span class="lineNum">     297 </span>            :         *sem = CreateSemaphoreEx (NULL, value, 0x7FFFFFFF, NULL, 0, SEMAPHORE_ALL_ACCESS);
+<span class="lineNum">     298 </span>            : #endif
+<span class="lineNum">     299 </span>            : 
+<span class="lineNum">     300 </span>            :         if (G_UNLIKELY (*sem == NULL))
+<span class="lineNum">     301 </span>            :                 g_error (&quot;%s: CreateSemaphore failed with error %d&quot;, __func__, GetLastError ());
+<span class="lineNum">     302 </span>            : }
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span>            : static inline void
+<span class="lineNum">     305 </span>            : mono_os_sem_destroy (MonoSemType *sem)
+<span class="lineNum">     306 </span>            : {
+<span class="lineNum">     307 </span>            :         BOOL res;
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span>            :         res = CloseHandle (*sem);
+<span class="lineNum">     310 </span>            :         if (G_UNLIKELY (res == 0))
+<span class="lineNum">     311 </span>            :                 g_error (&quot;%s: CloseHandle failed with error %d&quot;, __func__, GetLastError ());
+<span class="lineNum">     312 </span>            : }
+<span class="lineNum">     313 </span>            : 
+<span class="lineNum">     314 </span>            : static inline MonoSemTimedwaitRet
+<span class="lineNum">     315 </span>            : mono_os_sem_timedwait (MonoSemType *sem, guint32 timeout_ms, MonoSemFlags flags)
+<span class="lineNum">     316 </span>            : {
+<span class="lineNum">     317 </span>            :         BOOL res;
+<span class="lineNum">     318 </span>            : 
+<span class="lineNum">     319 </span>            : retry:
+<span class="lineNum">     320 </span>            :         res = WaitForSingleObjectEx (*sem, timeout_ms, flags &amp; MONO_SEM_FLAGS_ALERTABLE);
+<span class="lineNum">     321 </span>            :         if (G_UNLIKELY (res != WAIT_OBJECT_0 &amp;&amp; res != WAIT_IO_COMPLETION &amp;&amp; res != WAIT_TIMEOUT))
+<span class="lineNum">     322 </span>            :                 g_error (&quot;%s: WaitForSingleObjectEx failed with error %d&quot;, __func__, GetLastError ());
+<span class="lineNum">     323 </span>            : 
+<span class="lineNum">     324 </span>            :         if (res == WAIT_IO_COMPLETION &amp;&amp; !(flags &amp; MONO_SEM_FLAGS_ALERTABLE))
+<span class="lineNum">     325 </span>            :                 goto retry;
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span>            :         switch (res) {
+<span class="lineNum">     328 </span>            :         case WAIT_OBJECT_0:
+<span class="lineNum">     329 </span>            :                 return MONO_SEM_TIMEDWAIT_RET_SUCCESS;
+<span class="lineNum">     330 </span>            :         case WAIT_IO_COMPLETION:
+<span class="lineNum">     331 </span>            :                 return MONO_SEM_TIMEDWAIT_RET_ALERTED;
+<span class="lineNum">     332 </span>            :         case WAIT_TIMEOUT:
+<span class="lineNum">     333 </span>            :                 return MONO_SEM_TIMEDWAIT_RET_TIMEDOUT;
+<span class="lineNum">     334 </span>            :         default:
+<span class="lineNum">     335 </span>            :                 g_assert_not_reached ();
+<span class="lineNum">     336 </span>            :         }
+<span class="lineNum">     337 </span>            : }
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span>            : static inline int
+<span class="lineNum">     340 </span>            : mono_os_sem_wait (MonoSemType *sem, MonoSemFlags flags)
+<span class="lineNum">     341 </span>            : {
+<span class="lineNum">     342 </span>            :         return mono_os_sem_timedwait (sem, MONO_INFINITE_WAIT, flags) != 0 ? -1 : 0;
+<span class="lineNum">     343 </span>            : }
+<span class="lineNum">     344 </span>            : 
+<span class="lineNum">     345 </span>            : static inline void
+<span class="lineNum">     346 </span>            : mono_os_sem_post (MonoSemType *sem)
+<span class="lineNum">     347 </span>            : {
+<span class="lineNum">     348 </span>            :         BOOL res;
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span>            :         res = ReleaseSemaphore (*sem, 1, NULL);
+<span class="lineNum">     351 </span>            :         if (G_UNLIKELY (res == 0))
+<span class="lineNum">     352 </span>            :                 g_error (&quot;%s: ReleaseSemaphore failed with error %d&quot;, __func__, GetLastError ());
+<span class="lineNum">     353 </span>            : }
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span>            : #endif
+<span class="lineNum">     356 </span>            : 
+<span class="lineNum">     357 </span>            : G_END_DECLS
+<span class="lineNum">     358 </span>            : 
+<span class="lineNum">     359 </span>            : #endif /* _MONO_SEMAPHORE_H_ */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

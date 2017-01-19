@@ -1,0 +1,532 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/mini-native-types.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - mini-native-types.c<span style="font-size: 80%;"> (source / <a href="mini-native-types.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">29</td>
+            <td class="headerCovTableEntry">189</td>
+            <td class="headerCovTableEntryLo">15.3 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">5</td>
+            <td class="headerCovTableEntry">11</td>
+            <td class="headerCovTableEntryLo">45.5 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * magic-types.c: intrinsics for variable sized int/floats
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Rodrigo Kumpera (kumpera@gmail.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2013 Xamarin
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;ir-emit.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;glib.h&quot;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : typedef struct {
+<span class="lineNum">      20 </span>            :         const char *op_name;
+<span class="lineNum">      21 </span>            :         short op_table[4];
+<span class="lineNum">      22 </span>            : } IntIntrisic;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : typedef struct {
+<span class="lineNum">      25 </span>            :         short op_index;
+<span class="lineNum">      26 </span>            :         short big_stack_type;
+<span class="lineNum">      27 </span>            :         short small_stack_type;
+<span class="lineNum">      28 </span>            :         short stack_type;
+<span class="lineNum">      29 </span>            :         short conv_4_to_8;
+<span class="lineNum">      30 </span>            :         short conv_8_to_4;
+<span class="lineNum">      31 </span>            :         short move;
+<span class="lineNum">      32 </span>            :         short inc_op;
+<span class="lineNum">      33 </span>            :         short dec_op;
+<span class="lineNum">      34 </span>            :         short store_op;
+<span class="lineNum">      35 </span>            :         short compare_op;
+<span class="lineNum">      36 </span>            : } MagicTypeInfo;
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : #if SIZEOF_VOID_P == 8
+<span class="lineNum">      40 </span>            : #define OP_PT_ADD OP_LADD
+<span class="lineNum">      41 </span>            : #define OP_PT_SUB OP_LSUB
+<span class="lineNum">      42 </span>            : #define OP_PT_MUL OP_LMUL
+<span class="lineNum">      43 </span>            : #define OP_PT_DIV OP_LDIV
+<span class="lineNum">      44 </span>            : #define OP_PT_REM OP_LREM
+<span class="lineNum">      45 </span>            : #define OP_PT_NEG OP_LNEG
+<span class="lineNum">      46 </span>            : #define OP_PT_AND OP_LAND
+<span class="lineNum">      47 </span>            : #define OP_PT_OR OP_LOR
+<span class="lineNum">      48 </span>            : #define OP_PT_XOR OP_LXOR
+<span class="lineNum">      49 </span>            : #define OP_PT_NOT OP_LNOT
+<span class="lineNum">      50 </span>            : #define OP_PT_SHL OP_LSHL
+<span class="lineNum">      51 </span>            : #define OP_PT_SHR OP_LSHR
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : #define OP_PT_DIV_UN OP_LDIV_UN
+<span class="lineNum">      54 </span>            : #define OP_PT_REM_UN OP_LREM_UN
+<span class="lineNum">      55 </span>            : #define OP_PT_SHR_UN OP_LSHR_UN
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : #define OP_PT_ADD_IMM OP_LADD_IMM
+<span class="lineNum">      58 </span>            : #define OP_PT_SUB_IMM OP_LSUB_IMM
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : #define OP_PT_STORE_FP_MEMBASE_REG OP_STORER8_MEMBASE_REG
+<span class="lineNum">      61 </span>            : 
+<span class="lineNum">      62 </span>            : #define OP_PCOMPARE OP_LCOMPARE
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            : #else
+<span class="lineNum">      65 </span>            : #define OP_PT_ADD OP_IADD
+<span class="lineNum">      66 </span>            : #define OP_PT_SUB OP_ISUB
+<span class="lineNum">      67 </span>            : #define OP_PT_MUL OP_IMUL
+<span class="lineNum">      68 </span>            : #define OP_PT_DIV OP_IDIV
+<span class="lineNum">      69 </span>            : #define OP_PT_REM OP_IREM
+<span class="lineNum">      70 </span>            : #define OP_PT_NEG OP_INEG
+<span class="lineNum">      71 </span>            : #define OP_PT_AND OP_IAND
+<span class="lineNum">      72 </span>            : #define OP_PT_OR OP_IOR
+<span class="lineNum">      73 </span>            : #define OP_PT_XOR OP_IXOR
+<span class="lineNum">      74 </span>            : #define OP_PT_NOT OP_INOT
+<span class="lineNum">      75 </span>            : #define OP_PT_SHL OP_ISHL
+<span class="lineNum">      76 </span>            : #define OP_PT_SHR OP_ISHR
+<span class="lineNum">      77 </span>            : 
+<span class="lineNum">      78 </span>            : #define OP_PT_DIV_UN OP_IDIV_UN
+<span class="lineNum">      79 </span>            : #define OP_PT_REM_UN OP_IREM_UN
+<span class="lineNum">      80 </span>            : #define OP_PT_SHR_UN OP_ISHR_UN
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span>            : #define OP_PT_ADD_IMM OP_IADD_IMM
+<span class="lineNum">      83 </span>            : #define OP_PT_SUB_IMM OP_ISUB_IMM
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span>            : #define OP_PT_STORE_FP_MEMBASE_REG OP_STORER4_MEMBASE_REG
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span>            : #define OP_PCOMPARE OP_ICOMPARE
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : #endif
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span>            : static const IntIntrisic int_binop[] = {
+<span class="lineNum">      92 </span>            :         { &quot;op_Addition&quot;, { OP_PT_ADD, OP_PT_ADD, OP_FADD, OP_RADD } },
+<span class="lineNum">      93 </span>            :         { &quot;op_Subtraction&quot;, { OP_PT_SUB, OP_PT_SUB, OP_FSUB, OP_RSUB } },
+<span class="lineNum">      94 </span>            :         { &quot;op_Multiply&quot;, { OP_PT_MUL, OP_PT_MUL, OP_FMUL, OP_RMUL } },
+<span class="lineNum">      95 </span>            :         { &quot;op_Division&quot;, { OP_PT_DIV, OP_PT_DIV_UN, OP_FDIV, OP_RDIV } },
+<span class="lineNum">      96 </span>            :         { &quot;op_Modulus&quot;, { OP_PT_REM, OP_PT_REM_UN, OP_FREM, OP_RREM } },
+<span class="lineNum">      97 </span>            :         { &quot;op_BitwiseAnd&quot;, { OP_PT_AND, OP_PT_AND } },
+<span class="lineNum">      98 </span>            :         { &quot;op_BitwiseOr&quot;, { OP_PT_OR, OP_PT_OR } },
+<span class="lineNum">      99 </span>            :         { &quot;op_ExclusiveOr&quot;, { OP_PT_XOR, OP_PT_XOR } },
+<span class="lineNum">     100 </span>            :         { &quot;op_LeftShift&quot;, { OP_PT_SHL, OP_PT_SHL } },
+<span class="lineNum">     101 </span>            :         { &quot;op_RightShift&quot;, { OP_PT_SHR, OP_PT_SHR_UN } },
+<span class="lineNum">     102 </span>            : };
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span>            : static const IntIntrisic int_unnop[] = {
+<span class="lineNum">     105 </span>            :         { &quot;op_UnaryPlus&quot;, { OP_MOVE, OP_MOVE, OP_FMOVE, OP_RMOVE } },
+<span class="lineNum">     106 </span>            :         { &quot;op_UnaryNegation&quot;, { OP_PT_NEG, OP_PT_NEG, OP_FNEG, OP_RNEG } },
+<span class="lineNum">     107 </span>            :         { &quot;op_OnesComplement&quot;, { OP_PT_NOT, OP_PT_NOT, OP_FNOT, OP_RNOT } },
+<span class="lineNum">     108 </span>            : };
+<span class="lineNum">     109 </span>            : 
+<span class="lineNum">     110 </span>            : static const IntIntrisic int_cmpop[] = {
+<span class="lineNum">     111 </span>            :         { &quot;op_Inequality&quot;, { OP_ICNEQ, OP_ICNEQ, OP_FCNEQ, OP_RCNEQ } },
+<span class="lineNum">     112 </span>            :         { &quot;op_Equality&quot;, { OP_ICEQ, OP_ICEQ, OP_FCEQ, OP_RCEQ } },
+<span class="lineNum">     113 </span>            :         { &quot;op_GreaterThan&quot;, { OP_ICGT, OP_ICGT_UN, OP_FCGT, OP_RCGT } },
+<span class="lineNum">     114 </span>            :         { &quot;op_GreaterThanOrEqual&quot;, { OP_ICGE, OP_ICGE_UN, OP_FCGE, OP_RCGE } },
+<span class="lineNum">     115 </span>            :         { &quot;op_LessThan&quot;, { OP_ICLT, OP_ICLT_UN, OP_FCLT, OP_RCLT } },
+<span class="lineNum">     116 </span>            :         { &quot;op_LessThanOrEqual&quot;, { OP_ICLE, OP_ICLE_UN, OP_FCLE, OP_RCLE } },
+<span class="lineNum">     117 </span>            : };
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span>            : static const MagicTypeInfo type_info[] = {
+<span class="lineNum">     120 </span>            :         //nint
+<span class="lineNum">     121 </span>            :         { 0, STACK_I8, STACK_I4, STACK_PTR, OP_ICONV_TO_I8, OP_LCONV_TO_I4, OP_MOVE, OP_PT_ADD_IMM, OP_PT_SUB_IMM, OP_STORE_MEMBASE_REG, OP_PCOMPARE },
+<span class="lineNum">     122 </span>            :         //nuint
+<span class="lineNum">     123 </span>            :         { 1, STACK_I8, STACK_I4, STACK_PTR, OP_ICONV_TO_U8, OP_LCONV_TO_U4, OP_MOVE, OP_PT_ADD_IMM, OP_PT_SUB_IMM, OP_STORE_MEMBASE_REG, OP_PCOMPARE },
+<span class="lineNum">     124 </span>            :         //nfloat
+<span class="lineNum">     125 </span>            :         { 2, STACK_R8, STACK_R8, STACK_R8, OP_FCONV_TO_R8, OP_FCONV_TO_R4, OP_FMOVE, 0, 0, OP_PT_STORE_FP_MEMBASE_REG, 0 },
+<span class="lineNum">     126 </span>            : };
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            : static inline gboolean mono_class_is_magic_int (MonoClass *klass);
+<span class="lineNum">     129 </span>            : static inline gboolean mono_class_is_magic_float (MonoClass *klass);
+<span class="lineNum">     130 </span>            : 
+<a name="131"><span class="lineNum">     131 </span>            : </a>
+<span class="lineNum">     132 </span>            : static inline gboolean
+<span class="lineNum">     133 </span>            : type_size (MonoCompile *cfg, MonoType *type)
+<span class="lineNum">     134 </span>            : {
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :         if (type-&gt;type == MONO_TYPE_I4 || type-&gt;type == MONO_TYPE_U4)</span>
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :                 return 4;</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :         else if (type-&gt;type == MONO_TYPE_I8 || type-&gt;type == MONO_TYPE_U8)</span>
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :                 return 8;</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :         else if (type-&gt;type == MONO_TYPE_R4 &amp;&amp; !type-&gt;byref &amp;&amp; cfg-&gt;r4fp)</span>
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :                 return 4;</span>
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :         else if (type-&gt;type == MONO_TYPE_R8 &amp;&amp; !type-&gt;byref)</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                 return 8;</span>
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :         return SIZEOF_VOID_P;</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     147 </span>            : 
+<span class="lineNum">     148 </span>            : static gboolean is_int_type (MonoType *t);
+<span class="lineNum">     149 </span>            : static gboolean is_float_type (MonoType *t);
+<a name="150"><span class="lineNum">     150 </span>            : </a>
+<span class="lineNum">     151 </span>            : static MonoInst*
+<span class="lineNum">     152 </span>            : emit_narrow (MonoCompile *cfg, const MagicTypeInfo *info, int sreg)
+<span class="lineNum">     153 </span>            : {
+<span class="lineNum">     154 </span>            :         MonoInst *ins;
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :         MONO_INST_NEW (cfg, ins, info-&gt;conv_8_to_4);</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :         ins-&gt;sreg1 = sreg;</span>
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :         if (info-&gt;conv_8_to_4 == OP_FCONV_TO_R4)</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :                 ins-&gt;type = cfg-&gt;r4_stack_type;</span>
+<span class="lineNum">     160 </span>            :         else
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :                 ins-&gt;type = info-&gt;small_stack_type;</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         ins-&gt;dreg = alloc_dreg (cfg, ins-&gt;type);</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :         MONO_ADD_INS (cfg-&gt;cbb, ins);</span>
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :         return mono_decompose_opcode (cfg, ins);</span>
+<span class="lineNum">     165 </span>            : }
+<a name="166"><span class="lineNum">     166 </span>            : </a>
+<span class="lineNum">     167 </span>            : static MonoInst*
+<span class="lineNum">     168 </span>            : emit_widen (MonoCompile *cfg, const MagicTypeInfo *info, int sreg)
+<span class="lineNum">     169 </span>            : {
+<span class="lineNum">     170 </span>            :         MonoInst *ins;
+<span class="lineNum">     171 </span>            : 
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :         if (cfg-&gt;r4fp &amp;&amp; info-&gt;conv_4_to_8 == OP_FCONV_TO_R8)</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :                 MONO_INST_NEW (cfg, ins, OP_RCONV_TO_R8);</span>
+<span class="lineNum">     174 </span>            :         else
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :                 MONO_INST_NEW (cfg, ins, info-&gt;conv_4_to_8);</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :         ins-&gt;sreg1 = sreg;</span>
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :         ins-&gt;type = info-&gt;big_stack_type;</span>
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 :         ins-&gt;dreg = alloc_dreg (cfg, info-&gt;big_stack_type); </span>
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :         MONO_ADD_INS (cfg-&gt;cbb, ins);</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :         return mono_decompose_opcode (cfg, ins);</span>
+<span class="lineNum">     181 </span>            : }
+<a name="182"><span class="lineNum">     182 </span>            : </a>
+<span class="lineNum">     183 </span>            : static MonoInst*
+<span class="lineNum">     184 </span>            : emit_intrinsics (MonoCompile *cfg, MonoMethod *cmethod, MonoMethodSignature *fsig, MonoInst **args, const MagicTypeInfo *info)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :         int i = 0;</span>
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :         const char *name = cmethod-&gt;name;</span>
+<span class="lineNum">     188 </span>            :         MonoInst *ins;
+<span class="lineNum">     189 </span>            :         int type_index, stack_type;
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :         if (info-&gt;op_index == 2 &amp;&amp; cfg-&gt;r4fp &amp;&amp; SIZEOF_VOID_P == 4) {</span>
+<span class="lineNum">     192 </span><span class="lineNoCov">          0 :                 type_index = 3;</span>
+<span class="lineNum">     193 </span><span class="lineNoCov">          0 :                 stack_type = STACK_R4;</span>
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :                 type_index = info-&gt;op_index;</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :                 stack_type = info-&gt;stack_type;</span>
+<span class="lineNum">     197 </span>            :         }
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :         if (!strcmp (&quot;op_Implicit&quot;, name) || !strcmp (&quot;op_Explicit&quot;, name)) {</span>
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :                 int source_size = type_size (cfg, fsig-&gt;params [0]);</span>
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :                 int dest_size = type_size (cfg, fsig-&gt;ret);</span>
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :                 switch (info-&gt;big_stack_type) {</span>
+<span class="lineNum">     204 </span>            :                 case STACK_I8:
+<span class="lineNum">     205 </span><span class="lineNoCov">          0 :                         if (!is_int_type (fsig-&gt;params [0]) || !is_int_type (fsig-&gt;ret))</span>
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :                                 return NULL;</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     208 </span>            :                 case STACK_R8:
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :                         if (!is_float_type (fsig-&gt;params [0]) || !is_float_type (fsig-&gt;ret))</span>
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :                                 return NULL;</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     212 </span>            :                 default:
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span>            :                 //4 -&gt; 4 or 8 -&gt; 8
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :                 if (source_size == dest_size)</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :                         return args [0];</span>
+<span class="lineNum">     219 </span>            : 
+<span class="lineNum">     220 </span>            :                 //4 -&gt; 8
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :                 if (source_size &lt; dest_size)</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :                         return emit_widen (cfg, info, args [0]-&gt;dreg);</span>
+<span class="lineNum">     223 </span>            : 
+<span class="lineNum">     224 </span>            :                 //8 -&gt; 4
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :                 return emit_narrow (cfg, info, args [0]-&gt;dreg);</span>
+<span class="lineNum">     226 </span>            :         }
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :         if (!strcmp (&quot;.ctor&quot;, name)) {</span>
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :                 gboolean is_ldaddr = args [0]-&gt;opcode == OP_LDADDR;</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :                 int arg0 = args [1]-&gt;dreg;</span>
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :                 int arg_size = type_size (cfg, fsig-&gt;params [0]);</span>
+<span class="lineNum">     232 </span>            : 
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :                 if (arg_size &gt; SIZEOF_VOID_P) //8 -&gt; 4</span>
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :                         arg0 = emit_narrow (cfg, info, arg0)-&gt;dreg;</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                 else if (arg_size &lt; SIZEOF_VOID_P) //4 -&gt; 8</span>
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 :                         arg0 = emit_widen (cfg, info, arg0)-&gt;dreg;</span>
+<span class="lineNum">     237 </span>            : 
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :                 if (is_ldaddr) { /*Eliminate LDADDR if it's initing a local var*/</span>
+<span class="lineNum">     239 </span><span class="lineNoCov">          0 :                         int dreg = ((MonoInst*)args [0]-&gt;inst_p0)-&gt;dreg;</span>
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :                         NULLIFY_INS (args [0]);</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                         EMIT_NEW_UNALU (cfg, ins, info-&gt;move, dreg, arg0);</span>
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :                         cfg-&gt;has_indirection = TRUE;</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :                         EMIT_NEW_STORE_MEMBASE (cfg, ins, info-&gt;store_op, args [0]-&gt;dreg, 0, arg0);</span>
+<span class="lineNum">     245 </span>            :                 }
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :                 return ins;</span>
+<span class="lineNum">     247 </span>            :         }
+<span class="lineNum">     248 </span>            : 
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :         if (!strcmp (&quot;op_Increment&quot;, name) || !strcmp (&quot;op_Decrement&quot;, name)) {</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                 gboolean inc = !strcmp (&quot;op_Increment&quot;, name);</span>
+<span class="lineNum">     251 </span>            :                 /* FIXME float inc is too complex to bother with*/
+<span class="lineNum">     252 </span>            :                 //this is broken with ints too
+<span class="lineNum">     253 </span>            :                 // if (!info-&gt;inc_op)
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     255 </span>            : 
+<span class="lineNum">     256 </span>            :                 /* We have IR for inc/dec */
+<span class="lineNum">     257 </span>            :                 MONO_INST_NEW (cfg, ins, inc ? info-&gt;inc_op : info-&gt;dec_op);
+<span class="lineNum">     258 </span>            :                 ins-&gt;dreg = alloc_dreg (cfg, info-&gt;stack_type);
+<span class="lineNum">     259 </span>            :                 ins-&gt;sreg1 = args [0]-&gt;dreg;
+<span class="lineNum">     260 </span>            :                 ins-&gt;inst_imm = 1;
+<span class="lineNum">     261 </span>            :                 ins-&gt;type = info-&gt;stack_type;
+<span class="lineNum">     262 </span>            :                 MONO_ADD_INS (cfg-&gt;cbb, ins);
+<span class="lineNum">     263 </span>            :                 return ins;
+<span class="lineNum">     264 </span>            :         }
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; sizeof (int_binop) / sizeof  (IntIntrisic); ++i) {</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :                 if (!strcmp (int_binop [i].op_name, name)) {</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :                         if (!int_binop [i].op_table [info-&gt;op_index])</span>
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :                                 return NULL;</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :                         g_assert (int_binop [i].op_table [type_index]);</span>
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :                         MONO_INST_NEW (cfg, ins, int_binop [i].op_table [type_index]);</span>
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :                         ins-&gt;dreg = alloc_dreg (cfg, stack_type);</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                         ins-&gt;sreg1 = args [0]-&gt;dreg;</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                 ins-&gt;sreg2 = args [1]-&gt;dreg;</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                         ins-&gt;type = stack_type;</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :                         MONO_ADD_INS (cfg-&gt;cbb, ins);</span>
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :                         return mono_decompose_opcode (cfg, ins);</span>
+<span class="lineNum">     279 </span>            :                 }
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     281 </span>            : 
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; sizeof (int_unnop) / sizeof  (IntIntrisic); ++i) {</span>
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :                 if (!strcmp (int_unnop [i].op_name, name)) {</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                         g_assert (int_unnop [i].op_table [type_index]);</span>
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :                         MONO_INST_NEW (cfg, ins, int_unnop [i].op_table [type_index]);</span>
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :                         ins-&gt;dreg = alloc_dreg (cfg, stack_type);</span>
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :                         ins-&gt;sreg1 = args [0]-&gt;dreg;</span>
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :                         ins-&gt;type = stack_type;</span>
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :                         MONO_ADD_INS (cfg-&gt;cbb, ins);</span>
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :                         return ins;</span>
+<span class="lineNum">     292 </span>            :                 }
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     294 </span>            : 
+<span class="lineNum">     295 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; sizeof (int_cmpop) / sizeof  (IntIntrisic); ++i) {</span>
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :                 if (!strcmp (int_cmpop [i].op_name, name)) {</span>
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :                         g_assert (int_cmpop [i].op_table [type_index]);</span>
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span><span class="lineNoCov">          0 :                         if (info-&gt;compare_op) {</span>
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :                                 MONO_INST_NEW (cfg, ins, info-&gt;compare_op);</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :                         ins-&gt;dreg = -1;</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :                                 ins-&gt;sreg1 = args [0]-&gt;dreg;</span>
+<span class="lineNum">     303 </span><span class="lineNoCov">          0 :                         ins-&gt;sreg2 = args [1]-&gt;dreg;</span>
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :                                 MONO_ADD_INS (cfg-&gt;cbb, ins);</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineNoCov">          0 :                                 MONO_INST_NEW (cfg, ins, int_cmpop [i].op_table [type_index]);</span>
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :                         ins-&gt;dreg = alloc_preg (cfg);</span>
+<span class="lineNum">     308 </span><span class="lineNoCov">          0 :                                 ins-&gt;type = STACK_I4;</span>
+<span class="lineNum">     309 </span><span class="lineNoCov">          0 :                                 MONO_ADD_INS (cfg-&gt;cbb, ins);</span>
+<span class="lineNum">     310 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :                                 MONO_INST_NEW (cfg, ins, int_cmpop [i].op_table [type_index]);</span>
+<span class="lineNum">     312 </span><span class="lineNoCov">          0 :                                 ins-&gt;dreg = alloc_ireg (cfg);</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :                                 ins-&gt;sreg1 = args [0]-&gt;dreg;</span>
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :                         ins-&gt;sreg2 = args [1]-&gt;dreg;</span>
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :                                 MONO_ADD_INS (cfg-&gt;cbb, ins);</span>
+<span class="lineNum">     316 </span>            :                         }
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :                         return ins;</span>
+<span class="lineNum">     319 </span>            :                 }
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     321 </span>            : 
+<span class="lineNum">     322 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     324 </span>            : 
+<a name="325"><span class="lineNum">     325 </span>            : </a>
+<span class="lineNum">     326 </span>            : MonoInst*
+<span class="lineNum">     327 </span>            : mono_emit_native_types_intrinsics (MonoCompile *cfg, MonoMethod *cmethod, MonoMethodSignature *fsig, MonoInst **args)
+<span class="lineNum">     328 </span>            : {
+<span class="lineNum">     329 </span><span class="lineCov">   79518604 :         if (mono_class_is_magic_int (cmethod-&gt;klass)) {</span>
+<span class="lineNum">     330 </span><span class="lineNoCov">          0 :                 const char *class_name = cmethod-&gt;klass-&gt;name;</span>
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :                 if (!strcmp (&quot;nint&quot;, class_name))</span>
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :                         return emit_intrinsics (cfg, cmethod, fsig, args, &amp;type_info [0]);</span>
+<span class="lineNum">     333 </span>            :                 else
+<span class="lineNum">     334 </span><span class="lineNoCov">          0 :                         return emit_intrinsics (cfg, cmethod, fsig, args, &amp;type_info [1]);</span>
+<span class="lineNum">     335 </span><span class="lineCov">   79508249 :         } else if (mono_class_is_magic_float (cmethod-&gt;klass))</span>
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :                 return emit_intrinsics (cfg, cmethod, fsig, args, &amp;type_info [2]);</span>
+<span class="lineNum">     337 </span>            : 
+<span class="lineNum">     338 </span><span class="lineCov">   79522532 :         return NULL;</span>
+<span class="lineNum">     339 </span><span class="lineCov">   79525139 : }</span>
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span>            : #endif /* !DISABLE_JIT */
+<a name="342"><span class="lineNum">     342 </span>            : </a>
+<span class="lineNum">     343 </span>            : static inline gboolean
+<span class="lineNum">     344 </span>            : mono_class_is_magic_assembly (MonoClass *klass)
+<span class="lineNum">     345 </span>            : {
+<span class="lineNum">     346 </span><span class="lineCov">  807292651 :         if (!klass-&gt;image-&gt;assembly_name)</span>
+<span class="lineNum">     347 </span><span class="lineCov">          2 :                 return FALSE;</span>
+<span class="lineNum">     348 </span><span class="lineCov">  807887481 :         if (!strcmp (&quot;Xamarin.iOS&quot;, klass-&gt;image-&gt;assembly_name))</span>
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     350 </span><span class="lineCov">  808531623 :         if (!strcmp (&quot;Xamarin.Mac&quot;, klass-&gt;image-&gt;assembly_name))</span>
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     352 </span><span class="lineCov">  809882593 :         if (!strcmp (&quot;Xamarin.WatchOS&quot;, klass-&gt;image-&gt;assembly_name))</span>
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     354 </span><span class="lineCov">  809796911 :         return FALSE;</span>
+<span class="lineNum">     355 </span><span class="lineCov">  809826885 : }</span>
+<a name="356"><span class="lineNum">     356 </span>            : </a>
+<span class="lineNum">     357 </span>            : static inline gboolean
+<span class="lineNum">     358 </span>            : mono_class_is_magic_int (MonoClass *klass)
+<span class="lineNum">     359 </span>            : {
+<span class="lineNum">     360 </span>            :         static MonoClass *magic_nint_class;
+<span class="lineNum">     361 </span>            :         static MonoClass *magic_nuint_class;
+<span class="lineNum">     362 </span>            : 
+<span class="lineNum">     363 </span><span class="lineCov">  404616480 :         if (klass == magic_nint_class)</span>
+<span class="lineNum">     364 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     365 </span>            : 
+<span class="lineNum">     366 </span><span class="lineCov">  404674057 :         if (klass == magic_nuint_class)</span>
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     368 </span>            : 
+<span class="lineNum">     369 </span><span class="lineCov">  404676830 :         if (magic_nint_class &amp;&amp; magic_nuint_class)</span>
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span><span class="lineCov">  405401787 :         if (!mono_class_is_magic_assembly (klass))</span>
+<span class="lineNum">     373 </span><span class="lineCov">  405405751 :                 return FALSE;</span>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span><span class="lineNoCov">          0 :         if (strcmp (&quot;System&quot;, klass-&gt;name_space) != 0)</span>
+<span class="lineNum">     376 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     377 </span>            : 
+<span class="lineNum">     378 </span><span class="lineNoCov">          0 :         if (strcmp (&quot;nint&quot;, klass-&gt;name) == 0) {</span>
+<span class="lineNum">     379 </span><span class="lineNoCov">          0 :                 magic_nint_class = klass;</span>
+<span class="lineNum">     380 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     381 </span>            :         }
+<span class="lineNum">     382 </span>            : 
+<span class="lineNum">     383 </span><span class="lineNoCov">          0 :         if (strcmp (&quot;nuint&quot;, klass-&gt;name) == 0){</span>
+<span class="lineNum">     384 </span><span class="lineNoCov">          0 :                 magic_nuint_class = klass;</span>
+<span class="lineNum">     385 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     386 </span>            :         }
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     388 </span><span class="lineCov">  405313715 : }</span>
+<a name="389"><span class="lineNum">     389 </span>            : </a>
+<span class="lineNum">     390 </span>            : static inline gboolean
+<span class="lineNum">     391 </span>            : mono_class_is_magic_float (MonoClass *klass)
+<span class="lineNum">     392 </span>            : {
+<span class="lineNum">     393 </span>            :         static MonoClass *magic_nfloat_class;
+<span class="lineNum">     394 </span>            : 
+<span class="lineNum">     395 </span><span class="lineCov">  405300517 :         if (klass == magic_nfloat_class)</span>
+<span class="lineNum">     396 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     397 </span>            : 
+<span class="lineNum">     398 </span><span class="lineCov">  405306778 :         if (magic_nfloat_class)</span>
+<span class="lineNum">     399 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     400 </span>            : 
+<span class="lineNum">     401 </span><span class="lineCov">  405449289 :         if (!mono_class_is_magic_assembly (klass))</span>
+<span class="lineNum">     402 </span><span class="lineCov">  405459631 :                 return FALSE;</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineNoCov">          0 :         if (strcmp (&quot;System&quot;, klass-&gt;name_space) != 0)</span>
+<span class="lineNum">     405 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     406 </span>            : 
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :         if (strcmp (&quot;nfloat&quot;, klass-&gt;name) == 0) {</span>
+<span class="lineNum">     408 </span><span class="lineNoCov">          0 :                 magic_nfloat_class = klass;</span>
+<span class="lineNum">     409 </span>            : 
+<span class="lineNum">     410 </span>            :                 /* Assert that we are using the matching assembly */
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :                 MonoClassField *value_field = mono_class_get_field_from_name (klass, &quot;v&quot;);</span>
+<span class="lineNum">     412 </span><span class="lineNoCov">          0 :                 g_assert (value_field);</span>
+<span class="lineNum">     413 </span><span class="lineNoCov">          0 :                 MonoType *t = mono_field_get_type (value_field);</span>
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :                 MonoType *native = mini_native_type_replace_type (&amp;klass-&gt;byval_arg);</span>
+<span class="lineNum">     415 </span><span class="lineNoCov">          0 :                 if (t-&gt;type != native-&gt;type)</span>
+<span class="lineNum">     416 </span><span class="lineNoCov">          0 :                         g_error (&quot;Assembly used for native types '%s' doesn't match this runtime, %s is mapped to %s, expecting %s.\n&quot;, klass-&gt;image-&gt;name, klass-&gt;name, mono_type_full_name (t), mono_type_full_name (native));</span>
+<span class="lineNum">     417 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     418 </span>            :         }
+<span class="lineNum">     419 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     420 </span><span class="lineCov">  405377971 : }</span>
+<a name="421"><span class="lineNum">     421 </span>            : </a>
+<span class="lineNum">     422 </span>            : static gboolean
+<span class="lineNum">     423 </span>            : is_int_type (MonoType *t)
+<span class="lineNum">     424 </span>            : {
+<span class="lineNum">     425 </span><span class="lineNoCov">          0 :         if (t-&gt;type != MONO_TYPE_I4 &amp;&amp; t-&gt;type != MONO_TYPE_I8 &amp;&amp; t-&gt;type != MONO_TYPE_U4 &amp;&amp; t-&gt;type != MONO_TYPE_U8 &amp;&amp; !mono_class_is_magic_int (mono_class_from_mono_type (t)))</span>
+<span class="lineNum">     426 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     427 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     428 </span><span class="lineNoCov">          0 : }</span>
+<a name="429"><span class="lineNum">     429 </span>            : </a>
+<span class="lineNum">     430 </span>            : static gboolean
+<span class="lineNum">     431 </span>            : is_float_type (MonoType *t)
+<span class="lineNum">     432 </span>            : {
+<span class="lineNum">     433 </span><span class="lineNoCov">          0 :         if (t-&gt;type != MONO_TYPE_R4 &amp;&amp; t-&gt;type != MONO_TYPE_R8 &amp;&amp; !mono_class_is_magic_float (mono_class_from_mono_type (t)))</span>
+<span class="lineNum">     434 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     435 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 : }</span>
+<a name="437"><span class="lineNum">     437 </span>            : </a>
+<span class="lineNum">     438 </span>            : MonoType*
+<span class="lineNum">     439 </span>            : mini_native_type_replace_type (MonoType *type)
+<span class="lineNum">     440 </span>            : {
+<span class="lineNum">     441 </span>            :         MonoClass *klass;
+<span class="lineNum">     442 </span>            : 
+<span class="lineNum">     443 </span><span class="lineCov"> 5011224360 :         if (type-&gt;type != MONO_TYPE_VALUETYPE)</span>
+<span class="lineNum">     444 </span><span class="lineCov"> 4685914218 :                 return type;</span>
+<span class="lineNum">     445 </span><span class="lineCov">  325992757 :         klass = type-&gt;data.klass;</span>
+<span class="lineNum">     446 </span>            : 
+<span class="lineNum">     447 </span><span class="lineCov">  325992757 :         if (mono_class_is_magic_int (klass))</span>
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :                 return type-&gt;byref ? &amp;mono_defaults.int_class-&gt;this_arg : &amp;mono_defaults.int_class-&gt;byval_arg;</span>
+<span class="lineNum">     449 </span><span class="lineCov">  326028507 :         if (mono_class_is_magic_float (klass))</span>
+<span class="lineNum">     450 </span>            : #if SIZEOF_VOID_P == 8
+<span class="lineNum">     451 </span><span class="lineNoCov">          0 :                 return type-&gt;byref ? &amp;mono_defaults.double_class-&gt;this_arg : &amp;mono_defaults.double_class-&gt;byval_arg;</span>
+<span class="lineNum">     452 </span>            : #else
+<span class="lineNum">     453 </span>            :                 return type-&gt;byref ? &amp;mono_defaults.single_class-&gt;this_arg : &amp;mono_defaults.single_class-&gt;byval_arg;
+<span class="lineNum">     454 </span>            : #endif
+<span class="lineNum">     455 </span><span class="lineCov">  326024881 :         return type;</span>
+<span class="lineNum">     456 </span><span class="lineCov"> 4995834422 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

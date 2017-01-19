@@ -1,0 +1,715 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-fin-weak-hash.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-fin-weak-hash.c<span style="font-size: 80%;"> (source / <a href="sgen-fin-weak-hash.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">158</td>
+            <td class="headerCovTableEntry">206</td>
+            <td class="headerCovTableEntryMed">76.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">19</td>
+            <td class="headerCovTableEntry">21</td>
+            <td class="headerCovTableEntryHi">90.5 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-fin-weak-hash.c: Finalizers and weak links.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *  Rodrigo Kumpera (kumpera@gmail.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright 2005-2011 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       9 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">      10 </span>            :  * Copyright 2011 Xamarin, Inc.
+<span class="lineNum">      11 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">      12 </span>            :  *
+<span class="lineNum">      13 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      14 </span>            :  */
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      17 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #include &quot;mono/sgen/sgen-gc.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;mono/sgen/sgen-gray.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;mono/sgen/sgen-protocol.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;mono/sgen/sgen-pointer-queue.h&quot;
+<span class="lineNum">      23 </span>            : #include &quot;mono/sgen/sgen-client.h&quot;
+<span class="lineNum">      24 </span>            : #include &quot;mono/sgen/gc-internal-agnostic.h&quot;
+<span class="lineNum">      25 </span>            : #include &quot;mono/utils/mono-membar.h&quot;
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : #define ptr_in_nursery sgen_ptr_in_nursery
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : typedef SgenGrayQueue GrayQueue;
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : static int no_finalize = 0;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : /*
+<span class="lineNum">      34 </span>            :  * The finalizable hash has the object as the key, the 
+<span class="lineNum">      35 </span>            :  * disappearing_link hash, has the link address as key.
+<span class="lineNum">      36 </span>            :  *
+<span class="lineNum">      37 </span>            :  * Copyright 2011 Xamarin Inc.
+<span class="lineNum">      38 </span>            :  */
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : #define TAG_MASK ((mword)0x1)
+<a name="41"><span class="lineNum">      41 </span>            : </a>
+<span class="lineNum">      42 </span>            : static inline GCObject*
+<span class="lineNum">      43 </span>            : tagged_object_get_object (GCObject *object)
+<span class="lineNum">      44 </span>            : {
+<span class="lineNum">      45 </span><span class="lineCov">   39141881 :         return (GCObject*)(((mword)object) &amp; ~TAG_MASK);</span>
+<span class="lineNum">      46 </span>            : }
+<a name="47"><span class="lineNum">      47 </span>            : </a>
+<span class="lineNum">      48 </span>            : static inline int
+<span class="lineNum">      49 </span>            : tagged_object_get_tag (GCObject *object)
+<span class="lineNum">      50 </span>            : {
+<span class="lineNum">      51 </span><span class="lineCov">    7164025 :         return ((mword)object) &amp; TAG_MASK;</span>
+<span class="lineNum">      52 </span>            : }
+<a name="53"><span class="lineNum">      53 </span>            : </a>
+<span class="lineNum">      54 </span>            : static inline GCObject*
+<span class="lineNum">      55 </span>            : tagged_object_apply (void *object, int tag_bits)
+<span class="lineNum">      56 </span>            : {
+<span class="lineNum">      57 </span><span class="lineCov">    2059187 :        return (GCObject*)((mword)object | (mword)tag_bits);</span>
+<span class="lineNum">      58 </span>            : }
+<a name="59"><span class="lineNum">      59 </span>            : </a>
+<span class="lineNum">      60 </span>            : static int
+<span class="lineNum">      61 </span>            : tagged_object_hash (GCObject *o)
+<span class="lineNum">      62 </span>            : {
+<span class="lineNum">      63 </span><span class="lineCov">   14014076 :         return sgen_aligned_addr_hash (tagged_object_get_object (o));</span>
+<span class="lineNum">      64 </span>            : }
+<a name="65"><span class="lineNum">      65 </span>            : </a>
+<span class="lineNum">      66 </span>            : static gboolean
+<span class="lineNum">      67 </span>            : tagged_object_equals (GCObject *a, GCObject *b)
+<span class="lineNum">      68 </span>            : {
+<span class="lineNum">      69 </span><span class="lineCov">    8509894 :         return tagged_object_get_object (a) == tagged_object_get_object (b);</span>
+<span class="lineNum">      70 </span>            : }
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            : static SgenHashTable minor_finalizable_hash = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_FIN_TABLE, INTERNAL_MEM_FINALIZE_ENTRY, 0, (GHashFunc)tagged_object_hash, (GEqualFunc)tagged_object_equals);
+<span class="lineNum">      73 </span>            : static SgenHashTable major_finalizable_hash = SGEN_HASH_TABLE_INIT (INTERNAL_MEM_FIN_TABLE, INTERNAL_MEM_FINALIZE_ENTRY, 0, (GHashFunc)tagged_object_hash, (GEqualFunc)tagged_object_equals);
+<a name="74"><span class="lineNum">      74 </span>            : </a>
+<span class="lineNum">      75 </span>            : static SgenHashTable*
+<span class="lineNum">      76 </span>            : get_finalize_entry_hash_table (int generation)
+<span class="lineNum">      77 </span>            : {
+<span class="lineNum">      78 </span><span class="lineCov">    7561197 :         switch (generation) {</span>
+<span class="lineNum">      79 </span><span class="lineCov">    5440033 :         case GENERATION_NURSERY: return &amp;minor_finalizable_hash;</span>
+<span class="lineNum">      80 </span><span class="lineCov">    2121164 :         case GENERATION_OLD: return &amp;major_finalizable_hash;</span>
+<span class="lineNum">      81 </span><span class="lineNoCov">          0 :         default: g_assert_not_reached ();</span>
+<span class="lineNum">      82 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      83 </span><span class="lineCov">    7561197 : }</span>
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span>            : #define BRIDGE_OBJECT_MARKED 0x1
+<span class="lineNum">      86 </span>            : 
+<a name="87"><span class="lineNum">      87 </span>            : /* LOCKING: requires that the GC lock is held */</a>
+<span class="lineNum">      88 </span>            : void
+<span class="lineNum">      89 </span>            : sgen_mark_bridge_object (GCObject *obj)
+<span class="lineNum">      90 </span>            : {
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 :         SgenHashTable *hash_table = get_finalize_entry_hash_table (ptr_in_nursery (obj) ? GENERATION_NURSERY : GENERATION_OLD);</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :         sgen_hash_table_set_key (hash_table, obj, tagged_object_apply (obj, BRIDGE_OBJECT_MARKED));</span>
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">      95 </span>            : 
+<a name="96"><span class="lineNum">      96 </span>            : /* LOCKING: requires that the GC lock is held */</a>
+<span class="lineNum">      97 </span>            : void
+<span class="lineNum">      98 </span>            : sgen_collect_bridge_objects (int generation, ScanCopyContext ctx)
+<span class="lineNum">      99 </span>            : {
+<span class="lineNum">     100 </span><span class="lineNoCov">          0 :         CopyOrMarkObjectFunc copy_func = ctx.ops-&gt;copy_or_mark_object;</span>
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :         GrayQueue *queue = ctx.queue;</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :         SgenHashTable *hash_table = get_finalize_entry_hash_table (generation);</span>
+<span class="lineNum">     103 </span>            :         GCObject *object;
+<span class="lineNum">     104 </span>            :         gpointer dummy G_GNUC_UNUSED;
+<span class="lineNum">     105 </span>            :         GCObject *copy;
+<span class="lineNum">     106 </span>            :         SgenPointerQueue moved_fin_objects;
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :         sgen_pointer_queue_init (&amp;moved_fin_objects, INTERNAL_MEM_TEMPORARY);</span>
+<span class="lineNum">     109 </span>            : 
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :         if (no_finalize)</span>
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :         SGEN_HASH_TABLE_FOREACH (hash_table, GCObject *, object, gpointer, dummy) {</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :                 int tag = tagged_object_get_tag (object);</span>
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :                 object = tagged_object_get_object (object);</span>
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span>            :                 /* Bridge code told us to ignore this one */
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :                 if (tag == BRIDGE_OBJECT_MARKED)</span>
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span>            :                 /* Object is a bridge object and major heap says it's dead  */
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 :                 if (major_collector.is_object_live (object))</span>
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span>            :                 /* Nursery says the object is dead. */
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :                 if (!sgen_gc_is_object_ready_for_finalization (object))</span>
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     128 </span>            : 
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :                 if (!sgen_client_bridge_is_bridge_object (object))</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :                 copy = object;</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :                 copy_func (&amp;copy, queue);</span>
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :                 sgen_client_bridge_register_finalized_object (copy);</span>
+<span class="lineNum">     136 </span>            :                 
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :                 if (hash_table == &amp;minor_finalizable_hash &amp;&amp; !ptr_in_nursery (copy)) {</span>
+<span class="lineNum">     138 </span>            :                         /* remove from the list */
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :                         SGEN_HASH_TABLE_FOREACH_REMOVE (TRUE);</span>
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span>            :                         /* insert it into the major hash */
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                         sgen_hash_table_replace (&amp;major_finalizable_hash, tagged_object_apply (copy, tag), NULL, NULL);</span>
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :                         SGEN_LOG (5, &quot;Promoting finalization of object %p (%s) (was at %p) to major table&quot;, copy, sgen_client_vtable_get_name (SGEN_LOAD_VTABLE (copy)), object);</span>
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :                 } else if (copy != object) {</span>
+<span class="lineNum">     148 </span>            :                         /* update pointer */
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :                         SGEN_HASH_TABLE_FOREACH_REMOVE (TRUE);</span>
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span>            :                         /* register for reinsertion */
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :                         sgen_pointer_queue_add (&amp;moved_fin_objects, tagged_object_apply (copy, tag));</span>
+<span class="lineNum">     153 </span>            : 
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :                         SGEN_LOG (5, &quot;Updating object for finalization: %p (%s) (was at %p)&quot;, copy, sgen_client_vtable_get_name (SGEN_LOAD_VTABLE (copy)), object);</span>
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     157 </span>            :                 }
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :         } SGEN_HASH_TABLE_FOREACH_END;</span>
+<span class="lineNum">     159 </span>            : 
+<span class="lineNum">     160 </span><span class="lineNoCov">          0 :         while (!sgen_pointer_queue_is_empty (&amp;moved_fin_objects)) {</span>
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :                 sgen_hash_table_replace (hash_table, sgen_pointer_queue_pop (&amp;moved_fin_objects), NULL, NULL);</span>
+<span class="lineNum">     162 </span>            :         }
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :         sgen_pointer_queue_free (&amp;moved_fin_objects);</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span>            : 
+<a name="168"><span class="lineNum">     168 </span>            : /* LOCKING: requires that the GC lock is held */</a>
+<span class="lineNum">     169 </span>            : void
+<span class="lineNum">     170 </span>            : sgen_finalize_in_range (int generation, ScanCopyContext ctx)
+<span class="lineNum">     171 </span>            : {
+<span class="lineNum">     172 </span><span class="lineCov">     369486 :         CopyOrMarkObjectFunc copy_func = ctx.ops-&gt;copy_or_mark_object;</span>
+<span class="lineNum">     173 </span><span class="lineCov">     369486 :         GrayQueue *queue = ctx.queue;</span>
+<span class="lineNum">     174 </span><span class="lineCov">     369486 :         SgenHashTable *hash_table = get_finalize_entry_hash_table (generation);</span>
+<span class="lineNum">     175 </span>            :         GCObject *object;
+<span class="lineNum">     176 </span>            :         gpointer dummy G_GNUC_UNUSED;
+<span class="lineNum">     177 </span>            :         SgenPointerQueue moved_fin_objects;
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineCov">     369486 :         sgen_pointer_queue_init (&amp;moved_fin_objects, INTERNAL_MEM_TEMPORARY);</span>
+<span class="lineNum">     180 </span>            : 
+<span class="lineNum">     181 </span><span class="lineCov">     369486 :         if (no_finalize)</span>
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     183 </span><span class="lineCov">   60462025 :         SGEN_HASH_TABLE_FOREACH (hash_table, GCObject *, object, gpointer, dummy) {</span>
+<span class="lineNum">     184 </span><span class="lineCov">    7164025 :                 int tag = tagged_object_get_tag (object);</span>
+<span class="lineNum">     185 </span><span class="lineCov">    7164025 :                 object = tagged_object_get_object (object);</span>
+<span class="lineNum">     186 </span><span class="lineCov">    7164025 :                 if (!major_collector.is_object_live (object)) {</span>
+<span class="lineNum">     187 </span><span class="lineCov">    4601722 :                         gboolean is_fin_ready = sgen_gc_is_object_ready_for_finalization (object);</span>
+<span class="lineNum">     188 </span><span class="lineCov">    4601722 :                         GCObject *copy = object;</span>
+<span class="lineNum">     189 </span><span class="lineCov">    4601722 :                         copy_func (&amp;copy, queue);</span>
+<span class="lineNum">     190 </span><span class="lineCov">    4601722 :                         if (is_fin_ready) {</span>
+<span class="lineNum">     191 </span>            :                                 /* remove and put in fin_ready_list */
+<span class="lineNum">     192 </span><span class="lineCov">    4483594 :                                 SGEN_HASH_TABLE_FOREACH_REMOVE (TRUE);</span>
+<span class="lineNum">     193 </span><span class="lineCov">    2241797 :                                 sgen_queue_finalization_entry (copy);</span>
+<span class="lineNum">     194 </span>            :                                 /* Make it survive */
+<span class="lineNum">     195 </span><span class="lineCov">    4483594 :                                 SGEN_LOG (5, &quot;Queueing object for finalization: %p (%s) (was at %p) (%d)&quot;, copy, sgen_client_vtable_get_name (SGEN_LOAD_VTABLE (copy)), object, sgen_hash_table_num_entries (hash_table));</span>
+<span class="lineNum">     196 </span><span class="lineCov">    2241797 :                                 continue;</span>
+<span class="lineNum">     197 </span>            :                         } else {
+<span class="lineNum">     198 </span><span class="lineCov">    4719803 :                                 if (hash_table == &amp;minor_finalizable_hash &amp;&amp; !ptr_in_nursery (copy)) {</span>
+<span class="lineNum">     199 </span>            :                                         /* remove from the list */
+<span class="lineNum">     200 </span><span class="lineCov">    4118280 :                                         SGEN_HASH_TABLE_FOREACH_REMOVE (TRUE);</span>
+<span class="lineNum">     201 </span>            : 
+<span class="lineNum">     202 </span>            :                                         /* insert it into the major hash */
+<span class="lineNum">     203 </span><span class="lineCov">    2059140 :                                         sgen_hash_table_replace (&amp;major_finalizable_hash, tagged_object_apply (copy, tag), NULL, NULL);</span>
+<span class="lineNum">     204 </span>            : 
+<span class="lineNum">     205 </span><span class="lineCov">    4118280 :                                         SGEN_LOG (5, &quot;Promoting finalization of object %p (%s) (was at %p) to major table&quot;, copy, sgen_client_vtable_get_name (SGEN_LOAD_VTABLE (copy)), object);</span>
+<span class="lineNum">     206 </span>            : 
+<span class="lineNum">     207 </span><span class="lineCov">    2059140 :                                         continue;</span>
+<span class="lineNum">     208 </span><span class="lineCov">     300785 :                                 } else if (copy != object) {</span>
+<span class="lineNum">     209 </span>            :                                         /* update pointer */
+<span class="lineNum">     210 </span><span class="lineCov">         94 :                                         SGEN_HASH_TABLE_FOREACH_REMOVE (TRUE);</span>
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span>            :                                         /* register for reinsertion */
+<span class="lineNum">     213 </span><span class="lineCov">         47 :                                         sgen_pointer_queue_add (&amp;moved_fin_objects, tagged_object_apply (copy, tag));</span>
+<span class="lineNum">     214 </span>            : 
+<span class="lineNum">     215 </span><span class="lineCov">         94 :                                         SGEN_LOG (5, &quot;Updating object for finalization: %p (%s) (was at %p)&quot;, copy, sgen_client_vtable_get_name (SGEN_LOAD_VTABLE (copy)), object);</span>
+<span class="lineNum">     216 </span>            : 
+<span class="lineNum">     217 </span><span class="lineCov">         47 :                                         continue;</span>
+<span class="lineNum">     218 </span>            :                                 }
+<span class="lineNum">     219 </span>            :                         }
+<span class="lineNum">     220 </span><span class="lineCov">     300738 :                 }</span>
+<span class="lineNum">     221 </span><span class="lineCov">   12697900 :         } SGEN_HASH_TABLE_FOREACH_END;</span>
+<span class="lineNum">     222 </span>            : 
+<span class="lineNum">     223 </span><span class="lineCov">     739066 :         while (!sgen_pointer_queue_is_empty (&amp;moved_fin_objects)) {</span>
+<span class="lineNum">     224 </span><span class="lineCov">         47 :                 sgen_hash_table_replace (hash_table, sgen_pointer_queue_pop (&amp;moved_fin_objects), NULL, NULL);</span>
+<span class="lineNum">     225 </span>            :         }
+<span class="lineNum">     226 </span>            : 
+<span class="lineNum">     227 </span><span class="lineCov">     369486 :         sgen_pointer_queue_free (&amp;moved_fin_objects);</span>
+<span class="lineNum">     228 </span><span class="lineCov">     738972 : }</span>
+<span class="lineNum">     229 </span>            : 
+<a name="230"><span class="lineNum">     230 </span>            : /* LOCKING: requires that the GC lock is held */</a>
+<span class="lineNum">     231 </span>            : static void
+<span class="lineNum">     232 </span>            : register_for_finalization (GCObject *obj, void *user_data, int generation)
+<span class="lineNum">     233 </span>            : {
+<span class="lineNum">     234 </span><span class="lineCov">    7184741 :         SgenHashTable *hash_table = get_finalize_entry_hash_table (generation);</span>
+<span class="lineNum">     235 </span>            : 
+<span class="lineNum">     236 </span><span class="lineCov">    7184741 :         if (no_finalize)</span>
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span><span class="lineCov">    7184741 :         if (user_data) {</span>
+<span class="lineNum">     240 </span><span class="lineCov">    3992269 :                 if (sgen_hash_table_replace (hash_table, obj, NULL, NULL)) {</span>
+<span class="lineNum">     241 </span><span class="lineCov">    3988740 :                         GCVTable vt = SGEN_LOAD_VTABLE_UNCHECKED (obj);</span>
+<span class="lineNum">     242 </span><span class="lineCov">    7977480 :                         SGEN_LOG (5, &quot;Added finalizer for object: %p (%s) (%d) to %s table&quot;, obj, sgen_client_vtable_get_name (vt), hash_table-&gt;num_entries, sgen_generation_name (generation));</span>
+<span class="lineNum">     243 </span><span class="lineCov">    3988740 :                 }</span>
+<span class="lineNum">     244 </span><span class="lineCov">    3992269 :         } else {</span>
+<span class="lineNum">     245 </span><span class="lineCov">    3192472 :                 if (sgen_hash_table_remove (hash_table, obj, NULL)) {</span>
+<span class="lineNum">     246 </span><span class="lineCov">     828062 :                         GCVTable vt = SGEN_LOAD_VTABLE_UNCHECKED (obj);</span>
+<span class="lineNum">     247 </span><span class="lineCov">    1656124 :                         SGEN_LOG (5, &quot;Removed finalizer for object: %p (%s) (%d)&quot;, obj, sgen_client_vtable_get_name (vt), hash_table-&gt;num_entries);</span>
+<span class="lineNum">     248 </span><span class="lineCov">     828062 :                 }</span>
+<span class="lineNum">     249 </span>            :         }
+<span class="lineNum">     250 </span><span class="lineCov">    7184741 : }</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span>            : /*
+<span class="lineNum">     253 </span>            :  * We're using (mostly) non-locking staging queues for finalizers and weak links to speed
+<span class="lineNum">     254 </span>            :  * up registering them.  Otherwise we'd have to take the GC lock.
+<span class="lineNum">     255 </span>            :  *
+<span class="lineNum">     256 </span>            :  * The queues are arrays of `StageEntry`, plus a `next_entry` index.  Threads add entries to
+<span class="lineNum">     257 </span>            :  * the queue via `add_stage_entry()` in a linear fashion until it fills up, in which case
+<span class="lineNum">     258 </span>            :  * `process_stage_entries()` is called to drain it.  A garbage collection will also drain
+<span class="lineNum">     259 </span>            :  * the queues via the same function.  That implies that `add_stage_entry()`, since it
+<span class="lineNum">     260 </span>            :  * doesn't take a lock, must be able to run concurrently with `process_stage_entries()`,
+<span class="lineNum">     261 </span>            :  * though it doesn't have to make progress while the queue is drained.  In fact, once it
+<span class="lineNum">     262 </span>            :  * detects that the queue is being drained, it blocks until the draining is done.
+<span class="lineNum">     263 </span>            :  *
+<span class="lineNum">     264 </span>            :  * The protocol must guarantee that entries in the queue are causally ordered, otherwise two
+<span class="lineNum">     265 </span>            :  * entries for the same location might get switched, resulting in the earlier one being
+<span class="lineNum">     266 </span>            :  * committed and the later one ignored.
+<span class="lineNum">     267 </span>            :  *
+<span class="lineNum">     268 </span>            :  * `next_entry` is the index of the next entry to be filled, or `-1` if the queue is
+<span class="lineNum">     269 </span>            :  * currently being drained.  Each entry has a state:
+<span class="lineNum">     270 </span>            :  *
+<span class="lineNum">     271 </span>            :  * `STAGE_ENTRY_FREE`: The entry is free.  Its data fields must be `NULL`.
+<span class="lineNum">     272 </span>            :  *
+<span class="lineNum">     273 </span>            :  * `STAGE_ENTRY_BUSY`: The entry is currently being filled in.
+<span class="lineNum">     274 </span>            :  *
+<span class="lineNum">     275 </span>            :  * `STAGE_ENTRY_USED`: The entry is completely filled in and must be processed in the next
+<span class="lineNum">     276 </span>            :  * draining round.
+<span class="lineNum">     277 </span>            :  *
+<span class="lineNum">     278 </span>            :  * `STAGE_ENTRY_INVALID`: The entry was busy during queue draining and therefore
+<span class="lineNum">     279 </span>            :  * invalidated.  Entries that are `BUSY` can obviously not be processed during a drain, but
+<span class="lineNum">     280 </span>            :  * we can't leave them in place because new entries might be inserted before them, including
+<span class="lineNum">     281 </span>            :  * from the same thread, violating causality.  An alternative would be not to reset
+<span class="lineNum">     282 </span>            :  * `next_entry` to `0` after a drain, but to the index of the last `BUSY` entry plus one,
+<span class="lineNum">     283 </span>            :  * but that can potentially waste the whole queue.
+<span class="lineNum">     284 </span>            :  *
+<span class="lineNum">     285 </span>            :  * State transitions:
+<span class="lineNum">     286 </span>            :  *
+<span class="lineNum">     287 </span>            :  * | from    | to      | filler? | drainer? |
+<span class="lineNum">     288 </span>            :  * +---------+---------+---------+----------+
+<span class="lineNum">     289 </span>            :  * | FREE    | BUSY    | X       |          |
+<span class="lineNum">     290 </span>            :  * | BUSY    | FREE    | X       |          |
+<span class="lineNum">     291 </span>            :  * | BUSY    | USED    | X       |          |
+<span class="lineNum">     292 </span>            :  * | BUSY    | INVALID |         | X        |
+<span class="lineNum">     293 </span>            :  * | USED    | FREE    |         | X        |
+<span class="lineNum">     294 </span>            :  * | INVALID | FREE    | X       |          |
+<span class="lineNum">     295 </span>            :  *
+<span class="lineNum">     296 </span>            :  * `next_entry` can be incremented either by the filler thread that set the corresponding
+<span class="lineNum">     297 </span>            :  * entry to `BUSY`, or by another filler thread that's trying to get a `FREE` slot.  If that
+<span class="lineNum">     298 </span>            :  * other thread wasn't allowed to increment, it would block on the first filler thread.
+<span class="lineNum">     299 </span>            :  *
+<span class="lineNum">     300 </span>            :  * An entry's state, once it's set from `FREE` to `BUSY` by a filler thread, can only be
+<span class="lineNum">     301 </span>            :  * changed by that same thread or by the drained.  The drainer can only set a `BUSY` thread
+<span class="lineNum">     302 </span>            :  * to `INVALID`, so it needs to be set to `FREE` again by the original filler thread.
+<span class="lineNum">     303 </span>            :  */
+<span class="lineNum">     304 </span>            : 
+<span class="lineNum">     305 </span>            : #define STAGE_ENTRY_FREE        0
+<span class="lineNum">     306 </span>            : #define STAGE_ENTRY_BUSY        1
+<span class="lineNum">     307 </span>            : #define STAGE_ENTRY_USED        2
+<span class="lineNum">     308 </span>            : #define STAGE_ENTRY_INVALID     3
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span>            : typedef struct {
+<span class="lineNum">     311 </span>            :         volatile gint32 state;
+<span class="lineNum">     312 </span>            :         GCObject *obj;
+<span class="lineNum">     313 </span>            :         void *user_data;
+<span class="lineNum">     314 </span>            : } StageEntry;
+<span class="lineNum">     315 </span>            : 
+<span class="lineNum">     316 </span>            : #define NUM_FIN_STAGE_ENTRIES   1024
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span>            : static volatile gint32 next_fin_stage_entry = 0;
+<span class="lineNum">     319 </span>            : static StageEntry fin_stage_entries [NUM_FIN_STAGE_ENTRIES];
+<span class="lineNum">     320 </span>            : 
+<span class="lineNum">     321 </span>            : /*
+<span class="lineNum">     322 </span>            :  * This is used to lock the stage when processing is forced, i.e. when it's triggered by a
+<span class="lineNum">     323 </span>            :  * garbage collection.  In that case, the world is already stopped and there's only one
+<span class="lineNum">     324 </span>            :  * thread operating on the queue.
+<a name="325"><span class="lineNum">     325 </span>            :  */</a>
+<span class="lineNum">     326 </span>            : static void
+<span class="lineNum">     327 </span>            : lock_stage_for_processing (volatile gint32 *next_entry)
+<span class="lineNum">     328 </span>            : {
+<span class="lineNum">     329 </span><span class="lineCov">     196927 :         *next_entry = -1;</span>
+<span class="lineNum">     330 </span><span class="lineCov">     196927 : }</span>
+<span class="lineNum">     331 </span>            : 
+<span class="lineNum">     332 </span>            : /*
+<span class="lineNum">     333 </span>            :  * When processing is triggered by an overflow, we don't want to take the GC lock
+<span class="lineNum">     334 </span>            :  * immediately, and then set `next_index` to `-1`, because another thread might have drained
+<span class="lineNum">     335 </span>            :  * the queue in the mean time.  Instead, we make sure the overflow is still there, we
+<span class="lineNum">     336 </span>            :  * atomically set `next_index`, and only once that happened do we take the GC lock.
+<a name="337"><span class="lineNum">     337 </span>            :  */</a>
+<span class="lineNum">     338 </span>            : static gboolean
+<span class="lineNum">     339 </span>            : try_lock_stage_for_processing (int num_entries, volatile gint32 *next_entry)
+<span class="lineNum">     340 </span>            : {
+<span class="lineNum">     341 </span><span class="lineCov">       5744 :         gint32 old = *next_entry;</span>
+<span class="lineNum">     342 </span><span class="lineCov">       5744 :         if (old &lt; num_entries)</span>
+<span class="lineNum">     343 </span><span class="lineCov">          3 :                 return FALSE;</span>
+<span class="lineNum">     344 </span><span class="lineCov">       5743 :         return InterlockedCompareExchange (next_entry, -1, old) == old;</span>
+<span class="lineNum">     345 </span><span class="lineCov">       5745 : }</span>
+<span class="lineNum">     346 </span>            : 
+<a name="347"><span class="lineNum">     347 </span>            : /* LOCKING: requires that the GC lock is held */</a>
+<span class="lineNum">     348 </span>            : static void
+<span class="lineNum">     349 </span>            : process_stage_entries (int num_entries, volatile gint32 *next_entry, StageEntry *entries, void (*process_func) (GCObject*, void*, int))
+<span class="lineNum">     350 </span>            : {
+<span class="lineNum">     351 </span>            :         int i;
+<span class="lineNum">     352 </span>            : 
+<span class="lineNum">     353 </span>            :         /*
+<span class="lineNum">     354 </span>            :          * This can happen if after setting `next_index` to `-1` in
+<span class="lineNum">     355 </span>            :          * `try_lock_stage_for_processing()`, a GC was triggered, which then drained the
+<span class="lineNum">     356 </span>            :          * queue and reset `next_entry`.
+<span class="lineNum">     357 </span>            :          *
+<span class="lineNum">     358 </span>            :          * We have the GC lock now, so if it's still `-1`, we can't be interrupted by a GC.
+<span class="lineNum">     359 </span>            :          */
+<span class="lineNum">     360 </span><span class="lineCov">     202665 :         if (*next_entry != -1)</span>
+<span class="lineNum">     361 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     362 </span>            : 
+<span class="lineNum">     363 </span><span class="lineCov">  415463250 :         for (i = 0; i &lt; num_entries; ++i) {</span>
+<span class="lineNum">     364 </span><span class="lineCov">  207528960 :                 gint32 state;</span>
+<span class="lineNum">     365 </span>            : 
+<span class="lineNum">     366 </span>            :         retry:
+<span class="lineNum">     367 </span><span class="lineCov">  207528960 :                 state = entries [i].state;</span>
+<span class="lineNum">     368 </span>            : 
+<span class="lineNum">     369 </span><span class="lineCov">  207528960 :                 switch (state) {</span>
+<span class="lineNum">     370 </span>            :                 case STAGE_ENTRY_FREE:
+<span class="lineNum">     371 </span>            :                 case STAGE_ENTRY_INVALID:
+<span class="lineNum">     372 </span><span class="lineCov">  200344217 :                         continue;</span>
+<span class="lineNum">     373 </span>            :                 case STAGE_ENTRY_BUSY:
+<span class="lineNum">     374 </span>            :                         /* BUSY -&gt; INVALID */
+<span class="lineNum">     375 </span>            :                         /*
+<span class="lineNum">     376 </span>            :                          * This must be done atomically, because the filler thread can set
+<span class="lineNum">     377 </span>            :                          * the entry to `USED`, in which case we must process it, so we must
+<span class="lineNum">     378 </span>            :                          * detect that eventuality.
+<span class="lineNum">     379 </span>            :                          */
+<span class="lineNum">     380 </span><span class="lineCov">          2 :                         if (InterlockedCompareExchange (&amp;entries [i].state, STAGE_ENTRY_INVALID, STAGE_ENTRY_BUSY) != STAGE_ENTRY_BUSY)</span>
+<span class="lineNum">     381 </span><span class="lineNoCov">          0 :                                 goto retry;</span>
+<span class="lineNum">     382 </span><span class="lineCov">          2 :                         continue;</span>
+<span class="lineNum">     383 </span>            :                 case STAGE_ENTRY_USED:
+<span class="lineNum">     384 </span><span class="lineCov">    7184741 :                         break;</span>
+<span class="lineNum">     385 </span>            :                 default:
+<span class="lineNum">     386 </span><span class="lineNoCov">          0 :                         SGEN_ASSERT (0, FALSE, &quot;Invalid stage entry state&quot;);</span>
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     388 </span>            :                 }
+<span class="lineNum">     389 </span>            : 
+<span class="lineNum">     390 </span>            :                 /* state is USED */
+<span class="lineNum">     391 </span>            : 
+<span class="lineNum">     392 </span><span class="lineCov">    7184741 :                 process_func (entries [i].obj, entries [i].user_data, i);</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span><span class="lineCov">    7184741 :                 entries [i].obj = NULL;</span>
+<span class="lineNum">     395 </span><span class="lineCov">    7184741 :                 entries [i].user_data = NULL;</span>
+<span class="lineNum">     396 </span>            : 
+<span class="lineNum">     397 </span><span class="lineCov">    7184741 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     398 </span>            : 
+<span class="lineNum">     399 </span>            :                 /* USED -&gt; FREE */
+<span class="lineNum">     400 </span>            :                 /*
+<span class="lineNum">     401 </span>            :                  * This transition only happens here, so we don't have to do it atomically.
+<span class="lineNum">     402 </span>            :                  */
+<span class="lineNum">     403 </span><span class="lineCov">    7184741 :                 entries [i].state = STAGE_ENTRY_FREE;</span>
+<span class="lineNum">     404 </span><span class="lineCov">    7184741 :         }</span>
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span><span class="lineCov">     202665 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     407 </span>            : 
+<span class="lineNum">     408 </span><span class="lineCov">     202665 :         *next_entry = 0;</span>
+<span class="lineNum">     409 </span><span class="lineCov">     405330 : }</span>
+<span class="lineNum">     410 </span>            : 
+<span class="lineNum">     411 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     412 </span>            : static guint64 stat_overflow_abort = 0;
+<span class="lineNum">     413 </span>            : static guint64 stat_wait_for_processing = 0;
+<span class="lineNum">     414 </span>            : static guint64 stat_increment_other_thread = 0;
+<span class="lineNum">     415 </span>            : static guint64 stat_index_decremented = 0;
+<span class="lineNum">     416 </span>            : static guint64 stat_entry_invalidated = 0;
+<span class="lineNum">     417 </span>            : static guint64 stat_success = 0;
+<span class="lineNum">     418 </span>            : #endif
+<a name="419"><span class="lineNum">     419 </span>            : </a>
+<span class="lineNum">     420 </span>            : static int
+<span class="lineNum">     421 </span>            : add_stage_entry (int num_entries, volatile gint32 *next_entry, StageEntry *entries, GCObject *obj, void *user_data)
+<span class="lineNum">     422 </span>            : {
+<span class="lineNum">     423 </span>            :         gint32 index, new_next_entry, old_next_entry;
+<span class="lineNum">     424 </span><span class="lineCov">    7189623 :         gint32 previous_state;</span>
+<span class="lineNum">     425 </span>            : 
+<span class="lineNum">     426 </span>            :  retry:
+<span class="lineNum">     427 </span><span class="lineCov">    7189775 :         for (;;) {</span>
+<span class="lineNum">     428 </span><span class="lineCov">    7200162 :                 index = *next_entry;</span>
+<span class="lineNum">     429 </span><span class="lineCov">    7200162 :                 if (index &gt;= num_entries) {</span>
+<span class="lineNum">     430 </span>            :                         HEAVY_STAT (++stat_overflow_abort);
+<span class="lineNum">     431 </span><span class="lineCov">       5746 :                         return -1;</span>
+<span class="lineNum">     432 </span>            :                 }
+<span class="lineNum">     433 </span><span class="lineCov">    7194784 :                 if (index &lt; 0) {</span>
+<span class="lineNum">     434 </span>            :                         /*
+<span class="lineNum">     435 </span>            :                          * Backed-off waiting is way more efficient than even using a
+<span class="lineNum">     436 </span>            :                          * dedicated lock for this.
+<span class="lineNum">     437 </span>            :                          */
+<span class="lineNum">     438 </span><span class="lineCov">      15020 :                         while ((index = *next_entry) &lt; 0) {</span>
+<span class="lineNum">     439 </span>            :                                 /*
+<span class="lineNum">     440 </span>            :                                  * This seems like a good value.  Determined by timing
+<span class="lineNum">     441 </span>            :                                  * sgen-weakref-stress.exe.
+<span class="lineNum">     442 </span>            :                                  */
+<span class="lineNum">     443 </span><span class="lineCov">       4710 :                                 mono_thread_info_usleep (200);</span>
+<span class="lineNum">     444 </span>            :                                 HEAVY_STAT (++stat_wait_for_processing);
+<span class="lineNum">     445 </span>            :                         }
+<span class="lineNum">     446 </span><span class="lineCov">       2814 :                         continue;</span>
+<span class="lineNum">     447 </span>            :                 }
+<span class="lineNum">     448 </span>            :                 /* FREE -&gt; BUSY */
+<span class="lineNum">     449 </span><span class="lineCov">   14380287 :                 if (entries [index].state != STAGE_ENTRY_FREE ||</span>
+<span class="lineNum">     450 </span><span class="lineCov">    7188980 :                                 InterlockedCompareExchange (&amp;entries [index].state, STAGE_ENTRY_BUSY, STAGE_ENTRY_FREE) != STAGE_ENTRY_FREE) {</span>
+<span class="lineNum">     451 </span>            :                         /*
+<span class="lineNum">     452 </span>            :                          * If we can't get the entry it must be because another thread got
+<span class="lineNum">     453 </span>            :                          * it first.  We don't want to wait for that thread to increment
+<span class="lineNum">     454 </span>            :                          * `next_entry`, so we try to do it ourselves.  Whether we succeed
+<span class="lineNum">     455 </span>            :                          * or not, we start over.
+<span class="lineNum">     456 </span>            :                          */
+<span class="lineNum">     457 </span><span class="lineCov">       7500 :                         if (*next_entry == index) {</span>
+<span class="lineNum">     458 </span><span class="lineCov">       5840 :                                 InterlockedCompareExchange (next_entry, index + 1, index);</span>
+<span class="lineNum">     459 </span>            :                                 //g_print (&quot;tried increment for other thread\n&quot;);
+<span class="lineNum">     460 </span>            :                                 HEAVY_STAT (++stat_increment_other_thread);
+<span class="lineNum">     461 </span><span class="lineCov">       5840 :                         }</span>
+<span class="lineNum">     462 </span><span class="lineCov">       7498 :                         continue;</span>
+<span class="lineNum">     463 </span>            :                 }
+<span class="lineNum">     464 </span>            :                 /* state is BUSY now */
+<span class="lineNum">     465 </span><span class="lineCov">    7184818 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     466 </span>            :                 /*
+<span class="lineNum">     467 </span>            :                  * Incrementing `next_entry` must happen after setting the state to `BUSY`.
+<span class="lineNum">     468 </span>            :                  * If it were the other way around, it would be possible that after a filler
+<span class="lineNum">     469 </span>            :                  * incremented the index, other threads fill up the queue, the queue is
+<span class="lineNum">     470 </span>            :                  * drained, the original filler finally fills in the slot, but `next_entry`
+<span class="lineNum">     471 </span>            :                  * ends up at the start of the queue, and new entries are written in the
+<span class="lineNum">     472 </span>            :                  * queue in front of, not behind, the original filler's entry.
+<span class="lineNum">     473 </span>            :                  *
+<span class="lineNum">     474 </span>            :                  * We don't actually require that the CAS succeeds, but we do require that
+<span class="lineNum">     475 </span>            :                  * the value of `next_entry` is not lower than our index.  Since the drainer
+<span class="lineNum">     476 </span>            :                  * sets it to `-1`, that also takes care of the case that the drainer is
+<span class="lineNum">     477 </span>            :                  * currently running.
+<span class="lineNum">     478 </span>            :                  */
+<span class="lineNum">     479 </span><span class="lineCov">    7184818 :                 old_next_entry = InterlockedCompareExchange (next_entry, index + 1, index);</span>
+<span class="lineNum">     480 </span><span class="lineCov">    7184818 :                 if (old_next_entry &lt; index) {</span>
+<span class="lineNum">     481 </span>            :                         /* BUSY -&gt; FREE */
+<span class="lineNum">     482 </span>            :                         /* INVALID -&gt; FREE */
+<span class="lineNum">     483 </span>            :                         /*
+<span class="lineNum">     484 </span>            :                          * The state might still be `BUSY`, or the drainer could have set it
+<span class="lineNum">     485 </span>            :                          * to `INVALID`.  In either case, there's no point in CASing.  Set
+<span class="lineNum">     486 </span>            :                          * it to `FREE` and start over.
+<span class="lineNum">     487 </span>            :                          */
+<span class="lineNum">     488 </span><span class="lineCov">          2 :                         entries [index].state = STAGE_ENTRY_FREE;</span>
+<span class="lineNum">     489 </span>            :                         HEAVY_STAT (++stat_index_decremented);
+<span class="lineNum">     490 </span><span class="lineCov">          2 :                         continue;</span>
+<span class="lineNum">     491 </span>            :                 }
+<span class="lineNum">     492 </span><span class="lineCov">    7184948 :                 break;</span>
+<span class="lineNum">     493 </span>            :         }
+<span class="lineNum">     494 </span>            : 
+<span class="lineNum">     495 </span><span class="lineCov">   35924643 :         SGEN_ASSERT (0, index &gt;= 0 &amp;&amp; index &lt; num_entries, &quot;Invalid index&quot;);</span>
+<span class="lineNum">     496 </span>            : 
+<span class="lineNum">     497 </span><span class="lineCov">    7184949 :         entries [index].obj = obj;</span>
+<span class="lineNum">     498 </span><span class="lineCov">    7184949 :         entries [index].user_data = user_data;</span>
+<span class="lineNum">     499 </span>            : 
+<span class="lineNum">     500 </span><span class="lineCov">    7184949 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     501 </span>            : 
+<span class="lineNum">     502 </span><span class="lineCov">    7184949 :         new_next_entry = *next_entry;</span>
+<span class="lineNum">     503 </span><span class="lineCov">    7184949 :         mono_memory_read_barrier ();</span>
+<span class="lineNum">     504 </span>            :         /* BUSY -&gt; USED */
+<span class="lineNum">     505 </span>            :         /*
+<span class="lineNum">     506 </span>            :          * A `BUSY` entry will either still be `BUSY` or the drainer will have set it to
+<span class="lineNum">     507 </span>            :          * `INVALID`.  In the former case, we set it to `USED` and we're finished.  In the
+<span class="lineNum">     508 </span>            :          * latter case, we reset it to `FREE` and start over.
+<span class="lineNum">     509 </span>            :          */
+<span class="lineNum">     510 </span><span class="lineCov">    7184949 :         previous_state = InterlockedCompareExchange (&amp;entries [index].state, STAGE_ENTRY_USED, STAGE_ENTRY_BUSY);</span>
+<span class="lineNum">     511 </span><span class="lineCov">    7184949 :         if (previous_state == STAGE_ENTRY_BUSY) {</span>
+<span class="lineNum">     512 </span><span class="lineCov">   28739489 :                 SGEN_ASSERT (0, new_next_entry &gt;= index || new_next_entry &lt; 0, &quot;Invalid next entry index - as long as we're busy, other thread can only increment or invalidate it&quot;);</span>
+<span class="lineNum">     513 </span>            :                 HEAVY_STAT (++stat_success);
+<span class="lineNum">     514 </span><span class="lineCov">    7184832 :                 return index;</span>
+<span class="lineNum">     515 </span>            :         }
+<span class="lineNum">     516 </span>            : 
+<span class="lineNum">     517 </span><span class="lineCov">          3 :         SGEN_ASSERT (0, previous_state == STAGE_ENTRY_INVALID, &quot;Invalid state transition - other thread can only make busy state invalid&quot;);</span>
+<span class="lineNum">     518 </span><span class="lineCov">          1 :         entries [index].obj = NULL;</span>
+<span class="lineNum">     519 </span><span class="lineCov">          1 :         entries [index].user_data = NULL;</span>
+<span class="lineNum">     520 </span><span class="lineCov">          1 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     521 </span>            :         /* INVALID -&gt; FREE */
+<span class="lineNum">     522 </span><span class="lineCov">          1 :         entries [index].state = STAGE_ENTRY_FREE;</span>
+<span class="lineNum">     523 </span>            : 
+<span class="lineNum">     524 </span>            :         HEAVY_STAT (++stat_entry_invalidated);
+<span class="lineNum">     525 </span>            : 
+<span class="lineNum">     526 </span><span class="lineCov">          1 :         goto retry;</span>
+<span class="lineNum">     527 </span><span class="lineCov">    7190474 : }</span>
+<span class="lineNum">     528 </span>            : 
+<a name="529"><span class="lineNum">     529 </span>            : /* LOCKING: requires that the GC lock is held */</a>
+<span class="lineNum">     530 </span>            : static void
+<span class="lineNum">     531 </span>            : process_fin_stage_entry (GCObject *obj, void *user_data, int index)
+<span class="lineNum">     532 </span>            : {
+<span class="lineNum">     533 </span><span class="lineCov">    7184741 :         if (ptr_in_nursery (obj))</span>
+<span class="lineNum">     534 </span><span class="lineCov">    5246832 :                 register_for_finalization (obj, user_data, GENERATION_NURSERY);</span>
+<span class="lineNum">     535 </span>            :         else
+<span class="lineNum">     536 </span><span class="lineCov">    1937909 :                 register_for_finalization (obj, user_data, GENERATION_OLD);</span>
+<span class="lineNum">     537 </span><span class="lineCov">    7184741 : }</span>
+<span class="lineNum">     538 </span>            : 
+<a name="539"><span class="lineNum">     539 </span>            : /* LOCKING: requires that the GC lock is held */</a>
+<span class="lineNum">     540 </span>            : void
+<span class="lineNum">     541 </span>            : sgen_process_fin_stage_entries (void)
+<span class="lineNum">     542 </span>            : {
+<span class="lineNum">     543 </span><span class="lineCov">     196927 :         lock_stage_for_processing (&amp;next_fin_stage_entry);</span>
+<span class="lineNum">     544 </span><span class="lineCov">     196927 :         process_stage_entries (NUM_FIN_STAGE_ENTRIES, &amp;next_fin_stage_entry, fin_stage_entries, process_fin_stage_entry);</span>
+<span class="lineNum">     545 </span><span class="lineCov">     196927 : }</span>
+<a name="546"><span class="lineNum">     546 </span>            : </a>
+<span class="lineNum">     547 </span>            : void
+<span class="lineNum">     548 </span>            : sgen_object_register_for_finalization (GCObject *obj, void *user_data)
+<span class="lineNum">     549 </span>            : {
+<span class="lineNum">     550 </span><span class="lineCov">   14380118 :         while (add_stage_entry (NUM_FIN_STAGE_ENTRIES, &amp;next_fin_stage_entry, fin_stage_entries, obj, user_data) == -1) {</span>
+<span class="lineNum">     551 </span><span class="lineCov">       5746 :                 if (try_lock_stage_for_processing (NUM_FIN_STAGE_ENTRIES, &amp;next_fin_stage_entry)) {</span>
+<span class="lineNum">     552 </span><span class="lineCov">      11476 :                         LOCK_GC;</span>
+<span class="lineNum">     553 </span><span class="lineCov">       5738 :                         process_stage_entries (NUM_FIN_STAGE_ENTRIES, &amp;next_fin_stage_entry, fin_stage_entries, process_fin_stage_entry);</span>
+<span class="lineNum">     554 </span><span class="lineCov">      11476 :                         UNLOCK_GC;</span>
+<span class="lineNum">     555 </span><span class="lineCov">       5738 :                 }</span>
+<span class="lineNum">     556 </span>            :         }
+<span class="lineNum">     557 </span><span class="lineCov">    7184412 : }</span>
+<span class="lineNum">     558 </span>            : 
+<a name="559"><span class="lineNum">     559 </span>            : /* LOCKING: requires that the GC lock is held */</a>
+<span class="lineNum">     560 </span>            : static void
+<span class="lineNum">     561 </span>            : finalize_with_predicate (SgenObjectPredicateFunc predicate, void *user_data, SgenHashTable *hash_table)
+<span class="lineNum">     562 </span>            : {
+<span class="lineNum">     563 </span>            :         GCObject *object;
+<span class="lineNum">     564 </span>            :         gpointer dummy G_GNUC_UNUSED;
+<span class="lineNum">     565 </span>            : 
+<span class="lineNum">     566 </span><span class="lineCov">       6954 :         if (no_finalize)</span>
+<span class="lineNum">     567 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     568 </span><span class="lineCov">    7646718 :         SGEN_HASH_TABLE_FOREACH (hash_table, GCObject *, object, gpointer, dummy) {</span>
+<span class="lineNum">     569 </span><span class="lineCov">     264476 :                 object = tagged_object_get_object (object);</span>
+<span class="lineNum">     570 </span>            : 
+<span class="lineNum">     571 </span><span class="lineCov">     264476 :                 if (predicate (object, user_data)) {</span>
+<span class="lineNum">     572 </span>            :                         /* remove and put in out_array */
+<span class="lineNum">     573 </span><span class="lineCov">     503218 :                         SGEN_HASH_TABLE_FOREACH_REMOVE (TRUE);</span>
+<span class="lineNum">     574 </span><span class="lineCov">     251609 :                         sgen_queue_finalization_entry (object);</span>
+<span class="lineNum">     575 </span><span class="lineCov">     503218 :                         SGEN_LOG (5, &quot;Enqueuing object for finalization: %p (%s) (%d)&quot;, object, sgen_client_vtable_get_name (SGEN_LOAD_VTABLE (object)), sgen_hash_table_num_entries (hash_table));</span>
+<span class="lineNum">     576 </span><span class="lineCov">     251609 :                 }</span>
+<span class="lineNum">     577 </span>            : 
+<span class="lineNum">     578 </span><span class="lineCov">     264476 :                 if (sgen_suspend_finalizers)</span>
+<span class="lineNum">     579 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     580 </span><span class="lineCov">    1979537 :         } SGEN_HASH_TABLE_FOREACH_END;</span>
+<span class="lineNum">     581 </span><span class="lineCov">       6954 : }</span>
+<span class="lineNum">     582 </span>            : 
+<span class="lineNum">     583 </span>            : /**
+<span class="lineNum">     584 </span>            :  * sgen_gather_finalizers_if:
+<span class="lineNum">     585 </span>            :  * @predicate: predicate function
+<span class="lineNum">     586 </span>            :  * @user_data: predicate function data argument
+<span class="lineNum">     587 </span>            :  * @out_array: output array
+<span class="lineNum">     588 </span>            :  * @out_size: size of output array
+<span class="lineNum">     589 </span>            :  *
+<span class="lineNum">     590 </span>            :  * Store inside @out_array up to @out_size objects that match @predicate. Returns the number
+<span class="lineNum">     591 </span>            :  * of stored items. Can be called repeteadly until it returns 0.
+<span class="lineNum">     592 </span>            :  *
+<span class="lineNum">     593 </span>            :  * The items are removed from the finalizer data structure, so the caller is supposed
+<span class="lineNum">     594 </span>            :  * to finalize them.
+<span class="lineNum">     595 </span>            :  *
+<span class="lineNum">     596 </span>            :  * @out_array me be on the stack, or registered as a root, to allow the GC to know the
+<span class="lineNum">     597 </span>            :  * objects are still alive.
+<a name="598"><span class="lineNum">     598 </span>            :  */</a>
+<span class="lineNum">     599 </span>            : void
+<span class="lineNum">     600 </span>            : sgen_finalize_if (SgenObjectPredicateFunc predicate, void *user_data)
+<span class="lineNum">     601 </span>            : {
+<span class="lineNum">     602 </span><span class="lineCov">       6954 :         LOCK_GC;</span>
+<span class="lineNum">     603 </span><span class="lineCov">       3477 :         sgen_process_fin_stage_entries ();</span>
+<span class="lineNum">     604 </span><span class="lineCov">       3477 :         finalize_with_predicate (predicate, user_data, &amp;minor_finalizable_hash);</span>
+<span class="lineNum">     605 </span><span class="lineCov">       3477 :         finalize_with_predicate (predicate, user_data, &amp;major_finalizable_hash);</span>
+<span class="lineNum">     606 </span><span class="lineCov">       6954 :         UNLOCK_GC;</span>
+<span class="lineNum">     607 </span><span class="lineCov">       3477 : }</span>
+<a name="608"><span class="lineNum">     608 </span>            : </a>
+<span class="lineNum">     609 </span>            : void
+<span class="lineNum">     610 </span>            : sgen_remove_finalizers_if (SgenObjectPredicateFunc predicate, void *user_data, int generation)
+<span class="lineNum">     611 </span>            : {
+<span class="lineNum">     612 </span><span class="lineCov">       6970 :         SgenHashTable *hash_table = get_finalize_entry_hash_table (generation);</span>
+<span class="lineNum">     613 </span>            :         GCObject *object;
+<span class="lineNum">     614 </span>            :         gpointer dummy G_GNUC_UNUSED;
+<span class="lineNum">     615 </span>            : 
+<span class="lineNum">     616 </span><span class="lineCov">   14441278 :         SGEN_HASH_TABLE_FOREACH (hash_table, GCObject *, object, gpointer, dummy) {</span>
+<span class="lineNum">     617 </span><span class="lineCov">     679516 :                 object = tagged_object_get_object (object);</span>
+<span class="lineNum">     618 </span>            : 
+<span class="lineNum">     619 </span><span class="lineCov">     679516 :                 if (predicate (object, user_data)) {</span>
+<span class="lineNum">     620 </span><span class="lineCov">    1333982 :                         SGEN_HASH_TABLE_FOREACH_REMOVE (TRUE);</span>
+<span class="lineNum">     621 </span><span class="lineCov">     666991 :                         continue;</span>
+<span class="lineNum">     622 </span>            :                 }
+<span class="lineNum">     623 </span><span class="lineCov">    3114950 :         } SGEN_HASH_TABLE_FOREACH_END;  </span>
+<span class="lineNum">     624 </span><span class="lineCov">       6970 : }</span>
+<a name="625"><span class="lineNum">     625 </span>            : </a>
+<span class="lineNum">     626 </span>            : void
+<span class="lineNum">     627 </span>            : sgen_init_fin_weak_hash (void)
+<span class="lineNum">     628 </span>            : {
+<span class="lineNum">     629 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     630 </span>            :         mono_counters_register (&quot;FinWeak Successes&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_success);
+<span class="lineNum">     631 </span>            :         mono_counters_register (&quot;FinWeak Overflow aborts&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_overflow_abort);
+<span class="lineNum">     632 </span>            :         mono_counters_register (&quot;FinWeak Wait for processing&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_wait_for_processing);
+<span class="lineNum">     633 </span>            :         mono_counters_register (&quot;FinWeak Increment other thread&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_increment_other_thread);
+<span class="lineNum">     634 </span>            :         mono_counters_register (&quot;FinWeak Index decremented&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_index_decremented);
+<span class="lineNum">     635 </span>            :         mono_counters_register (&quot;FinWeak Entry invalidated&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_entry_invalidated);
+<span class="lineNum">     636 </span>            : #endif
+<span class="lineNum">     637 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     638 </span>            : 
+<span class="lineNum">     639 </span>            : #endif /* HAVE_SGEN_GC */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

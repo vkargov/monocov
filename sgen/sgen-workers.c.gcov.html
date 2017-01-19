@@ -1,0 +1,461 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-workers.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-workers.c<span style="font-size: 80%;"> (source / <a href="sgen-workers.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">139</td>
+            <td class="headerCovTableEntry">152</td>
+            <td class="headerCovTableEntryHi">91.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">20</td>
+            <td class="headerCovTableEntry">23</td>
+            <td class="headerCovTableEntryMed">87.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-workers.c: Worker threads for parallel and concurrent GC.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright 2001-2003 Ximian, Inc
+<span class="lineNum">       5 </span>            :  * Copyright 2003-2010 Novell, Inc.
+<span class="lineNum">       6 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      12 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &quot;mono/sgen/sgen-gc.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/sgen/sgen-workers.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;mono/sgen/sgen-thread-pool.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;mono/utils/mono-membar.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;mono/sgen/sgen-client.h&quot;
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : static int workers_num;
+<span class="lineNum">      23 </span>            : static volatile gboolean forced_stop;
+<span class="lineNum">      24 </span>            : static WorkerData *workers_data;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : static SgenSectionGrayQueue workers_distribute_gray_queue;
+<span class="lineNum">      27 </span>            : static gboolean workers_distribute_gray_queue_inited;
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : /*
+<span class="lineNum">      30 </span>            :  * Allowed transitions:
+<span class="lineNum">      31 </span>            :  *
+<span class="lineNum">      32 </span>            :  * | from \ to          | NOT WORKING | WORKING | WORK ENQUEUED |
+<span class="lineNum">      33 </span>            :  * |--------------------+-------------+---------+---------------+
+<span class="lineNum">      34 </span>            :  * | NOT WORKING        | -           | -       | main          |
+<span class="lineNum">      35 </span>            :  * | WORKING            | worker      | -       | main          |
+<span class="lineNum">      36 </span>            :  * | WORK ENQUEUED      | -           | worker  | -             |
+<span class="lineNum">      37 </span>            :  *
+<span class="lineNum">      38 </span>            :  * The WORK ENQUEUED state guarantees that the worker thread will inspect the queue again at
+<span class="lineNum">      39 </span>            :  * least once.  Only after looking at the queue will it go back to WORKING, and then,
+<span class="lineNum">      40 </span>            :  * eventually, to NOT WORKING.  After enqueuing work the main thread transitions the state
+<span class="lineNum">      41 </span>            :  * to WORK ENQUEUED.  Signalling the worker thread to wake up is only necessary if the old
+<span class="lineNum">      42 </span>            :  * state was NOT WORKING.
+<span class="lineNum">      43 </span>            :  */
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            : enum {
+<span class="lineNum">      46 </span>            :         STATE_NOT_WORKING,
+<span class="lineNum">      47 </span>            :         STATE_WORKING,
+<span class="lineNum">      48 </span>            :         STATE_WORK_ENQUEUED
+<span class="lineNum">      49 </span>            : };
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : typedef gint32 State;
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : static volatile State workers_state;
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : static SgenObjectOperations * volatile idle_func_object_ops;
+<span class="lineNum">      56 </span>            : static SgenThreadPoolJob * volatile preclean_job;
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            : static guint64 stat_workers_num_finished;
+<a name="59"><span class="lineNum">      59 </span>            : </a>
+<span class="lineNum">      60 </span>            : static gboolean
+<span class="lineNum">      61 </span>            : set_state (State old_state, State new_state)
+<span class="lineNum">      62 </span>            : {
+<span class="lineNum">      63 </span><span class="lineCov">       2625 :         SGEN_ASSERT (0, old_state != new_state, &quot;Why are we transitioning to the same state?&quot;);</span>
+<span class="lineNum">      64 </span><span class="lineCov">        875 :         if (new_state == STATE_NOT_WORKING)</span>
+<span class="lineNum">      65 </span><span class="lineCov">       1124 :                 SGEN_ASSERT (0, old_state == STATE_WORKING, &quot;We can only transition to NOT WORKING from WORKING&quot;);</span>
+<span class="lineNum">      66 </span><span class="lineCov">        594 :         else if (new_state == STATE_WORKING)</span>
+<span class="lineNum">      67 </span><span class="lineCov">       1188 :                 SGEN_ASSERT (0, old_state == STATE_WORK_ENQUEUED, &quot;We can only transition to WORKING from WORK ENQUEUED&quot;);</span>
+<span class="lineNum">      68 </span><span class="lineCov">       1469 :         if (new_state == STATE_NOT_WORKING || new_state == STATE_WORKING)</span>
+<span class="lineNum">      69 </span><span class="lineCov">       1734 :                 SGEN_ASSERT (6, sgen_thread_pool_is_thread_pool_thread (mono_native_thread_id_get ()), &quot;Only the worker thread is allowed to transition to NOT_WORKING or WORKING&quot;);</span>
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span><span class="lineCov">        875 :         return InterlockedCompareExchange (&amp;workers_state, new_state, old_state) == old_state;</span>
+<span class="lineNum">      72 </span>            : }
+<a name="73"><span class="lineNum">      73 </span>            : </a>
+<span class="lineNum">      74 </span>            : static gboolean
+<span class="lineNum">      75 </span>            : state_is_working_or_enqueued (State state)
+<span class="lineNum">      76 </span>            : {
+<span class="lineNum">      77 </span><span class="lineCov">   15163281 :         return state == STATE_WORKING || state == STATE_WORK_ENQUEUED;</span>
+<span class="lineNum">      78 </span>            : }
+<a name="79"><span class="lineNum">      79 </span>            : </a>
+<span class="lineNum">      80 </span>            : static void
+<span class="lineNum">      81 </span>            : sgen_workers_ensure_awake (void)
+<span class="lineNum">      82 </span>            : {
+<span class="lineNum">      83 </span>            :         State old_state;
+<span class="lineNum">      84 </span>            :         gboolean did_set_state;
+<span class="lineNum">      85 </span>            : 
+<span class="lineNum">      86 </span><span class="lineCov">        530 :         do {</span>
+<span class="lineNum">      87 </span><span class="lineCov">        530 :                 old_state = workers_state;</span>
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span><span class="lineCov">        530 :                 if (old_state == STATE_WORK_ENQUEUED)</span>
+<span class="lineNum">      90 </span><span class="lineCov">        233 :                         break;</span>
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span><span class="lineCov">        297 :                 did_set_state = set_state (old_state, STATE_WORK_ENQUEUED);</span>
+<span class="lineNum">      93 </span><span class="lineCov">        594 :         } while (!did_set_state);</span>
+<span class="lineNum">      94 </span>            : 
+<span class="lineNum">      95 </span><span class="lineCov">        530 :         if (!state_is_working_or_enqueued (old_state))</span>
+<span class="lineNum">      96 </span><span class="lineCov">        281 :                 sgen_thread_pool_idle_signal ();</span>
+<span class="lineNum">      97 </span><span class="lineCov">        530 : }</span>
+<a name="98"><span class="lineNum">      98 </span>            : </a>
+<span class="lineNum">      99 </span>            : static void
+<span class="lineNum">     100 </span>            : worker_try_finish (WorkerData *data)
+<span class="lineNum">     101 </span>            : {
+<span class="lineNum">     102 </span>            :         State old_state;
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineCov">        281 :         ++stat_workers_num_finished;</span>
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span><span class="lineCov">        281 :         do {</span>
+<span class="lineNum">     107 </span><span class="lineCov">        281 :                 old_state = workers_state;</span>
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span><span class="lineCov">        843 :                 SGEN_ASSERT (0, old_state != STATE_NOT_WORKING, &quot;How did we get from doing idle work to NOT WORKING without setting it ourselves?&quot;);</span>
+<span class="lineNum">     110 </span><span class="lineCov">        281 :                 if (old_state == STATE_WORK_ENQUEUED)</span>
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     112 </span><span class="lineCov">        843 :                 SGEN_ASSERT (0, old_state == STATE_WORKING, &quot;What other possibility is there?&quot;);</span>
+<span class="lineNum">     113 </span>            : 
+<span class="lineNum">     114 </span>            :                 /* We are the last thread to go to sleep. */
+<span class="lineNum">     115 </span><span class="lineCov">        562 :         } while (!set_state (old_state, STATE_NOT_WORKING));</span>
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span><span class="lineCov">        281 :         binary_protocol_worker_finish (sgen_timestamp (), forced_stop);</span>
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span><span class="lineCov">        281 :         sgen_gray_object_queue_trim_free_list (&amp;data-&gt;private_gray_queue);</span>
+<span class="lineNum">     120 </span><span class="lineCov">        562 : }</span>
+<a name="121"><span class="lineNum">     121 </span>            : </a>
+<span class="lineNum">     122 </span>            : void
+<span class="lineNum">     123 </span>            : sgen_workers_enqueue_job (SgenThreadPoolJob *job, gboolean enqueue)
+<span class="lineNum">     124 </span>            : {
+<span class="lineNum">     125 </span><span class="lineCov">     960269 :         if (!enqueue) {</span>
+<span class="lineNum">     126 </span><span class="lineCov">     960269 :                 job-&gt;func (NULL, job);</span>
+<span class="lineNum">     127 </span><span class="lineCov">     960269 :                 sgen_thread_pool_job_free (job);</span>
+<span class="lineNum">     128 </span><span class="lineCov">     960269 :                 return;</span>
+<span class="lineNum">     129 </span>            :         }
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :         sgen_thread_pool_job_enqueue (job);</span>
+<span class="lineNum">     132 </span><span class="lineCov">     960269 : }</span>
+<a name="133"><span class="lineNum">     133 </span>            : </a>
+<span class="lineNum">     134 </span>            : void
+<span class="lineNum">     135 </span>            : sgen_workers_wait_for_jobs_finished (void)
+<span class="lineNum">     136 </span>            : {
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :         sgen_thread_pool_wait_for_all_jobs ();</span>
+<span class="lineNum">     138 </span>            :         /*
+<span class="lineNum">     139 </span>            :          * If the idle task was never triggered or it finished before the last job did and
+<span class="lineNum">     140 </span>            :          * then didn't get triggered again, we might end up in the situation of having
+<span class="lineNum">     141 </span>            :          * something in the gray queue yet the idle task not working.  The easiest way to
+<span class="lineNum">     142 </span>            :          * make sure this doesn't stay that way is to just trigger it again after all jobs
+<span class="lineNum">     143 </span>            :          * have finished.
+<span class="lineNum">     144 </span>            :          */
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :         sgen_workers_ensure_awake ();</span>
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 : }</span>
+<a name="147"><span class="lineNum">     147 </span>            : </a>
+<span class="lineNum">     148 </span>            : static gboolean
+<span class="lineNum">     149 </span>            : workers_get_work (WorkerData *data)
+<span class="lineNum">     150 </span>            : {
+<span class="lineNum">     151 </span>            :         SgenMajorCollector *major;
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span><span class="lineCov">      14628 :         g_assert (sgen_gray_object_queue_is_empty (&amp;data-&gt;private_gray_queue));</span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            :         /* If we're concurrent, steal from the workers distribute gray queue. */
+<span class="lineNum">     156 </span><span class="lineCov">       4876 :         major = sgen_get_major_collector ();</span>
+<span class="lineNum">     157 </span><span class="lineCov">       4876 :         if (major-&gt;is_concurrent) {</span>
+<span class="lineNum">     158 </span><span class="lineCov">       4876 :                 GrayQueueSection *section = sgen_section_gray_queue_dequeue (&amp;workers_distribute_gray_queue);</span>
+<span class="lineNum">     159 </span><span class="lineCov">       4876 :                 if (section) {</span>
+<span class="lineNum">     160 </span><span class="lineCov">       4398 :                         sgen_gray_object_enqueue_section (&amp;data-&gt;private_gray_queue, section);</span>
+<span class="lineNum">     161 </span><span class="lineCov">       4398 :                         return TRUE;</span>
+<span class="lineNum">     162 </span>            :                 }
+<span class="lineNum">     163 </span><span class="lineCov">        478 :         }</span>
+<span class="lineNum">     164 </span>            : 
+<span class="lineNum">     165 </span>            :         /* Nobody to steal from */
+<span class="lineNum">     166 </span><span class="lineCov">       1434 :         g_assert (sgen_gray_object_queue_is_empty (&amp;data-&gt;private_gray_queue));</span>
+<span class="lineNum">     167 </span><span class="lineCov">        478 :         return FALSE;</span>
+<span class="lineNum">     168 </span><span class="lineCov">       4876 : }</span>
+<a name="169"><span class="lineNum">     169 </span>            : </a>
+<span class="lineNum">     170 </span>            : static void
+<span class="lineNum">     171 </span>            : concurrent_enqueue_check (GCObject *obj)
+<span class="lineNum">     172 </span>            : {
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :         g_assert (sgen_concurrent_collection_in_progress ());</span>
+<span class="lineNum">     174 </span><span class="lineNoCov">          0 :         g_assert (!sgen_ptr_in_nursery (obj));</span>
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :         g_assert (SGEN_LOAD_VTABLE (obj));</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 : }</span>
+<a name="177"><span class="lineNum">     177 </span>            : </a>
+<span class="lineNum">     178 </span>            : static void
+<span class="lineNum">     179 </span>            : init_private_gray_queue (WorkerData *data)
+<span class="lineNum">     180 </span>            : {
+<span class="lineNum">     181 </span><span class="lineCov">       6570 :         sgen_gray_object_queue_init (&amp;data-&gt;private_gray_queue,</span>
+<span class="lineNum">     182 </span><span class="lineCov">       3285 :                         sgen_get_major_collector ()-&gt;is_concurrent ? concurrent_enqueue_check : NULL,</span>
+<span class="lineNum">     183 </span>            :                         FALSE);
+<span class="lineNum">     184 </span><span class="lineCov">       3285 : }</span>
+<a name="185"><span class="lineNum">     185 </span>            : </a>
+<span class="lineNum">     186 </span>            : static void
+<span class="lineNum">     187 </span>            : thread_pool_init_func (void *data_untyped)
+<span class="lineNum">     188 </span>            : {
+<span class="lineNum">     189 </span><span class="lineCov">       3285 :         WorkerData *data = (WorkerData *)data_untyped;</span>
+<span class="lineNum">     190 </span><span class="lineCov">       3285 :         SgenMajorCollector *major = sgen_get_major_collector ();</span>
+<span class="lineNum">     191 </span>            : 
+<span class="lineNum">     192 </span><span class="lineCov">       3285 :         sgen_client_thread_register_worker ();</span>
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span><span class="lineCov">       3285 :         if (!major-&gt;is_concurrent)</span>
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span><span class="lineCov">       3285 :         init_private_gray_queue (data);</span>
+<span class="lineNum">     198 </span><span class="lineCov">       6570 : }</span>
+<a name="199"><span class="lineNum">     199 </span>            : </a>
+<span class="lineNum">     200 </span>            : static gboolean
+<span class="lineNum">     201 </span>            : continue_idle_func (void)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span><span class="lineCov">    7306566 :         return state_is_working_or_enqueued (workers_state);</span>
+<span class="lineNum">     204 </span>            : }
+<a name="205"><span class="lineNum">     205 </span>            : </a>
+<span class="lineNum">     206 </span>            : static void
+<span class="lineNum">     207 </span>            : marker_idle_func (void *data_untyped)
+<span class="lineNum">     208 </span>            : {
+<span class="lineNum">     209 </span><span class="lineCov">    3379049 :         WorkerData *data = (WorkerData *)data_untyped;</span>
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineCov">   10137147 :         SGEN_ASSERT (0, continue_idle_func (), &quot;Why are we called when we're not supposed to work?&quot;);</span>
+<span class="lineNum">     212 </span><span class="lineCov">   10137147 :         SGEN_ASSERT (0, sgen_concurrent_collection_in_progress (), &quot;The worker should only mark in concurrent collections.&quot;);</span>
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span><span class="lineCov">    3379049 :         if (workers_state == STATE_WORK_ENQUEUED) {</span>
+<span class="lineNum">     215 </span><span class="lineCov">        297 :                 set_state (STATE_WORK_ENQUEUED, STATE_WORKING);</span>
+<span class="lineNum">     216 </span><span class="lineCov">        891 :                 SGEN_ASSERT (0, workers_state != STATE_NOT_WORKING, &quot;How did we get from WORK ENQUEUED to NOT WORKING?&quot;);</span>
+<span class="lineNum">     217 </span><span class="lineCov">        297 :         }</span>
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span><span class="lineCov">    6762942 :         if (!forced_stop &amp;&amp; (!sgen_gray_object_queue_is_empty (&amp;data-&gt;private_gray_queue) || workers_get_work (data))) {</span>
+<span class="lineNum">     220 </span><span class="lineCov">    3378539 :                 ScanCopyContext ctx = CONTEXT_FROM_OBJECT_OPERATIONS (idle_func_object_ops, &amp;data-&gt;private_gray_queue);</span>
+<span class="lineNum">     221 </span>            : 
+<span class="lineNum">     222 </span><span class="lineCov">   10135617 :                 SGEN_ASSERT (0, !sgen_gray_object_queue_is_empty (&amp;data-&gt;private_gray_queue), &quot;How is our gray queue empty if we just got work?&quot;);</span>
+<span class="lineNum">     223 </span>            : 
+<span class="lineNum">     224 </span><span class="lineCov">    3378539 :                 sgen_drain_gray_stack (ctx);</span>
+<span class="lineNum">     225 </span><span class="lineCov">    3378539 :         } else {</span>
+<span class="lineNum">     226 </span><span class="lineCov">        510 :                 SgenThreadPoolJob *job = preclean_job;</span>
+<span class="lineNum">     227 </span><span class="lineCov">        510 :                 if (job) {</span>
+<span class="lineNum">     228 </span><span class="lineCov">        229 :                         sgen_thread_pool_job_enqueue (job);</span>
+<span class="lineNum">     229 </span><span class="lineCov">        229 :                         preclean_job = NULL;</span>
+<span class="lineNum">     230 </span><span class="lineCov">        229 :                 } else {</span>
+<span class="lineNum">     231 </span><span class="lineCov">        281 :                         worker_try_finish (data);</span>
+<span class="lineNum">     232 </span>            :                 }
+<span class="lineNum">     233 </span>            :         }
+<span class="lineNum">     234 </span><span class="lineCov">    3379049 : }</span>
+<a name="235"><span class="lineNum">     235 </span>            : </a>
+<span class="lineNum">     236 </span>            : static void
+<span class="lineNum">     237 </span>            : init_distribute_gray_queue (void)
+<span class="lineNum">     238 </span>            : {
+<span class="lineNum">     239 </span><span class="lineCov">       3534 :         if (workers_distribute_gray_queue_inited) {</span>
+<span class="lineNum">     240 </span><span class="lineCov">        747 :                 g_assert (sgen_section_gray_queue_is_empty (&amp;workers_distribute_gray_queue));</span>
+<span class="lineNum">     241 </span><span class="lineCov">        747 :                 g_assert (workers_distribute_gray_queue.locked);</span>
+<span class="lineNum">     242 </span><span class="lineCov">        249 :                 return;</span>
+<span class="lineNum">     243 </span>            :         }
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span><span class="lineCov">       3285 :         sgen_section_gray_queue_init (&amp;workers_distribute_gray_queue, TRUE,</span>
+<span class="lineNum">     246 </span><span class="lineCov">       3285 :                         sgen_get_major_collector ()-&gt;is_concurrent ? concurrent_enqueue_check : NULL);</span>
+<span class="lineNum">     247 </span><span class="lineCov">       3285 :         workers_distribute_gray_queue_inited = TRUE;</span>
+<span class="lineNum">     248 </span><span class="lineCov">       6819 : }</span>
+<a name="249"><span class="lineNum">     249 </span>            : </a>
+<span class="lineNum">     250 </span>            : void
+<span class="lineNum">     251 </span>            : sgen_workers_init_distribute_gray_queue (void)
+<span class="lineNum">     252 </span>            : {
+<span class="lineNum">     253 </span><span class="lineCov">        747 :         SGEN_ASSERT (0, sgen_get_major_collector ()-&gt;is_concurrent,</span>
+<span class="lineNum">     254 </span>            :                         &quot;Why should we init the distribute gray queue if we don't need it?&quot;);
+<span class="lineNum">     255 </span><span class="lineCov">        249 :         init_distribute_gray_queue ();</span>
+<span class="lineNum">     256 </span><span class="lineCov">        249 : }</span>
+<a name="257"><span class="lineNum">     257 </span>            : </a>
+<span class="lineNum">     258 </span>            : void
+<span class="lineNum">     259 </span>            : sgen_workers_init (int num_workers)
+<span class="lineNum">     260 </span>            : {
+<span class="lineNum">     261 </span>            :         int i;
+<span class="lineNum">     262 </span><span class="lineCov">       3285 :         void **workers_data_ptrs = (void **)alloca(num_workers * sizeof(void *));</span>
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span><span class="lineCov">       3285 :         if (!sgen_get_major_collector ()-&gt;is_concurrent) {</span>
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :                 sgen_thread_pool_init (num_workers, thread_pool_init_func, NULL, NULL, NULL);</span>
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     267 </span>            :         }
+<span class="lineNum">     268 </span>            : 
+<span class="lineNum">     269 </span>            :         //g_print (&quot;initing %d workers\n&quot;, num_workers);
+<span class="lineNum">     270 </span>            : 
+<span class="lineNum">     271 </span><span class="lineCov">       3285 :         workers_num = num_workers;</span>
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span><span class="lineCov">       3285 :         workers_data = (WorkerData *)sgen_alloc_internal_dynamic (sizeof (WorkerData) * num_workers, INTERNAL_MEM_WORKER_DATA, TRUE);</span>
+<span class="lineNum">     274 </span><span class="lineCov">       3285 :         memset (workers_data, 0, sizeof (WorkerData) * num_workers);</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span><span class="lineCov">       3285 :         init_distribute_gray_queue ();</span>
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span><span class="lineCov">      13140 :         for (i = 0; i &lt; workers_num; ++i)</span>
+<span class="lineNum">     279 </span><span class="lineCov">       3285 :                 workers_data_ptrs [i] = (void *) &amp;workers_data [i];</span>
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span><span class="lineCov">       3285 :         sgen_thread_pool_init (num_workers, thread_pool_init_func, marker_idle_func, continue_idle_func, workers_data_ptrs);</span>
+<span class="lineNum">     282 </span>            : 
+<span class="lineNum">     283 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;# workers finished&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG, &amp;stat_workers_num_finished);</span>
+<span class="lineNum">     284 </span><span class="lineCov">       6570 : }</span>
+<a name="285"><span class="lineNum">     285 </span>            : </a>
+<span class="lineNum">     286 </span>            : void
+<span class="lineNum">     287 </span>            : sgen_workers_stop_all_workers (void)
+<span class="lineNum">     288 </span>            : {
+<span class="lineNum">     289 </span><span class="lineCov">        249 :         preclean_job = NULL;</span>
+<span class="lineNum">     290 </span><span class="lineCov">        249 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     291 </span><span class="lineCov">        249 :         forced_stop = TRUE;</span>
+<span class="lineNum">     292 </span>            : 
+<span class="lineNum">     293 </span><span class="lineCov">        249 :         sgen_thread_pool_wait_for_all_jobs ();</span>
+<span class="lineNum">     294 </span><span class="lineCov">        249 :         sgen_thread_pool_idle_wait ();</span>
+<span class="lineNum">     295 </span><span class="lineCov">        747 :         SGEN_ASSERT (0, workers_state == STATE_NOT_WORKING, &quot;Can only signal enqueue work when in no work state&quot;);</span>
+<span class="lineNum">     296 </span><span class="lineCov">        249 : }</span>
+<a name="297"><span class="lineNum">     297 </span>            : </a>
+<span class="lineNum">     298 </span>            : void
+<span class="lineNum">     299 </span>            : sgen_workers_start_all_workers (SgenObjectOperations *object_ops, SgenThreadPoolJob *job)
+<span class="lineNum">     300 </span>            : {
+<span class="lineNum">     301 </span><span class="lineCov">        281 :         forced_stop = FALSE;</span>
+<span class="lineNum">     302 </span><span class="lineCov">        281 :         idle_func_object_ops = object_ops;</span>
+<span class="lineNum">     303 </span><span class="lineCov">        281 :         preclean_job = job;</span>
+<span class="lineNum">     304 </span><span class="lineCov">        281 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineCov">        281 :         sgen_workers_ensure_awake ();</span>
+<span class="lineNum">     307 </span><span class="lineCov">        281 : }</span>
+<a name="308"><span class="lineNum">     308 </span>            : </a>
+<span class="lineNum">     309 </span>            : void
+<span class="lineNum">     310 </span>            : sgen_workers_join (void)
+<span class="lineNum">     311 </span>            : {
+<span class="lineNum">     312 </span>            :         int i;
+<span class="lineNum">     313 </span>            : 
+<span class="lineNum">     314 </span><span class="lineCov">         32 :         sgen_thread_pool_wait_for_all_jobs ();</span>
+<span class="lineNum">     315 </span><span class="lineCov">         32 :         sgen_thread_pool_idle_wait ();</span>
+<span class="lineNum">     316 </span><span class="lineCov">         96 :         SGEN_ASSERT (0, workers_state == STATE_NOT_WORKING, &quot;Can only signal enqueue work when in no work state&quot;);</span>
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span>            :         /* At this point all the workers have stopped. */
+<span class="lineNum">     319 </span>            : 
+<span class="lineNum">     320 </span><span class="lineCov">         96 :         SGEN_ASSERT (0, sgen_section_gray_queue_is_empty (&amp;workers_distribute_gray_queue), &quot;Why is there still work left to do?&quot;);</span>
+<span class="lineNum">     321 </span><span class="lineCov">        128 :         for (i = 0; i &lt; workers_num; ++i)</span>
+<span class="lineNum">     322 </span><span class="lineCov">        128 :                 SGEN_ASSERT (0, sgen_gray_object_queue_is_empty (&amp;workers_data [i].private_gray_queue), &quot;Why is there still work left to do?&quot;);</span>
+<span class="lineNum">     323 </span><span class="lineCov">         32 : }</span>
+<span class="lineNum">     324 </span>            : 
+<span class="lineNum">     325 </span>            : /*
+<span class="lineNum">     326 </span>            :  * Can only be called if the workers are stopped.
+<span class="lineNum">     327 </span>            :  * If we're stopped, there are also no pending jobs.
+<a name="328"><span class="lineNum">     328 </span>            :  */</a>
+<span class="lineNum">     329 </span>            : gboolean
+<span class="lineNum">     330 </span>            : sgen_workers_have_idle_work (void)
+<span class="lineNum">     331 </span>            : {
+<span class="lineNum">     332 </span>            :         int i;
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span><span class="lineCov">       1245 :         SGEN_ASSERT (0, forced_stop &amp;&amp; sgen_workers_all_done (), &quot;Checking for idle work should only happen if the workers are stopped.&quot;);</span>
+<span class="lineNum">     335 </span>            : 
+<span class="lineNum">     336 </span><span class="lineCov">        249 :         if (!sgen_section_gray_queue_is_empty (&amp;workers_distribute_gray_queue))</span>
+<span class="lineNum">     337 </span><span class="lineCov">         20 :                 return TRUE;</span>
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span><span class="lineCov">        892 :         for (i = 0; i &lt; workers_num; ++i) {</span>
+<span class="lineNum">     340 </span><span class="lineCov">        229 :                 if (!sgen_gray_object_queue_is_empty (&amp;workers_data [i].private_gray_queue))</span>
+<span class="lineNum">     341 </span><span class="lineCov">         12 :                         return TRUE;</span>
+<span class="lineNum">     342 </span><span class="lineCov">        217 :         }</span>
+<span class="lineNum">     343 </span>            : 
+<span class="lineNum">     344 </span><span class="lineCov">        217 :         return FALSE;</span>
+<span class="lineNum">     345 </span><span class="lineCov">        249 : }</span>
+<a name="346"><span class="lineNum">     346 </span>            : </a>
+<span class="lineNum">     347 </span>            : gboolean
+<span class="lineNum">     348 </span>            : sgen_workers_all_done (void)
+<span class="lineNum">     349 </span>            : {
+<span class="lineNum">     350 </span><span class="lineCov">     556472 :         return workers_state == STATE_NOT_WORKING;</span>
+<span class="lineNum">     351 </span>            : }
+<span class="lineNum">     352 </span>            : 
+<a name="353"><span class="lineNum">     353 </span>            : /* Must only be used for debugging */</a>
+<span class="lineNum">     354 </span>            : gboolean
+<span class="lineNum">     355 </span>            : sgen_workers_are_working (void)
+<span class="lineNum">     356 </span>            : {
+<span class="lineNum">     357 </span><span class="lineNoCov">          0 :         return state_is_working_or_enqueued (workers_state);</span>
+<span class="lineNum">     358 </span>            : }
+<a name="359"><span class="lineNum">     359 </span>            : </a>
+<span class="lineNum">     360 </span>            : void
+<span class="lineNum">     361 </span>            : sgen_workers_assert_gray_queue_is_empty (void)
+<span class="lineNum">     362 </span>            : {
+<span class="lineNum">     363 </span><span class="lineCov">    1617930 :         SGEN_ASSERT (0, sgen_section_gray_queue_is_empty (&amp;workers_distribute_gray_queue), &quot;Why is the workers gray queue not empty?&quot;);</span>
+<span class="lineNum">     364 </span><span class="lineCov">     539310 : }</span>
+<a name="365"><span class="lineNum">     365 </span>            : </a>
+<span class="lineNum">     366 </span>            : void
+<span class="lineNum">     367 </span>            : sgen_workers_take_from_queue_and_awake (SgenGrayQueue *queue)
+<span class="lineNum">     368 </span>            : {
+<span class="lineNum">     369 </span><span class="lineCov">        249 :         gboolean wake = FALSE;</span>
+<span class="lineNum">     370 </span>            : 
+<span class="lineNum">     371 </span><span class="lineCov">       4647 :         for (;;) {</span>
+<span class="lineNum">     372 </span><span class="lineCov">       4647 :                 GrayQueueSection *section = sgen_gray_object_dequeue_section (queue);</span>
+<span class="lineNum">     373 </span><span class="lineCov">       4647 :                 if (!section)</span>
+<span class="lineNum">     374 </span><span class="lineCov">        249 :                         break;</span>
+<span class="lineNum">     375 </span><span class="lineCov">       4398 :                 sgen_section_gray_queue_enqueue (&amp;workers_distribute_gray_queue, section);</span>
+<span class="lineNum">     376 </span><span class="lineCov">       4398 :                 wake = TRUE;</span>
+<span class="lineNum">     377 </span>            :         }
+<span class="lineNum">     378 </span>            : 
+<span class="lineNum">     379 </span><span class="lineCov">        249 :         if (wake) {</span>
+<span class="lineNum">     380 </span><span class="lineCov">        747 :                 SGEN_ASSERT (0, sgen_concurrent_collection_in_progress (), &quot;Why is there work to take when there's no concurrent collection in progress?&quot;);</span>
+<span class="lineNum">     381 </span><span class="lineCov">        249 :                 sgen_workers_ensure_awake ();</span>
+<span class="lineNum">     382 </span><span class="lineCov">        249 :         }</span>
+<span class="lineNum">     383 </span><span class="lineCov">        249 : }</span>
+<span class="lineNum">     384 </span>            : 
+<span class="lineNum">     385 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

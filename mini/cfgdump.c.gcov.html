@@ -1,0 +1,632 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/cfgdump.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - cfgdump.c<span style="font-size: 80%;"> (source / <a href="cfgdump.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">17</td>
+            <td class="headerCovTableEntry">310</td>
+            <td class="headerCovTableEntryLo">5.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">19</td>
+            <td class="headerCovTableEntryLo">21.1 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * Copyright (C) 2016 Xamarin Inc
+<span class="lineNum">       3 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       4 </span>            :  */
+<span class="lineNum">       5 </span>            : 
+<span class="lineNum">       6 </span>            : /* inspired by BinaryGraphPrinter.java of Graal */
+<span class="lineNum">       7 </span>            : 
+<span class="lineNum">       8 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #if !defined(DISABLE_LOGGING) &amp;&amp; !defined(DISABLE_JIT) &amp;&amp; !defined(HOST_WIN32)
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;mono/metadata/class-internals.h&gt;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &lt;sys/socket.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;sys/types.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;netinet/in.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;netdb.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;arpa/inet.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : #if 0
+<span class="lineNum">      27 </span>            : #define CFG_DEBUG
+<span class="lineNum">      28 </span>            : #endif
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : #ifdef CFG_DEBUG
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : #ifdef HAVE_C99_SUPPORT
+<span class="lineNum">      34 </span>            : #define cfg_debug(format, ...) g_debug(format, __VA_ARGS__)
+<span class="lineNum">      35 </span>            : #else
+<span class="lineNum">      36 </span>            : #define cfg_debug(...) g_debug(__VA_ARGS__)
+<span class="lineNum">      37 </span>            : #endif
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : #else
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span>            : #ifdef HAVE_C99_SUPPORT
+<span class="lineNum">      42 </span>            : #define cfg_debug(format, ...) do {} while (0)
+<span class="lineNum">      43 </span>            : #else
+<span class="lineNum">      44 </span>            : #define cfg_debug(...) do {} while (0)
+<span class="lineNum">      45 </span>            : #endif
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : #endif
+<a name="48"><span class="lineNum">      48 </span>            : </a>
+<span class="lineNum">      49 </span>            : static ConstantPoolEntry*
+<span class="lineNum">      50 </span>            : create_cp_entry (MonoCompile *cfg, void *data, pool_type pt)
+<span class="lineNum">      51 </span>            : {
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 :         ConstantPoolEntry *entry = (ConstantPoolEntry *) mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (ConstantPoolEntry));</span>
+<span class="lineNum">      53 </span><span class="lineNoCov">          0 :         entry-&gt;pt = pt;</span>
+<span class="lineNum">      54 </span><span class="lineNoCov">          0 :         entry-&gt;data = data;</span>
+<span class="lineNum">      55 </span><span class="lineNoCov">          0 :         return entry;</span>
+<span class="lineNum">      56 </span>            : }
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            : static void write_pool (MonoCompile *cfg, ConstantPoolEntry *entry);
+<a name="59"><span class="lineNum">      59 </span>            : </a>
+<span class="lineNum">      60 </span>            : static int
+<span class="lineNum">      61 </span>            : create_socket (const char *hostname, const int port)
+<span class="lineNum">      62 </span>            : {
+<span class="lineNum">      63 </span><span class="lineNoCov">          0 :     int sockfd = 0;</span>
+<span class="lineNum">      64 </span>            :     struct sockaddr_in serv_addr;
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span><span class="lineNoCov">          0 :     if ((sockfd = socket (AF_INET, SOCK_STREAM, 0)) &lt; 0) {</span>
+<span class="lineNum">      67 </span><span class="lineNoCov">          0 :                 g_warning (&quot;cfg_dump: could not create socket&quot;);</span>
+<span class="lineNum">      68 </span><span class="lineNoCov">          0 :         return -1;</span>
+<span class="lineNum">      69 </span>            :     }
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :     serv_addr.sin_family = AF_INET;</span>
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :     serv_addr.sin_port = htons (port);</span>
+<span class="lineNum">      73 </span><span class="lineNoCov">          0 :     serv_addr.sin_addr.s_addr = inet_addr (hostname);</span>
+<span class="lineNum">      74 </span>            : 
+<span class="lineNum">      75 </span><span class="lineNoCov">          0 :     if (connect (sockfd, (struct sockaddr *)&amp;serv_addr, sizeof(serv_addr)) &lt; 0) {</span>
+<span class="lineNum">      76 </span><span class="lineNoCov">          0 :         g_warning (&quot;cfg_dump: Connect Failed: %s&quot;, strerror (errno));</span>
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :         return -2;</span>
+<span class="lineNum">      78 </span>            :     }
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :         return sockfd;</span>
+<span class="lineNum">      81 </span><span class="lineNoCov">          0 : }</span>
+<a name="82"><span class="lineNum">      82 </span>            : </a>
+<span class="lineNum">      83 </span>            : static void
+<span class="lineNum">      84 </span>            : write_byte (MonoCompile *cfg, unsigned char b)
+<span class="lineNum">      85 </span>            : {
+<span class="lineNum">      86 </span><span class="lineNoCov">          0 :         write (cfg-&gt;gdump_ctx-&gt;fd, &amp;b, 1);</span>
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 : }</span>
+<a name="88"><span class="lineNum">      88 </span>            : </a>
+<span class="lineNum">      89 </span>            : static void
+<span class="lineNum">      90 </span>            : write_short (MonoCompile *cfg, short s)
+<span class="lineNum">      91 </span>            : {
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :         short swap = htons (s);</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :         write (cfg-&gt;gdump_ctx-&gt;fd, &amp;swap, 2);</span>
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 : }</span>
+<a name="95"><span class="lineNum">      95 </span>            : </a>
+<span class="lineNum">      96 </span>            : static void
+<span class="lineNum">      97 </span>            : write_int (MonoCompile *cfg, int v)
+<span class="lineNum">      98 </span>            : {
+<span class="lineNum">      99 </span><span class="lineNoCov">          0 :         int swap = htonl (v);</span>
+<span class="lineNum">     100 </span><span class="lineNoCov">          0 :         write (cfg-&gt;gdump_ctx-&gt;fd, &amp;swap, 4);</span>
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 : }</span>
+<a name="102"><span class="lineNum">     102 </span>            : </a>
+<span class="lineNum">     103 </span>            : static void
+<span class="lineNum">     104 </span>            : write_string (MonoCompile *cfg, const char *str)
+<span class="lineNum">     105 </span>            : {
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :         size_t len = strnlen (str, 0x2000);</span>
+<span class="lineNum">     107 </span><span class="lineNoCov">          0 :         write_int (cfg, (int) len);</span>
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :         gunichar2 *u = u8to16 (str);</span>
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :         for (int i = 0; i &lt; len; i++)</span>
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :                 write_short (cfg, u[i]);</span>
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 : }</span>
+<a name="113"><span class="lineNum">     113 </span>            : </a>
+<span class="lineNum">     114 </span>            : static void
+<span class="lineNum">     115 </span>            : add_pool_entry (MonoCompile *cfg, ConstantPoolEntry *entry)
+<span class="lineNum">     116 </span>            : {
+<span class="lineNum">     117 </span><span class="lineNoCov">          0 :         int *cp_id= (int *) mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (int));</span>
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :         *cp_id = cfg-&gt;gdump_ctx-&gt;next_cp_id;</span>
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :         g_hash_table_insert (cfg-&gt;gdump_ctx-&gt;constant_pool, entry, cp_id);</span>
+<span class="lineNum">     120 </span><span class="lineNoCov">          0 :         write_byte (cfg, POOL_NEW);</span>
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :         write_short (cfg, cfg-&gt;gdump_ctx-&gt;next_cp_id++);</span>
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 :         switch (entry-&gt;pt) {</span>
+<span class="lineNum">     123 </span>            :                 case PT_STRING:
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :                         write_byte (cfg, POOL_STRING);</span>
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :                         write_string (cfg, (char *) entry-&gt;data);</span>
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     127 </span>            :                 case PT_METHOD: {
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 :                         MonoMethod *method = (MonoMethod *) entry-&gt;data;</span>
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :                         write_byte (cfg, POOL_METHOD);</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) method-&gt;klass, PT_KLASS));</span>
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) method-&gt;name, PT_STRING));</span>
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) method-&gt;signature, PT_SIGNATURE));</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :                         write_int (cfg, (int) method-&gt;flags);</span>
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :                         write_int (cfg, -1); // don't transmit bytecode.</span>
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     136 </span>            :                 }
+<span class="lineNum">     137 </span>            :                 case PT_KLASS: {
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :                         MonoClass *klass = (MonoClass *) entry-&gt;data;</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :                         write_byte (cfg, POOL_KLASS);</span>
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :                         write_string (cfg, klass-&gt;name);</span>
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :                         write_byte (cfg, KLASS);</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     143 </span>            :                 }
+<span class="lineNum">     144 </span>            :                 case PT_SIGNATURE: {
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :                         write_byte (cfg, POOL_SIGNATURE);</span>
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :                         MonoMethodSignature *sig = (MonoMethodSignature *) entry-&gt;data;</span>
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :                         write_short (cfg, sig-&gt;param_count);</span>
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :                         for (int i = 0; i &lt; sig-&gt;param_count; i++) {</span>
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :                                 GString *sbuf = g_string_new (NULL);</span>
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :                                 mono_type_get_desc (sbuf, sig-&gt;params [i], TRUE);</span>
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 :                                 write_pool (cfg, create_cp_entry (cfg, (void *) sbuf-&gt;str, PT_STRING));</span>
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :                                 g_string_free (sbuf, TRUE);</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :                         GString *sbuf = g_string_new (NULL);</span>
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :                         mono_type_get_desc (sbuf, sig-&gt;ret, TRUE);</span>
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) sbuf-&gt;str, PT_STRING));</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :                         g_string_free (sbuf, TRUE);</span>
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     159 </span>            :                 }
+<span class="lineNum">     160 </span>            :                 case PT_OPTYPE: {
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :                         MonoInst *insn = (MonoInst *) entry-&gt;data;</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :                         write_byte (cfg, POOL_NODE_CLASS);</span>
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :                         write_string (cfg, mono_inst_name (insn-&gt;opcode));</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :                         GString *insndesc = mono_print_ins_index_strbuf (-1, insn);</span>
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :                         int len = strnlen (insndesc-&gt;str, 0x2000);</span>
+<span class="lineNum">     167 </span>            : #define CUTOFF 40
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :                         if (len &gt; CUTOFF) {</span>
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :                                 insndesc-&gt;str[CUTOFF] = '\0';</span>
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :                                 insndesc-&gt;str[CUTOFF - 1] = '.';</span>
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :                                 insndesc-&gt;str[CUTOFF - 2] = '.';</span>
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :                         write_string (cfg, insndesc-&gt;str);</span>
+<span class="lineNum">     174 </span><span class="lineNoCov">          0 :                         if (len &gt; CUTOFF)</span>
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :                                 insndesc-&gt;str[CUTOFF] = ' ';</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :                         g_string_free (insndesc, TRUE);</span>
+<span class="lineNum">     177 </span>            : 
+<span class="lineNum">     178 </span>            :                         // one predecessor
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :                         write_short (cfg, 1);</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :                         write_byte (cfg, 0);</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) &quot;predecessor&quot;, PT_STRING));</span>
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) NULL, PT_INPUTTYPE));</span>
+<span class="lineNum">     183 </span>            : 
+<span class="lineNum">     184 </span>            :                         // make NUM_SUCCESSOR successor edges, not everyone will be used.
+<span class="lineNum">     185 </span>            : #define NUM_SUCCESSOR 5
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :                         write_short (cfg, NUM_SUCCESSOR);</span>
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :                         for (int i = 0; i &lt; NUM_SUCCESSOR; i++) {</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :                                 char *str = g_strdup (&quot;successor1&quot;);</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                                 str[9] = '0' + i;</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 :                                 write_byte (cfg, 0);</span>
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :                                 write_pool (cfg, create_cp_entry (cfg, (void *) str, PT_STRING));</span>
+<span class="lineNum">     192 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     195 </span>            :                 }
+<span class="lineNum">     196 </span>            :                 case PT_INPUTTYPE: {
+<span class="lineNum">     197 </span><span class="lineNoCov">          0 :                         write_byte (cfg, POOL_ENUM);</span>
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) NULL, PT_ENUMKLASS));</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :                         write_int (cfg, 0);</span>
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     201 </span>            :                 }
+<span class="lineNum">     202 </span>            :                 case PT_ENUMKLASS: {
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :                         write_byte (cfg, POOL_KLASS);</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :                         write_string (cfg, &quot;InputType&quot;);</span>
+<span class="lineNum">     205 </span><span class="lineNoCov">          0 :                         write_byte (cfg, ENUM_KLASS);</span>
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :                         write_int (cfg, 1);</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) &quot;fixed&quot;, PT_STRING));</span>
+<span class="lineNum">     208 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     209 </span>            :                 }
+<span class="lineNum">     210 </span>            :         }
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 : }</span>
+<a name="212"><span class="lineNum">     212 </span>            : </a>
+<span class="lineNum">     213 </span>            : static void
+<span class="lineNum">     214 </span>            : write_pool (MonoCompile *cfg, ConstantPoolEntry *entry)
+<span class="lineNum">     215 </span>            : {
+<span class="lineNum">     216 </span><span class="lineNoCov">          0 :         if (!entry || !entry-&gt;data) {</span>
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :                 write_byte (cfg, POOL_NULL);</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     219 </span>            :         }
+<span class="lineNum">     220 </span>            : 
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :         short *cp_index = (short *) g_hash_table_lookup (cfg-&gt;gdump_ctx-&gt;constant_pool, entry);</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :         if (cp_index == NULL)</span>
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :                 add_pool_entry (cfg, entry);</span>
+<span class="lineNum">     224 </span>            :         else {
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :                 switch (entry-&gt;pt) {</span>
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :                         case PT_STRING: write_byte (cfg, POOL_STRING); break;</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :                         case PT_METHOD: write_byte (cfg, POOL_METHOD); break;</span>
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :                         case PT_ENUMKLASS: write_byte (cfg, POOL_KLASS); break;</span>
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :                         case PT_KLASS: write_byte (cfg, POOL_KLASS); break;</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :                         case PT_SIGNATURE: write_byte (cfg, POOL_SIGNATURE); break;</span>
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :                         case PT_OPTYPE: write_byte (cfg, POOL_NODE_CLASS); break;</span>
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :                         case PT_INPUTTYPE: write_byte (cfg, POOL_ENUM); break;</span>
+<span class="lineNum">     233 </span>            :                 }
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :                 write_short (cfg, *cp_index);</span>
+<span class="lineNum">     235 </span>            :         }
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 : }</span>
+<a name="237"><span class="lineNum">     237 </span>            : </a>
+<span class="lineNum">     238 </span>            : void
+<span class="lineNum">     239 </span>            : mono_cfg_dump_begin_group (MonoCompile *cfg)
+<span class="lineNum">     240 </span>            : {
+<span class="lineNum">     241 </span><span class="lineCov">   14397429 :         if (cfg-&gt;gdump_ctx == NULL)</span>
+<span class="lineNum">     242 </span><span class="lineCov">   14398020 :                 return;</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :         write_byte (cfg, BEGIN_GROUP);</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :         char *title = (char *) mono_mempool_alloc0 (cfg-&gt;mempool, 0x2000);</span>
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :         sprintf (title, &quot;%s::%s&quot;, cfg-&gt;method-&gt;klass-&gt;name, cfg-&gt;method-&gt;name);</span>
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :         write_pool (cfg, create_cp_entry (cfg, (void *) title, PT_STRING));</span>
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :         write_pool (cfg, create_cp_entry (cfg, (void *) cfg-&gt;method-&gt;name, PT_STRING));</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :         write_pool (cfg, create_cp_entry (cfg, (void *) cfg-&gt;method, PT_METHOD));</span>
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :         write_int (cfg, 0); // TODO: real bytecode index.</span>
+<span class="lineNum">     250 </span><span class="lineCov">   14397947 : }</span>
+<a name="251"><span class="lineNum">     251 </span>            : </a>
+<span class="lineNum">     252 </span>            : void
+<span class="lineNum">     253 </span>            : mono_cfg_dump_close_group (MonoCompile *cfg)
+<span class="lineNum">     254 </span>            : {
+<span class="lineNum">     255 </span><span class="lineCov">   14399099 :         if (cfg-&gt;gdump_ctx == NULL)</span>
+<span class="lineNum">     256 </span><span class="lineCov">   14399105 :                 return;</span>
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :         write_byte (cfg, CLOSE_GROUP);</span>
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :         cfg-&gt;gdump_ctx = NULL;</span>
+<span class="lineNum">     259 </span><span class="lineCov">   14399108 : }</span>
+<a name="260"><span class="lineNum">     260 </span>            : </a>
+<span class="lineNum">     261 </span>            : static int
+<span class="lineNum">     262 </span>            : label_instructions (MonoCompile *cfg)
+<span class="lineNum">     263 </span>            : {
+<span class="lineNum">     264 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :         int instruction_count = 0;</span>
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :                 cfg_debug (&quot;bb: %d (in: %d, out: %d)&quot;, bb-&gt;block_num, bb-&gt;in_count, bb-&gt;out_count);</span>
+<span class="lineNum">     269 </span>            :                 MonoInst *insn;
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :                 for (insn = bb-&gt;code; insn; insn = insn-&gt;next) {</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                         instruction_count++;</span>
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :                         void *id = g_hash_table_lookup (cfg-&gt;gdump_ctx-&gt;insn2id, insn);</span>
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :                         if (id != NULL) // already in the table.</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                         int *new_id = (int *) mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (int));</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                         *new_id = cfg-&gt;gdump_ctx-&gt;next_insn_id++;</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :                         g_hash_table_insert (cfg-&gt;gdump_ctx-&gt;insn2id, insn, new_id);</span>
+<span class="lineNum">     278 </span>            : #ifdef CFG_DEBUG
+<span class="lineNum">     279 </span>            :                         GString *insndesc = mono_print_ins_index_strbuf (-1, insn);
+<span class="lineNum">     280 </span>            :                         cfg_debug (&quot;&gt; insn%002d: %s&quot;, *new_id, insndesc-&gt;str);
+<span class="lineNum">     281 </span>            :                         g_string_free (insndesc, TRUE);
+<span class="lineNum">     282 </span>            : #endif
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     285 </span><span class="lineNoCov">          0 :         return instruction_count;</span>
+<span class="lineNum">     286 </span>            : }
+<a name="287"><span class="lineNum">     287 </span>            : </a>
+<span class="lineNum">     288 </span>            : static void
+<span class="lineNum">     289 </span>            : write_instructions (MonoCompile *cfg, int instruction_count)
+<span class="lineNum">     290 </span>            : {
+<span class="lineNum">     291 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :         write_int (cfg, instruction_count);</span>
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     294 </span>            :                 MonoInst *insn;
+<span class="lineNum">     295 </span><span class="lineNoCov">          0 :                 cfg_debug (&quot;== bb: %d (in: %d, out: %d) ==&quot;, bb-&gt;block_num, bb-&gt;in_count, bb-&gt;out_count);</span>
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :                 for (insn = bb-&gt;code; insn; insn = insn-&gt;next) {</span>
+<span class="lineNum">     297 </span>            :                         int i;
+<span class="lineNum">     298 </span><span class="lineNoCov">          0 :                         int *id = (int *) g_hash_table_lookup (cfg-&gt;gdump_ctx-&gt;insn2id, insn);</span>
+<span class="lineNum">     299 </span><span class="lineNoCov">          0 :                         g_assert (id);</span>
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :                         write_int (cfg, *id);</span>
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span>            :                         // hardcoded node class: only one input and NUM_SUCCESSOR successors
+<span class="lineNum">     303 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) insn, PT_OPTYPE));</span>
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :                         write_byte (cfg, cfg-&gt;bb_entry-&gt;code != insn);</span>
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span>            :                         // properties
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :                         write_short (cfg, 2);</span>
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span>            :                         // property #1
+<span class="lineNum">     310 </span><span class="lineNoCov">          0 :                         GString *insndesc = mono_print_ins_index_strbuf (-1, insn);</span>
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :                         cfg_debug (&quot;dumping node [%2d]: %s&quot;, *id, insndesc-&gt;str);</span>
+<span class="lineNum">     312 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) &quot;fullname&quot;, PT_STRING));</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :                         write_byte (cfg, PROPERTY_POOL);</span>
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) insndesc-&gt;str, PT_STRING));</span>
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :                         g_string_free (insndesc, TRUE);</span>
+<span class="lineNum">     316 </span>            : 
+<span class="lineNum">     317 </span>            :                         // property #2
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :                         write_pool (cfg, create_cp_entry (cfg, (void *) &quot;category&quot;, PT_STRING));</span>
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :                         write_byte (cfg, PROPERTY_POOL);</span>
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                         if (bb-&gt;in_count &gt; 1 &amp;&amp; bb-&gt;code == insn)</span>
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :                                 write_pool (cfg, create_cp_entry (cfg, (void *) &quot;merge&quot;, PT_STRING));</span>
+<span class="lineNum">     322 </span><span class="lineNoCov">          0 :                         else if (bb-&gt;code == insn)</span>
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :                                 write_pool (cfg, create_cp_entry (cfg, (void *) &quot;begin&quot;, PT_STRING));</span>
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :                         else if (MONO_IS_COND_BRANCH_OP (insn))</span>
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :                                 write_pool (cfg, create_cp_entry (cfg, (void *) &quot;controlSplit&quot;, PT_STRING));</span>
+<span class="lineNum">     326 </span><span class="lineNoCov">          0 :                         else if (MONO_IS_PHI (insn))</span>
+<span class="lineNum">     327 </span><span class="lineNoCov">          0 :                                 write_pool (cfg, create_cp_entry (cfg, (void *) &quot;phi&quot;, PT_STRING));</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :                         else if (!MONO_INS_HAS_NO_SIDE_EFFECT (insn))</span>
+<span class="lineNum">     329 </span><span class="lineNoCov">          0 :                                 write_pool (cfg, create_cp_entry (cfg, (void *) &quot;state&quot;, PT_STRING));</span>
+<span class="lineNum">     330 </span>            :                         else
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :                                 write_pool (cfg, create_cp_entry (cfg, (void *) &quot;fixed&quot;, PT_STRING));</span>
+<span class="lineNum">     332 </span>            :                         // end of properties
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :                         write_int (cfg, -1); // never set predecessor.</span>
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span>            :                         int *next_id;
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :                         if (insn-&gt;next != NULL) {</span>
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :                                 next_id = (int *) g_hash_table_lookup (cfg-&gt;gdump_ctx-&gt;insn2id, insn-&gt;next);</span>
+<span class="lineNum">     338 </span><span class="lineNoCov">          0 :                                 g_assert (next_id);</span>
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                                 cfg_debug (&quot;\tsuccessor' : [%2d]&quot;, *next_id);</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 :                                 write_int (cfg, *next_id);</span>
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :                                 for (i = 1; i &lt; NUM_SUCCESSOR; i++)</span>
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :                                         write_int (cfg, -1);</span>
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 :                                 g_assert (bb-&gt;out_count &lt; NUM_SUCCESSOR);</span>
+<span class="lineNum">     345 </span><span class="lineNoCov">          0 :                                 for (i = 0; (i &lt; bb-&gt;out_count) &amp;&amp; (i &lt; NUM_SUCCESSOR); i++) {</span>
+<span class="lineNum">     346 </span><span class="lineNoCov">          0 :                                         if (bb-&gt;out_bb[i]-&gt;code == NULL)</span>
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :                                                 write_int (cfg, -1);</span>
+<span class="lineNum">     348 </span>            :                                         else {
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                                                 next_id = (int *) g_hash_table_lookup (cfg-&gt;gdump_ctx-&gt;insn2id, bb-&gt;out_bb[i]-&gt;code);</span>
+<span class="lineNum">     350 </span><span class="lineNoCov">          0 :                                                 if (next_id)</span>
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                                                         cfg_debug (&quot;\tsuccessor'': [%2d]&quot;, *next_id);</span>
+<span class="lineNum">     352 </span><span class="lineNoCov">          0 :                                                 write_int (cfg, next_id ? *next_id : -1);</span>
+<span class="lineNum">     353 </span>            :                                         }
+<span class="lineNum">     354 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     355 </span><span class="lineNoCov">          0 :                                 for (; i &lt; NUM_SUCCESSOR; i++)</span>
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :                                         write_int (cfg, -1);</span>
+<span class="lineNum">     357 </span>            :                         }
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     359 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 : }</span>
+<a name="361"><span class="lineNum">     361 </span>            : </a>
+<span class="lineNum">     362 </span>            : static void
+<span class="lineNum">     363 </span>            : write_blocks (MonoCompile *cfg)
+<span class="lineNum">     364 </span>            : {
+<span class="lineNum">     365 </span><span class="lineNoCov">          0 :         int block_size = 0;</span>
+<span class="lineNum">     366 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb)</span>
+<span class="lineNum">     368 </span><span class="lineNoCov">          0 :                 block_size++;</span>
+<span class="lineNum">     369 </span><span class="lineNoCov">          0 :         write_int (cfg, block_size);</span>
+<span class="lineNum">     370 </span>            : 
+<span class="lineNum">     371 </span><span class="lineNoCov">          0 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     372 </span><span class="lineNoCov">          0 :                 int insn_size = 0;</span>
+<span class="lineNum">     373 </span><span class="lineNoCov">          0 :                 MonoInst *insn = NULL;</span>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span><span class="lineNoCov">          0 :                 write_int (cfg, bb-&gt;block_num);</span>
+<span class="lineNum">     376 </span>            : 
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :                 for (insn = bb-&gt;code; insn; insn = insn-&gt;next)</span>
+<span class="lineNum">     378 </span><span class="lineNoCov">          0 :                         insn_size++;</span>
+<span class="lineNum">     379 </span><span class="lineNoCov">          0 :                 write_int (cfg, insn_size);</span>
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span><span class="lineNoCov">          0 :                 for (insn = bb-&gt;code; insn; insn = insn-&gt;next) {</span>
+<span class="lineNum">     382 </span><span class="lineNoCov">          0 :                         int *id = (int *) g_hash_table_lookup (cfg-&gt;gdump_ctx-&gt;insn2id, insn);</span>
+<span class="lineNum">     383 </span><span class="lineNoCov">          0 :                         g_assert (id);</span>
+<span class="lineNum">     384 </span><span class="lineNoCov">          0 :                         write_int (cfg, *id);</span>
+<span class="lineNum">     385 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     386 </span>            : 
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :                 write_int (cfg, bb-&gt;out_count);</span>
+<span class="lineNum">     388 </span><span class="lineNoCov">          0 :                 for (int i = 0; i &lt; bb-&gt;out_count; i++)</span>
+<span class="lineNum">     389 </span><span class="lineNoCov">          0 :                         write_int (cfg, bb-&gt;out_bb[i]-&gt;block_num);</span>
+<span class="lineNum">     390 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     391 </span><span class="lineNoCov">          0 : }</span>
+<a name="392"><span class="lineNum">     392 </span>            : </a>
+<span class="lineNum">     393 </span>            : static guint
+<span class="lineNum">     394 </span>            : instruction_hash (MonoInst *insn)
+<span class="lineNum">     395 </span>            : {
+<span class="lineNum">     396 </span><span class="lineNoCov">          0 :         guint res = 0;</span>
+<span class="lineNum">     397 </span><span class="lineNoCov">          0 :         res  = insn-&gt;opcode &lt;&lt; 0x00;</span>
+<span class="lineNum">     398 </span><span class="lineNoCov">          0 :         res ^= insn-&gt;type   &lt;&lt; 0x04;</span>
+<span class="lineNum">     399 </span><span class="lineNoCov">          0 :         res ^= insn-&gt;flags  &lt;&lt; 0x08;</span>
+<span class="lineNum">     400 </span><span class="lineNoCov">          0 :         res ^= insn-&gt;dreg   &lt;&lt; 0x0c;</span>
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :         res ^= insn-&gt;sreg1  &lt;&lt; 0x10;</span>
+<span class="lineNum">     402 </span><span class="lineNoCov">          0 :         res ^= insn-&gt;sreg2  &lt;&lt; 0x14;</span>
+<span class="lineNum">     403 </span><span class="lineNoCov">          0 :         res ^= insn-&gt;sreg3  &lt;&lt; 0x18;</span>
+<span class="lineNum">     404 </span><span class="lineNoCov">          0 :         res ^= (gsize) insn-&gt;next;</span>
+<span class="lineNum">     405 </span><span class="lineNoCov">          0 :         res ^= (gsize) insn-&gt;prev;</span>
+<span class="lineNum">     406 </span><span class="lineNoCov">          0 :         res ^= (gsize) insn;</span>
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">     408 </span>            : }
+<a name="409"><span class="lineNum">     409 </span>            : </a>
+<span class="lineNum">     410 </span>            : static gboolean
+<span class="lineNum">     411 </span>            : instruction_equal (gconstpointer v1, gconstpointer v2)
+<span class="lineNum">     412 </span>            : {
+<span class="lineNum">     413 </span><span class="lineNoCov">          0 :         MonoInst *i1 = (MonoInst *) v1;</span>
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :         MonoInst *i2 = (MonoInst *) v2;</span>
+<span class="lineNum">     415 </span>            : 
+<span class="lineNum">     416 </span><span class="lineNoCov">          0 :         if (i1-&gt;opcode != i2-&gt;opcode || i1-&gt;type != i2-&gt;type || i1-&gt;flags != i2-&gt;flags)</span>
+<span class="lineNum">     417 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     418 </span><span class="lineNoCov">          0 :         if (i1-&gt;dreg != i2-&gt;dreg || i1-&gt;sreg1 != i2-&gt;sreg1 || i1-&gt;sreg2 != i2-&gt;sreg2 || i1-&gt;sreg3 != i2-&gt;sreg3)</span>
+<span class="lineNum">     419 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     420 </span><span class="lineNoCov">          0 :         if (i1-&gt;next != i2-&gt;next || i1-&gt;prev != i2-&gt;prev)</span>
+<span class="lineNum">     421 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     422 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     423 </span><span class="lineNoCov">          0 : }</span>
+<a name="424"><span class="lineNum">     424 </span>            : </a>
+<span class="lineNum">     425 </span>            : static guint
+<span class="lineNum">     426 </span>            : constant_pool_hash (ConstantPoolEntry *entry)
+<span class="lineNum">     427 </span>            : {
+<span class="lineNum">     428 </span><span class="lineNoCov">          0 :         switch (entry-&gt;pt) {</span>
+<span class="lineNum">     429 </span>            :                 case PT_STRING:
+<span class="lineNum">     430 </span><span class="lineNoCov">          0 :                         return g_str_hash (entry-&gt;data);</span>
+<span class="lineNum">     431 </span>            :                 case PT_METHOD: {
+<span class="lineNum">     432 </span><span class="lineNoCov">          0 :                         MonoMethod *method = (MonoMethod *) entry-&gt;data;</span>
+<span class="lineNum">     433 </span><span class="lineNoCov">          0 :                         return g_str_hash (method-&gt;name) ^ g_str_hash (method-&gt;klass);</span>
+<span class="lineNum">     434 </span>            :                 }
+<span class="lineNum">     435 </span>            :                 case PT_KLASS:
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 :                         return g_str_hash (((MonoClass *) entry-&gt;data)-&gt;name);</span>
+<span class="lineNum">     437 </span>            :                 case PT_OPTYPE:
+<span class="lineNum">     438 </span><span class="lineNoCov">          0 :                         return instruction_hash ((MonoInst *) entry-&gt;data);</span>
+<span class="lineNum">     439 </span>            :                 case PT_SIGNATURE: {
+<span class="lineNum">     440 </span><span class="lineNoCov">          0 :                         MonoMethodSignature *sig = (MonoMethodSignature *) entry-&gt;data;</span>
+<span class="lineNum">     441 </span><span class="lineNoCov">          0 :                         guint ret = GPOINTER_TO_UINT (sig-&gt;ret);</span>
+<span class="lineNum">     442 </span><span class="lineNoCov">          0 :                         for (int i = 0; i &lt; sig-&gt;param_count; i++) {</span>
+<span class="lineNum">     443 </span><span class="lineNoCov">          0 :                                 ret ^= GPOINTER_TO_UINT (sig-&gt;params [i]) &lt;&lt; (i + 1);</span>
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     445 </span><span class="lineNoCov">          0 :                         return ret;</span>
+<span class="lineNum">     446 </span>            :                 }
+<span class="lineNum">     447 </span>            :                 case PT_INPUTTYPE: // TODO: singleton.
+<span class="lineNum">     448 </span>            :                 case PT_ENUMKLASS:
+<span class="lineNum">     449 </span><span class="lineNoCov">          0 :                         return GPOINTER_TO_UINT (entry-&gt;data);</span>
+<span class="lineNum">     450 </span>            :         }
+<span class="lineNum">     451 </span><span class="lineNoCov">          0 :         g_assert (FALSE);</span>
+<span class="lineNum">     452 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     453 </span><span class="lineNoCov">          0 : }</span>
+<a name="454"><span class="lineNum">     454 </span>            : </a>
+<span class="lineNum">     455 </span>            : static gboolean
+<span class="lineNum">     456 </span>            : constant_pool_equal (gconstpointer v1, gconstpointer v2)
+<span class="lineNum">     457 </span>            : {
+<span class="lineNum">     458 </span><span class="lineNoCov">          0 :         ConstantPoolEntry *e1 = (ConstantPoolEntry *) v1;</span>
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 :         ConstantPoolEntry *e2 = (ConstantPoolEntry *) v2;</span>
+<span class="lineNum">     460 </span><span class="lineNoCov">          0 :         if (e1-&gt;pt != e2-&gt;pt)</span>
+<span class="lineNum">     461 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     462 </span>            : 
+<span class="lineNum">     463 </span><span class="lineNoCov">          0 :         switch (e1-&gt;pt) {</span>
+<span class="lineNum">     464 </span>            :                 case PT_STRING:
+<span class="lineNum">     465 </span><span class="lineNoCov">          0 :                         return g_str_equal (e1-&gt;data, e2-&gt;data);</span>
+<span class="lineNum">     466 </span>            :                 case PT_OPTYPE:
+<span class="lineNum">     467 </span><span class="lineNoCov">          0 :                         return instruction_equal (e1-&gt;data, e2-&gt;data);</span>
+<span class="lineNum">     468 </span>            :                 case PT_METHOD: // TODO: implement proper equal.
+<span class="lineNum">     469 </span>            :                 case PT_KLASS:
+<span class="lineNum">     470 </span>            :                 case PT_SIGNATURE:
+<span class="lineNum">     471 </span><span class="lineNoCov">          0 :                         return constant_pool_hash (e1) == constant_pool_hash (e2);</span>
+<span class="lineNum">     472 </span>            :                 case PT_INPUTTYPE: // TODO: singleton.
+<span class="lineNum">     473 </span>            :                 case PT_ENUMKLASS:
+<span class="lineNum">     474 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     475 </span>            :         }
+<span class="lineNum">     476 </span><span class="lineNoCov">          0 :         g_assert (FALSE);</span>
+<span class="lineNum">     477 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     478 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     479 </span>            : 
+<span class="lineNum">     480 </span>            : 
+<span class="lineNum">     481 </span>            : static gboolean cfg_dump_method_inited = FALSE;
+<a name="482"><span class="lineNum">     482 </span>            : static const char *cfg_dump_method_name;</a>
+<span class="lineNum">     483 </span>            : 
+<span class="lineNum">     484 </span>            : void mono_cfg_dump_create_context (MonoCompile *cfg)
+<span class="lineNum">     485 </span>            : {
+<span class="lineNum">     486 </span><span class="lineCov">   14396839 :         cfg-&gt;gdump_ctx = NULL;</span>
+<span class="lineNum">     487 </span>            : 
+<span class="lineNum">     488 </span><span class="lineCov">   14396839 :         if (!cfg_dump_method_inited) {</span>
+<span class="lineNum">     489 </span><span class="lineCov">       3285 :                 cfg_dump_method_name = g_getenv (&quot;MONO_JIT_DUMP_METHOD&quot;);</span>
+<span class="lineNum">     490 </span><span class="lineCov">       3285 :                 cfg_dump_method_inited = TRUE;</span>
+<span class="lineNum">     491 </span><span class="lineCov">       3285 :         }</span>
+<span class="lineNum">     492 </span><span class="lineCov">   14397215 :         if (!cfg_dump_method_name)</span>
+<span class="lineNum">     493 </span><span class="lineCov">   14397940 :                 return;</span>
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :         const char *name = cfg_dump_method_name;</span>
+<span class="lineNum">     495 </span>            : 
+<span class="lineNum">     496 </span><span class="lineNoCov">          0 :         if ((strchr (name, '.') &gt; name) || strchr (name, ':')) {</span>
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :                 MonoMethodDesc *desc = mono_method_desc_new (name, TRUE);</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :                 gboolean failed = !mono_method_desc_full_match (desc, cfg-&gt;method);</span>
+<span class="lineNum">     499 </span><span class="lineNoCov">          0 :                 mono_method_desc_free (desc);</span>
+<span class="lineNum">     500 </span><span class="lineNoCov">          0 :                 if (failed)</span>
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 :         } else</span>
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :                 if (strcmp (cfg-&gt;method-&gt;name, name) != 0)</span>
+<span class="lineNum">     504 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     505 </span>            : 
+<span class="lineNum">     506 </span><span class="lineNoCov">          0 :         g_debug (&quot;cfg_dump: create context for \&quot;%s::%s\&quot;&quot;, cfg-&gt;method-&gt;klass-&gt;name, cfg-&gt;method-&gt;name);</span>
+<span class="lineNum">     507 </span><span class="lineNoCov">          0 :         int fd = create_socket (DEFAULT_HOST, DEFAULT_PORT);</span>
+<span class="lineNum">     508 </span><span class="lineNoCov">          0 :         if (fd &lt; 0) {</span>
+<span class="lineNum">     509 </span><span class="lineNoCov">          0 :                 g_warning (&quot;cfg_dump: couldn't create socket: %s::%d&quot;, DEFAULT_HOST, DEFAULT_PORT);</span>
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     511 </span>            :         }
+<span class="lineNum">     512 </span>            : 
+<span class="lineNum">     513 </span><span class="lineNoCov">          0 :         MonoGraphDumper *ctx = (MonoGraphDumper *) mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (MonoGraphDumper));</span>
+<span class="lineNum">     514 </span><span class="lineNoCov">          0 :         ctx-&gt;fd = fd;</span>
+<span class="lineNum">     515 </span><span class="lineNoCov">          0 :         ctx-&gt;constant_pool = g_hash_table_new ((GHashFunc) constant_pool_hash, constant_pool_equal);</span>
+<span class="lineNum">     516 </span><span class="lineNoCov">          0 :         ctx-&gt;insn2id = g_hash_table_new ((GHashFunc) instruction_hash, instruction_equal);</span>
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :         ctx-&gt;next_cp_id = 1;</span>
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :         ctx-&gt;next_insn_id = 0;</span>
+<span class="lineNum">     519 </span>            : 
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :         cfg-&gt;gdump_ctx = ctx;</span>
+<span class="lineNum">     521 </span><span class="lineCov">   14396983 : }</span>
+<a name="522"><span class="lineNum">     522 </span>            : </a>
+<span class="lineNum">     523 </span>            : void
+<span class="lineNum">     524 </span>            : mono_cfg_dump_ir (MonoCompile *cfg, const char *phase_name)
+<span class="lineNum">     525 </span>            : {
+<span class="lineNum">     526 </span><span class="lineCov">  349746792 :         if (cfg-&gt;gdump_ctx == NULL)</span>
+<span class="lineNum">     527 </span><span class="lineCov">  349800201 :                 return;</span>
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :         cfg_debug (&quot;=== DUMPING PASS \&quot;%s\&quot; ===&quot;, phase_name);</span>
+<span class="lineNum">     529 </span><span class="lineNoCov">          0 :         write_byte (cfg, BEGIN_GRAPH);</span>
+<span class="lineNum">     530 </span><span class="lineNoCov">          0 :         write_pool (cfg, create_cp_entry (cfg, (void *) phase_name, PT_STRING));</span>
+<span class="lineNum">     531 </span>            : 
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :         int instruction_count = label_instructions (cfg);</span>
+<span class="lineNum">     533 </span><span class="lineNoCov">          0 :         write_instructions (cfg, instruction_count);</span>
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 :         write_blocks (cfg);</span>
+<span class="lineNum">     535 </span><span class="lineCov">  349805483 : }</span>
+<span class="lineNum">     536 </span>            : #else /* !defined(DISABLE_LOGGING) &amp;&amp; !defined(DISABLE_JIT) &amp;&amp; !defined(HOST_WIN32) */
+<span class="lineNum">     537 </span>            : void
+<span class="lineNum">     538 </span>            : mono_cfg_dump_create_context (MonoCompile *cfg)
+<span class="lineNum">     539 </span>            : {
+<span class="lineNum">     540 </span>            : }
+<span class="lineNum">     541 </span>            : 
+<span class="lineNum">     542 </span>            : void
+<span class="lineNum">     543 </span>            : mono_cfg_dump_begin_group (MonoCompile *cfg)
+<span class="lineNum">     544 </span>            : {
+<span class="lineNum">     545 </span>            : }
+<span class="lineNum">     546 </span>            : 
+<span class="lineNum">     547 </span>            : void
+<span class="lineNum">     548 </span>            : mono_cfg_dump_close_group (MonoCompile *cfg)
+<span class="lineNum">     549 </span>            : {
+<span class="lineNum">     550 </span>            : }
+<span class="lineNum">     551 </span>            : 
+<span class="lineNum">     552 </span>            : void
+<span class="lineNum">     553 </span>            : mono_cfg_dump_ir (MonoCompile *cfg, const char *phase_name)
+<span class="lineNum">     554 </span>            : {
+<span class="lineNum">     555 </span>            : }
+<span class="lineNum">     556 </span>            : #endif /* !defined(DISABLE_LOGGING) &amp;&amp; !defined(DISABLE_JIT) &amp;&amp; !defined(HOST_WIN32) */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

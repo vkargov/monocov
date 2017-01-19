@@ -1,0 +1,273 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-time.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-time.c<span style="font-size: 80%;"> (source / <a href="mono-time.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">22</td>
+            <td class="headerCovTableEntry">24</td>
+            <td class="headerCovTableEntryHi">91.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * Time utility functions.
+<span class="lineNum">       3 </span>            :  * Author: Paolo Molaro (&lt;lupus@ximian.com&gt;)
+<span class="lineNum">       4 </span>            :  * Copyright (C) 2008 Novell, Inc.
+<span class="lineNum">       5 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       6 </span>            :  */
+<span class="lineNum">       7 </span>            : 
+<span class="lineNum">       8 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">       9 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      10 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #ifdef HAVE_SYS_TIME_H
+<span class="lineNum">      13 </span>            : #include &lt;sys/time.h&gt;
+<span class="lineNum">      14 </span>            : #endif
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;utils/mono-time.h&gt;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #define MTICKS_PER_SEC (10 * 1000 * 1000)
+<a name="20"><span class="lineNum">      20 </span>            : </a>
+<span class="lineNum">      21 </span>            : gint64
+<span class="lineNum">      22 </span>            : mono_msec_ticks (void)
+<span class="lineNum">      23 </span>            : {
+<span class="lineNum">      24 </span><span class="lineCov">    1869887 :         return mono_100ns_ticks () / 10 / 1000;</span>
+<span class="lineNum">      25 </span>            : }
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : #ifdef HOST_WIN32
+<span class="lineNum">      28 </span>            : #include &lt;windows.h&gt;
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : #ifndef _MSC_VER
+<span class="lineNum">      31 </span>            : /* we get &quot;error: implicit declaration of function 'GetTickCount64'&quot; */
+<span class="lineNum">      32 </span>            : WINBASEAPI ULONGLONG WINAPI GetTickCount64(void);
+<span class="lineNum">      33 </span>            : #endif
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span>            : gint64
+<span class="lineNum">      36 </span>            : mono_msec_boottime (void)
+<span class="lineNum">      37 </span>            : {
+<span class="lineNum">      38 </span>            :         /* GetTickCount () is reportedly monotonic */
+<span class="lineNum">      39 </span>            :         return GetTickCount64 ();
+<span class="lineNum">      40 </span>            : }
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : /* Returns the number of 100ns ticks from unspecified time: this should be monotonic */
+<span class="lineNum">      43 </span>            : gint64
+<span class="lineNum">      44 </span>            : mono_100ns_ticks (void)
+<span class="lineNum">      45 </span>            : {
+<span class="lineNum">      46 </span>            :         static LARGE_INTEGER freq;
+<span class="lineNum">      47 </span>            :         static UINT64 start_time;
+<span class="lineNum">      48 </span>            :         UINT64 cur_time;
+<span class="lineNum">      49 </span>            :         LARGE_INTEGER value;
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            :         if (!freq.QuadPart) {
+<span class="lineNum">      52 </span>            :                 if (!QueryPerformanceFrequency (&amp;freq))
+<span class="lineNum">      53 </span>            :                         return mono_100ns_datetime ();
+<span class="lineNum">      54 </span>            :                 QueryPerformanceCounter (&amp;value);
+<span class="lineNum">      55 </span>            :                 start_time = value.QuadPart;
+<span class="lineNum">      56 </span>            :         }
+<span class="lineNum">      57 </span>            :         QueryPerformanceCounter (&amp;value);
+<span class="lineNum">      58 </span>            :         cur_time = value.QuadPart;
+<span class="lineNum">      59 </span>            :         /* we use unsigned numbers and return the difference to avoid overflows */
+<span class="lineNum">      60 </span>            :         return (cur_time - start_time) * (double)MTICKS_PER_SEC / freq.QuadPart;
+<span class="lineNum">      61 </span>            : }
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span>            : /* Returns the number of 100ns ticks since Jan 1, 1601, UTC timezone */
+<span class="lineNum">      64 </span>            : gint64
+<span class="lineNum">      65 </span>            : mono_100ns_datetime (void)
+<span class="lineNum">      66 </span>            : {
+<span class="lineNum">      67 </span>            :         ULARGE_INTEGER ft;
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span>            :         if (sizeof(ft) != sizeof(FILETIME))
+<span class="lineNum">      70 </span>            :                 g_assert_not_reached ();
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            :         GetSystemTimeAsFileTime ((FILETIME*) &amp;ft);
+<span class="lineNum">      73 </span>            :         return ft.QuadPart;
+<span class="lineNum">      74 </span>            : }
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span>            : #else
+<span class="lineNum">      77 </span>            : 
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            : #if defined (HAVE_SYS_PARAM_H)
+<span class="lineNum">      80 </span>            : #include &lt;sys/param.h&gt;
+<span class="lineNum">      81 </span>            : #endif
+<span class="lineNum">      82 </span>            : #if defined(HAVE_SYS_SYSCTL_H)
+<span class="lineNum">      83 </span>            : #include &lt;sys/sysctl.h&gt;
+<span class="lineNum">      84 </span>            : #endif
+<span class="lineNum">      85 </span>            : 
+<span class="lineNum">      86 </span>            : #if defined(PLATFORM_MACOSX)
+<span class="lineNum">      87 </span>            : #include &lt;mach/mach.h&gt;
+<span class="lineNum">      88 </span>            : #include &lt;mach/mach_time.h&gt;
+<span class="lineNum">      89 </span>            : #endif
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span>            : #include &lt;time.h&gt;
+<a name="92"><span class="lineNum">      92 </span>            : </a>
+<span class="lineNum">      93 </span>            : static gint64
+<span class="lineNum">      94 </span>            : get_boot_time (void)
+<span class="lineNum">      95 </span>            : {
+<span class="lineNum">      96 </span>            : #if defined (HAVE_SYS_PARAM_H) &amp;&amp; defined (KERN_BOOTTIME)
+<span class="lineNum">      97 </span>            :         int mib [2];
+<span class="lineNum">      98 </span>            :         size_t size;
+<span class="lineNum">      99 </span>            :         time_t now;
+<span class="lineNum">     100 </span>            :         struct timeval boottime;
+<span class="lineNum">     101 </span>            : 
+<span class="lineNum">     102 </span><span class="lineCov">       1226 :         (void)time(&amp;now);</span>
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineCov">       1226 :         mib [0] = CTL_KERN;</span>
+<span class="lineNum">     105 </span><span class="lineCov">       1226 :         mib [1] = KERN_BOOTTIME;</span>
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span><span class="lineCov">       1226 :         size = sizeof(boottime);</span>
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span><span class="lineCov">       1226 :         if (sysctl(mib, 2, &amp;boottime, &amp;size, NULL, 0) != -1)</span>
+<span class="lineNum">     110 </span><span class="lineCov">       1226 :                 return (gint64)((now - boottime.tv_sec) * MTICKS_PER_SEC);</span>
+<span class="lineNum">     111 </span>            : #else
+<span class="lineNum">     112 </span>            :         FILE *uptime = fopen (&quot;/proc/uptime&quot;, &quot;r&quot;);
+<span class="lineNum">     113 </span>            :         if (uptime) {
+<span class="lineNum">     114 </span>            :                 double upt;
+<span class="lineNum">     115 </span>            :                 if (fscanf (uptime, &quot;%lf&quot;, &amp;upt) == 1) {
+<span class="lineNum">     116 </span>            :                         gint64 now = mono_100ns_datetime ();
+<span class="lineNum">     117 </span>            :                         fclose (uptime);
+<span class="lineNum">     118 </span>            :                         return now - (gint64)(upt * MTICKS_PER_SEC);
+<span class="lineNum">     119 </span>            :                 }
+<span class="lineNum">     120 </span>            :                 fclose (uptime);
+<span class="lineNum">     121 </span>            :         }
+<span class="lineNum">     122 </span>            : #endif
+<span class="lineNum">     123 </span>            :         /* a made up uptime of 300 seconds */
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :         return (gint64)300 * MTICKS_PER_SEC;</span>
+<span class="lineNum">     125 </span><span class="lineCov">       1226 : }</span>
+<span class="lineNum">     126 </span>            : 
+<a name="127"><span class="lineNum">     127 </span>            : /* Returns the number of milliseconds from boot time: this should be monotonic */</a>
+<span class="lineNum">     128 </span>            : gint64
+<span class="lineNum">     129 </span>            : mono_msec_boottime (void)
+<span class="lineNum">     130 </span>            : {
+<span class="lineNum">     131 </span>            :         static gint64 boot_time = 0;
+<span class="lineNum">     132 </span>            :         gint64 now;
+<span class="lineNum">     133 </span><span class="lineCov">    3532830 :         if (!boot_time)</span>
+<span class="lineNum">     134 </span><span class="lineCov">       1226 :                 boot_time = get_boot_time ();</span>
+<span class="lineNum">     135 </span><span class="lineCov">    3532998 :         now = mono_100ns_datetime ();</span>
+<span class="lineNum">     136 </span>            :         /*printf (&quot;now: %llu (boot: %llu) ticks: %llu\n&quot;, (gint64)now, (gint64)boot_time, (gint64)(now - boot_time));*/
+<span class="lineNum">     137 </span><span class="lineCov">    3532998 :         return (now - boot_time)/10000;</span>
+<span class="lineNum">     138 </span>            : }
+<span class="lineNum">     139 </span>            : 
+<a name="140"><span class="lineNum">     140 </span>            : /* Returns the number of 100ns ticks from unspecified time: this should be monotonic */</a>
+<span class="lineNum">     141 </span>            : gint64
+<span class="lineNum">     142 </span>            : mono_100ns_ticks (void)
+<span class="lineNum">     143 </span>            : {
+<span class="lineNum">     144 </span>            :         struct timeval tv;
+<span class="lineNum">     145 </span>            : #if defined(PLATFORM_MACOSX)
+<span class="lineNum">     146 </span>            :         /* http://developer.apple.com/library/mac/#qa/qa1398/_index.html */
+<span class="lineNum">     147 </span>            :         static mach_timebase_info_data_t timebase;
+<span class="lineNum">     148 </span><span class="lineCov">    7768260 :         guint64 now = mach_absolute_time ();</span>
+<span class="lineNum">     149 </span><span class="lineCov">    7768260 :         if (timebase.denom == 0) {</span>
+<span class="lineNum">     150 </span><span class="lineCov">       3285 :                 mach_timebase_info (&amp;timebase);</span>
+<span class="lineNum">     151 </span><span class="lineCov">       3285 :                 timebase.denom *= 100; /* we return 100ns ticks */</span>
+<span class="lineNum">     152 </span><span class="lineCov">       3285 :         }</span>
+<span class="lineNum">     153 </span><span class="lineCov">    7768363 :         return now * timebase.numer / timebase.denom;</span>
+<span class="lineNum">     154 </span>            : #elif defined(CLOCK_MONOTONIC)
+<span class="lineNum">     155 </span>            :         struct timespec tspec;
+<span class="lineNum">     156 </span>            :         static struct timespec tspec_freq = {0};
+<span class="lineNum">     157 </span>            :         static int can_use_clock = 0;
+<span class="lineNum">     158 </span>            :         if (!tspec_freq.tv_nsec) {
+<span class="lineNum">     159 </span>            :                 can_use_clock = clock_getres (CLOCK_MONOTONIC, &amp;tspec_freq) == 0;
+<span class="lineNum">     160 </span>            :                 /*printf (&quot;resolution: %lu.%lu\n&quot;, tspec_freq.tv_sec, tspec_freq.tv_nsec);*/
+<span class="lineNum">     161 </span>            :         }
+<span class="lineNum">     162 </span>            :         if (can_use_clock) {
+<span class="lineNum">     163 </span>            :                 if (clock_gettime (CLOCK_MONOTONIC, &amp;tspec) == 0) {
+<span class="lineNum">     164 </span>            :                         /*printf (&quot;time: %lu.%lu\n&quot;, tspec.tv_sec, tspec.tv_nsec); */
+<span class="lineNum">     165 </span>            :                         return ((gint64)tspec.tv_sec * MTICKS_PER_SEC + tspec.tv_nsec / 100);
+<span class="lineNum">     166 </span>            :                 }
+<span class="lineNum">     167 </span>            :         }
+<span class="lineNum">     168 </span>            : #endif
+<span class="lineNum">     169 </span>            :         if (gettimeofday (&amp;tv, NULL) == 0)
+<span class="lineNum">     170 </span>            :                 return ((gint64)tv.tv_sec * 1000000 + tv.tv_usec) * 10;
+<span class="lineNum">     171 </span>            :         return 0;
+<span class="lineNum">     172 </span>            : }
+<span class="lineNum">     173 </span>            : 
+<span class="lineNum">     174 </span>            : /*
+<span class="lineNum">     175 </span>            :  * Magic number to convert unix epoch start to windows epoch start
+<span class="lineNum">     176 </span>            :  * Jan 1, 1970 into a value which is relative to Jan 1, 1601.
+<span class="lineNum">     177 </span>            :  */
+<span class="lineNum">     178 </span>            : #define EPOCH_ADJUST    ((guint64)11644473600LL)
+<span class="lineNum">     179 </span>            : 
+<a name="180"><span class="lineNum">     180 </span>            : /* Returns the number of 100ns ticks since 1/1/1601, UTC timezone */</a>
+<span class="lineNum">     181 </span>            : gint64
+<span class="lineNum">     182 </span>            : mono_100ns_datetime (void)
+<span class="lineNum">     183 </span>            : {
+<span class="lineNum">     184 </span>            :         struct timeval tv;
+<span class="lineNum">     185 </span><span class="lineCov">    3606003 :         if (gettimeofday (&amp;tv, NULL) == 0)</span>
+<span class="lineNum">     186 </span><span class="lineCov">    3606058 :                 return mono_100ns_datetime_from_timeval (tv);</span>
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :         return 0;</span>
+<span class="lineNum">     188 </span><span class="lineCov">    3606201 : }</span>
+<a name="189"><span class="lineNum">     189 </span>            : </a>
+<span class="lineNum">     190 </span>            : gint64
+<span class="lineNum">     191 </span>            : mono_100ns_datetime_from_timeval (struct timeval tv)
+<span class="lineNum">     192 </span>            : {
+<span class="lineNum">     193 </span><span class="lineCov">    3606063 :         return (((gint64)tv.tv_sec + EPOCH_ADJUST) * 1000000 + tv.tv_usec) * 10;</span>
+<span class="lineNum">     194 </span>            : }
+<span class="lineNum">     195 </span>            : 
+<span class="lineNum">     196 </span>            : #endif
+<span class="lineNum">     197 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

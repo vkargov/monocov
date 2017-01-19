@@ -1,0 +1,1564 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/branch-opts.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - branch-opts.c<span style="font-size: 80%;"> (source / <a href="branch-opts.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">576</td>
+            <td class="headerCovTableEntry">783</td>
+            <td class="headerCovTableEntryLo">73.6 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">14</td>
+            <td class="headerCovTableEntry">15</td>
+            <td class="headerCovTableEntryHi">93.3 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * branch-opts.c: Branch optimizations support 
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *   Patrik Torstensson (Patrik.Torstesson at gmail.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2005 Ximian, Inc.  http://www.ximian.com
+<span class="lineNum">       8 </span>            :  * Copyright 2011 Xamarin Inc.  http://www.xamarin.com
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      13 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">      14 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : /*
+<span class="lineNum">      19 </span>            :  * Returns true if @bb is a basic block which falls through the next block.
+<span class="lineNum">      20 </span>            :  * TODO verify if it helps to check if the bb last ins is a branch to its successor. 
+<a name="21"><span class="lineNum">      21 </span>            :  */</a>
+<span class="lineNum">      22 </span>            : static gboolean
+<span class="lineNum">      23 </span>            : mono_bb_is_fall_through (MonoCompile *cfg, MonoBasicBlock *bb)
+<span class="lineNum">      24 </span>            : {
+<span class="lineNum">      25 </span><span class="lineCov">   13247212 :         return  bb-&gt;next_bb &amp;&amp; bb-&gt;next_bb-&gt;region == bb-&gt;region &amp;&amp; /*fall throught between regions is not really interesting or useful*/</span>
+<span class="lineNum">      26 </span><span class="lineCov">   25381290 :                         (bb-&gt;last_ins == NULL || !MONO_IS_BRANCH_OP (bb-&gt;last_ins)); /*and the last op can't be a branch too*/</span>
+<span class="lineNum">      27 </span>            : }
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : /*
+<span class="lineNum">      30 </span>            :  * Used by the arch code to replace the exception handling
+<span class="lineNum">      31 </span>            :  * with a direct branch. This is safe to do if the 
+<span class="lineNum">      32 </span>            :  * exception object isn't used, no rethrow statement and
+<span class="lineNum">      33 </span>            :  * no filter statement (verify).
+<span class="lineNum">      34 </span>            :  *
+<a name="35"><span class="lineNum">      35 </span>            :  */</a>
+<span class="lineNum">      36 </span>            : MonoInst *
+<span class="lineNum">      37 </span>            : mono_branch_optimize_exception_target (MonoCompile *cfg, MonoBasicBlock *bb, const char * exname)
+<span class="lineNum">      38 </span>            : {
+<span class="lineNum">      39 </span><span class="lineCov">    9785441 :         MonoMethodHeader *header = cfg-&gt;header;</span>
+<span class="lineNum">      40 </span>            :         MonoExceptionClause *clause;
+<span class="lineNum">      41 </span>            :         MonoClass *exclass;
+<span class="lineNum">      42 </span>            :         int i;
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span><span class="lineCov">    9785441 :         if (!(cfg-&gt;opt &amp; MONO_OPT_EXCEPTION))</span>
+<span class="lineNum">      45 </span><span class="lineCov">     343968 :                 return NULL;</span>
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span><span class="lineCov">   10257041 :         if (bb-&gt;region == -1 || !MONO_BBLOCK_IS_IN_REGION (bb, MONO_REGION_TRY))</span>
+<span class="lineNum">      48 </span><span class="lineCov">    8663924 :                 return NULL;</span>
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span><span class="lineCov">     779029 :         exclass = mono_class_load_from_name (mono_get_corlib (), &quot;System&quot;, exname);</span>
+<span class="lineNum">      51 </span>            :         /* search for the handler */
+<span class="lineNum">      52 </span><span class="lineCov">    2008537 :         for (i = 0; i &lt; header-&gt;num_clauses; ++i) {</span>
+<span class="lineNum">      53 </span><span class="lineCov">    1004480 :                 clause = &amp;header-&gt;clauses [i];</span>
+<span class="lineNum">      54 </span><span class="lineCov">    1901043 :                 if (MONO_OFFSET_IN_CLAUSE (clause, bb-&gt;real_offset)) {</span>
+<span class="lineNum">      55 </span><span class="lineCov">     953950 :                         if (clause-&gt;flags == MONO_EXCEPTION_CLAUSE_NONE &amp;&amp; clause-&gt;data.catch_class &amp;&amp; mono_class_is_assignable_from (clause-&gt;data.catch_class, exclass)) {</span>
+<span class="lineNum">      56 </span>            :                                 MonoBasicBlock *tbb;
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            :                                 /* get the basic block for the handler and 
+<span class="lineNum">      59 </span>            :                                  * check if the exception object is used.
+<span class="lineNum">      60 </span>            :                                  * Flag is set during method_to_ir due to 
+<span class="lineNum">      61 </span>            :                                  * pop-op is optmized away in codegen (burg).
+<span class="lineNum">      62 </span>            :                                  */
+<span class="lineNum">      63 </span><span class="lineCov">      48460 :                                 tbb = cfg-&gt;cil_offset_to_bb [clause-&gt;handler_offset];</span>
+<span class="lineNum">      64 </span><span class="lineCov">     137028 :                                 if (tbb &amp;&amp; tbb-&gt;flags &amp; BB_EXCEPTION_DEAD_OBJ &amp;&amp; !(tbb-&gt;flags &amp; BB_EXCEPTION_UNSAFE)) {</span>
+<span class="lineNum">      65 </span><span class="lineCov">      39744 :                                         MonoBasicBlock *targetbb = tbb;</span>
+<span class="lineNum">      66 </span><span class="lineCov">      39744 :                                         gboolean unsafe = FALSE;</span>
+<span class="lineNum">      67 </span>            : 
+<span class="lineNum">      68 </span>            :                                         /* Check if this catch clause is ok to optimize by
+<span class="lineNum">      69 </span>            :                                          * looking for the BB_EXCEPTION_UNSAFE in every BB that
+<span class="lineNum">      70 </span>            :                                          * belongs to the same region. 
+<span class="lineNum">      71 </span>            :                                          *
+<span class="lineNum">      72 </span>            :                                          * UNSAFE flag is set during method_to_ir (OP_RETHROW)
+<span class="lineNum">      73 </span>            :                                          */
+<span class="lineNum">      74 </span><span class="lineCov">     496590 :                                         while (!unsafe &amp;&amp; tbb-&gt;next_bb &amp;&amp; tbb-&gt;region == tbb-&gt;next_bb-&gt;region) {</span>
+<span class="lineNum">      75 </span><span class="lineCov">      59733 :                                                 if (tbb-&gt;next_bb-&gt;flags &amp; BB_EXCEPTION_UNSAFE)  {</span>
+<span class="lineNum">      76 </span><span class="lineCov">        160 :                                                         unsafe = TRUE;</span>
+<span class="lineNum">      77 </span><span class="lineCov">        160 :                                                         break;</span>
+<span class="lineNum">      78 </span>            :                                                 }
+<span class="lineNum">      79 </span><span class="lineCov">      59574 :                                                 tbb = tbb-&gt;next_bb;</span>
+<span class="lineNum">      80 </span>            :                                         }
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span><span class="lineCov">      39744 :                                         if (!unsafe) {</span>
+<span class="lineNum">      83 </span>            :                                                 MonoInst *jump;
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span>            :                                                 /* Create dummy inst to allow easier integration in
+<span class="lineNum">      86 </span>            :                                                  * arch dependent code (opcode ignored)
+<span class="lineNum">      87 </span>            :                                                  */
+<span class="lineNum">      88 </span><span class="lineCov">     158336 :                                                 MONO_INST_NEW (cfg, jump, OP_BR);</span>
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span>            :                                                 /* Allocate memory for our branch target */
+<span class="lineNum">      91 </span><span class="lineCov">      39583 :                                                 jump-&gt;inst_i1 = (MonoInst *)mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (MonoInst));</span>
+<span class="lineNum">      92 </span><span class="lineCov">      39583 :                                                 jump-&gt;inst_true_bb = targetbb;</span>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineCov">      39583 :                                                 if (cfg-&gt;verbose_level &gt; 2) </span>
+<span class="lineNum">      95 </span><span class="lineCov">       1368 :                                                         g_print (&quot;found exception to optimize - returning branch to BB%d (%s) (instead of throw) for method %s:%s\n&quot;, targetbb-&gt;block_num, clause-&gt;data.catch_class-&gt;name, cfg-&gt;method-&gt;klass-&gt;name, cfg-&gt;method-&gt;name);</span>
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span><span class="lineCov">      39583 :                                                 return jump;</span>
+<span class="lineNum">      98 </span>            :                                         } 
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span><span class="lineCov">        160 :                                         return NULL;</span>
+<span class="lineNum">     101 </span>            :                                 } else {
+<span class="lineNum">     102 </span>            :                                         /* Branching to an outer clause could skip inner clauses */
+<span class="lineNum">     103 </span><span class="lineCov">       8717 :                                         return NULL;</span>
+<span class="lineNum">     104 </span>            :                                 }
+<span class="lineNum">     105 </span>            :                         } else {
+<span class="lineNum">     106 </span>            :                                 /* Branching to an outer clause could skip inner clauses */
+<span class="lineNum">     107 </span><span class="lineCov">     730976 :                                 return NULL;</span>
+<span class="lineNum">     108 </span>            :                         }
+<span class="lineNum">     109 </span>            :                 }
+<span class="lineNum">     110 </span><span class="lineCov">     225039 :         }</span>
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     113 </span><span class="lineCov">    9785118 : }</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span>            : static const int int_cmov_opcodes [] = {
+<span class="lineNum">     116 </span>            :         OP_CMOV_IEQ,
+<span class="lineNum">     117 </span>            :         OP_CMOV_INE_UN,
+<span class="lineNum">     118 </span>            :         OP_CMOV_ILE,
+<span class="lineNum">     119 </span>            :         OP_CMOV_IGE,
+<span class="lineNum">     120 </span>            :         OP_CMOV_ILT,
+<span class="lineNum">     121 </span>            :         OP_CMOV_IGT,
+<span class="lineNum">     122 </span>            :         OP_CMOV_ILE_UN,
+<span class="lineNum">     123 </span>            :         OP_CMOV_IGE_UN,
+<span class="lineNum">     124 </span>            :         OP_CMOV_ILT_UN,
+<span class="lineNum">     125 </span>            :         OP_CMOV_IGT_UN
+<span class="lineNum">     126 </span>            : };
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            : static const int long_cmov_opcodes [] = {
+<span class="lineNum">     129 </span>            :         OP_CMOV_LEQ,
+<span class="lineNum">     130 </span>            :         OP_CMOV_LNE_UN,
+<span class="lineNum">     131 </span>            :         OP_CMOV_LLE,
+<span class="lineNum">     132 </span>            :         OP_CMOV_LGE,
+<span class="lineNum">     133 </span>            :         OP_CMOV_LLT,
+<span class="lineNum">     134 </span>            :         OP_CMOV_LGT,
+<span class="lineNum">     135 </span>            :         OP_CMOV_LLE_UN,
+<span class="lineNum">     136 </span>            :         OP_CMOV_LGE_UN,
+<span class="lineNum">     137 </span>            :         OP_CMOV_LLT_UN,
+<span class="lineNum">     138 </span>            :         OP_CMOV_LGT_UN
+<span class="lineNum">     139 </span>            : };
+<a name="140"><span class="lineNum">     140 </span>            : </a>
+<span class="lineNum">     141 </span>            : static G_GNUC_UNUSED int
+<span class="lineNum">     142 </span>            : br_to_br_un (int opcode)
+<span class="lineNum">     143 </span>            : {
+<span class="lineNum">     144 </span><span class="lineCov">      38991 :         switch (opcode) {</span>
+<span class="lineNum">     145 </span>            :         case OP_IBGT:
+<span class="lineNum">     146 </span><span class="lineCov">      31217 :                 return OP_IBGT_UN;</span>
+<span class="lineNum">     147 </span>            :                 break;
+<span class="lineNum">     148 </span>            :         case OP_IBLE:
+<span class="lineNum">     149 </span><span class="lineCov">       7180 :                 return OP_IBLE_UN;</span>
+<span class="lineNum">     150 </span>            :                 break;
+<span class="lineNum">     151 </span>            :         case OP_LBGT:
+<span class="lineNum">     152 </span><span class="lineCov">        602 :                 return OP_LBGT_UN;</span>
+<span class="lineNum">     153 </span>            :                 break;
+<span class="lineNum">     154 </span>            :         case OP_LBLE:
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :                 return OP_LBLE_UN;</span>
+<span class="lineNum">     156 </span>            :                 break;
+<span class="lineNum">     157 </span>            :         default:
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :                 return -1;</span>
+<span class="lineNum">     160 </span>            :         }
+<span class="lineNum">     161 </span><span class="lineCov">      39027 : }</span>
+<span class="lineNum">     162 </span>            : 
+<span class="lineNum">     163 </span>            : /**
+<span class="lineNum">     164 </span>            :  * mono_replace_ins:
+<span class="lineNum">     165 </span>            :  *
+<span class="lineNum">     166 </span>            :  *   Replace INS with its decomposition which is stored in a series of bblocks starting
+<span class="lineNum">     167 </span>            :  * at FIRST_BB and ending at LAST_BB. On enter, PREV points to the predecessor of INS. 
+<span class="lineNum">     168 </span>            :  * On return, it will be set to the last ins of the decomposition.
+<a name="169"><span class="lineNum">     169 </span>            :  */</a>
+<span class="lineNum">     170 </span>            : void
+<span class="lineNum">     171 </span>            : mono_replace_ins (MonoCompile *cfg, MonoBasicBlock *bb, MonoInst *ins, MonoInst **prev, MonoBasicBlock *first_bb, MonoBasicBlock *last_bb)
+<span class="lineNum">     172 </span>            : {
+<span class="lineNum">     173 </span><span class="lineCov">   41150509 :         MonoInst *next = ins-&gt;next;</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span><span class="lineCov">   81585836 :         if (next &amp;&amp; next-&gt;opcode == OP_NOP) {</span>
+<span class="lineNum">     176 </span>            :                 /* Avoid NOPs following branches */
+<span class="lineNum">     177 </span><span class="lineCov">      22387 :                 ins-&gt;next = next-&gt;next;</span>
+<span class="lineNum">     178 </span><span class="lineCov">      22387 :                 next = next-&gt;next;</span>
+<span class="lineNum">     179 </span><span class="lineCov">      22387 :         }</span>
+<span class="lineNum">     180 </span>            : 
+<span class="lineNum">     181 </span><span class="lineCov">   41168929 :         if (first_bb == last_bb) {</span>
+<span class="lineNum">     182 </span>            :                 /* 
+<span class="lineNum">     183 </span>            :                  * Only one replacement bb, merge the code into
+<span class="lineNum">     184 </span>            :                  * the current bb.
+<span class="lineNum">     185 </span>            :                  */
+<span class="lineNum">     186 </span>            : 
+<span class="lineNum">     187 </span>            :                 /* Delete links between the first_bb and its successors */
+<span class="lineNum">     188 </span><span class="lineCov">   75774642 :                 while (first_bb-&gt;out_count)</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                         mono_unlink_bblock (cfg, first_bb, first_bb-&gt;out_bb [0]);</span>
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span>            :                 /* Head */
+<span class="lineNum">     192 </span><span class="lineCov">   37887925 :                 if (*prev) {</span>
+<span class="lineNum">     193 </span><span class="lineCov">   36214493 :                         (*prev)-&gt;next = first_bb-&gt;code;</span>
+<span class="lineNum">     194 </span><span class="lineCov">   36214493 :                         first_bb-&gt;code-&gt;prev = (*prev);</span>
+<span class="lineNum">     195 </span><span class="lineCov">   36214493 :                 } else {</span>
+<span class="lineNum">     196 </span><span class="lineCov">    1674064 :                         bb-&gt;code = first_bb-&gt;code;</span>
+<span class="lineNum">     197 </span>            :                 }
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span>            :                 /* Tail */
+<span class="lineNum">     200 </span><span class="lineCov">   37890420 :                 last_bb-&gt;last_ins-&gt;next = next;</span>
+<span class="lineNum">     201 </span><span class="lineCov">   37890420 :                 if (next)</span>
+<span class="lineNum">     202 </span><span class="lineCov">   37164602 :                         next-&gt;prev = last_bb-&gt;last_ins;</span>
+<span class="lineNum">     203 </span>            :                 else
+<span class="lineNum">     204 </span><span class="lineCov">     727825 :                         bb-&gt;last_ins = last_bb-&gt;last_ins;</span>
+<span class="lineNum">     205 </span><span class="lineCov">   37888448 :                 *prev = last_bb-&gt;last_ins;</span>
+<span class="lineNum">     206 </span><span class="lineCov">   37888448 :                 bb-&gt;has_array_access |= first_bb-&gt;has_array_access;</span>
+<span class="lineNum">     207 </span><span class="lineCov">   37888448 :         } else {</span>
+<span class="lineNum">     208 </span>            :                 int i, count;
+<span class="lineNum">     209 </span>            :                 MonoBasicBlock **tmp_bblocks, *tmp;
+<span class="lineNum">     210 </span>            :                 MonoInst *last;
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span>            :                 /* Multiple BBs */
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span>            :                 /* Set region/real_offset */
+<span class="lineNum">     215 </span><span class="lineCov">   36455814 :                 for (tmp = first_bb; tmp; tmp = tmp-&gt;next_bb) {</span>
+<span class="lineNum">     216 </span><span class="lineCov">   14941977 :                         tmp-&gt;region = bb-&gt;region;</span>
+<span class="lineNum">     217 </span><span class="lineCov">   14941977 :                         tmp-&gt;real_offset = bb-&gt;real_offset;</span>
+<span class="lineNum">     218 </span><span class="lineCov">   14941977 :                 }</span>
+<span class="lineNum">     219 </span>            : 
+<span class="lineNum">     220 </span>            :                 /* Split the original bb */
+<span class="lineNum">     221 </span><span class="lineCov">    3289721 :                 if (ins-&gt;next)</span>
+<span class="lineNum">     222 </span><span class="lineCov">    3289540 :                         ins-&gt;next-&gt;prev = NULL;</span>
+<span class="lineNum">     223 </span><span class="lineCov">    3288587 :                 ins-&gt;next = NULL;</span>
+<span class="lineNum">     224 </span><span class="lineCov">    3288587 :                 bb-&gt;last_ins = ins;</span>
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span>            :                 /* Merge the second part of the original bb into the last bb */
+<span class="lineNum">     227 </span><span class="lineCov">    3288587 :                 if (last_bb-&gt;last_ins) {</span>
+<span class="lineNum">     228 </span><span class="lineCov">    3289032 :                         last_bb-&gt;last_ins-&gt;next = next;</span>
+<span class="lineNum">     229 </span><span class="lineCov">    3289032 :                         if (next)</span>
+<span class="lineNum">     230 </span><span class="lineCov">    3288971 :                                 next-&gt;prev = last_bb-&gt;last_ins;</span>
+<span class="lineNum">     231 </span><span class="lineCov">    3289297 :                 } else {</span>
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :                         last_bb-&gt;code = next;</span>
+<span class="lineNum">     233 </span>            :                 }
+<span class="lineNum">     234 </span><span class="lineCov">    3288647 :                 last_bb-&gt;has_array_access |= bb-&gt;has_array_access;</span>
+<span class="lineNum">     235 </span>            : 
+<span class="lineNum">     236 </span><span class="lineCov">    3288647 :                 if (next) {</span>
+<span class="lineNum">     237 </span><span class="lineCov">  128128711 :                         for (last = next; last-&gt;next != NULL; last = last-&gt;next)</span>
+<span class="lineNum">     238 </span>            :                                 ;
+<span class="lineNum">     239 </span><span class="lineCov">    3289121 :                         last_bb-&gt;last_ins = last;</span>
+<span class="lineNum">     240 </span><span class="lineCov">    3289121 :                 }</span>
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span><span class="lineCov">   15890350 :                 for (i = 0; i &lt; bb-&gt;out_count; ++i)</span>
+<span class="lineNum">     243 </span><span class="lineCov">    4656277 :                         mono_link_bblock (cfg, last_bb, bb-&gt;out_bb [i]);</span>
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span>            :                 /* Merge the first (dummy) bb to the original bb */
+<span class="lineNum">     246 </span><span class="lineCov">    3289119 :                 if (*prev) {</span>
+<span class="lineNum">     247 </span><span class="lineCov">    3289217 :                         (*prev)-&gt;next = first_bb-&gt;code;</span>
+<span class="lineNum">     248 </span><span class="lineCov">    3289217 :                         first_bb-&gt;code-&gt;prev = (*prev);</span>
+<span class="lineNum">     249 </span><span class="lineCov">    3289217 :                 } else {</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                         bb-&gt;code = first_bb-&gt;code;</span>
+<span class="lineNum">     251 </span>            :                 }
+<span class="lineNum">     252 </span><span class="lineCov">    3288638 :                 bb-&gt;last_ins = first_bb-&gt;last_ins;</span>
+<span class="lineNum">     253 </span><span class="lineCov">    3288638 :                 bb-&gt;has_array_access |= first_bb-&gt;has_array_access;</span>
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span>            :                 /* Delete the links between the original bb and its successors */
+<span class="lineNum">     256 </span><span class="lineCov">    3288638 :                 tmp_bblocks = mono_mempool_alloc0 (cfg-&gt;mempool, sizeof (MonoBasicBlock*) * bb-&gt;out_count);</span>
+<span class="lineNum">     257 </span><span class="lineCov">    3288638 :                 memcpy (tmp_bblocks, bb-&gt;out_bb, sizeof (MonoBasicBlock*) * bb-&gt;out_count);</span>
+<span class="lineNum">     258 </span><span class="lineCov">    3288638 :                 count = bb-&gt;out_count;</span>
+<span class="lineNum">     259 </span><span class="lineCov">   15886928 :                 for (i = 0; i &lt; count; ++i)</span>
+<span class="lineNum">     260 </span><span class="lineCov">    4655761 :                         mono_unlink_bblock (cfg, bb, tmp_bblocks [i]);</span>
+<span class="lineNum">     261 </span>            : 
+<span class="lineNum">     262 </span>            :                 /* Add links between the original bb and the first_bb's successors */
+<span class="lineNum">     263 </span><span class="lineCov">   19707954 :                 for (i = 0; i &lt; first_bb-&gt;out_count; ++i) {</span>
+<span class="lineNum">     264 </span><span class="lineCov">    6561761 :                         MonoBasicBlock *out_bb = first_bb-&gt;out_bb [i];</span>
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span><span class="lineCov">    6561761 :                         mono_link_bblock (cfg, bb, out_bb);</span>
+<span class="lineNum">     267 </span><span class="lineCov">    6561761 :                 }</span>
+<span class="lineNum">     268 </span>            :                 /* Delete links between the first_bb and its successors */
+<span class="lineNum">     269 </span><span class="lineCov">   19710563 :                 for (i = 0; i &lt; bb-&gt;out_count; ++i) {</span>
+<span class="lineNum">     270 </span><span class="lineCov">    6565254 :                         MonoBasicBlock *out_bb = bb-&gt;out_bb [i];</span>
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span><span class="lineCov">    6565254 :                         mono_unlink_bblock (cfg, first_bb, out_bb);</span>
+<span class="lineNum">     273 </span><span class="lineCov">    6565254 :                 }</span>
+<span class="lineNum">     274 </span><span class="lineCov">    3289175 :                 last_bb-&gt;next_bb = bb-&gt;next_bb;</span>
+<span class="lineNum">     275 </span><span class="lineCov">    3289175 :                 bb-&gt;next_bb = first_bb-&gt;next_bb;</span>
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span><span class="lineCov">    3289175 :                 *prev = NULL;</span>
+<span class="lineNum">     278 </span>            :         }
+<span class="lineNum">     279 </span><span class="lineCov">   41168466 : }</span>
+<a name="280"><span class="lineNum">     280 </span>            : </a>
+<span class="lineNum">     281 </span>            : void
+<span class="lineNum">     282 </span>            : mono_if_conversion (MonoCompile *cfg)
+<span class="lineNum">     283 </span>            : {
+<span class="lineNum">     284 </span>            : #ifdef MONO_ARCH_HAVE_CMOV_OPS
+<span class="lineNum">     285 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">     286 </span><span class="lineCov">   14276129 :         gboolean changed = FALSE;</span>
+<span class="lineNum">     287 </span><span class="lineCov">   14276129 :         int filter = FILTER_NOP | FILTER_IL_SEQ_POINT;</span>
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span><span class="lineCov">   14276129 :         if (!(cfg-&gt;opt &amp; MONO_OPT_CMOV))</span>
+<span class="lineNum">     290 </span><span class="lineCov">     191768 :                 return;</span>
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span>            :         // FIXME: Make this work with extended bblocks
+<span class="lineNum">     293 </span>            : 
+<span class="lineNum">     294 </span>            :         /* 
+<span class="lineNum">     295 </span>            :          * This pass requires somewhat optimized IR code so it should be run after
+<span class="lineNum">     296 </span>            :          * local cprop/deadce. Also, it should be run before dominator computation, since
+<span class="lineNum">     297 </span>            :          * it changes control flow.
+<span class="lineNum">     298 </span>            :          */
+<span class="lineNum">     299 </span><span class="lineCov">  264203157 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     300 </span><span class="lineCov">  118015128 :                 MonoBasicBlock *bb1, *bb2;</span>
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span>            :         restart:
+<span class="lineNum">     303 </span>            :                 /* Look for the IR code generated from cond ? a : b
+<span class="lineNum">     304 </span>            :                  * which is:
+<span class="lineNum">     305 </span>            :                  * BB:
+<span class="lineNum">     306 </span>            :                  * b&lt;cond&gt; [BB1BB2]
+<span class="lineNum">     307 </span>            :                  * BB1:
+<span class="lineNum">     308 </span>            :                  * &lt;var&gt; &lt;- &lt;a&gt;
+<span class="lineNum">     309 </span>            :                  * br BB3
+<span class="lineNum">     310 </span>            :                  * BB2:
+<span class="lineNum">     311 </span>            :                  * &lt;var&gt; &lt;- &lt;b&gt;
+<span class="lineNum">     312 </span>            :                  * br BB3
+<span class="lineNum">     313 </span>            :                  */
+<span class="lineNum">     314 </span><span class="lineCov">  158543800 :                 if (!(bb-&gt;out_count == 2 &amp;&amp; !bb-&gt;extended))</span>
+<span class="lineNum">     315 </span><span class="lineCov">   78191982 :                         continue;</span>
+<span class="lineNum">     316 </span>            : 
+<span class="lineNum">     317 </span><span class="lineCov">   40195277 :                 bb1 = bb-&gt;out_bb [0];</span>
+<span class="lineNum">     318 </span><span class="lineCov">   40195277 :                 bb2 = bb-&gt;out_bb [1];</span>
+<span class="lineNum">     319 </span>            : 
+<span class="lineNum">     320 </span><span class="lineCov">   85834551 :                 if (bb1-&gt;in_count == 1 &amp;&amp; bb2-&gt;in_count == 1 &amp;&amp; bb1-&gt;out_count == 1 &amp;&amp; bb2-&gt;out_count == 1 &amp;&amp; bb1-&gt;out_bb [0] == bb2-&gt;out_bb [0]) {</span>
+<span class="lineNum">     321 </span>            :                         MonoInst *compare, *branch, *ins1, *ins2, *cmov, *move, *tmp;
+<span class="lineNum">     322 </span>            :                         MonoBasicBlock *true_bb, *false_bb;
+<span class="lineNum">     323 </span>            :                         gboolean simple, ret;
+<span class="lineNum">     324 </span>            :                         int dreg, tmp_reg;
+<span class="lineNum">     325 </span>            :                         CompType comp_type;
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span><span class="lineCov">    4140889 :                         branch = mono_bb_last_inst (bb, filter);</span>
+<span class="lineNum">     328 </span>            : 
+<span class="lineNum">     329 </span><span class="lineCov">   12413333 :                         if (!branch || branch-&gt;opcode == OP_BR_REG || branch-&gt;opcode == OP_BR)</span>
+<span class="lineNum">     330 </span><span class="lineCov">      47992 :                                 continue;</span>
+<span class="lineNum">     331 </span>            : 
+<span class="lineNum">     332 </span>            :                         /* Find the compare instruction */
+<span class="lineNum">     333 </span><span class="lineCov">    4093890 :                         compare = mono_inst_prev (branch, filter);</span>
+<span class="lineNum">     334 </span><span class="lineCov">    4093890 :                         if (!compare)</span>
+<span class="lineNum">     335 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     336 </span>            : 
+<span class="lineNum">     337 </span><span class="lineCov">   16467788 :                         if (!MONO_IS_COND_BRANCH_OP (branch))</span>
+<span class="lineNum">     338 </span>            :                                 /* This can happen if a cond branch is optimized away */
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span><span class="lineCov">    4093004 :                         true_bb = branch-&gt;inst_true_bb;</span>
+<span class="lineNum">     342 </span><span class="lineCov">    4093004 :                         false_bb = branch-&gt;inst_false_bb;</span>
+<span class="lineNum">     343 </span>            : 
+<span class="lineNum">     344 </span>            :                         /* 
+<span class="lineNum">     345 </span>            :                          * Check that bb1 and bb2 are 'simple' and both assign to the same
+<span class="lineNum">     346 </span>            :                          * variable.
+<span class="lineNum">     347 </span>            :                          */
+<span class="lineNum">     348 </span>            :                         /* FIXME: Get rid of the nops earlier */
+<span class="lineNum">     349 </span><span class="lineCov">    4093004 :                         ins1 = mono_bb_first_inst (true_bb, filter);</span>
+<span class="lineNum">     350 </span><span class="lineCov">    4093004 :                         ins2 = mono_bb_first_inst (false_bb, filter);</span>
+<span class="lineNum">     351 </span>            : 
+<span class="lineNum">     352 </span><span class="lineCov">   13009780 :                         if (!(ins1 &amp;&amp; ins2 &amp;&amp; ins1-&gt;dreg == ins2-&gt;dreg &amp;&amp; ins1-&gt;dreg != -1))</span>
+<span class="lineNum">     353 </span><span class="lineCov">    3369109 :                                 continue;</span>
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span><span class="lineCov">     723648 :                         simple = TRUE;</span>
+<span class="lineNum">     356 </span><span class="lineCov">    2417243 :                         for (tmp = ins1-&gt;next; tmp; tmp = tmp-&gt;next)</span>
+<span class="lineNum">     357 </span><span class="lineCov">    1789675 :                                 if (!((tmp-&gt;opcode == OP_NOP) || (tmp-&gt;opcode == OP_IL_SEQ_POINT) || (tmp-&gt;opcode == OP_BR)))</span>
+<span class="lineNum">     358 </span><span class="lineCov">     187437 :                                         simple = FALSE;</span>
+<span class="lineNum">     359 </span>            :                                         
+<span class="lineNum">     360 </span><span class="lineCov">    3502099 :                         for (tmp = ins2-&gt;next; tmp; tmp = tmp-&gt;next)</span>
+<span class="lineNum">     361 </span><span class="lineCov">    3957644 :                                 if (!((tmp-&gt;opcode == OP_NOP) || (tmp-&gt;opcode == OP_IL_SEQ_POINT) || (tmp-&gt;opcode == OP_BR)))</span>
+<span class="lineNum">     362 </span><span class="lineCov">     186682 :                                         simple = FALSE;</span>
+<span class="lineNum">     363 </span>            : 
+<span class="lineNum">     364 </span><span class="lineCov">     723591 :                         if (!simple)</span>
+<span class="lineNum">     365 </span><span class="lineCov">      55727 :                                 continue;</span>
+<span class="lineNum">     366 </span>            : 
+<span class="lineNum">     367 </span>            :                         /* We move ins1/ins2 before the compare so they should have no side effect */
+<span class="lineNum">     368 </span><span class="lineCov">   13214152 :                         if (!(MONO_INS_HAS_NO_SIDE_EFFECT (ins1) &amp;&amp; MONO_INS_HAS_NO_SIDE_EFFECT (ins2)))</span>
+<span class="lineNum">     369 </span><span class="lineCov">     210200 :                                 continue;</span>
+<span class="lineNum">     370 </span>            : 
+<span class="lineNum">     371 </span>            :                         /* Moving ins1/ins2 could change the comparison */
+<span class="lineNum">     372 </span>            :                         /* FIXME: */
+<span class="lineNum">     373 </span><span class="lineCov">     911251 :                         if (!((compare-&gt;sreg1 != ins1-&gt;dreg) &amp;&amp; (compare-&gt;sreg2 != ins1-&gt;dreg)))</span>
+<span class="lineNum">     374 </span><span class="lineCov">       3280 :                                 continue;</span>
+<span class="lineNum">     375 </span>            : 
+<span class="lineNum">     376 </span>            :                         /* FIXME: */
+<span class="lineNum">     377 </span><span class="lineCov">     453969 :                         comp_type = mono_opcode_to_type (branch-&gt;opcode, compare-&gt;opcode);</span>
+<span class="lineNum">     378 </span><span class="lineCov">     509097 :                         if (!((comp_type == CMP_TYPE_I) || (comp_type == CMP_TYPE_L)))</span>
+<span class="lineNum">     379 </span><span class="lineCov">        308 :                                 continue;</span>
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span>            :                         /* FIXME: */
+<span class="lineNum">     382 </span>            :                         /* ins-&gt;type might not be set */
+<span class="lineNum">     383 </span><span class="lineCov">     453651 :                         if (INS_INFO (ins1-&gt;opcode) [MONO_INST_DEST] != 'i')</span>
+<span class="lineNum">     384 </span><span class="lineCov">       4329 :                                 continue;</span>
+<span class="lineNum">     385 </span>            : 
+<span class="lineNum">     386 </span><span class="lineCov">     449391 :                         if (cfg-&gt;verbose_level &gt; 2) {</span>
+<span class="lineNum">     387 </span><span class="lineCov">       5861 :                                 printf (&quot;\tBranch -&gt; CMove optimization in BB%d on\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     388 </span><span class="lineCov">       5861 :                                 printf (&quot;\t\t&quot;); mono_print_ins (compare);</span>
+<span class="lineNum">     389 </span><span class="lineCov">       5861 :                                 printf (&quot;\t\t&quot;); mono_print_ins (mono_inst_next (compare, filter));</span>
+<span class="lineNum">     390 </span><span class="lineCov">       5861 :                                 printf (&quot;\t\t&quot;); mono_print_ins (ins1);</span>
+<span class="lineNum">     391 </span><span class="lineCov">       5861 :                                 printf (&quot;\t\t&quot;); mono_print_ins (ins2);</span>
+<span class="lineNum">     392 </span><span class="lineCov">       5861 :                         }</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span><span class="lineCov">     449247 :                         changed = TRUE;</span>
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span>            :                         //printf (&quot;HIT!\n&quot;);
+<span class="lineNum">     397 </span>            : 
+<span class="lineNum">     398 </span>            :                         /* Assignments to the return register must remain at the end of bbs */
+<span class="lineNum">     399 </span><span class="lineCov">     449247 :                         if (cfg-&gt;ret)</span>
+<span class="lineNum">     400 </span><span class="lineCov">     337590 :                                 ret = ins1-&gt;dreg == cfg-&gt;ret-&gt;dreg;</span>
+<span class="lineNum">     401 </span>            :                         else
+<span class="lineNum">     402 </span><span class="lineCov">     111744 :                                 ret = FALSE;</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineCov">     448946 :                         tmp_reg = mono_alloc_dreg (cfg, STACK_I4);</span>
+<span class="lineNum">     405 </span><span class="lineCov">     448946 :                         dreg = ins1-&gt;dreg;</span>
+<span class="lineNum">     406 </span>            : 
+<span class="lineNum">     407 </span>            :                         /* Rewrite ins1 to emit to tmp_reg */
+<span class="lineNum">     408 </span><span class="lineCov">     448946 :                         ins1-&gt;dreg = tmp_reg;</span>
+<span class="lineNum">     409 </span>            : 
+<span class="lineNum">     410 </span><span class="lineCov">     448946 :                         if (ret) {</span>
+<span class="lineNum">     411 </span><span class="lineCov">     110948 :                                 dreg = mono_alloc_dreg (cfg, STACK_I4);</span>
+<span class="lineNum">     412 </span><span class="lineCov">     110948 :                                 ins2-&gt;dreg = dreg;</span>
+<span class="lineNum">     413 </span><span class="lineCov">     110948 :                         }</span>
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span>            :                         /* Remove ins1/ins2 from bb1/bb2 */
+<span class="lineNum">     416 </span><span class="lineCov">    3592623 :                         MONO_REMOVE_INS (true_bb, ins1);</span>
+<span class="lineNum">     417 </span><span class="lineCov">    3593469 :                         MONO_REMOVE_INS (false_bb, ins2);</span>
+<span class="lineNum">     418 </span>            : 
+<span class="lineNum">     419 </span>            :                         /* Move ins1 and ins2 before the comparison */
+<span class="lineNum">     420 </span>            :                         /* ins1 comes first to avoid ins1 overwriting an argument of ins2 */
+<span class="lineNum">     421 </span><span class="lineCov">     449316 :                         mono_bblock_insert_before_ins (bb, compare, ins2);</span>
+<span class="lineNum">     422 </span><span class="lineCov">     449316 :                         mono_bblock_insert_before_ins (bb, ins2, ins1);</span>
+<span class="lineNum">     423 </span>            : 
+<span class="lineNum">     424 </span>            :                         /* Add cmov instruction */
+<span class="lineNum">     425 </span><span class="lineCov">    1797817 :                         MONO_INST_NEW (cfg, cmov, OP_NOP);</span>
+<span class="lineNum">     426 </span><span class="lineCov">     449126 :                         cmov-&gt;dreg = dreg;</span>
+<span class="lineNum">     427 </span><span class="lineCov">     449126 :                         cmov-&gt;sreg1 = dreg;</span>
+<span class="lineNum">     428 </span><span class="lineCov">     449126 :                         cmov-&gt;sreg2 = tmp_reg;</span>
+<span class="lineNum">     429 </span><span class="lineCov">     449126 :                         switch (mono_opcode_to_type (branch-&gt;opcode, compare-&gt;opcode)) {</span>
+<span class="lineNum">     430 </span>            :                         case CMP_TYPE_I:
+<span class="lineNum">     431 </span><span class="lineCov">     394376 :                                 cmov-&gt;opcode = int_cmov_opcodes [mono_opcode_to_cond (branch-&gt;opcode)];</span>
+<span class="lineNum">     432 </span><span class="lineCov">     394376 :                                 break;</span>
+<span class="lineNum">     433 </span>            :                         case CMP_TYPE_L:
+<span class="lineNum">     434 </span><span class="lineCov">      54825 :                                 cmov-&gt;opcode = long_cmov_opcodes [mono_opcode_to_cond (branch-&gt;opcode)];</span>
+<span class="lineNum">     435 </span><span class="lineCov">      54825 :                                 break;</span>
+<span class="lineNum">     436 </span>            :                         default:
+<span class="lineNum">     437 </span><span class="lineNoCov">          0 :                                 g_assert_not_reached ();</span>
+<span class="lineNum">     438 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     439 </span><span class="lineCov">     449303 :                         mono_bblock_insert_after_ins (bb, compare, cmov);</span>
+<span class="lineNum">     440 </span>            : 
+<span class="lineNum">     441 </span><span class="lineCov">     449303 :                         if (ret) {</span>
+<span class="lineNum">     442 </span>            :                                 /* Add an extra move */
+<span class="lineNum">     443 </span><span class="lineCov">     444116 :                                 MONO_INST_NEW (cfg, move, OP_MOVE);</span>
+<span class="lineNum">     444 </span><span class="lineCov">     111053 :                                 move-&gt;dreg = cfg-&gt;ret-&gt;dreg;</span>
+<span class="lineNum">     445 </span><span class="lineCov">     111053 :                                 move-&gt;sreg1 = dreg;</span>
+<span class="lineNum">     446 </span><span class="lineCov">     111053 :                                 mono_bblock_insert_after_ins (bb, cmov, move);</span>
+<span class="lineNum">     447 </span><span class="lineCov">     111053 :                         }</span>
+<span class="lineNum">     448 </span>            : 
+<span class="lineNum">     449 </span>            :                         /* Rewrite the branch */
+<span class="lineNum">     450 </span><span class="lineCov">     449702 :                         branch-&gt;opcode = OP_BR;</span>
+<span class="lineNum">     451 </span><span class="lineCov">     449702 :                         branch-&gt;inst_target_bb = true_bb-&gt;out_bb [0];</span>
+<span class="lineNum">     452 </span><span class="lineCov">     449702 :                         mono_link_bblock (cfg, bb, branch-&gt;inst_target_bb);</span>
+<span class="lineNum">     453 </span>            : 
+<span class="lineNum">     454 </span>            :                         /* Reorder bblocks */
+<span class="lineNum">     455 </span><span class="lineCov">     449702 :                         mono_unlink_bblock (cfg, bb, true_bb);</span>
+<span class="lineNum">     456 </span><span class="lineCov">     449702 :                         mono_unlink_bblock (cfg, bb, false_bb);</span>
+<span class="lineNum">     457 </span><span class="lineCov">     449702 :                         mono_unlink_bblock (cfg, true_bb, true_bb-&gt;out_bb [0]);</span>
+<span class="lineNum">     458 </span><span class="lineCov">     449702 :                         mono_unlink_bblock (cfg, false_bb, false_bb-&gt;out_bb [0]);</span>
+<span class="lineNum">     459 </span><span class="lineCov">     449702 :                         mono_remove_bblock (cfg, true_bb);</span>
+<span class="lineNum">     460 </span><span class="lineCov">     449702 :                         mono_remove_bblock (cfg, false_bb);</span>
+<span class="lineNum">     461 </span>            : 
+<span class="lineNum">     462 </span>            :                         /* Merge bb and its successor if possible */
+<span class="lineNum">     463 </span><span class="lineCov">    1070547 :                         if ((bb-&gt;out_bb [0]-&gt;in_count == 1) &amp;&amp; (bb-&gt;out_bb [0] != cfg-&gt;bb_exit) &amp;&amp;</span>
+<span class="lineNum">     464 </span><span class="lineCov">     298814 :                                 (bb-&gt;region == bb-&gt;out_bb [0]-&gt;region)) {</span>
+<span class="lineNum">     465 </span><span class="lineCov">     298809 :                                 mono_merge_basic_blocks (cfg, bb, bb-&gt;out_bb [0]);</span>
+<span class="lineNum">     466 </span><span class="lineCov">     298809 :                                 goto restart;</span>
+<span class="lineNum">     467 </span>            :                         }
+<span class="lineNum">     468 </span><span class="lineCov">     150879 :                 }</span>
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span>            :                 /* Look for the IR code generated from if (cond) &lt;var&gt; &lt;- &lt;a&gt;
+<span class="lineNum">     471 </span>            :                  * which is:
+<span class="lineNum">     472 </span>            :                  * BB:
+<span class="lineNum">     473 </span>            :                  * b&lt;cond&gt; [BB1BB2]
+<span class="lineNum">     474 </span>            :                  * BB1:
+<span class="lineNum">     475 </span>            :                  * &lt;var&gt; &lt;- &lt;a&gt;
+<span class="lineNum">     476 </span>            :                  * br BB2
+<span class="lineNum">     477 </span>            :                  */
+<span class="lineNum">     478 </span>            : 
+<span class="lineNum">     479 </span><span class="lineCov">   86951146 :                 if ((bb2-&gt;in_count == 1 &amp;&amp; bb2-&gt;out_count == 1 &amp;&amp; bb2-&gt;out_bb [0] == bb1) ||</span>
+<span class="lineNum">     480 </span><span class="lineCov">   47518603 :                         (bb1-&gt;in_count == 1 &amp;&amp; bb1-&gt;out_count == 1 &amp;&amp; bb1-&gt;out_bb [0] == bb2)) {</span>
+<span class="lineNum">     481 </span>            :                         MonoInst *compare, *branch, *ins1, *cmov, *tmp;
+<span class="lineNum">     482 </span>            :                         gboolean simple;
+<span class="lineNum">     483 </span>            :                         int dreg, tmp_reg;
+<span class="lineNum">     484 </span>            :                         CompType comp_type;
+<span class="lineNum">     485 </span>            :                         CompRelation cond;
+<span class="lineNum">     486 </span>            :                         MonoBasicBlock *next_bb, *code_bb;
+<span class="lineNum">     487 </span>            : 
+<span class="lineNum">     488 </span>            :                         /* code_bb is the bblock containing code, next_bb is the successor bblock */
+<span class="lineNum">     489 </span><span class="lineCov">   24881695 :                         if (bb2-&gt;in_count == 1 &amp;&amp; bb2-&gt;out_count == 1 &amp;&amp; bb2-&gt;out_bb [0] == bb1) {</span>
+<span class="lineNum">     490 </span><span class="lineCov">    8075248 :                                 code_bb = bb2;</span>
+<span class="lineNum">     491 </span><span class="lineCov">    8075248 :                                 next_bb = bb1;</span>
+<span class="lineNum">     492 </span><span class="lineCov">    8075248 :                         } else {</span>
+<span class="lineNum">     493 </span><span class="lineCov">     651971 :                                 code_bb = bb1;</span>
+<span class="lineNum">     494 </span><span class="lineCov">     651971 :                                 next_bb = bb2;</span>
+<span class="lineNum">     495 </span>            :                         }
+<span class="lineNum">     496 </span>            : 
+<span class="lineNum">     497 </span><span class="lineCov">    8727889 :                         ins1 = mono_bb_first_inst (code_bb, filter);</span>
+<span class="lineNum">     498 </span>            : 
+<span class="lineNum">     499 </span><span class="lineCov">    8727889 :                         if (!ins1)</span>
+<span class="lineNum">     500 </span><span class="lineCov">       4520 :                                 continue;</span>
+<span class="lineNum">     501 </span>            : 
+<span class="lineNum">     502 </span>            :                         /* Check that code_bb is simple */
+<span class="lineNum">     503 </span><span class="lineCov">    8723524 :                         simple = TRUE;</span>
+<span class="lineNum">     504 </span><span class="lineCov">  148657961 :                         for (tmp = ins1; tmp; tmp = tmp-&gt;next)</span>
+<span class="lineNum">     505 </span><span class="lineCov">  253885103 :                                 if (!((tmp-&gt;opcode == OP_NOP) || (tmp-&gt;opcode == OP_IL_SEQ_POINT) || (tmp-&gt;opcode == OP_BR)))</span>
+<span class="lineNum">     506 </span><span class="lineCov">   56692988 :                                         simple = FALSE;</span>
+<span class="lineNum">     507 </span>            : 
+<span class="lineNum">     508 </span><span class="lineCov">    8723354 :                         if (!simple)</span>
+<span class="lineNum">     509 </span><span class="lineCov">    8723595 :                                 continue;</span>
+<span class="lineNum">     510 </span>            : 
+<span class="lineNum">     511 </span>            :                         /* We move ins1 before the compare so it should have no side effect */
+<span class="lineNum">     512 </span><span class="lineNoCov">          0 :                         if (!MONO_INS_HAS_NO_SIDE_EFFECT (ins1))</span>
+<span class="lineNum">     513 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     514 </span>            : 
+<span class="lineNum">     515 </span><span class="lineNoCov">          0 :                         branch = mono_bb_last_inst (bb, filter);</span>
+<span class="lineNum">     516 </span>            : 
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :                         if (!branch || branch-&gt;opcode == OP_BR_REG)</span>
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     519 </span>            : 
+<span class="lineNum">     520 </span>            :                         /* Find the compare instruction */
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 :                         compare = mono_inst_prev (branch, filter);</span>
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :                         if (!compare)</span>
+<span class="lineNum">     523 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     524 </span>            : 
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :                         if (!MONO_IS_COND_BRANCH_OP (branch))</span>
+<span class="lineNum">     526 </span>            :                                 /* This can happen if a cond branch is optimized away */
+<span class="lineNum">     527 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     528 </span>            : 
+<span class="lineNum">     529 </span>            :                         /* FIXME: */
+<span class="lineNum">     530 </span><span class="lineNoCov">          0 :                         comp_type = mono_opcode_to_type (branch-&gt;opcode, compare-&gt;opcode);</span>
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :                         if (!((comp_type == CMP_TYPE_I) || (comp_type == CMP_TYPE_L)))</span>
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     533 </span>            : 
+<span class="lineNum">     534 </span>            :                         /* FIXME: */
+<span class="lineNum">     535 </span>            :                         /* ins-&gt;type might not be set */
+<span class="lineNum">     536 </span><span class="lineNoCov">          0 :                         if (INS_INFO (ins1-&gt;opcode) [MONO_INST_DEST] != 'i')</span>
+<span class="lineNum">     537 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     538 </span>            : 
+<span class="lineNum">     539 </span>            :                         /* FIXME: */
+<span class="lineNum">     540 </span><span class="lineNoCov">          0 :                         if (cfg-&gt;ret &amp;&amp; ins1-&gt;dreg == cfg-&gt;ret-&gt;dreg)</span>
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     542 </span>            : 
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :                         if (!(cfg-&gt;opt &amp; MONO_OPT_DEADCE))</span>
+<span class="lineNum">     544 </span>            :                                 /* 
+<span class="lineNum">     545 </span>            :                                  * It is possible that dreg is never set before, so we can't use
+<span class="lineNum">     546 </span>            :                                  * it as an sreg of the cmov instruction (#582322).
+<span class="lineNum">     547 </span>            :                                  */
+<span class="lineNum">     548 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     549 </span>            : 
+<span class="lineNum">     550 </span><span class="lineNoCov">          0 :                         if (cfg-&gt;verbose_level &gt; 2) {</span>
+<span class="lineNum">     551 </span><span class="lineNoCov">          0 :                                 printf (&quot;\tBranch -&gt; CMove optimization (2) in BB%d on\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     552 </span><span class="lineNoCov">          0 :                                 printf (&quot;\t\t&quot;); mono_print_ins (compare);</span>
+<span class="lineNum">     553 </span><span class="lineNoCov">          0 :                                 printf (&quot;\t\t&quot;); mono_print_ins (mono_inst_next (compare, filter));</span>
+<span class="lineNum">     554 </span><span class="lineNoCov">          0 :                                 printf (&quot;\t\t&quot;); mono_print_ins (ins1);</span>
+<span class="lineNum">     555 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     556 </span>            : 
+<span class="lineNum">     557 </span><span class="lineNoCov">          0 :                         changed = TRUE;</span>
+<span class="lineNum">     558 </span>            : 
+<span class="lineNum">     559 </span>            :                         //printf (&quot;HIT!\n&quot;);
+<span class="lineNum">     560 </span>            : 
+<span class="lineNum">     561 </span><span class="lineNoCov">          0 :                         tmp_reg = mono_alloc_dreg (cfg, STACK_I4);</span>
+<span class="lineNum">     562 </span><span class="lineNoCov">          0 :                         dreg = ins1-&gt;dreg;</span>
+<span class="lineNum">     563 </span>            : 
+<span class="lineNum">     564 </span>            :                         /* Rewrite ins1 to emit to tmp_reg */
+<span class="lineNum">     565 </span><span class="lineNoCov">          0 :                         ins1-&gt;dreg = tmp_reg;</span>
+<span class="lineNum">     566 </span>            : 
+<span class="lineNum">     567 </span>            :                         /* Remove ins1 from code_bb */
+<span class="lineNum">     568 </span><span class="lineNoCov">          0 :                         MONO_REMOVE_INS (code_bb, ins1);</span>
+<span class="lineNum">     569 </span>            : 
+<span class="lineNum">     570 </span>            :                         /* Move ins1 before the comparison */
+<span class="lineNum">     571 </span><span class="lineNoCov">          0 :                         mono_bblock_insert_before_ins (bb, compare, ins1);</span>
+<span class="lineNum">     572 </span>            : 
+<span class="lineNum">     573 </span>            :                         /* Add cmov instruction */
+<span class="lineNum">     574 </span><span class="lineNoCov">          0 :                         MONO_INST_NEW (cfg, cmov, OP_NOP);</span>
+<span class="lineNum">     575 </span><span class="lineNoCov">          0 :                         cmov-&gt;dreg = dreg;</span>
+<span class="lineNum">     576 </span><span class="lineNoCov">          0 :                         cmov-&gt;sreg1 = dreg;</span>
+<span class="lineNum">     577 </span><span class="lineNoCov">          0 :                         cmov-&gt;sreg2 = tmp_reg;</span>
+<span class="lineNum">     578 </span><span class="lineNoCov">          0 :                         cond = mono_opcode_to_cond (branch-&gt;opcode);</span>
+<span class="lineNum">     579 </span><span class="lineNoCov">          0 :                         if (branch-&gt;inst_false_bb == code_bb)</span>
+<span class="lineNum">     580 </span><span class="lineNoCov">          0 :                                 cond = mono_negate_cond (cond);</span>
+<span class="lineNum">     581 </span><span class="lineNoCov">          0 :                         switch (mono_opcode_to_type (branch-&gt;opcode, compare-&gt;opcode)) {</span>
+<span class="lineNum">     582 </span>            :                         case CMP_TYPE_I:
+<span class="lineNum">     583 </span><span class="lineNoCov">          0 :                                 cmov-&gt;opcode = int_cmov_opcodes [cond];</span>
+<span class="lineNum">     584 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     585 </span>            :                         case CMP_TYPE_L:
+<span class="lineNum">     586 </span><span class="lineNoCov">          0 :                                 cmov-&gt;opcode = long_cmov_opcodes [cond];</span>
+<span class="lineNum">     587 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     588 </span>            :                         default:
+<span class="lineNum">     589 </span><span class="lineNoCov">          0 :                                 g_assert_not_reached ();</span>
+<span class="lineNum">     590 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 :                         mono_bblock_insert_after_ins (bb, compare, cmov);</span>
+<span class="lineNum">     592 </span>            : 
+<span class="lineNum">     593 </span>            :                         /* Rewrite the branch */
+<span class="lineNum">     594 </span><span class="lineNoCov">          0 :                         branch-&gt;opcode = OP_BR;</span>
+<span class="lineNum">     595 </span><span class="lineNoCov">          0 :                         branch-&gt;inst_target_bb = next_bb;</span>
+<span class="lineNum">     596 </span><span class="lineNoCov">          0 :                         mono_link_bblock (cfg, bb, branch-&gt;inst_target_bb);</span>
+<span class="lineNum">     597 </span>            : 
+<span class="lineNum">     598 </span>            :                         /* Nullify the branch at the end of code_bb */
+<span class="lineNum">     599 </span><span class="lineNoCov">          0 :                         if (code_bb-&gt;code) {</span>
+<span class="lineNum">     600 </span><span class="lineNoCov">          0 :                                 branch = code_bb-&gt;code;</span>
+<span class="lineNum">     601 </span><span class="lineNoCov">          0 :                                 MONO_DELETE_INS (code_bb, branch);</span>
+<span class="lineNum">     602 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     603 </span>            : 
+<span class="lineNum">     604 </span>            :                         /* Reorder bblocks */
+<span class="lineNum">     605 </span><span class="lineNoCov">          0 :                         mono_unlink_bblock (cfg, bb, code_bb);</span>
+<span class="lineNum">     606 </span><span class="lineNoCov">          0 :                         mono_unlink_bblock (cfg, code_bb, next_bb);</span>
+<span class="lineNum">     607 </span>            : 
+<span class="lineNum">     608 </span>            :                         /* Merge bb and its successor if possible */
+<span class="lineNum">     609 </span><span class="lineNoCov">          0 :                         if ((bb-&gt;out_bb [0]-&gt;in_count == 1) &amp;&amp; (bb-&gt;out_bb [0] != cfg-&gt;bb_exit) &amp;&amp;</span>
+<span class="lineNum">     610 </span><span class="lineNoCov">          0 :                                 (bb-&gt;region == bb-&gt;out_bb [0]-&gt;region)) {</span>
+<span class="lineNum">     611 </span><span class="lineNoCov">          0 :                                 mono_merge_basic_blocks (cfg, bb, bb-&gt;out_bb [0]);</span>
+<span class="lineNum">     612 </span>            : 
+<span class="lineNum">     613 </span>            :                                 /* 
+<span class="lineNum">     614 </span>            :                                  * bbn might have fallen through to the next bb without a branch, 
+<span class="lineNum">     615 </span>            :                                  * have to add one now (#474718).
+<span class="lineNum">     616 </span>            :                                  * FIXME: Maybe need to do this more generally in 
+<span class="lineNum">     617 </span>            :                                  * merge_basic_blocks () ?
+<span class="lineNum">     618 </span>            :                                  */
+<span class="lineNum">     619 </span><span class="lineNoCov">          0 :                                 if (!(bb-&gt;last_ins &amp;&amp; MONO_IS_BRANCH_OP (bb-&gt;last_ins)) &amp;&amp; bb-&gt;out_count) {</span>
+<span class="lineNum">     620 </span><span class="lineNoCov">          0 :                                         MONO_INST_NEW (cfg, ins1, OP_BR);</span>
+<span class="lineNum">     621 </span><span class="lineNoCov">          0 :                                         ins1-&gt;inst_target_bb = bb-&gt;out_bb [0];</span>
+<span class="lineNum">     622 </span><span class="lineNoCov">          0 :                                         MONO_ADD_INS (bb, ins1);</span>
+<span class="lineNum">     623 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     624 </span><span class="lineNoCov">          0 :                                 goto restart;</span>
+<span class="lineNum">     625 </span>            :                         }
+<span class="lineNum">     626 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     627 </span><span class="lineCov">   27473884 :         }</span>
+<span class="lineNum">     628 </span>            : 
+<span class="lineNum">     629 </span>            :         /*
+<span class="lineNum">     630 </span>            :          * Optimize checks like: if (v &lt; 0 || v &gt; limit) by changing then to unsigned
+<span class="lineNum">     631 </span>            :          * compares. This isn't really if conversion, but it easier to do here than in
+<span class="lineNum">     632 </span>            :          * optimize_branches () since the IR is already optimized.
+<span class="lineNum">     633 </span>            :          */
+<span class="lineNum">     634 </span><span class="lineCov">  264069503 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     635 </span>            :                 MonoBasicBlock *bb1, *bb2, *next_bb;
+<span class="lineNum">     636 </span>            :                 MonoInst *branch1, *branch2, *compare1, *ins, *next;
+<span class="lineNum">     637 </span>            : 
+<span class="lineNum">     638 </span>            :                 /* Look for the IR code generated from if (&lt;var&gt; &lt; 0 || v &gt; &lt;limit&gt;)
+<span class="lineNum">     639 </span>            :                  * after branch opts which is:
+<span class="lineNum">     640 </span>            :                  * BB:
+<span class="lineNum">     641 </span>            :                  * icompare_imm R [0]
+<span class="lineNum">     642 </span>            :                  * int_blt [BB1BB2]
+<span class="lineNum">     643 </span>            :                  * BB2:
+<span class="lineNum">     644 </span>            :                  * icompare_imm R [&lt;limit&gt;]
+<span class="lineNum">     645 </span>            :                  * int_ble [BB3BB1]
+<span class="lineNum">     646 </span>            :                  */
+<span class="lineNum">     647 </span><span class="lineCov">  157668429 :                 if (!(bb-&gt;out_count == 2 &amp;&amp; !bb-&gt;extended))</span>
+<span class="lineNum">     648 </span><span class="lineCov">   78304819 :                         continue;</span>
+<span class="lineNum">     649 </span>            : 
+<span class="lineNum">     650 </span><span class="lineCov">   39690817 :                 bb1 = bb-&gt;out_bb [0];</span>
+<span class="lineNum">     651 </span><span class="lineCov">   39690817 :                 bb2 = bb-&gt;out_bb [1];</span>
+<span class="lineNum">     652 </span>            : 
+<span class="lineNum">     653 </span>            :                 // FIXME: Add more cases
+<span class="lineNum">     654 </span>            : 
+<span class="lineNum">     655 </span>            :                 /* Check structure */
+<span class="lineNum">     656 </span><span class="lineCov">   71617822 :                 if (!(bb1-&gt;in_count == 2 &amp;&amp; bb1-&gt;in_bb [0] == bb &amp;&amp; bb1-&gt;in_bb [1] == bb2 &amp;&amp; bb2-&gt;in_count == 1 &amp;&amp; bb2-&gt;out_count == 2))</span>
+<span class="lineNum">     657 </span><span class="lineCov">   37684577 :                         continue;</span>
+<span class="lineNum">     658 </span>            : 
+<span class="lineNum">     659 </span><span class="lineCov">    1992444 :                 next_bb = bb2;</span>
+<span class="lineNum">     660 </span>            : 
+<span class="lineNum">     661 </span>            :                 /* Check first branch */
+<span class="lineNum">     662 </span><span class="lineCov">    1992444 :                 branch1 = mono_bb_last_inst (bb, filter);</span>
+<span class="lineNum">     663 </span><span class="lineCov">    5981086 :                 if (!(branch1 &amp;&amp; ((branch1-&gt;opcode == OP_IBLT) || (branch1-&gt;opcode == OP_LBLT)) &amp;&amp; (branch1-&gt;inst_false_bb == next_bb)))</span>
+<span class="lineNum">     664 </span><span class="lineCov">    1850377 :                         continue;</span>
+<span class="lineNum">     665 </span>            : 
+<span class="lineNum">     666 </span>            :                 /* Check second branch */
+<span class="lineNum">     667 </span><span class="lineCov">     141386 :                 branch2 = mono_bb_last_inst (next_bb, filter);</span>
+<span class="lineNum">     668 </span><span class="lineCov">     141386 :                 if (!branch2)</span>
+<span class="lineNum">     669 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     670 </span>            : 
+<span class="lineNum">     671 </span>            :                 /* mcs sometimes generates inverted branches */
+<span class="lineNum">     672 </span><span class="lineCov">     358128 :                 if (((branch2-&gt;opcode == OP_IBGT) || (branch2-&gt;opcode == OP_LBGT)) &amp;&amp; branch2-&gt;inst_true_bb == branch1-&gt;inst_true_bb)</span>
+<span class="lineNum">     673 </span>            :                         ;
+<span class="lineNum">     674 </span><span class="lineCov">     166660 :                 else if (((branch2-&gt;opcode == OP_IBLE) || (branch2-&gt;opcode == OP_LBLE)) &amp;&amp; branch2-&gt;inst_false_bb == branch1-&gt;inst_true_bb)</span>
+<span class="lineNum">     675 </span>            :                         ;
+<span class="lineNum">     676 </span>            :                 else
+<span class="lineNum">     677 </span><span class="lineCov">      38716 :                         continue;</span>
+<span class="lineNum">     678 </span>            : 
+<span class="lineNum">     679 </span>            :                 /* Check first compare */
+<span class="lineNum">     680 </span><span class="lineCov">     102630 :                 compare1 = mono_inst_prev (mono_bb_last_inst (bb, filter), filter);</span>
+<span class="lineNum">     681 </span><span class="lineCov">     309981 :                 if (!(compare1 &amp;&amp; ((compare1-&gt;opcode == OP_ICOMPARE_IMM) || (compare1-&gt;opcode == OP_LCOMPARE_IMM)) &amp;&amp; compare1-&gt;inst_imm == 0))</span>
+<span class="lineNum">     682 </span><span class="lineCov">      47046 :                         continue;</span>
+<span class="lineNum">     683 </span>            : 
+<span class="lineNum">     684 </span>            :                 /* Check second bblock */
+<span class="lineNum">     685 </span><span class="lineCov">      55618 :                 ins = mono_bb_first_inst (next_bb, filter);</span>
+<span class="lineNum">     686 </span><span class="lineCov">      55618 :                 if (!ins)</span>
+<span class="lineNum">     687 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     688 </span><span class="lineCov">      55631 :                 next = mono_inst_next (ins, filter);</span>
+<span class="lineNum">     689 </span><span class="lineCov">     126727 :                 if (((ins-&gt;opcode == OP_ICOMPARE_IMM) || (ins-&gt;opcode == OP_LCOMPARE_IMM)) &amp;&amp; ins-&gt;sreg1 == compare1-&gt;sreg1 &amp;&amp; next == branch2) {</span>
+<span class="lineNum">     690 </span>            :                         /* The second arg must be positive */
+<span class="lineNum">     691 </span><span class="lineCov">      14867 :                         if (ins-&gt;inst_imm &lt; 0)</span>
+<span class="lineNum">     692 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     693 </span><span class="lineCov">     229825 :                 } else if (((ins-&gt;opcode == OP_LDLEN) || (ins-&gt;opcode == OP_STRLEN)) &amp;&amp; ins-&gt;dreg != compare1-&gt;sreg1 &amp;&amp; next &amp;&amp; next-&gt;opcode == OP_ICOMPARE &amp;&amp; next-&gt;sreg1 == compare1-&gt;sreg1 &amp;&amp; next-&gt;sreg2 == ins-&gt;dreg &amp;&amp; mono_inst_next (next, filter) == branch2) {</span>
+<span class="lineNum">     694 </span>            :                         /* Another common case: if (index &lt; 0 || index &gt; arr.Length) */
+<span class="lineNum">     695 </span><span class="lineCov">      24188 :                 } else {</span>
+<span class="lineNum">     696 </span><span class="lineCov">      16544 :                         continue;</span>
+<span class="lineNum">     697 </span>            :                 }
+<span class="lineNum">     698 </span>            : 
+<span class="lineNum">     699 </span><span class="lineCov">      39059 :                 if (cfg-&gt;verbose_level &gt; 2) {</span>
+<span class="lineNum">     700 </span><span class="lineCov">        355 :                         printf (&quot;\tSigned-&gt;unsigned compare optimization in BB%d on\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     701 </span><span class="lineCov">        355 :                         printf (&quot;\t\t&quot;); mono_print_ins (compare1);</span>
+<span class="lineNum">     702 </span><span class="lineCov">        355 :                         printf (&quot;\t\t&quot;); mono_print_ins (mono_inst_next (compare1, filter));</span>
+<span class="lineNum">     703 </span><span class="lineCov">        355 :                         printf (&quot;\t\t&quot;); mono_print_ins (ins);</span>
+<span class="lineNum">     704 </span><span class="lineCov">        355 :                 }</span>
+<span class="lineNum">     705 </span>            : 
+<span class="lineNum">     706 </span>            :                 /* Rewrite the first compare+branch */
+<span class="lineNum">     707 </span><span class="lineCov">     546357 :                 MONO_DELETE_INS (bb, compare1);</span>
+<span class="lineNum">     708 </span><span class="lineCov">      39037 :                 branch1-&gt;opcode = OP_BR;</span>
+<span class="lineNum">     709 </span><span class="lineCov">      39037 :                 mono_unlink_bblock (cfg, bb, branch1-&gt;inst_true_bb);</span>
+<span class="lineNum">     710 </span><span class="lineCov">      39037 :                 mono_unlink_bblock (cfg, bb, branch1-&gt;inst_false_bb);</span>
+<span class="lineNum">     711 </span><span class="lineCov">      39037 :                 branch1-&gt;inst_target_bb = next_bb;</span>
+<span class="lineNum">     712 </span><span class="lineCov">      39037 :                 mono_link_bblock (cfg, bb, next_bb);            </span>
+<span class="lineNum">     713 </span>            : 
+<span class="lineNum">     714 </span>            :                 /* Rewrite the second branch */
+<span class="lineNum">     715 </span><span class="lineCov">      39037 :                 branch2-&gt;opcode = br_to_br_un (branch2-&gt;opcode);</span>
+<span class="lineNum">     716 </span>            : 
+<span class="lineNum">     717 </span><span class="lineCov">      39037 :                 mono_merge_basic_blocks (cfg, bb, next_bb);</span>
+<span class="lineNum">     718 </span><span class="lineCov">      39037 :         }</span>
+<span class="lineNum">     719 </span>            : 
+<span class="lineNum">     720 </span>            : #if 0
+<span class="lineNum">     721 </span>            :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {
+<span class="lineNum">     722 </span>            :                 MonoBasicBlock *bb1, *bb2;
+<span class="lineNum">     723 </span>            :                 MonoInst *prev, *compare, *branch, *ins1, *ins2, *cmov, *move, *tmp;
+<span class="lineNum">     724 </span>            :                 gboolean simple, ret;
+<span class="lineNum">     725 </span>            :                 int dreg, tmp_reg;
+<span class="lineNum">     726 </span>            :                 CompType comp_type;
+<span class="lineNum">     727 </span>            : 
+<span class="lineNum">     728 </span>            :                 /* Look for the IR code generated from if (cond) &lt;var&gt; &lt;- &lt;a&gt;
+<span class="lineNum">     729 </span>            :                  * after branch opts which is:
+<span class="lineNum">     730 </span>            :                  * BB:
+<span class="lineNum">     731 </span>            :                  * compare
+<span class="lineNum">     732 </span>            :                  * b&lt;cond&gt; [BB1]
+<span class="lineNum">     733 </span>            :                  * &lt;var&gt; &lt;- &lt;a&gt;
+<span class="lineNum">     734 </span>            :                  * BB1:
+<span class="lineNum">     735 </span>            :                  */
+<span class="lineNum">     736 </span>            :                 if (!(bb-&gt;out_count == 1 &amp;&amp; bb-&gt;extended &amp;&amp; bb-&gt;code &amp;&amp; bb-&gt;code-&gt;next &amp;&amp; bb-&gt;code-&gt;next-&gt;next))
+<span class="lineNum">     737 </span>            :                         continue;
+<span class="lineNum">     738 </span>            : 
+<span class="lineNum">     739 </span>            :                 mono_print_bb (bb, &quot;&quot;);
+<span class="lineNum">     740 </span>            : 
+<span class="lineNum">     741 </span>            :                 /* Find the compare instruction */
+<span class="lineNum">     742 </span>            :                 prev = NULL;
+<span class="lineNum">     743 </span>            :                 compare = bb-&gt;code;
+<span class="lineNum">     744 </span>            :                 g_assert (compare);
+<span class="lineNum">     745 </span>            :                 while (compare-&gt;next-&gt;next &amp;&amp; compare-&gt;next-&gt;next != bb-&gt;last_ins) {
+<span class="lineNum">     746 </span>            :                         prev = compare;
+<span class="lineNum">     747 </span>            :                         compare = compare-&gt;next;
+<span class="lineNum">     748 </span>            :                 }
+<span class="lineNum">     749 </span>            :                 branch = compare-&gt;next;
+<span class="lineNum">     750 </span>            :                 if (!MONO_IS_COND_BRANCH_OP (branch))
+<span class="lineNum">     751 </span>            :                         continue;
+<span class="lineNum">     752 </span>            :         }
+<span class="lineNum">     753 </span>            : #endif
+<span class="lineNum">     754 </span>            : 
+<span class="lineNum">     755 </span><span class="lineCov">   14089294 :         if (changed) {</span>
+<span class="lineNum">     756 </span><span class="lineCov">     349167 :                 if (cfg-&gt;opt &amp; MONO_OPT_BRANCH)</span>
+<span class="lineNum">     757 </span><span class="lineCov">     349031 :                         mono_optimize_branches (cfg);</span>
+<span class="lineNum">     758 </span>            :                 /* Merging bblocks could make some variables local */
+<span class="lineNum">     759 </span><span class="lineCov">     349185 :                 mono_handle_global_vregs (cfg);</span>
+<span class="lineNum">     760 </span><span class="lineCov">     349185 :                 if (cfg-&gt;opt &amp; (MONO_OPT_CONSPROP | MONO_OPT_COPYPROP))</span>
+<span class="lineNum">     761 </span><span class="lineCov">     349196 :                         mono_local_cprop (cfg);</span>
+<span class="lineNum">     762 </span><span class="lineCov">     349118 :                 if (cfg-&gt;opt &amp; MONO_OPT_DEADCE)</span>
+<span class="lineNum">     763 </span><span class="lineCov">     349139 :                         mono_local_deadce (cfg);</span>
+<span class="lineNum">     764 </span><span class="lineCov">     349155 :         }</span>
+<span class="lineNum">     765 </span>            : #endif
+<span class="lineNum">     766 </span><span class="lineCov">   14271340 : }</span>
+<a name="767"><span class="lineNum">     767 </span>            : </a>
+<span class="lineNum">     768 </span>            : void
+<span class="lineNum">     769 </span>            : mono_nullify_basic_block (MonoBasicBlock *bb) 
+<span class="lineNum">     770 </span>            : {
+<span class="lineNum">     771 </span><span class="lineCov">   97669935 :         bb-&gt;in_count = 0;</span>
+<span class="lineNum">     772 </span><span class="lineCov">   97669935 :         bb-&gt;out_count = 0;</span>
+<span class="lineNum">     773 </span><span class="lineCov">   97669935 :         bb-&gt;in_bb = NULL;</span>
+<span class="lineNum">     774 </span><span class="lineCov">   97669935 :         bb-&gt;out_bb = NULL;</span>
+<span class="lineNum">     775 </span><span class="lineCov">   97669935 :         bb-&gt;next_bb = NULL;</span>
+<span class="lineNum">     776 </span><span class="lineCov">   97669935 :         bb-&gt;code = bb-&gt;last_ins = NULL;</span>
+<span class="lineNum">     777 </span><span class="lineCov">   97669935 :         bb-&gt;cil_code = NULL;</span>
+<span class="lineNum">     778 </span><span class="lineCov">   97669935 : }</span>
+<a name="779"><span class="lineNum">     779 </span>            : </a>
+<span class="lineNum">     780 </span>            : static void 
+<span class="lineNum">     781 </span>            : replace_out_block (MonoBasicBlock *bb, MonoBasicBlock *orig,  MonoBasicBlock *repl)
+<span class="lineNum">     782 </span>            : {
+<span class="lineNum">     783 </span>            :         int i;
+<span class="lineNum">     784 </span>            : 
+<span class="lineNum">     785 </span><span class="lineCov">       2696 :         for (i = 0; i &lt; bb-&gt;out_count; i++) {</span>
+<span class="lineNum">     786 </span><span class="lineCov">        674 :                 MonoBasicBlock *ob = bb-&gt;out_bb [i];</span>
+<span class="lineNum">     787 </span><span class="lineCov">        674 :                 if (ob == orig) {</span>
+<span class="lineNum">     788 </span><span class="lineCov">        674 :                         if (!repl) {</span>
+<span class="lineNum">     789 </span><span class="lineNoCov">          0 :                                 if (bb-&gt;out_count &gt; 1) {</span>
+<span class="lineNum">     790 </span><span class="lineNoCov">          0 :                                         bb-&gt;out_bb [i] = bb-&gt;out_bb [bb-&gt;out_count - 1];</span>
+<span class="lineNum">     791 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     792 </span><span class="lineNoCov">          0 :                                 bb-&gt;out_count--;</span>
+<span class="lineNum">     793 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     794 </span><span class="lineCov">        674 :                                 bb-&gt;out_bb [i] = repl;</span>
+<span class="lineNum">     795 </span>            :                         }
+<span class="lineNum">     796 </span><span class="lineCov">        674 :                 }</span>
+<span class="lineNum">     797 </span><span class="lineCov">        674 :         }</span>
+<span class="lineNum">     798 </span><span class="lineCov">        674 : }</span>
+<a name="799"><span class="lineNum">     799 </span>            : </a>
+<span class="lineNum">     800 </span>            : static void 
+<span class="lineNum">     801 </span>            : replace_in_block (MonoBasicBlock *bb, MonoBasicBlock *orig, MonoBasicBlock *repl)
+<span class="lineNum">     802 </span>            : {
+<span class="lineNum">     803 </span>            :         int i;
+<span class="lineNum">     804 </span>            : 
+<span class="lineNum">     805 </span><span class="lineCov">   15380842 :         for (i = 0; i &lt; bb-&gt;in_count; i++) {</span>
+<span class="lineNum">     806 </span><span class="lineCov">    5610621 :                 MonoBasicBlock *ib = bb-&gt;in_bb [i];</span>
+<span class="lineNum">     807 </span><span class="lineCov">    5610621 :                 if (ib == orig) {</span>
+<span class="lineNum">     808 </span><span class="lineCov">    2080390 :                         if (!repl) {</span>
+<span class="lineNum">     809 </span><span class="lineCov">    2080668 :                                 if (bb-&gt;in_count &gt; 1) {</span>
+<span class="lineNum">     810 </span><span class="lineCov">    1856004 :                                         bb-&gt;in_bb [i] = bb-&gt;in_bb [bb-&gt;in_count - 1];</span>
+<span class="lineNum">     811 </span><span class="lineCov">    1856004 :                                 }</span>
+<span class="lineNum">     812 </span><span class="lineCov">    2080696 :                                 bb-&gt;in_count--;</span>
+<span class="lineNum">     813 </span><span class="lineCov">    2080696 :                         } else {</span>
+<span class="lineNum">     814 </span><span class="lineNoCov">          0 :                                 bb-&gt;in_bb [i] = repl;</span>
+<span class="lineNum">     815 </span>            :                         }
+<span class="lineNum">     816 </span><span class="lineCov">    2080626 :                 }</span>
+<span class="lineNum">     817 </span><span class="lineCov">    5609454 :         }</span>
+<span class="lineNum">     818 </span><span class="lineCov">    2080684 : }</span>
+<a name="819"><span class="lineNum">     819 </span>            : </a>
+<span class="lineNum">     820 </span>            : static void
+<span class="lineNum">     821 </span>            : replace_out_block_in_code (MonoBasicBlock *bb, MonoBasicBlock *orig, MonoBasicBlock *repl) {
+<span class="lineNum">     822 </span>            :         MonoInst *ins;
+<span class="lineNum">     823 </span>            : 
+<span class="lineNum">     824 </span>            : #if defined(__native_client_codegen__)
+<span class="lineNum">     825 </span>            :         /* Need to maintain this flag for the new block because */
+<span class="lineNum">     826 </span>            :         /* we can't jump indirectly to a non-aligned block.     */
+<span class="lineNum">     827 </span>            :         if (orig-&gt;flags &amp; BB_INDIRECT_JUMP_TARGET)
+<span class="lineNum">     828 </span>            :         {
+<span class="lineNum">     829 </span>            :                 repl-&gt;flags |= BB_INDIRECT_JUMP_TARGET;
+<span class="lineNum">     830 </span>            :         }
+<span class="lineNum">     831 </span>            : #endif
+<span class="lineNum">     832 </span>            :         
+<span class="lineNum">     833 </span><span class="lineCov">   84354401 :         for (ins = bb-&gt;code; ins != NULL; ins = ins-&gt;next) {</span>
+<span class="lineNum">     834 </span><span class="lineCov">   30142320 :                 switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     835 </span>            :                 case OP_BR:
+<span class="lineNum">     836 </span><span class="lineCov">     311923 :                         if (ins-&gt;inst_target_bb == orig)</span>
+<span class="lineNum">     837 </span><span class="lineCov">     311910 :                                 ins-&gt;inst_target_bb = repl;</span>
+<span class="lineNum">     838 </span><span class="lineCov">     311930 :                         break;</span>
+<span class="lineNum">     839 </span>            :                 case OP_CALL_HANDLER:
+<span class="lineNum">     840 </span><span class="lineCov">     272065 :                         if (ins-&gt;inst_target_bb == orig)</span>
+<span class="lineNum">     841 </span><span class="lineNoCov">          0 :                                 ins-&gt;inst_target_bb = repl;</span>
+<span class="lineNum">     842 </span><span class="lineCov">     272067 :                         break;</span>
+<span class="lineNum">     843 </span>            :                 case OP_SWITCH: {
+<span class="lineNum">     844 </span>            :                         int i;
+<span class="lineNum">     845 </span><span class="lineNoCov">          0 :                         int n = GPOINTER_TO_INT (ins-&gt;klass);</span>
+<span class="lineNum">     846 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; n; i++ ) {</span>
+<span class="lineNum">     847 </span><span class="lineNoCov">          0 :                                 if (ins-&gt;inst_many_bb [i] == orig)</span>
+<span class="lineNum">     848 </span><span class="lineNoCov">          0 :                                         ins-&gt;inst_many_bb [i] = repl;</span>
+<span class="lineNum">     849 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     850 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     851 </span>            :                 }
+<span class="lineNum">     852 </span>            :                 default:
+<span class="lineNum">     853 </span><span class="lineCov">   92393998 :                         if (MONO_IS_COND_BRANCH_OP (ins)) {</span>
+<span class="lineNum">     854 </span><span class="lineCov">    3104300 :                                 if (ins-&gt;inst_true_bb == orig)</span>
+<span class="lineNum">     855 </span><span class="lineCov">    1879934 :                                         ins-&gt;inst_true_bb = repl;</span>
+<span class="lineNum">     856 </span><span class="lineCov">    3104168 :                                 if (ins-&gt;inst_false_bb == orig)</span>
+<span class="lineNum">     857 </span><span class="lineCov">    1224207 :                                         ins-&gt;inst_false_bb = repl;</span>
+<span class="lineNum">     858 </span><span class="lineCov">  135359034 :                         } else if (MONO_IS_JUMP_TABLE (ins)) {</span>
+<span class="lineNum">     859 </span>            :                                 int i;
+<span class="lineNum">     860 </span><span class="lineCov">     106806 :                                 MonoJumpInfoBBTable *table = (MonoJumpInfoBBTable *)MONO_JUMP_TABLE_FROM_INS (ins);</span>
+<span class="lineNum">     861 </span><span class="lineCov">     893702 :                                 for (i = 0; i &lt; table-&gt;table_size; i++ ) {</span>
+<span class="lineNum">     862 </span><span class="lineCov">     411317 :                                         if (table-&gt;table [i] == orig)</span>
+<span class="lineNum">     863 </span><span class="lineCov">      73208 :                                                 table-&gt;table [i] = repl;</span>
+<span class="lineNum">     864 </span><span class="lineCov">     411240 :                                 }</span>
+<span class="lineNum">     865 </span><span class="lineCov">      35579 :                         }</span>
+<span class="lineNum">     866 </span>            : 
+<span class="lineNum">     867 </span><span class="lineCov">   29568398 :                         break;</span>
+<span class="lineNum">     868 </span>            :                 }
+<span class="lineNum">     869 </span><span class="lineCov">   30151610 :         }</span>
+<span class="lineNum">     870 </span><span class="lineCov">   12024629 : }</span>
+<span class="lineNum">     871 </span>            : 
+<span class="lineNum">     872 </span>            : /**
+<span class="lineNum">     873 </span>            :   * Check if a bb is useless (is just made of NOPs and ends with an
+<span class="lineNum">     874 </span>            :   * unconditional branch, or nothing).
+<span class="lineNum">     875 </span>            :   * If it is so, unlink it from the CFG and nullify it, and return TRUE.
+<span class="lineNum">     876 </span>            :   * Otherwise, return FALSE;
+<a name="877"><span class="lineNum">     877 </span>            :   */</a>
+<span class="lineNum">     878 </span>            : static gboolean
+<span class="lineNum">     879 </span>            : remove_block_if_useless (MonoCompile *cfg, MonoBasicBlock *bb, MonoBasicBlock *previous_bb) {
+<span class="lineNum">     880 </span><span class="lineCov">  136199098 :         MonoBasicBlock *target_bb = NULL;</span>
+<span class="lineNum">     881 </span>            :         MonoInst *inst;
+<span class="lineNum">     882 </span>            : 
+<span class="lineNum">     883 </span>            :         /* Do not touch handlers */
+<span class="lineNum">     884 </span><span class="lineCov">  136199098 :         if (bb-&gt;region != -1) {</span>
+<span class="lineNum">     885 </span><span class="lineNoCov">          0 :                 bb-&gt;not_useless = TRUE;</span>
+<span class="lineNum">     886 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     887 </span>            :         }
+<span class="lineNum">     888 </span>            :         
+<span class="lineNum">     889 </span><span class="lineCov">  403506301 :         MONO_BB_FOR_EACH_INS (bb, inst) {</span>
+<span class="lineNum">     890 </span><span class="lineCov">  146095017 :                 switch (inst-&gt;opcode) {</span>
+<span class="lineNum">     891 </span>            :                 case OP_NOP:
+<span class="lineNum">     892 </span>            :                 case OP_IL_SEQ_POINT:
+<span class="lineNum">     893 </span><span class="lineCov">   62780751 :                         break;</span>
+<span class="lineNum">     894 </span>            :                 case OP_BR:
+<span class="lineNum">     895 </span><span class="lineCov">    2840938 :                         target_bb = inst-&gt;inst_target_bb;</span>
+<span class="lineNum">     896 </span><span class="lineCov">    2840938 :                         break;</span>
+<span class="lineNum">     897 </span>            :                 default:
+<span class="lineNum">     898 </span><span class="lineCov">   80488984 :                         bb-&gt;not_useless = TRUE;</span>
+<span class="lineNum">     899 </span><span class="lineCov">   80488984 :                         return FALSE;</span>
+<span class="lineNum">     900 </span>            :                 }
+<span class="lineNum">     901 </span><span class="lineCov">   65615487 :         }</span>
+<span class="lineNum">     902 </span>            :         
+<span class="lineNum">     903 </span><span class="lineCov">   55789144 :         if (target_bb == NULL) {</span>
+<span class="lineNum">     904 </span><span class="lineCov">   63036476 :                 if ((bb-&gt;out_count == 1) &amp;&amp; (bb-&gt;out_bb [0] == bb-&gt;next_bb)) {</span>
+<span class="lineNum">     905 </span><span class="lineCov">   10077346 :                         target_bb = bb-&gt;next_bb;</span>
+<span class="lineNum">     906 </span><span class="lineCov">   10077346 :                 } else {</span>
+<span class="lineNum">     907 </span>            :                         /* Do not touch empty BBs that do not &quot;fall through&quot; to their next BB (like the exit BB) */
+<span class="lineNum">     908 </span><span class="lineCov">   42876032 :                         return FALSE;</span>
+<span class="lineNum">     909 </span>            :                 }
+<span class="lineNum">     910 </span><span class="lineCov">   10077904 :         }</span>
+<span class="lineNum">     911 </span>            :         
+<span class="lineNum">     912 </span>            :         /* Do not touch BBs following a switch (they are the &quot;default&quot; branch) */
+<span class="lineNum">     913 </span><span class="lineCov">   17335176 :         if ((previous_bb-&gt;last_ins != NULL) &amp;&amp; (previous_bb-&gt;last_ins-&gt;opcode == OP_SWITCH)) {</span>
+<span class="lineNum">     914 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     915 </span>            :         }
+<span class="lineNum">     916 </span>            :         
+<span class="lineNum">     917 </span>            :         /* Do not touch BBs following the entry BB and jumping to something that is not */
+<span class="lineNum">     918 </span>            :         /* thiry &quot;next&quot; bb (the entry BB cannot contain the branch) */
+<span class="lineNum">     919 </span><span class="lineCov">   21422093 :         if ((previous_bb == cfg-&gt;bb_entry) &amp;&amp; (bb-&gt;next_bb != target_bb)) {</span>
+<span class="lineNum">     920 </span><span class="lineCov">      50731 :                 return FALSE;</span>
+<span class="lineNum">     921 </span>            :         }
+<span class="lineNum">     922 </span>            : 
+<span class="lineNum">     923 </span>            :         /* 
+<span class="lineNum">     924 </span>            :          * Do not touch BBs following a try block as the code in 
+<span class="lineNum">     925 </span>            :          * mini_method_compile needs them to compute the length of the try block.
+<span class="lineNum">     926 </span>            :          */
+<span class="lineNum">     927 </span><span class="lineCov">   12868920 :         if (MONO_BBLOCK_IS_IN_REGION (previous_bb, MONO_REGION_TRY))</span>
+<span class="lineNum">     928 </span><span class="lineCov">      81612 :                 return FALSE;</span>
+<span class="lineNum">     929 </span>            :         
+<span class="lineNum">     930 </span>            :         /* Check that there is a target BB, and that bb is not an empty loop (Bug 75061) */
+<span class="lineNum">     931 </span><span class="lineCov">   25573763 :         if ((target_bb != NULL) &amp;&amp; (target_bb != bb)) {</span>
+<span class="lineNum">     932 </span>            :                 int i;
+<span class="lineNum">     933 </span>            : 
+<span class="lineNum">     934 </span><span class="lineCov">   12787708 :                 if (cfg-&gt;verbose_level &gt; 1) {</span>
+<span class="lineNum">     935 </span><span class="lineCov">     164167 :                         printf (&quot;remove_block_if_useless, removed BB%d\n&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     936 </span><span class="lineCov">     164167 :                 }</span>
+<span class="lineNum">     937 </span>            :                 
+<span class="lineNum">     938 </span>            :                 /* unlink_bblock () modifies the bb-&gt;in_bb array so can't use a for loop here */
+<span class="lineNum">     939 </span><span class="lineCov">   49629415 :                 while (bb-&gt;in_count) {</span>
+<span class="lineNum">     940 </span><span class="lineCov">   12028608 :                         MonoBasicBlock *in_bb = bb-&gt;in_bb [0];</span>
+<span class="lineNum">     941 </span><span class="lineCov">   12028608 :                         mono_unlink_bblock (cfg, in_bb, bb);</span>
+<span class="lineNum">     942 </span><span class="lineCov">   12028608 :                         mono_link_bblock (cfg, in_bb, target_bb);</span>
+<span class="lineNum">     943 </span><span class="lineCov">   12028608 :                         replace_out_block_in_code (in_bb, bb, target_bb);</span>
+<span class="lineNum">     944 </span>            :                 }
+<span class="lineNum">     945 </span>            :                 
+<span class="lineNum">     946 </span><span class="lineCov">   12789448 :                 mono_unlink_bblock (cfg, bb, target_bb);</span>
+<span class="lineNum">     947 </span><span class="lineCov">   17205684 :                 if (previous_bb != cfg-&gt;bb_entry &amp;&amp; mono_bb_is_fall_through (cfg, previous_bb)) {</span>
+<span class="lineNum">     948 </span><span class="lineCov">     447697 :                         for (i = 0; i &lt; previous_bb-&gt;out_count; i++) {</span>
+<span class="lineNum">     949 </span><span class="lineCov">     222605 :                                 if (previous_bb-&gt;out_bb [i] == target_bb) {</span>
+<span class="lineNum">     950 </span>            :                                         MonoInst *jump;
+<span class="lineNum">     951 </span><span class="lineCov">     885185 :                                         MONO_INST_NEW (cfg, jump, OP_BR);</span>
+<span class="lineNum">     952 </span><span class="lineCov">     885203 :                                         MONO_ADD_INS (previous_bb, jump);</span>
+<span class="lineNum">     953 </span><span class="lineCov">     221267 :                                         jump-&gt;cil_code = previous_bb-&gt;cil_code;</span>
+<span class="lineNum">     954 </span><span class="lineCov">     221267 :                                         jump-&gt;inst_target_bb = target_bb;</span>
+<span class="lineNum">     955 </span><span class="lineCov">     221267 :                                         break;</span>
+<span class="lineNum">     956 </span>            :                                 }
+<span class="lineNum">     957 </span><span class="lineCov">       1280 :                         }</span>
+<span class="lineNum">     958 </span><span class="lineCov">     222539 :                 }</span>
+<span class="lineNum">     959 </span>            :                 
+<span class="lineNum">     960 </span><span class="lineCov">   12783651 :                 previous_bb-&gt;next_bb = bb-&gt;next_bb;</span>
+<span class="lineNum">     961 </span><span class="lineCov">   12783651 :                 mono_nullify_basic_block (bb);</span>
+<span class="lineNum">     962 </span>            :                 
+<span class="lineNum">     963 </span><span class="lineCov">   12783651 :                 return TRUE;</span>
+<span class="lineNum">     964 </span>            :         } else {
+<span class="lineNum">     965 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     966 </span>            :         }
+<span class="lineNum">     967 </span><span class="lineCov">  136214694 : }</span>
+<a name="968"><span class="lineNum">     968 </span>            : </a>
+<span class="lineNum">     969 </span>            : void
+<span class="lineNum">     970 </span>            : mono_merge_basic_blocks (MonoCompile *cfg, MonoBasicBlock *bb, MonoBasicBlock *bbn) 
+<span class="lineNum">     971 </span>            : {
+<span class="lineNum">     972 </span>            :         MonoInst *inst;
+<span class="lineNum">     973 </span>            :         MonoBasicBlock *prev_bb;
+<span class="lineNum">     974 </span>            :         int i;
+<span class="lineNum">     975 </span>            : 
+<span class="lineNum">     976 </span>            :         /* There may be only one control flow edge between two BBs that we merge, and it should connect these BBs together. */
+<span class="lineNum">     977 </span><span class="lineCov">  579909144 :         g_assert (bb-&gt;out_count == 1 &amp;&amp; bbn-&gt;in_count == 1 &amp;&amp; bb-&gt;out_bb [0] == bbn &amp;&amp; bbn-&gt;in_bb [0] == bb);</span>
+<span class="lineNum">     978 </span>            : 
+<span class="lineNum">     979 </span><span class="lineCov">   82854721 :         bb-&gt;has_array_access |= bbn-&gt;has_array_access;</span>
+<span class="lineNum">     980 </span><span class="lineCov">   82854721 :         bb-&gt;extended |= bbn-&gt;extended;</span>
+<span class="lineNum">     981 </span>            : 
+<span class="lineNum">     982 </span><span class="lineCov">   82854721 :         mono_unlink_bblock (cfg, bb, bbn);</span>
+<span class="lineNum">     983 </span><span class="lineCov">  268241746 :         for (i = 0; i &lt; bbn-&gt;out_count; ++i)</span>
+<span class="lineNum">     984 </span><span class="lineCov">   51259293 :                 mono_link_bblock (cfg, bb, bbn-&gt;out_bb [i]);</span>
+<span class="lineNum">     985 </span><span class="lineCov">  268263893 :         while (bbn-&gt;out_count)</span>
+<span class="lineNum">     986 </span><span class="lineCov">   51256036 :                 mono_unlink_bblock (cfg, bbn, bbn-&gt;out_bb [0]);</span>
+<span class="lineNum">     987 </span>            : 
+<span class="lineNum">     988 </span>            :         /* Handle the branch at the end of the bb */
+<span class="lineNum">     989 </span><span class="lineCov">   82877571 :         if (bb-&gt;has_call_handler) {</span>
+<span class="lineNum">     990 </span><span class="lineNoCov">          0 :                 for (inst = bb-&gt;code; inst != NULL; inst = inst-&gt;next) {</span>
+<span class="lineNum">     991 </span><span class="lineNoCov">          0 :                         if (inst-&gt;opcode == OP_CALL_HANDLER) {</span>
+<span class="lineNum">     992 </span><span class="lineNoCov">          0 :                                 g_assert (inst-&gt;inst_target_bb == bbn);</span>
+<span class="lineNum">     993 </span><span class="lineNoCov">          0 :                                 NULLIFY_INS (inst);</span>
+<span class="lineNum">     994 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     995 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     996 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     997 </span><span class="lineCov">   82866973 :         if (bb-&gt;has_jump_table) {</span>
+<span class="lineNum">     998 </span><span class="lineCov">     174731 :                 for (inst = bb-&gt;code; inst != NULL; inst = inst-&gt;next) {</span>
+<span class="lineNum">     999 </span><span class="lineCov">     337193 :                         if (MONO_IS_JUMP_TABLE (inst)) {</span>
+<span class="lineNum">    1000 </span>            :                                 int i;
+<span class="lineNum">    1001 </span><span class="lineCov">      37429 :                                 MonoJumpInfoBBTable *table = (MonoJumpInfoBBTable *)MONO_JUMP_TABLE_FROM_INS (inst);</span>
+<span class="lineNum">    1002 </span><span class="lineCov">     210065 :                                 for (i = 0; i &lt; table-&gt;table_size; i++ ) {</span>
+<span class="lineNum">    1003 </span>            :                                         /* Might be already NULL from a previous merge */
+<span class="lineNum">    1004 </span><span class="lineCov">      92577 :                                         if (table-&gt;table [i])</span>
+<span class="lineNum">    1005 </span><span class="lineCov">     369994 :                                                 g_assert (table-&gt;table [i] == bbn);</span>
+<span class="lineNum">    1006 </span><span class="lineCov">      92581 :                                         table-&gt;table [i] = NULL;</span>
+<span class="lineNum">    1007 </span><span class="lineCov">      92581 :                                 }</span>
+<span class="lineNum">    1008 </span>            :                                 /* Can't nullify this as later instructions depend on it */
+<span class="lineNum">    1009 </span><span class="lineCov">      12460 :                         }</span>
+<span class="lineNum">    1010 </span><span class="lineCov">      74905 :                 }</span>
+<span class="lineNum">    1011 </span><span class="lineCov">      12460 :         }</span>
+<span class="lineNum">    1012 </span><span class="lineCov">  351750866 :         if (bb-&gt;last_ins &amp;&amp; MONO_IS_COND_BRANCH_OP (bb-&gt;last_ins)) {</span>
+<span class="lineNum">    1013 </span><span class="lineNoCov">          0 :                 g_assert (bb-&gt;last_ins-&gt;inst_false_bb == bbn);</span>
+<span class="lineNum">    1014 </span><span class="lineNoCov">          0 :                 bb-&gt;last_ins-&gt;inst_false_bb = NULL;</span>
+<span class="lineNum">    1015 </span><span class="lineNoCov">          0 :                 bb-&gt;extended = TRUE;</span>
+<span class="lineNum">    1016 </span><span class="lineCov">  562861976 :         } else if (bb-&gt;last_ins &amp;&amp; MONO_IS_BRANCH_OP (bb-&gt;last_ins)) {</span>
+<span class="lineNum">    1017 </span><span class="lineCov">   75044477 :                 NULLIFY_INS (bb-&gt;last_ins);</span>
+<span class="lineNum">    1018 </span><span class="lineCov">   18761144 :         }</span>
+<span class="lineNum">    1019 </span>            : 
+<span class="lineNum">    1020 </span><span class="lineCov">   82865294 :         bb-&gt;has_call_handler |= bbn-&gt;has_call_handler;</span>
+<span class="lineNum">    1021 </span><span class="lineCov">   82865294 :         bb-&gt;has_jump_table |= bbn-&gt;has_jump_table;</span>
+<span class="lineNum">    1022 </span>            : 
+<span class="lineNum">    1023 </span><span class="lineCov">   82865294 :         if (bb-&gt;last_ins) {</span>
+<span class="lineNum">    1024 </span><span class="lineCov">   82876778 :                 if (bbn-&gt;code) {</span>
+<span class="lineNum">    1025 </span><span class="lineCov">   50555840 :                         bb-&gt;last_ins-&gt;next = bbn-&gt;code;</span>
+<span class="lineNum">    1026 </span><span class="lineCov">   50555840 :                         bbn-&gt;code-&gt;prev = bb-&gt;last_ins;</span>
+<span class="lineNum">    1027 </span><span class="lineCov">   50555840 :                         bb-&gt;last_ins = bbn-&gt;last_ins;</span>
+<span class="lineNum">    1028 </span><span class="lineCov">   50555840 :                 }</span>
+<span class="lineNum">    1029 </span><span class="lineCov">   82868051 :         } else {</span>
+<span class="lineNum">    1030 </span><span class="lineNoCov">          0 :                 bb-&gt;code = bbn-&gt;code;</span>
+<span class="lineNum">    1031 </span><span class="lineNoCov">          0 :                 bb-&gt;last_ins = bbn-&gt;last_ins;</span>
+<span class="lineNum">    1032 </span>            :         }
+<span class="lineNum">    1033 </span>            : 
+<span class="lineNum">    1034 </span>            : 
+<span class="lineNum">    1035 </span>            :         /* Check if the control flow predecessor is also the linear IL predecessor. */
+<span class="lineNum">    1036 </span><span class="lineCov">   82872663 :         if (bbn-&gt;in_bb [0]-&gt;next_bb == bbn)</span>
+<span class="lineNum">    1037 </span><span class="lineCov">   82874033 :                 prev_bb = bbn-&gt;in_bb [0];</span>
+<span class="lineNum">    1038 </span>            :         else
+<span class="lineNum">    1039 </span>            :                 /* If it isn't, look for one among all basic blocks. */
+<span class="lineNum">    1040 </span><span class="lineCov">        175 :                 for (prev_bb = cfg-&gt;bb_entry; prev_bb &amp;&amp; prev_bb-&gt;next_bb != bbn; prev_bb = prev_bb-&gt;next_bb)</span>
+<span class="lineNum">    1041 </span>            :                         ;
+<span class="lineNum">    1042 </span><span class="lineCov">   82861257 :         if (prev_bb) {</span>
+<span class="lineNum">    1043 </span><span class="lineCov">   82865582 :                 prev_bb-&gt;next_bb = bbn-&gt;next_bb;</span>
+<span class="lineNum">    1044 </span><span class="lineCov">   82865582 :         } else {</span>
+<span class="lineNum">    1045 </span>            :                 /* bbn might not be in the bb list yet */
+<span class="lineNum">    1046 </span><span class="lineNoCov">          0 :                 if (bb-&gt;next_bb == bbn)</span>
+<span class="lineNum">    1047 </span><span class="lineNoCov">          0 :                         bb-&gt;next_bb = bbn-&gt;next_bb;</span>
+<span class="lineNum">    1048 </span>            :         }
+<span class="lineNum">    1049 </span><span class="lineCov">   82858619 :         mono_nullify_basic_block (bbn);</span>
+<span class="lineNum">    1050 </span>            : 
+<span class="lineNum">    1051 </span>            :         /* 
+<span class="lineNum">    1052 </span>            :          * If bbn fell through to its next bblock, have to add a branch, since bb
+<span class="lineNum">    1053 </span>            :          * will not fall though to the same bblock (#513931).
+<span class="lineNum">    1054 </span>            :          */
+<span class="lineNum">    1055 </span><span class="lineCov">  209844146 :         if (bb-&gt;last_ins &amp;&amp; bb-&gt;out_count == 1 &amp;&amp; bb-&gt;out_bb [0] != bb-&gt;next_bb &amp;&amp; !MONO_IS_BRANCH_OP (bb-&gt;last_ins)) {</span>
+<span class="lineNum">    1056 </span><span class="lineCov">     129800 :                 MONO_INST_NEW (cfg, inst, OP_BR);</span>
+<span class="lineNum">    1057 </span><span class="lineCov">      32455 :                 inst-&gt;inst_target_bb = bb-&gt;out_bb [0];</span>
+<span class="lineNum">    1058 </span><span class="lineCov">     129815 :                 MONO_ADD_INS (bb, inst);</span>
+<span class="lineNum">    1059 </span><span class="lineCov">      32449 :         }</span>
+<span class="lineNum">    1060 </span><span class="lineCov">   82853834 : }</span>
+<a name="1061"><span class="lineNum">    1061 </span>            : </a>
+<span class="lineNum">    1062 </span>            : static void
+<span class="lineNum">    1063 </span>            : move_basic_block_to_end (MonoCompile *cfg, MonoBasicBlock *bb)
+<span class="lineNum">    1064 </span>            : {
+<span class="lineNum">    1065 </span>            :         MonoBasicBlock *bbn, *next;
+<span class="lineNum">    1066 </span>            : 
+<span class="lineNum">    1067 </span><span class="lineCov">    2267953 :         next = bb-&gt;next_bb;</span>
+<span class="lineNum">    1068 </span>            : 
+<span class="lineNum">    1069 </span>            :         /* Find the previous */
+<span class="lineNum">    1070 </span><span class="lineCov">   84042626 :         for (bbn = cfg-&gt;bb_entry; bbn-&gt;next_bb &amp;&amp; bbn-&gt;next_bb != bb; bbn = bbn-&gt;next_bb)</span>
+<span class="lineNum">    1071 </span>            :                 ;
+<span class="lineNum">    1072 </span><span class="lineCov">    2268145 :         if (bbn-&gt;next_bb) {</span>
+<span class="lineNum">    1073 </span><span class="lineCov">    2268100 :                 bbn-&gt;next_bb = bb-&gt;next_bb;</span>
+<span class="lineNum">    1074 </span><span class="lineCov">    2268100 :         }</span>
+<span class="lineNum">    1075 </span>            : 
+<span class="lineNum">    1076 </span>            :         /* Find the last */
+<span class="lineNum">    1077 </span><span class="lineCov">  119161624 :         for (bbn = cfg-&gt;bb_entry; bbn-&gt;next_bb; bbn = bbn-&gt;next_bb)</span>
+<span class="lineNum">    1078 </span>            :                 ;
+<span class="lineNum">    1079 </span><span class="lineCov">    2268209 :         bbn-&gt;next_bb = bb;</span>
+<span class="lineNum">    1080 </span><span class="lineCov">    2268209 :         bb-&gt;next_bb = NULL;</span>
+<span class="lineNum">    1081 </span>            : 
+<span class="lineNum">    1082 </span>            :         /* Add a branch */
+<span class="lineNum">    1083 </span><span class="lineCov">    8533607 :         if (next &amp;&amp; (!bb-&gt;last_ins || ((bb-&gt;last_ins-&gt;opcode != OP_NOT_REACHED) &amp;&amp; (bb-&gt;last_ins-&gt;opcode != OP_BR) &amp;&amp; (bb-&gt;last_ins-&gt;opcode != OP_BR_REG) &amp;&amp; (!MONO_IS_COND_BRANCH_OP (bb-&gt;last_ins))))) {</span>
+<span class="lineNum">    1084 </span>            :                 MonoInst *ins;
+<span class="lineNum">    1085 </span>            : 
+<span class="lineNum">    1086 </span><span class="lineCov">     106486 :                 MONO_INST_NEW (cfg, ins, OP_BR);</span>
+<span class="lineNum">    1087 </span><span class="lineCov">     106487 :                 MONO_ADD_INS (bb, ins);</span>
+<span class="lineNum">    1088 </span><span class="lineCov">      26621 :                 mono_link_bblock (cfg, bb, next);</span>
+<span class="lineNum">    1089 </span><span class="lineCov">      26621 :                 ins-&gt;inst_target_bb = next;</span>
+<span class="lineNum">    1090 </span><span class="lineCov">      26621 :         }               </span>
+<span class="lineNum">    1091 </span><span class="lineCov">    2267987 : }</span>
+<span class="lineNum">    1092 </span>            : 
+<span class="lineNum">    1093 </span>            : /*
+<span class="lineNum">    1094 </span>            :  * mono_remove_block:
+<span class="lineNum">    1095 </span>            :  *
+<span class="lineNum">    1096 </span>            :  *   Remove BB from the control flow graph
+<a name="1097"><span class="lineNum">    1097 </span>            :  */</a>
+<span class="lineNum">    1098 </span>            : void
+<span class="lineNum">    1099 </span>            : mono_remove_bblock (MonoCompile *cfg, MonoBasicBlock *bb) 
+<span class="lineNum">    1100 </span>            : {
+<span class="lineNum">    1101 </span>            :         MonoBasicBlock *tmp_bb;
+<span class="lineNum">    1102 </span>            : 
+<span class="lineNum">    1103 </span><span class="lineCov">   77284676 :         for (tmp_bb = cfg-&gt;bb_entry; tmp_bb &amp;&amp; tmp_bb-&gt;next_bb != bb; tmp_bb = tmp_bb-&gt;next_bb)</span>
+<span class="lineNum">    1104 </span>            :                 ;
+<span class="lineNum">    1105 </span>            : 
+<span class="lineNum">    1106 </span><span class="lineCov">    2697963 :         g_assert (tmp_bb);</span>
+<span class="lineNum">    1107 </span><span class="lineCov">     899336 :         tmp_bb-&gt;next_bb = bb-&gt;next_bb;</span>
+<span class="lineNum">    1108 </span><span class="lineCov">     899336 : }</span>
+<a name="1109"><span class="lineNum">    1109 </span>            : </a>
+<span class="lineNum">    1110 </span>            : void
+<span class="lineNum">    1111 </span>            : mono_remove_critical_edges (MonoCompile *cfg)
+<span class="lineNum">    1112 </span>            : {
+<span class="lineNum">    1113 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">    1114 </span>            :         MonoBasicBlock *previous_bb;
+<span class="lineNum">    1115 </span>            :         
+<span class="lineNum">    1116 </span><span class="lineNoCov">          0 :         if (cfg-&gt;verbose_level &gt; 3) {</span>
+<span class="lineNum">    1117 </span><span class="lineNoCov">          0 :                 for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">    1118 </span>            :                         int i;
+<span class="lineNum">    1119 </span><span class="lineNoCov">          0 :                         printf (&quot;remove_critical_edges, BEFORE BB%d (in:&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">    1120 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; bb-&gt;in_count; i++) {</span>
+<span class="lineNum">    1121 </span><span class="lineNoCov">          0 :                                 printf (&quot; %d&quot;, bb-&gt;in_bb [i]-&gt;block_num);</span>
+<span class="lineNum">    1122 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1123 </span><span class="lineNoCov">          0 :                         printf (&quot;) (out:&quot;);</span>
+<span class="lineNum">    1124 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; bb-&gt;out_count; i++) {</span>
+<span class="lineNum">    1125 </span><span class="lineNoCov">          0 :                                 printf (&quot; %d&quot;, bb-&gt;out_bb [i]-&gt;block_num);</span>
+<span class="lineNum">    1126 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1127 </span><span class="lineNoCov">          0 :                         printf (&quot;)&quot;);</span>
+<span class="lineNum">    1128 </span><span class="lineNoCov">          0 :                         if (bb-&gt;last_ins != NULL) {</span>
+<span class="lineNum">    1129 </span><span class="lineNoCov">          0 :                                 printf (&quot; &quot;);</span>
+<span class="lineNum">    1130 </span><span class="lineNoCov">          0 :                                 mono_print_ins (bb-&gt;last_ins);</span>
+<span class="lineNum">    1131 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1132 </span><span class="lineNoCov">          0 :                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">    1133 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1134 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1135 </span>            :         
+<span class="lineNum">    1136 </span><span class="lineNoCov">          0 :         for (previous_bb = cfg-&gt;bb_entry, bb = previous_bb-&gt;next_bb; bb != NULL; previous_bb = previous_bb-&gt;next_bb, bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">    1137 </span><span class="lineNoCov">          0 :                 if (bb-&gt;in_count &gt; 1) {</span>
+<span class="lineNum">    1138 </span>            :                         int in_bb_index;
+<span class="lineNum">    1139 </span><span class="lineNoCov">          0 :                         for (in_bb_index = 0; in_bb_index &lt; bb-&gt;in_count; in_bb_index++) {</span>
+<span class="lineNum">    1140 </span><span class="lineNoCov">          0 :                                 MonoBasicBlock *in_bb = bb-&gt;in_bb [in_bb_index];</span>
+<span class="lineNum">    1141 </span>            :                                 /* 
+<span class="lineNum">    1142 </span>            :                                  * Have to remove non-critical edges whose source ends with a BR_REG
+<span class="lineNum">    1143 </span>            :                                  * ins too, since inserting a computation before the BR_REG could 
+<span class="lineNum">    1144 </span>            :                                  * overwrite the sreg1 of the ins.
+<span class="lineNum">    1145 </span>            :                                  */
+<span class="lineNum">    1146 </span><span class="lineNoCov">          0 :                                 if ((in_bb-&gt;out_count &gt; 1) || (in_bb-&gt;out_count == 1 &amp;&amp; in_bb-&gt;last_ins &amp;&amp; in_bb-&gt;last_ins-&gt;opcode == OP_BR_REG)) {</span>
+<span class="lineNum">    1147 </span><span class="lineNoCov">          0 :                                         MonoBasicBlock *new_bb = (MonoBasicBlock *)mono_mempool_alloc0 ((cfg)-&gt;mempool, sizeof (MonoBasicBlock));</span>
+<span class="lineNum">    1148 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;block_num = cfg-&gt;num_bblocks++;</span>
+<span class="lineNum">    1149 </span>            : //                                      new_bb-&gt;real_offset = bb-&gt;real_offset;
+<span class="lineNum">    1150 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;region = bb-&gt;region;</span>
+<span class="lineNum">    1151 </span>            :                                         
+<span class="lineNum">    1152 </span>            :                                         /* Do not alter the CFG while altering the BB list */
+<span class="lineNum">    1153 </span><span class="lineNoCov">          0 :                                         if (mono_bb_is_fall_through (cfg, previous_bb)) {</span>
+<span class="lineNum">    1154 </span><span class="lineNoCov">          0 :                                                 if (previous_bb != cfg-&gt;bb_entry) {</span>
+<span class="lineNum">    1155 </span>            :                                                         int i;
+<span class="lineNum">    1156 </span>            :                                                         /* Make sure previous_bb really falls through bb */
+<span class="lineNum">    1157 </span><span class="lineNoCov">          0 :                                                         for (i = 0; i &lt; previous_bb-&gt;out_count; i++) {</span>
+<span class="lineNum">    1158 </span><span class="lineNoCov">          0 :                                                                 if (previous_bb-&gt;out_bb [i] == bb) {</span>
+<span class="lineNum">    1159 </span>            :                                                                         MonoInst *jump;
+<span class="lineNum">    1160 </span><span class="lineNoCov">          0 :                                                                         MONO_INST_NEW (cfg, jump, OP_BR);</span>
+<span class="lineNum">    1161 </span><span class="lineNoCov">          0 :                                                                         MONO_ADD_INS (previous_bb, jump);</span>
+<span class="lineNum">    1162 </span><span class="lineNoCov">          0 :                                                                         jump-&gt;cil_code = previous_bb-&gt;cil_code;</span>
+<span class="lineNum">    1163 </span><span class="lineNoCov">          0 :                                                                         jump-&gt;inst_target_bb = bb;</span>
+<span class="lineNum">    1164 </span><span class="lineNoCov">          0 :                                                                         break;</span>
+<span class="lineNum">    1165 </span>            :                                                                 }
+<span class="lineNum">    1166 </span><span class="lineNoCov">          0 :                                                         }</span>
+<span class="lineNum">    1167 </span><span class="lineNoCov">          0 :                                                 } else {</span>
+<span class="lineNum">    1168 </span>            :                                                         /* We cannot add any inst to the entry BB, so we must */
+<span class="lineNum">    1169 </span>            :                                                         /* put a new BB in the middle to hold the OP_BR */
+<span class="lineNum">    1170 </span>            :                                                         MonoInst *jump;
+<span class="lineNum">    1171 </span><span class="lineNoCov">          0 :                                                         MonoBasicBlock *new_bb_after_entry = (MonoBasicBlock *)mono_mempool_alloc0 ((cfg)-&gt;mempool, sizeof (MonoBasicBlock));</span>
+<span class="lineNum">    1172 </span><span class="lineNoCov">          0 :                                                         new_bb_after_entry-&gt;block_num = cfg-&gt;num_bblocks++;</span>
+<span class="lineNum">    1173 </span>            : //                                                      new_bb_after_entry-&gt;real_offset = bb-&gt;real_offset;
+<span class="lineNum">    1174 </span><span class="lineNoCov">          0 :                                                         new_bb_after_entry-&gt;region = bb-&gt;region;</span>
+<span class="lineNum">    1175 </span>            :                                                         
+<span class="lineNum">    1176 </span><span class="lineNoCov">          0 :                                                         MONO_INST_NEW (cfg, jump, OP_BR);</span>
+<span class="lineNum">    1177 </span><span class="lineNoCov">          0 :                                                         MONO_ADD_INS (new_bb_after_entry, jump);</span>
+<span class="lineNum">    1178 </span><span class="lineNoCov">          0 :                                                         jump-&gt;cil_code = bb-&gt;cil_code;</span>
+<span class="lineNum">    1179 </span><span class="lineNoCov">          0 :                                                         jump-&gt;inst_target_bb = bb;</span>
+<span class="lineNum">    1180 </span>            : 
+<span class="lineNum">    1181 </span><span class="lineNoCov">          0 :                                                         mono_unlink_bblock (cfg, previous_bb, bb);</span>
+<span class="lineNum">    1182 </span><span class="lineNoCov">          0 :                                                         mono_link_bblock (cfg, new_bb_after_entry, bb);</span>
+<span class="lineNum">    1183 </span><span class="lineNoCov">          0 :                                                         mono_link_bblock (cfg, previous_bb, new_bb_after_entry);</span>
+<span class="lineNum">    1184 </span>            :                                                         
+<span class="lineNum">    1185 </span><span class="lineNoCov">          0 :                                                         previous_bb-&gt;next_bb = new_bb_after_entry;</span>
+<span class="lineNum">    1186 </span><span class="lineNoCov">          0 :                                                         previous_bb = new_bb_after_entry;</span>
+<span class="lineNum">    1187 </span>            : 
+<span class="lineNum">    1188 </span><span class="lineNoCov">          0 :                                                         if (cfg-&gt;verbose_level &gt; 2) {</span>
+<span class="lineNum">    1189 </span><span class="lineNoCov">          0 :                                                                 printf (&quot;remove_critical_edges, added helper BB%d jumping to BB%d\n&quot;, new_bb_after_entry-&gt;block_num, bb-&gt;block_num);</span>
+<span class="lineNum">    1190 </span><span class="lineNoCov">          0 :                                                         }</span>
+<span class="lineNum">    1191 </span>            :                                                 }
+<span class="lineNum">    1192 </span><span class="lineNoCov">          0 :                                         }</span>
+<span class="lineNum">    1193 </span>            :                                         
+<span class="lineNum">    1194 </span>            :                                         /* Insert new_bb in the BB list */
+<span class="lineNum">    1195 </span><span class="lineNoCov">          0 :                                         previous_bb-&gt;next_bb = new_bb;</span>
+<span class="lineNum">    1196 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;next_bb = bb;</span>
+<span class="lineNum">    1197 </span><span class="lineNoCov">          0 :                                         previous_bb = new_bb;</span>
+<span class="lineNum">    1198 </span>            :                                         
+<span class="lineNum">    1199 </span>            :                                         /* Setup in_bb and out_bb */
+<span class="lineNum">    1200 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;in_bb = (MonoBasicBlock **)mono_mempool_alloc ((cfg)-&gt;mempool, sizeof (MonoBasicBlock*));</span>
+<span class="lineNum">    1201 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;in_bb [0] = in_bb;</span>
+<span class="lineNum">    1202 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;in_count = 1;</span>
+<span class="lineNum">    1203 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;out_bb = (MonoBasicBlock **)mono_mempool_alloc ((cfg)-&gt;mempool, sizeof (MonoBasicBlock*));</span>
+<span class="lineNum">    1204 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;out_bb [0] = bb;</span>
+<span class="lineNum">    1205 </span><span class="lineNoCov">          0 :                                         new_bb-&gt;out_count = 1;</span>
+<span class="lineNum">    1206 </span>            :                                         
+<span class="lineNum">    1207 </span>            :                                         /* Relink in_bb and bb to (from) new_bb */
+<span class="lineNum">    1208 </span><span class="lineNoCov">          0 :                                         replace_out_block (in_bb, bb, new_bb);</span>
+<span class="lineNum">    1209 </span><span class="lineNoCov">          0 :                                         replace_out_block_in_code (in_bb, bb, new_bb);</span>
+<span class="lineNum">    1210 </span><span class="lineNoCov">          0 :                                         replace_in_block (bb, in_bb, new_bb);</span>
+<span class="lineNum">    1211 </span>            :                                         
+<span class="lineNum">    1212 </span><span class="lineNoCov">          0 :                                         if (cfg-&gt;verbose_level &gt; 2) {</span>
+<span class="lineNum">    1213 </span><span class="lineNoCov">          0 :                                                 printf (&quot;remove_critical_edges, removed critical edge from BB%d to BB%d (added BB%d)\n&quot;, in_bb-&gt;block_num, bb-&gt;block_num, new_bb-&gt;block_num);</span>
+<span class="lineNum">    1214 </span><span class="lineNoCov">          0 :                                         }</span>
+<span class="lineNum">    1215 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">    1216 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1217 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1218 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1219 </span>            :         
+<span class="lineNum">    1220 </span><span class="lineNoCov">          0 :         if (cfg-&gt;verbose_level &gt; 3) {</span>
+<span class="lineNum">    1221 </span><span class="lineNoCov">          0 :                 for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">    1222 </span>            :                         int i;
+<span class="lineNum">    1223 </span><span class="lineNoCov">          0 :                         printf (&quot;remove_critical_edges, AFTER BB%d (in:&quot;, bb-&gt;block_num);</span>
+<span class="lineNum">    1224 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; bb-&gt;in_count; i++) {</span>
+<span class="lineNum">    1225 </span><span class="lineNoCov">          0 :                                 printf (&quot; %d&quot;, bb-&gt;in_bb [i]-&gt;block_num);</span>
+<span class="lineNum">    1226 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1227 </span><span class="lineNoCov">          0 :                         printf (&quot;) (out:&quot;);</span>
+<span class="lineNum">    1228 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; bb-&gt;out_count; i++) {</span>
+<span class="lineNum">    1229 </span><span class="lineNoCov">          0 :                                 printf (&quot; %d&quot;, bb-&gt;out_bb [i]-&gt;block_num);</span>
+<span class="lineNum">    1230 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1231 </span><span class="lineNoCov">          0 :                         printf (&quot;)&quot;);</span>
+<span class="lineNum">    1232 </span><span class="lineNoCov">          0 :                         if (bb-&gt;last_ins != NULL) {</span>
+<span class="lineNum">    1233 </span><span class="lineNoCov">          0 :                                 printf (&quot; &quot;);</span>
+<span class="lineNum">    1234 </span><span class="lineNoCov">          0 :                                 mono_print_ins (bb-&gt;last_ins);</span>
+<span class="lineNum">    1235 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1236 </span><span class="lineNoCov">          0 :                         printf (&quot;\n&quot;);</span>
+<span class="lineNum">    1237 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1238 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1239 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1240 </span>            : 
+<span class="lineNum">    1241 </span>            : /*
+<span class="lineNum">    1242 </span>            :  * Optimizes the branches on the Control Flow Graph
+<span class="lineNum">    1243 </span>            :  *
+<a name="1244"><span class="lineNum">    1244 </span>            :  */</a>
+<span class="lineNum">    1245 </span>            : void
+<span class="lineNum">    1246 </span>            : mono_optimize_branches (MonoCompile *cfg)
+<span class="lineNum">    1247 </span>            : {
+<span class="lineNum">    1248 </span><span class="lineCov">   28025723 :         int i, count = 0, changed = FALSE;</span>
+<span class="lineNum">    1249 </span>            :         MonoBasicBlock *bb, *bbn;
+<span class="lineNum">    1250 </span>            :         guint32 niterations;
+<span class="lineNum">    1251 </span>            :         MonoInst *bbn_first_inst;
+<span class="lineNum">    1252 </span><span class="lineCov">   28025723 :         int filter = FILTER_IL_SEQ_POINT;</span>
+<span class="lineNum">    1253 </span>            : 
+<span class="lineNum">    1254 </span>            :         /*
+<span class="lineNum">    1255 </span>            :          * Some crazy loops could cause the code below to go into an infinite
+<span class="lineNum">    1256 </span>            :          * loop, see bug #53003 for an example. To prevent this, we put an upper
+<span class="lineNum">    1257 </span>            :          * bound on the number of iterations.
+<span class="lineNum">    1258 </span>            :          */
+<span class="lineNum">    1259 </span><span class="lineCov">   28025723 :         if (cfg-&gt;num_bblocks &gt; 1000)</span>
+<span class="lineNum">    1260 </span><span class="lineCov">       3684 :                 niterations = cfg-&gt;num_bblocks * 2;</span>
+<span class="lineNum">    1261 </span>            :         else
+<span class="lineNum">    1262 </span><span class="lineCov">   28024560 :                 niterations = 1000;</span>
+<span class="lineNum">    1263 </span>            :         
+<span class="lineNum">    1264 </span><span class="lineCov">   28033250 :         do {</span>
+<span class="lineNum">    1265 </span>            :                 MonoBasicBlock *previous_bb;
+<span class="lineNum">    1266 </span><span class="lineCov">   55845542 :                 changed = FALSE;</span>
+<span class="lineNum">    1267 </span><span class="lineCov">   55845542 :                 niterations --;</span>
+<span class="lineNum">    1268 </span>            : 
+<span class="lineNum">    1269 </span>            :                 /* we skip the entry block (exit is handled specially instead ) */
+<span class="lineNum">    1270 </span><span class="lineCov"> 1027220178 :                 for (previous_bb = cfg-&gt;bb_entry, bb = cfg-&gt;bb_entry-&gt;next_bb; bb; previous_bb = bb, bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">    1271 </span><span class="lineCov">  457914523 :                         count ++;</span>
+<span class="lineNum">    1272 </span><span class="lineCov">  457914523 :                         if (count == 1000) {</span>
+<span class="lineNum">    1273 </span><span class="lineCov">      77041 :                                 mono_threads_safepoint ();</span>
+<span class="lineNum">    1274 </span><span class="lineCov">      77041 :                                 count = 0;</span>
+<span class="lineNum">    1275 </span><span class="lineCov">      77041 :                         }</span>
+<span class="lineNum">    1276 </span>            :                         /* dont touch code inside exception clauses */
+<span class="lineNum">    1277 </span><span class="lineCov">  458109164 :                         if (bb-&gt;region != -1)</span>
+<span class="lineNum">    1278 </span><span class="lineCov">   38637773 :                                 continue;</span>
+<span class="lineNum">    1279 </span>            : 
+<span class="lineNum">    1280 </span><span class="lineCov">  556645532 :                         if (!bb-&gt;not_useless &amp;&amp; remove_block_if_useless (cfg, bb, previous_bb)) {</span>
+<span class="lineNum">    1281 </span><span class="lineCov">   12783069 :                                 changed = TRUE;</span>
+<span class="lineNum">    1282 </span><span class="lineCov">   12783069 :                                 continue;</span>
+<span class="lineNum">    1283 </span>            :                         }
+<span class="lineNum">    1284 </span>            : 
+<span class="lineNum">    1285 </span><span class="lineCov">  774583009 :                         if ((bbn = bb-&gt;next_bb) &amp;&amp; bbn-&gt;in_count == 0 &amp;&amp; bbn != cfg-&gt;bb_exit &amp;&amp; bb-&gt;region == bbn-&gt;region) {</span>
+<span class="lineNum">    1286 </span><span class="lineCov">    1879442 :                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">    1287 </span><span class="lineCov">      75567 :                                         g_print (&quot;nullify block triggered %d\n&quot;, bbn-&gt;block_num);</span>
+<span class="lineNum">    1288 </span>            : 
+<span class="lineNum">    1289 </span><span class="lineCov">    1879397 :                                 bb-&gt;next_bb = bbn-&gt;next_bb;</span>
+<span class="lineNum">    1290 </span>            : 
+<span class="lineNum">    1291 </span><span class="lineCov">    7622532 :                                 for (i = 0; i &lt; bbn-&gt;out_count; i++)</span>
+<span class="lineNum">    1292 </span><span class="lineCov">    1931814 :                                         replace_in_block (bbn-&gt;out_bb [i], bbn, NULL);</span>
+<span class="lineNum">    1293 </span>            : 
+<span class="lineNum">    1294 </span><span class="lineCov">    1879512 :                                 mono_nullify_basic_block (bbn);                 </span>
+<span class="lineNum">    1295 </span><span class="lineCov">    1879512 :                                 changed = TRUE;</span>
+<span class="lineNum">    1296 </span><span class="lineCov">    1879512 :                         }</span>
+<span class="lineNum">    1297 </span>            : 
+<span class="lineNum">    1298 </span><span class="lineCov">  407564852 :                         if (bb-&gt;out_count == 1) {</span>
+<span class="lineNum">    1299 </span><span class="lineCov">  163061300 :                                 bbn = bb-&gt;out_bb [0];</span>
+<span class="lineNum">    1300 </span>            : 
+<span class="lineNum">    1301 </span>            :                                 /* conditional branches where true and false targets are the same can be also replaced with OP_BR */
+<span class="lineNum">    1302 </span><span class="lineCov">  618908910 :                                 if (bb-&gt;last_ins &amp;&amp; (bb-&gt;last_ins-&gt;opcode != OP_BR) &amp;&amp; MONO_IS_COND_BRANCH_OP (bb-&gt;last_ins)) {</span>
+<span class="lineNum">    1303 </span><span class="lineCov">       1862 :                                         bb-&gt;last_ins-&gt;opcode = OP_BR;</span>
+<span class="lineNum">    1304 </span><span class="lineCov">       1862 :                                         bb-&gt;last_ins-&gt;inst_target_bb = bb-&gt;last_ins-&gt;inst_true_bb;</span>
+<span class="lineNum">    1305 </span><span class="lineCov">       1862 :                                         changed = TRUE;</span>
+<span class="lineNum">    1306 </span><span class="lineCov">       1862 :                                         if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">    1307 </span><span class="lineCov">         44 :                                                 g_print (&quot;cond branch removal triggered in %d %d\n&quot;, bb-&gt;block_num, bb-&gt;out_count);</span>
+<span class="lineNum">    1308 </span><span class="lineCov">       1862 :                                 }</span>
+<span class="lineNum">    1309 </span>            : 
+<span class="lineNum">    1310 </span><span class="lineCov">  324023963 :                                 if (bb-&gt;region == bbn-&gt;region &amp;&amp; bb-&gt;next_bb == bbn) {</span>
+<span class="lineNum">    1311 </span>            :                                         /* the block are in sequence anyway ... */
+<span class="lineNum">    1312 </span>            : 
+<span class="lineNum">    1313 </span>            :                                         /* branches to the following block can be removed */
+<span class="lineNum">    1314 </span><span class="lineCov">  206276555 :                                         if (bb-&gt;last_ins &amp;&amp; bb-&gt;last_ins-&gt;opcode == OP_BR &amp;&amp; !bbn-&gt;out_of_line) {</span>
+<span class="lineNum">    1315 </span><span class="lineCov">   60141692 :                                                 NULLIFY_INS (bb-&gt;last_ins);</span>
+<span class="lineNum">    1316 </span><span class="lineCov">   15035566 :                                                 changed = TRUE;</span>
+<span class="lineNum">    1317 </span><span class="lineCov">   15035566 :                                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">    1318 </span><span class="lineCov">     254503 :                                                         g_print (&quot;br removal triggered %d -&gt; %d\n&quot;, bb-&gt;block_num, bbn-&gt;block_num);</span>
+<span class="lineNum">    1319 </span><span class="lineCov">   15035587 :                                         }</span>
+<span class="lineNum">    1320 </span>            : 
+<span class="lineNum">    1321 </span><span class="lineCov">  127948869 :                                         if (bbn-&gt;in_count == 1 &amp;&amp; !bb-&gt;extended) {</span>
+<span class="lineNum">    1322 </span><span class="lineCov">   32198016 :                                                 if (bbn != cfg-&gt;bb_exit) {</span>
+<span class="lineNum">    1323 </span><span class="lineCov">    7365712 :                                                         if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">    1324 </span><span class="lineCov">     158560 :                                                                 g_print (&quot;block merge triggered %d -&gt; %d\n&quot;, bb-&gt;block_num, bbn-&gt;block_num);</span>
+<span class="lineNum">    1325 </span><span class="lineCov">    7366014 :                                                         mono_merge_basic_blocks (cfg, bb, bbn);</span>
+<span class="lineNum">    1326 </span><span class="lineCov">    7366014 :                                                         changed = TRUE;</span>
+<span class="lineNum">    1327 </span><span class="lineCov">    7366014 :                                                         continue;</span>
+<span class="lineNum">    1328 </span>            :                                                 }
+<span class="lineNum">    1329 </span>            : 
+<span class="lineNum">    1330 </span>            :                                                 //mono_print_bb_code (bb);
+<span class="lineNum">    1331 </span><span class="lineCov">   24832084 :                                         }</span>
+<span class="lineNum">    1332 </span><span class="lineCov">   88395638 :                                 }</span>
+<span class="lineNum">    1333 </span><span class="lineCov">  155732051 :                         }</span>
+<span class="lineNum">    1334 </span>            : 
+<span class="lineNum">    1335 </span><span class="lineCov">  756103683 :                         if ((bbn = bb-&gt;next_bb) &amp;&amp; bbn-&gt;in_count == 0 &amp;&amp; bbn != cfg-&gt;bb_exit &amp;&amp; bb-&gt;region == bbn-&gt;region) {</span>
+<span class="lineNum">    1336 </span><span class="lineCov">     151629 :                                 if (cfg-&gt;verbose_level &gt; 2) {</span>
+<span class="lineNum">    1337 </span><span class="lineCov">      23291 :                                         g_print (&quot;nullify block triggered %d\n&quot;, bbn-&gt;block_num);</span>
+<span class="lineNum">    1338 </span><span class="lineCov">      23291 :                                 }</span>
+<span class="lineNum">    1339 </span><span class="lineCov">     151629 :                                 bb-&gt;next_bb = bbn-&gt;next_bb;</span>
+<span class="lineNum">    1340 </span>            : 
+<span class="lineNum">    1341 </span><span class="lineCov">     599528 :                                 for (i = 0; i &lt; bbn-&gt;out_count; i++)</span>
+<span class="lineNum">    1342 </span><span class="lineCov">     148135 :                                         replace_in_block (bbn-&gt;out_bb [i], bbn, NULL);</span>
+<span class="lineNum">    1343 </span>            : 
+<span class="lineNum">    1344 </span><span class="lineCov">     151629 :                                 mono_nullify_basic_block (bbn);                 </span>
+<span class="lineNum">    1345 </span><span class="lineCov">     151629 :                                 changed = TRUE;</span>
+<span class="lineNum">    1346 </span><span class="lineCov">     151629 :                                 continue;</span>
+<span class="lineNum">    1347 </span>            :                         }
+<span class="lineNum">    1348 </span>            : 
+<span class="lineNum">    1349 </span><span class="lineCov">  400150667 :                         if (bb-&gt;out_count == 1) {</span>
+<span class="lineNum">    1350 </span><span class="lineCov">  155635424 :                                 bbn = bb-&gt;out_bb [0];</span>
+<span class="lineNum">    1351 </span>            : 
+<span class="lineNum">    1352 </span><span class="lineCov">  310941184 :                                 if (bb-&gt;last_ins &amp;&amp; bb-&gt;last_ins-&gt;opcode == OP_BR) {</span>
+<span class="lineNum">    1353 </span><span class="lineCov">   59144122 :                                         bbn = bb-&gt;last_ins-&gt;inst_target_bb;</span>
+<span class="lineNum">    1354 </span><span class="lineCov">   59144122 :                                         bbn_first_inst = mono_bb_first_inst (bbn, filter);</span>
+<span class="lineNum">    1355 </span><span class="lineCov">  144498570 :                                         if (bb-&gt;region == bbn-&gt;region &amp;&amp; bbn_first_inst &amp;&amp; bbn_first_inst-&gt;opcode == OP_BR &amp;&amp;</span>
+<span class="lineNum">    1356 </span><span class="lineCov">        674 :                                                 bbn_first_inst-&gt;inst_target_bb != bbn &amp;&amp;</span>
+<span class="lineNum">    1357 </span><span class="lineCov">        674 :                                                 bbn_first_inst-&gt;inst_target_bb-&gt;region == bb-&gt;region) {</span>
+<span class="lineNum">    1358 </span>            :                                                 
+<span class="lineNum">    1359 </span><span class="lineCov">        674 :                                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">    1360 </span><span class="lineCov">         17 :                                                         g_print (&quot;branch to branch triggered %d -&gt; %d -&gt; %d\n&quot;, bb-&gt;block_num, bbn-&gt;block_num, bbn_first_inst-&gt;inst_target_bb-&gt;block_num);</span>
+<span class="lineNum">    1361 </span>            : 
+<span class="lineNum">    1362 </span><span class="lineCov">        674 :                                                 replace_in_block (bbn, bb, NULL);</span>
+<span class="lineNum">    1363 </span><span class="lineCov">        674 :                                                 replace_out_block (bb, bbn, bbn_first_inst-&gt;inst_target_bb);</span>
+<span class="lineNum">    1364 </span><span class="lineCov">        674 :                                                 mono_link_bblock (cfg, bb, bbn_first_inst-&gt;inst_target_bb);</span>
+<span class="lineNum">    1365 </span><span class="lineCov">        674 :                                                 bb-&gt;last_ins-&gt;inst_target_bb = bbn_first_inst-&gt;inst_target_bb;</span>
+<span class="lineNum">    1366 </span><span class="lineCov">        674 :                                                 changed = TRUE;</span>
+<span class="lineNum">    1367 </span><span class="lineCov">        674 :                                                 continue;</span>
+<span class="lineNum">    1368 </span>            :                                         }
+<span class="lineNum">    1369 </span><span class="lineCov">   59143399 :                                 }</span>
+<span class="lineNum">    1370 </span><span class="lineCov">  400181383 :                         } else if (bb-&gt;out_count == 2) {</span>
+<span class="lineNum">    1371 </span><span class="lineCov"> 1450196913 :                                 if (bb-&gt;last_ins &amp;&amp; MONO_IS_COND_BRANCH_NOFP (bb-&gt;last_ins)) {</span>
+<span class="lineNum">    1372 </span>            :                                         int branch_result;
+<span class="lineNum">    1373 </span><span class="lineCov">  198861052 :                                         MonoBasicBlock *taken_branch_target = NULL, *untaken_branch_target = NULL;</span>
+<span class="lineNum">    1374 </span>            : 
+<span class="lineNum">    1375 </span><span class="lineCov">  198861052 :                                         if (bb-&gt;last_ins-&gt;flags &amp; MONO_INST_CFOLD_TAKEN)</span>
+<span class="lineNum">    1376 </span><span class="lineCov">     165151 :                                                 branch_result = BRANCH_TAKEN;</span>
+<span class="lineNum">    1377 </span><span class="lineCov">  199325543 :                                         else if (bb-&gt;last_ins-&gt;flags &amp; MONO_INST_CFOLD_NOT_TAKEN)</span>
+<span class="lineNum">    1378 </span><span class="lineCov">      38740 :                                                 branch_result = BRANCH_NOT_TAKEN;</span>
+<span class="lineNum">    1379 </span>            :                                         else
+<span class="lineNum">    1380 </span><span class="lineCov">  199277380 :                                                 branch_result = BRANCH_UNDEF;</span>
+<span class="lineNum">    1381 </span>            : 
+<span class="lineNum">    1382 </span><span class="lineCov">  199509001 :                                         if (branch_result == BRANCH_TAKEN) {</span>
+<span class="lineNum">    1383 </span><span class="lineCov">     165147 :                                                 taken_branch_target = bb-&gt;last_ins-&gt;inst_true_bb;</span>
+<span class="lineNum">    1384 </span><span class="lineCov">     165147 :                                                 untaken_branch_target = bb-&gt;last_ins-&gt;inst_false_bb;</span>
+<span class="lineNum">    1385 </span><span class="lineCov">  199530494 :                                         } else if (branch_result == BRANCH_NOT_TAKEN) {</span>
+<span class="lineNum">    1386 </span><span class="lineCov">      38740 :                                                 taken_branch_target = bb-&gt;last_ins-&gt;inst_false_bb;</span>
+<span class="lineNum">    1387 </span><span class="lineCov">      38740 :                                                 untaken_branch_target = bb-&gt;last_ins-&gt;inst_true_bb;</span>
+<span class="lineNum">    1388 </span><span class="lineCov">      38740 :                                         }</span>
+<span class="lineNum">    1389 </span><span class="lineCov">  199398175 :                                         if (taken_branch_target) {</span>
+<span class="lineNum">    1390 </span>            :                                                 /* if mono_eval_cond_branch () is ever taken to handle 
+<span class="lineNum">    1391 </span>            :                                                  * non-constant values to compare, issue a pop here.
+<span class="lineNum">    1392 </span>            :                                                  */
+<span class="lineNum">    1393 </span><span class="lineCov">     203898 :                                                 bb-&gt;last_ins-&gt;opcode = OP_BR;</span>
+<span class="lineNum">    1394 </span><span class="lineCov">     203898 :                                                 bb-&gt;last_ins-&gt;inst_target_bb = taken_branch_target;</span>
+<span class="lineNum">    1395 </span><span class="lineCov">     203898 :                                                 if (!bb-&gt;extended)</span>
+<span class="lineNum">    1396 </span><span class="lineCov">     203895 :                                                         mono_unlink_bblock (cfg, bb, untaken_branch_target);</span>
+<span class="lineNum">    1397 </span><span class="lineCov">     203921 :                                                 changed = TRUE;</span>
+<span class="lineNum">    1398 </span><span class="lineCov">     203921 :                                                 continue;</span>
+<span class="lineNum">    1399 </span>            :                                         }
+<span class="lineNum">    1400 </span><span class="lineCov">  194728207 :                                         bbn = bb-&gt;last_ins-&gt;inst_true_bb;</span>
+<span class="lineNum">    1401 </span><span class="lineCov">  194728207 :                                         bbn_first_inst = mono_bb_first_inst (bbn, filter);</span>
+<span class="lineNum">    1402 </span><span class="lineCov">  578578524 :                                         if (bb-&gt;region == bbn-&gt;region &amp;&amp; bbn_first_inst &amp;&amp; bbn_first_inst-&gt;opcode == OP_BR &amp;&amp;</span>
+<span class="lineNum">    1403 </span><span class="lineCov">    1419188 :                                             bbn_first_inst-&gt;inst_target_bb-&gt;region == bb-&gt;region) {</span>
+<span class="lineNum">    1404 </span><span class="lineCov">    1417961 :                                                 if (cfg-&gt;verbose_level &gt; 2)               </span>
+<span class="lineNum">    1405 </span><span class="lineCov">      16775 :                                                         g_print (&quot;cbranch1 to branch triggered %d -&gt; (%d) %d (0x%02x)\n&quot;, </span>
+<span class="lineNum">    1406 </span><span class="lineCov">      16775 :                                                                  bb-&gt;block_num, bbn-&gt;block_num, bbn_first_inst-&gt;inst_target_bb-&gt;block_num, </span>
+<span class="lineNum">    1407 </span><span class="lineCov">      16775 :                                                                  bbn_first_inst-&gt;opcode);</span>
+<span class="lineNum">    1408 </span>            : 
+<span class="lineNum">    1409 </span>            :                                                 /* 
+<span class="lineNum">    1410 </span>            :                                                  * Unlink, then relink bblocks to avoid various
+<span class="lineNum">    1411 </span>            :                                                  * tricky situations when the two targets of the branch
+<span class="lineNum">    1412 </span>            :                                                  * are equal, or will become equal after the change.
+<span class="lineNum">    1413 </span>            :                                                  */
+<span class="lineNum">    1414 </span><span class="lineCov">    1417565 :                                                 mono_unlink_bblock (cfg, bb, bb-&gt;last_ins-&gt;inst_true_bb);</span>
+<span class="lineNum">    1415 </span><span class="lineCov">    1417565 :                                                 mono_unlink_bblock (cfg, bb, bb-&gt;last_ins-&gt;inst_false_bb);</span>
+<span class="lineNum">    1416 </span>            : 
+<span class="lineNum">    1417 </span><span class="lineCov">    1417565 :                                                 bb-&gt;last_ins-&gt;inst_true_bb = bbn_first_inst-&gt;inst_target_bb;</span>
+<span class="lineNum">    1418 </span>            : 
+<span class="lineNum">    1419 </span><span class="lineCov">    1417565 :                                                 mono_link_bblock (cfg, bb, bb-&gt;last_ins-&gt;inst_true_bb);</span>
+<span class="lineNum">    1420 </span><span class="lineCov">    1417565 :                                                 mono_link_bblock (cfg, bb, bb-&gt;last_ins-&gt;inst_false_bb);</span>
+<span class="lineNum">    1421 </span>            : 
+<span class="lineNum">    1422 </span><span class="lineCov">    1417565 :                                                 changed = TRUE;</span>
+<span class="lineNum">    1423 </span><span class="lineCov">    1417565 :                                                 continue;</span>
+<span class="lineNum">    1424 </span>            :                                         }
+<span class="lineNum">    1425 </span>            : 
+<span class="lineNum">    1426 </span><span class="lineCov">  192908504 :                                         bbn = bb-&gt;last_ins-&gt;inst_false_bb;</span>
+<span class="lineNum">    1427 </span><span class="lineCov">  192908504 :                                         bbn_first_inst = mono_bb_first_inst (bbn, filter);</span>
+<span class="lineNum">    1428 </span><span class="lineCov">  771372224 :                                         if (bbn &amp;&amp; bb-&gt;region == bbn-&gt;region &amp;&amp; bbn_first_inst &amp;&amp; bbn_first_inst-&gt;opcode == OP_BR &amp;&amp;</span>
+<span class="lineNum">    1429 </span><span class="lineCov">    2048992 :                                                 bbn_first_inst-&gt;inst_target_bb-&gt;region == bb-&gt;region) {</span>
+<span class="lineNum">    1430 </span><span class="lineCov">    2049040 :                                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">    1431 </span><span class="lineCov">      20822 :                                                         g_print (&quot;cbranch2 to branch triggered %d -&gt; (%d) %d (0x%02x)\n&quot;, </span>
+<span class="lineNum">    1432 </span><span class="lineCov">      20822 :                                                                  bb-&gt;block_num, bbn-&gt;block_num, bbn_first_inst-&gt;inst_target_bb-&gt;block_num, </span>
+<span class="lineNum">    1433 </span><span class="lineCov">      20822 :                                                                  bbn_first_inst-&gt;opcode);</span>
+<span class="lineNum">    1434 </span>            : 
+<span class="lineNum">    1435 </span><span class="lineCov">    2048952 :                                                 mono_unlink_bblock (cfg, bb, bb-&gt;last_ins-&gt;inst_true_bb);</span>
+<span class="lineNum">    1436 </span><span class="lineCov">    2048952 :                                                 mono_unlink_bblock (cfg, bb, bb-&gt;last_ins-&gt;inst_false_bb);</span>
+<span class="lineNum">    1437 </span>            : 
+<span class="lineNum">    1438 </span><span class="lineCov">    2048952 :                                                 bb-&gt;last_ins-&gt;inst_false_bb = bbn_first_inst-&gt;inst_target_bb;</span>
+<span class="lineNum">    1439 </span>            : 
+<span class="lineNum">    1440 </span><span class="lineCov">    2048952 :                                                 mono_link_bblock (cfg, bb, bb-&gt;last_ins-&gt;inst_true_bb);</span>
+<span class="lineNum">    1441 </span><span class="lineCov">    2048952 :                                                 mono_link_bblock (cfg, bb, bb-&gt;last_ins-&gt;inst_false_bb);</span>
+<span class="lineNum">    1442 </span>            : 
+<span class="lineNum">    1443 </span><span class="lineCov">    2048952 :                                                 changed = TRUE;</span>
+<span class="lineNum">    1444 </span><span class="lineCov">    2048952 :                                                 continue;</span>
+<span class="lineNum">    1445 </span>            :                                         }
+<span class="lineNum">    1446 </span>            : 
+<span class="lineNum">    1447 </span><span class="lineCov">  191400196 :                                         bbn = bb-&gt;last_ins-&gt;inst_false_bb;</span>
+<span class="lineNum">    1448 </span>            :                                         /*
+<span class="lineNum">    1449 </span>            :                                          * If bb is an extended bb, it could contain an inside branch to bbn.
+<span class="lineNum">    1450 </span>            :                                          * FIXME: Enable the optimization if that is not true.
+<span class="lineNum">    1451 </span>            :                                          * If bblocks_linked () is true, then merging bb and bbn
+<span class="lineNum">    1452 </span>            :                                          * would require addition of an extra branch at the end of bbn 
+<span class="lineNum">    1453 </span>            :                                          * slowing down loops.
+<span class="lineNum">    1454 </span>            :                                          */
+<span class="lineNum">    1455 </span><span class="lineCov">  727523567 :                                         if (bbn &amp;&amp; bb-&gt;region == bbn-&gt;region &amp;&amp; bbn-&gt;in_count == 1 &amp;&amp; cfg-&gt;enable_extended_bblocks &amp;&amp; bbn != cfg-&gt;bb_exit &amp;&amp; !bb-&gt;extended &amp;&amp; !bbn-&gt;out_of_line &amp;&amp; !mono_bblocks_linked (bbn, bb)) {</span>
+<span class="lineNum">    1456 </span><span class="lineNoCov">          0 :                                                 g_assert (bbn-&gt;in_bb [0] == bb);</span>
+<span class="lineNum">    1457 </span><span class="lineNoCov">          0 :                                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">    1458 </span><span class="lineNoCov">          0 :                                                         g_print (&quot;merge false branch target triggered BB%d -&gt; BB%d\n&quot;, bb-&gt;block_num, bbn-&gt;block_num);</span>
+<span class="lineNum">    1459 </span><span class="lineNoCov">          0 :                                                 mono_merge_basic_blocks (cfg, bb, bbn);</span>
+<span class="lineNum">    1460 </span><span class="lineNoCov">          0 :                                                 changed = TRUE;</span>
+<span class="lineNum">    1461 </span><span class="lineNoCov">          0 :                                                 continue;</span>
+<span class="lineNum">    1462 </span>            :                                         }
+<span class="lineNum">    1463 </span><span class="lineCov">  191690250 :                                 }</span>
+<span class="lineNum">    1464 </span>            : 
+<span class="lineNum">    1465 </span><span class="lineCov"> 1399016079 :                                 if (bb-&gt;last_ins &amp;&amp; MONO_IS_COND_BRANCH_NOFP (bb-&gt;last_ins)) {</span>
+<span class="lineNum">    1466 </span><span class="lineCov">  391357687 :                                         if (bb-&gt;last_ins-&gt;inst_false_bb &amp;&amp; bb-&gt;last_ins-&gt;inst_false_bb-&gt;out_of_line &amp;&amp; (bb-&gt;region == bb-&gt;last_ins-&gt;inst_false_bb-&gt;region) &amp;&amp; !cfg-&gt;disable_out_of_line_bblocks) {</span>
+<span class="lineNum">    1467 </span>            :                                                 /* Reverse the branch */
+<span class="lineNum">    1468 </span><span class="lineCov">    2268051 :                                                 bb-&gt;last_ins-&gt;opcode = mono_reverse_branch_op (bb-&gt;last_ins-&gt;opcode);</span>
+<span class="lineNum">    1469 </span><span class="lineCov">    2268051 :                                                 bbn = bb-&gt;last_ins-&gt;inst_false_bb;</span>
+<span class="lineNum">    1470 </span><span class="lineCov">    2268051 :                                                 bb-&gt;last_ins-&gt;inst_false_bb = bb-&gt;last_ins-&gt;inst_true_bb;</span>
+<span class="lineNum">    1471 </span><span class="lineCov">    2268051 :                                                 bb-&gt;last_ins-&gt;inst_true_bb = bbn;</span>
+<span class="lineNum">    1472 </span>            : 
+<span class="lineNum">    1473 </span><span class="lineCov">    2268051 :                                                 move_basic_block_to_end (cfg, bb-&gt;last_ins-&gt;inst_true_bb);</span>
+<span class="lineNum">    1474 </span><span class="lineCov">    2268051 :                                                 if (cfg-&gt;verbose_level &gt; 2)</span>
+<span class="lineNum">    1475 </span><span class="lineCov">      27423 :                                                         g_print (&quot;cbranch to throw block triggered %d.\n&quot;, </span>
+<span class="lineNum">    1476 </span><span class="lineCov">      27423 :                                                                          bb-&gt;block_num);</span>
+<span class="lineNum">    1477 </span><span class="lineCov">    2268095 :                                         }</span>
+<span class="lineNum">    1478 </span><span class="lineCov">  193996572 :                                 }</span>
+<span class="lineNum">    1479 </span><span class="lineCov">  195592561 :                         }</span>
+<span class="lineNum">    1480 </span><span class="lineCov">  395308597 :                 }</span>
+<span class="lineNum">    1481 </span><span class="lineCov">  195348838 :         } while (changed &amp;&amp; (niterations &gt; 0));</span>
+<span class="lineNum">    1482 </span><span class="lineCov">   28037245 : }</span>
+<span class="lineNum">    1483 </span>            : 
+<span class="lineNum">    1484 </span>            : #else /* !DISABLE_JIT */
+<span class="lineNum">    1485 </span>            : 
+<span class="lineNum">    1486 </span>            : MONO_EMPTY_SOURCE_FILE (branch_opts);
+<span class="lineNum">    1487 </span>            : 
+<span class="lineNum">    1488 </span>            : #endif /* !DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

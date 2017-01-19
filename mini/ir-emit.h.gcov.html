@@ -1,0 +1,1068 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/ir-emit.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - ir-emit.h<span style="font-size: 80%;"> (source / <a href="ir-emit.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">21</td>
+            <td class="headerCovTableEntry">34</td>
+            <td class="headerCovTableEntryLo">61.8 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntry">9</td>
+            <td class="headerCovTableEntryMed">88.9 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * ir-emit.h: IR Creation/Emission Macros
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Zoltan Varga (vargaz@gmail.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2002 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #ifndef __MONO_IR_EMIT_H__
+<span class="lineNum">      11 </span>            : #define __MONO_IR_EMIT_H__
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : G_BEGIN_DECLS
+<a name="16"><span class="lineNum">      16 </span>            : </a>
+<span class="lineNum">      17 </span>            : static inline guint32
+<span class="lineNum">      18 </span>            : alloc_ireg (MonoCompile *cfg)
+<span class="lineNum">      19 </span>            : {
+<span class="lineNum">      20 </span><span class="lineCov">  990792535 :         return cfg-&gt;next_vreg ++;</span>
+<span class="lineNum">      21 </span>            : }
+<a name="22"><span class="lineNum">      22 </span>            : </a>
+<span class="lineNum">      23 </span>            : static inline guint32
+<span class="lineNum">      24 </span>            : alloc_preg (MonoCompile *cfg)
+<span class="lineNum">      25 </span>            : {
+<span class="lineNum">      26 </span><span class="lineCov">  287569057 :         return alloc_ireg (cfg);</span>
+<span class="lineNum">      27 </span>            : }
+<a name="28"><span class="lineNum">      28 </span>            : </a>
+<span class="lineNum">      29 </span>            : static inline guint32
+<span class="lineNum">      30 </span>            : alloc_lreg (MonoCompile *cfg)
+<span class="lineNum">      31 </span>            : {
+<span class="lineNum">      32 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">      33 </span><span class="lineCov">    2923875 :         return cfg-&gt;next_vreg ++;</span>
+<span class="lineNum">      34 </span>            : #else
+<span class="lineNum">      35 </span>            :         /* Use a pair of consecutive vregs */
+<span class="lineNum">      36 </span>            :         guint32 res = cfg-&gt;next_vreg;
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span>            :         cfg-&gt;next_vreg += 3;
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            :         return res;
+<span class="lineNum">      41 </span>            : #endif
+<span class="lineNum">      42 </span>            : }
+<a name="43"><span class="lineNum">      43 </span>            : </a>
+<span class="lineNum">      44 </span>            : static inline guint32
+<span class="lineNum">      45 </span>            : alloc_freg (MonoCompile *cfg)
+<span class="lineNum">      46 </span>            : {
+<span class="lineNum">      47 </span><span class="lineCov">    1313242 :         if (mono_arch_is_soft_float ()) {</span>
+<span class="lineNum">      48 </span>            :                 /* Allocate an lvreg so float ops can be decomposed into long ops */
+<span class="lineNum">      49 </span><span class="lineNoCov">          0 :                 return alloc_lreg (cfg);</span>
+<span class="lineNum">      50 </span>            :         } else {
+<span class="lineNum">      51 </span>            :                 /* Allocate these from the same pool as the int regs */
+<span class="lineNum">      52 </span><span class="lineCov">    1313249 :                 return cfg-&gt;next_vreg ++;</span>
+<span class="lineNum">      53 </span>            :         }
+<span class="lineNum">      54 </span><span class="lineCov">    1313249 : }</span>
+<a name="55"><span class="lineNum">      55 </span>            : </a>
+<span class="lineNum">      56 </span>            : static inline guint32
+<span class="lineNum">      57 </span>            : alloc_ireg_ref (MonoCompile *cfg)
+<span class="lineNum">      58 </span>            : {
+<span class="lineNum">      59 </span><span class="lineCov">  217072690 :         int vreg = alloc_ireg (cfg);</span>
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span><span class="lineCov">  217072690 :         if (cfg-&gt;compute_gc_maps)</span>
+<span class="lineNum">      62 </span><span class="lineNoCov">          0 :                 mono_mark_vreg_as_ref (cfg, vreg);</span>
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span><span class="lineCov">  217080245 :         return vreg;</span>
+<span class="lineNum">      65 </span>            : }
+<a name="66"><span class="lineNum">      66 </span>            : </a>
+<span class="lineNum">      67 </span>            : static inline guint32
+<span class="lineNum">      68 </span>            : alloc_ireg_mp (MonoCompile *cfg)
+<span class="lineNum">      69 </span>            : {
+<span class="lineNum">      70 </span><span class="lineCov">   61524932 :         int vreg = alloc_ireg (cfg);</span>
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span><span class="lineCov">   61524932 :         if (cfg-&gt;compute_gc_maps)</span>
+<span class="lineNum">      73 </span><span class="lineNoCov">          0 :                 mono_mark_vreg_as_mp (cfg, vreg);</span>
+<span class="lineNum">      74 </span>            : 
+<span class="lineNum">      75 </span><span class="lineCov">   61531591 :         return vreg;</span>
+<span class="lineNum">      76 </span>            : }
+<a name="77"><span class="lineNum">      77 </span>            : </a>
+<span class="lineNum">      78 </span>            : static inline guint32
+<span class="lineNum">      79 </span>            : alloc_xreg (MonoCompile *cfg)
+<span class="lineNum">      80 </span>            : {
+<span class="lineNum">      81 </span><span class="lineCov">         48 :         return alloc_ireg (cfg);</span>
+<span class="lineNum">      82 </span>            : }
+<a name="83"><span class="lineNum">      83 </span>            : </a>
+<span class="lineNum">      84 </span>            : static inline guint32
+<span class="lineNum">      85 </span>            : alloc_dreg (MonoCompile *cfg, MonoStackType stack_type)
+<span class="lineNum">      86 </span>            : {
+<span class="lineNum">      87 </span><span class="lineCov">  548152190 :         switch (stack_type) {</span>
+<span class="lineNum">      88 </span>            :         case STACK_I4:
+<span class="lineNum">      89 </span>            :         case STACK_PTR:
+<span class="lineNum">      90 </span><span class="lineCov">  266664017 :                 return alloc_ireg (cfg);</span>
+<span class="lineNum">      91 </span>            :         case STACK_MP:
+<span class="lineNum">      92 </span><span class="lineCov">   48646341 :                 return alloc_ireg_mp (cfg);</span>
+<span class="lineNum">      93 </span>            :         case STACK_OBJ:
+<span class="lineNum">      94 </span><span class="lineCov">  213114725 :                 return alloc_ireg_ref (cfg);</span>
+<span class="lineNum">      95 </span>            :         case STACK_R4:
+<span class="lineNum">      96 </span>            :         case STACK_R8:
+<span class="lineNum">      97 </span><span class="lineCov">    1146883 :                 return alloc_freg (cfg);</span>
+<span class="lineNum">      98 </span>            :         case STACK_I8:
+<span class="lineNum">      99 </span><span class="lineCov">    2831653 :                 return alloc_lreg (cfg);</span>
+<span class="lineNum">     100 </span>            :         case STACK_VTYPE:
+<span class="lineNum">     101 </span><span class="lineCov">   15810525 :                 return alloc_ireg (cfg);</span>
+<span class="lineNum">     102 </span>            :         default:
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :                 g_warning (&quot;Unknown stack type %x\n&quot;, stack_type);</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">     105 </span><span class="lineNoCov">          0 :                 return -1;</span>
+<span class="lineNum">     106 </span>            :         }
+<span class="lineNum">     107 </span><span class="lineCov">  547487054 : }</span>
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span>            : /*
+<span class="lineNum">     110 </span>            :  * Macros used to generate intermediate representation macros
+<span class="lineNum">     111 </span>            :  *
+<span class="lineNum">     112 </span>            :  * The macros use a `MonoConfig` object as its context, and among other
+<span class="lineNum">     113 </span>            :  * things it is used to associate instructions with the memory pool with 
+<span class="lineNum">     114 </span>            :  * it.
+<span class="lineNum">     115 </span>            :  * 
+<span class="lineNum">     116 </span>            :  * The macros come in three variations with slightly different
+<span class="lineNum">     117 </span>            :  * features, the patter is: NEW_OP, EMIT_NEW_OP, MONO_EMIT_NEW_OP,
+<span class="lineNum">     118 </span>            :  * the differences are as follows:
+<span class="lineNum">     119 </span>            :  *
+<span class="lineNum">     120 </span>            :  * `NEW_OP`: these are the basic macros to setup an instruction that is
+<span class="lineNum">     121 </span>            :  * passed as an argument.
+<span class="lineNum">     122 </span>            :  *
+<span class="lineNum">     123 </span>            :  * `EMIT_NEW_OP`: these macros in addition to creating the instruction
+<span class="lineNum">     124 </span>            :  * add the instruction to the current basic block in the `MonoConfig`
+<span class="lineNum">     125 </span>            :  * object passed.   Usually these are used when further customization of
+<span class="lineNum">     126 </span>            :  * the `inst` parameter is desired before the instruction is added to the
+<span class="lineNum">     127 </span>            :  * MonoConfig current basic block.
+<span class="lineNum">     128 </span>            :  *
+<span class="lineNum">     129 </span>            :  * `MONO_EMIT_NEW_OP`: These variations of the instructions are used when
+<span class="lineNum">     130 </span>            :  * you are merely interested in emitting the instruction into the `MonoConfig`
+<span class="lineNum">     131 </span>            :  * parameter. 
+<span class="lineNum">     132 </span>            :  */
+<span class="lineNum">     133 </span>            : #undef MONO_INST_NEW
+<span class="lineNum">     134 </span>            : /* 
+<span class="lineNum">     135 </span>            :  * FIXME: zeroing out some fields is not needed with the new IR, but the old 
+<span class="lineNum">     136 </span>            :  * JIT code still uses the left and right fields, so it has to stay.
+<span class="lineNum">     137 </span>            :  */
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span>            : /*
+<span class="lineNum">     140 </span>            :  * MONO_INST_NEW: create a new MonoInst instance that is allocated on the MonoConfig pool.
+<span class="lineNum">     141 </span>            :  *
+<span class="lineNum">     142 </span>            :  * @cfg: the MonoConfig object that will be used as the context for the 
+<span class="lineNum">     143 </span>            :  * instruction.
+<span class="lineNum">     144 </span>            :  * @dest: this is the place where the instance of the `MonoInst` is stored.
+<span class="lineNum">     145 </span>            :  * @op: the value that should be stored in the MonoInst.opcode field
+<span class="lineNum">     146 </span>            :  *
+<span class="lineNum">     147 </span>            :  * This initializes an empty MonoInst that has been nulled out, it is allocated
+<span class="lineNum">     148 </span>            :  * from the memory pool associated with the MonoConfig, but it is not linked anywhere.
+<span class="lineNum">     149 </span>            :  * the cil_code is set to the cfg-&gt;ip address. 
+<span class="lineNum">     150 </span>            :  */
+<span class="lineNum">     151 </span>            : #define MONO_INST_NEW(cfg,dest,op) do { \
+<span class="lineNum">     152 </span>            :                 (dest) = (MonoInst *)mono_mempool_alloc ((cfg)-&gt;mempool, sizeof (MonoInst)); \
+<span class="lineNum">     153 </span>            :                 (dest)-&gt;inst_c0 = (dest)-&gt;inst_c1 = 0; \
+<span class="lineNum">     154 </span>            :                 (dest)-&gt;next = (dest)-&gt;prev = NULL;    \
+<span class="lineNum">     155 </span>            :                 (dest)-&gt;opcode = (op);       \
+<span class="lineNum">     156 </span>            :         (dest)-&gt;flags = 0; \
+<span class="lineNum">     157 </span>            :         (dest)-&gt;type = 0; \
+<span class="lineNum">     158 </span>            :         (dest)-&gt;dreg = -1;  \
+<span class="lineNum">     159 </span>            :         MONO_INST_NULLIFY_SREGS ((dest));                   \
+<span class="lineNum">     160 </span>            :         (dest)-&gt;cil_code = (cfg)-&gt;ip;  \
+<span class="lineNum">     161 </span>            :         } while (0)
+<span class="lineNum">     162 </span>            : 
+<span class="lineNum">     163 </span>            : /*
+<span class="lineNum">     164 </span>            :  * Variants which take a dest argument and don't do an emit
+<span class="lineNum">     165 </span>            :  */
+<span class="lineNum">     166 </span>            : #define NEW_ICONST(cfg,dest,val) do {   \
+<span class="lineNum">     167 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_ICONST); \
+<span class="lineNum">     168 </span>            :                 (dest)-&gt;inst_c0 = (val);     \
+<span class="lineNum">     169 </span>            :                 (dest)-&gt;type = STACK_I4;     \
+<span class="lineNum">     170 </span>            :                 (dest)-&gt;dreg = alloc_dreg ((cfg), STACK_I4); \
+<span class="lineNum">     171 </span>            :         } while (0)
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span>            : /* 
+<span class="lineNum">     174 </span>            :  * Avoid using this with a non-NULL val if possible as it is not AOT 
+<span class="lineNum">     175 </span>            :  * compatible. Use one of the NEW_xxxCONST variants instead.
+<span class="lineNum">     176 </span>            :  */
+<span class="lineNum">     177 </span>            : #define NEW_PCONST(cfg,dest,val) do {   \
+<span class="lineNum">     178 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_PCONST); \
+<span class="lineNum">     179 </span>            :                 (dest)-&gt;inst_p0 = (val);     \
+<span class="lineNum">     180 </span>            :                 (dest)-&gt;type = STACK_PTR;    \
+<span class="lineNum">     181 </span>            :                 (dest)-&gt;dreg = alloc_dreg ((cfg), STACK_PTR);        \
+<span class="lineNum">     182 </span>            :         } while (0)
+<span class="lineNum">     183 </span>            : 
+<span class="lineNum">     184 </span>            : #define NEW_I8CONST(cfg,dest,val) do {  \
+<span class="lineNum">     185 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_I8CONST); \
+<span class="lineNum">     186 </span>            :         (dest)-&gt;dreg = alloc_lreg ((cfg)); \
+<span class="lineNum">     187 </span>            :         (dest)-&gt;type = STACK_I8; \
+<span class="lineNum">     188 </span>            :         (dest)-&gt;inst_l = (val); \
+<span class="lineNum">     189 </span>            :         } while (0)
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span>            : #define NEW_STORE_MEMBASE(cfg,dest,op,base,offset,sr) do { \
+<span class="lineNum">     192 </span>            :         MONO_INST_NEW ((cfg), (dest), (op)); \
+<span class="lineNum">     193 </span>            :         (dest)-&gt;sreg1 = sr; \
+<span class="lineNum">     194 </span>            :         (dest)-&gt;inst_destbasereg = base; \
+<span class="lineNum">     195 </span>            :         (dest)-&gt;inst_offset = offset; \
+<span class="lineNum">     196 </span>            :         } while (0)
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span>            : #define NEW_LOAD_MEMBASE(cfg,dest,op,dr,base,offset) do { \
+<span class="lineNum">     199 </span>            :         MONO_INST_NEW ((cfg), (dest), (op)); \
+<span class="lineNum">     200 </span>            :         (dest)-&gt;dreg = (dr); \
+<span class="lineNum">     201 </span>            :         (dest)-&gt;inst_basereg = (base); \
+<span class="lineNum">     202 </span>            :         (dest)-&gt;inst_offset = (offset); \
+<span class="lineNum">     203 </span>            :         (dest)-&gt;type = STACK_I4; \
+<span class="lineNum">     204 </span>            :         } while (0)
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span>            : #define NEW_LOAD_MEM(cfg,dest,op,dr,mem) do { \
+<span class="lineNum">     207 </span>            :         MONO_INST_NEW ((cfg), (dest), (op)); \
+<span class="lineNum">     208 </span>            :         (dest)-&gt;dreg = (dr); \
+<span class="lineNum">     209 </span>            :         (dest)-&gt;inst_p0 = (gpointer)(gssize)(mem); \
+<span class="lineNum">     210 </span>            :         (dest)-&gt;type = STACK_I4; \
+<span class="lineNum">     211 </span>            :         } while (0)
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span>            : #define NEW_UNALU(cfg,dest,op,dr,sr1) do { \
+<span class="lineNum">     214 </span>            :         MONO_INST_NEW ((cfg), (dest), (op)); \
+<span class="lineNum">     215 </span>            :         (dest)-&gt;dreg = dr; \
+<span class="lineNum">     216 </span>            :         (dest)-&gt;sreg1 = sr1; \
+<span class="lineNum">     217 </span>            :     } while (0)        
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span>            : #define NEW_BIALU(cfg,dest,op,dr,sr1,sr2) do { \
+<span class="lineNum">     220 </span>            :         MONO_INST_NEW ((cfg), (dest), (op)); \
+<span class="lineNum">     221 </span>            :         (dest)-&gt;dreg = (dr); \
+<span class="lineNum">     222 </span>            :         (dest)-&gt;sreg1 = (sr1); \
+<span class="lineNum">     223 </span>            :         (dest)-&gt;sreg2 = (sr2); \
+<span class="lineNum">     224 </span>            :         } while (0)
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span>            : #define NEW_BIALU_IMM(cfg,dest,op,dr,sr,imm) do { \
+<span class="lineNum">     227 </span>            :         MONO_INST_NEW ((cfg), (dest), (op)); \
+<span class="lineNum">     228 </span>            :         (dest)-&gt;dreg = dr; \
+<span class="lineNum">     229 </span>            :         (dest)-&gt;sreg1 = sr; \
+<span class="lineNum">     230 </span>            :         (dest)-&gt;inst_imm = (imm); \
+<span class="lineNum">     231 </span>            :         } while (0)
+<span class="lineNum">     232 </span>            : 
+<span class="lineNum">     233 </span>            : #ifdef MONO_ARCH_NEED_GOT_VAR
+<span class="lineNum">     234 </span>            : 
+<span class="lineNum">     235 </span>            : #define NEW_PATCH_INFO(cfg,dest,el1,el2) do {   \
+<span class="lineNum">     236 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_PATCH_INFO); \
+<span class="lineNum">     237 </span>            :                 (dest)-&gt;inst_left = (gpointer)(el1); \
+<span class="lineNum">     238 </span>            :                 (dest)-&gt;inst_right = (gpointer)(el2);        \
+<span class="lineNum">     239 </span>            :         } while (0)
+<span class="lineNum">     240 </span>            : 
+<span class="lineNum">     241 </span>            : /* FIXME: Add the PUSH_GOT_ENTRY optimizations */
+<span class="lineNum">     242 </span>            : #define NEW_AOTCONST(cfg,dest,patch_type,cons) do {                     \
+<span class="lineNum">     243 </span>            :         MONO_INST_NEW ((cfg), (dest), cfg-&gt;compile_aot ? OP_GOT_ENTRY : OP_PCONST); \
+<span class="lineNum">     244 </span>            :                 if (cfg-&gt;compile_aot) {                                      \
+<span class="lineNum">     245 </span>            :                         MonoInst *group, *got_loc;              \
+<span class="lineNum">     246 </span>            :                         got_loc = mono_get_got_var (cfg);               \
+<span class="lineNum">     247 </span>            :                         NEW_PATCH_INFO ((cfg), group, cons, patch_type); \
+<span class="lineNum">     248 </span>            :                         (dest)-&gt;inst_basereg = got_loc-&gt;dreg;                     \
+<span class="lineNum">     249 </span>            :                         (dest)-&gt;inst_p1 = group;                     \
+<span class="lineNum">     250 </span>            :                 } else {                                                \
+<span class="lineNum">     251 </span>            :                         (dest)-&gt;inst_p0 = (cons);                    \
+<span class="lineNum">     252 </span>            :                         (dest)-&gt;inst_i1 = (gpointer)(patch_type);    \
+<span class="lineNum">     253 </span>            :                 }                                                       \
+<span class="lineNum">     254 </span>            :                 (dest)-&gt;type = STACK_PTR;                            \
+<span class="lineNum">     255 </span>            :                 (dest)-&gt;dreg = alloc_dreg ((cfg), STACK_PTR);        \
+<span class="lineNum">     256 </span>            :         } while (0)
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span>            : #define NEW_AOTCONST_TOKEN(cfg,dest,patch_type,image,token,generic_context,stack_type,stack_class) do { \
+<span class="lineNum">     259 </span>            :                 MonoInst *group, *got_loc;                      \
+<span class="lineNum">     260 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_GOT_ENTRY); \
+<span class="lineNum">     261 </span>            :                 got_loc = mono_get_got_var (cfg);                       \
+<span class="lineNum">     262 </span>            :                 NEW_PATCH_INFO ((cfg), group, NULL, patch_type);        \
+<span class="lineNum">     263 </span>            :                 group-&gt;inst_p0 = mono_jump_info_token_new2 ((cfg)-&gt;mempool, (image), (token), (generic_context)); \
+<span class="lineNum">     264 </span>            :                 (dest)-&gt;inst_basereg = got_loc-&gt;dreg;                             \
+<span class="lineNum">     265 </span>            :                 (dest)-&gt;inst_p1 = group;                             \
+<span class="lineNum">     266 </span>            :                 (dest)-&gt;type = (stack_type);                         \
+<span class="lineNum">     267 </span>            :         (dest)-&gt;klass = (stack_class);          \
+<span class="lineNum">     268 </span>            :                 (dest)-&gt;dreg = alloc_dreg ((cfg), (stack_type));     \
+<span class="lineNum">     269 </span>            :         } while (0)
+<span class="lineNum">     270 </span>            : 
+<span class="lineNum">     271 </span>            : #else
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span>            : #define NEW_AOTCONST(cfg,dest,patch_type,cons) do {    \
+<span class="lineNum">     274 </span>            :         MONO_INST_NEW ((cfg), (dest), cfg-&gt;compile_aot ? OP_AOTCONST : OP_PCONST); \
+<span class="lineNum">     275 </span>            :                 (dest)-&gt;inst_p0 = (cons);    \
+<span class="lineNum">     276 </span>            :                 (dest)-&gt;inst_i1 = (MonoInst *)(patch_type); \
+<span class="lineNum">     277 </span>            :                 (dest)-&gt;type = STACK_PTR;    \
+<span class="lineNum">     278 </span>            :                 (dest)-&gt;dreg = alloc_dreg ((cfg), STACK_PTR);        \
+<span class="lineNum">     279 </span>            :     } while (0)
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span>            : #define NEW_AOTCONST_TOKEN(cfg,dest,patch_type,image,token,generic_context,stack_type,stack_class) do { \
+<span class="lineNum">     282 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_AOTCONST); \
+<span class="lineNum">     283 </span>            :                 (dest)-&gt;inst_p0 = mono_jump_info_token_new2 ((cfg)-&gt;mempool, (image), (token), (generic_context)); \
+<span class="lineNum">     284 </span>            :                 (dest)-&gt;inst_p1 = (gpointer)(patch_type); \
+<span class="lineNum">     285 </span>            :                 (dest)-&gt;type = (stack_type); \
+<span class="lineNum">     286 </span>            :         (dest)-&gt;klass = (stack_class);          \
+<span class="lineNum">     287 </span>            :                 (dest)-&gt;dreg = alloc_dreg ((cfg), (stack_type));     \
+<span class="lineNum">     288 </span>            :     } while (0)
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span>            : #endif
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span>            : #define NEW_CLASSCONST(cfg,dest,val) NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_CLASS, (val))
+<span class="lineNum">     293 </span>            : 
+<span class="lineNum">     294 </span>            : #define NEW_IMAGECONST(cfg,dest,val) NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_IMAGE, (val))
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span>            : #define NEW_FIELDCONST(cfg,dest,val) NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_FIELD, (val))
+<span class="lineNum">     297 </span>            : 
+<span class="lineNum">     298 </span>            : #define NEW_METHODCONST(cfg,dest,val) NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_METHODCONST, (val))
+<span class="lineNum">     299 </span>            : 
+<span class="lineNum">     300 </span>            : #define NEW_VTABLECONST(cfg,dest,vtable) NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_VTABLE, cfg-&gt;compile_aot ? (gpointer)((vtable)-&gt;klass) : (vtable))
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span>            : #define NEW_SFLDACONST(cfg,dest,val) NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_SFLDA, (val))
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span>            : #define NEW_LDSTRCONST(cfg,dest,image,token) NEW_AOTCONST_TOKEN ((cfg), (dest), MONO_PATCH_INFO_LDSTR, (image), (token), NULL, STACK_OBJ, mono_defaults.string_class)
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span>            : #define NEW_LDSTRLITCONST(cfg,dest,val) NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_LDSTR_LIT, (val))
+<span class="lineNum">     307 </span>            : 
+<span class="lineNum">     308 </span>            : #define NEW_TYPE_FROM_HANDLE_CONST(cfg,dest,image,token,generic_context) NEW_AOTCONST_TOKEN ((cfg), (dest), MONO_PATCH_INFO_TYPE_FROM_HANDLE, (image), (token), (generic_context), STACK_OBJ, mono_defaults.runtimetype_class)
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span>            : #define NEW_LDTOKENCONST(cfg,dest,image,token,generic_context) NEW_AOTCONST_TOKEN ((cfg), (dest), MONO_PATCH_INFO_LDTOKEN, (image), (token), (generic_context), STACK_PTR, NULL)
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span>            : #define NEW_DECLSECCONST(cfg,dest,image,entry) do { \
+<span class="lineNum">     313 </span>            :                 if (cfg-&gt;compile_aot) { \
+<span class="lineNum">     314 </span>            :                         NEW_AOTCONST_TOKEN (cfg, dest, MONO_PATCH_INFO_DECLSEC, image, (entry).index, NULL, STACK_OBJ, NULL); \
+<span class="lineNum">     315 </span>            :                 } else { \
+<span class="lineNum">     316 </span>            :                         NEW_PCONST (cfg, args [0], (entry).blob); \
+<span class="lineNum">     317 </span>            :                 } \
+<span class="lineNum">     318 </span>            :         } while (0)
+<span class="lineNum">     319 </span>            : 
+<span class="lineNum">     320 </span>            : #define NEW_METHOD_RGCTX_CONST(cfg,dest,method) do { \
+<span class="lineNum">     321 </span>            :                 if (cfg-&gt;compile_aot) {                                                                                      \
+<span class="lineNum">     322 </span>            :                         NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_METHOD_RGCTX, (method)); \
+<span class="lineNum">     323 </span>            :                 } else {                                                                                                                \
+<span class="lineNum">     324 </span>            :                         MonoMethodRuntimeGenericContext *mrgctx;                                        \
+<span class="lineNum">     325 </span>            :                         mrgctx = mono_method_lookup_rgctx (mono_class_vtable ((cfg)-&gt;domain, (method)-&gt;klass), mini_method_get_context ((method))-&gt;method_inst); \
+<span class="lineNum">     326 </span>            :                         NEW_PCONST ((cfg), (dest), (mrgctx));                                           \
+<span class="lineNum">     327 </span>            :                 }                                                                                                                               \
+<span class="lineNum">     328 </span>            :         } while (0)
+<span class="lineNum">     329 </span>            : 
+<span class="lineNum">     330 </span>            : #define NEW_DOMAINCONST(cfg,dest) do { \
+<span class="lineNum">     331 </span>            :                 if ((cfg-&gt;opt &amp; MONO_OPT_SHARED) || cfg-&gt;compile_aot) {                                \
+<span class="lineNum">     332 </span>            :                         /* avoid depending on undefined C behavior in sequence points */ \
+<span class="lineNum">     333 </span>            :                         MonoInst* __domain_var = mono_get_domainvar (cfg); \
+<span class="lineNum">     334 </span>            :                         NEW_TEMPLOAD (cfg, dest, __domain_var-&gt;inst_c0); \
+<span class="lineNum">     335 </span>            :                 } else { \
+<span class="lineNum">     336 </span>            :                         NEW_PCONST (cfg, dest, (cfg)-&gt;domain); \
+<span class="lineNum">     337 </span>            :                 } \
+<span class="lineNum">     338 </span>            :         } while (0)
+<span class="lineNum">     339 </span>            : 
+<span class="lineNum">     340 </span>            : #define NEW_JIT_ICALL_ADDRCONST(cfg,dest,name) NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_JIT_ICALL_ADDR, (name))
+<span class="lineNum">     341 </span>            : 
+<span class="lineNum">     342 </span>            : #define NEW_VARLOAD(cfg,dest,var,vartype) do { \
+<span class="lineNum">     343 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_MOVE); \
+<span class="lineNum">     344 </span>            :                 (dest)-&gt;opcode = mono_type_to_regmove ((cfg), (vartype));  \
+<span class="lineNum">     345 </span>            :                 type_to_eval_stack_type ((cfg), (vartype), (dest));     \
+<span class="lineNum">     346 </span>            :                 (dest)-&gt;klass = var-&gt;klass;       \
+<span class="lineNum">     347 </span>            :                 (dest)-&gt;sreg1 = var-&gt;dreg;   \
+<span class="lineNum">     348 </span>            :         (dest)-&gt;dreg = alloc_dreg ((cfg), (MonoStackType)(dest)-&gt;type); \
+<span class="lineNum">     349 </span>            :         if ((dest)-&gt;opcode == OP_VMOVE) (dest)-&gt;klass = mono_class_from_mono_type ((vartype)); \
+<span class="lineNum">     350 </span>            :         } while (0)
+<span class="lineNum">     351 </span>            : 
+<span class="lineNum">     352 </span>            : #define DECOMPOSE_INTO_REGPAIR(stack_type) (mono_arch_is_soft_float () ? ((stack_type) == STACK_I8 || (stack_type) == STACK_R8) : ((stack_type) == STACK_I8))
+<a name="353"><span class="lineNum">     353 </span>            : </a>
+<span class="lineNum">     354 </span>            : static inline void
+<span class="lineNum">     355 </span>            : handle_gsharedvt_ldaddr (MonoCompile *cfg)
+<span class="lineNum">     356 </span>            : {
+<span class="lineNum">     357 </span>            :         /* The decomposition of ldaddr makes use of these two variables, so add uses for them */
+<span class="lineNum">     358 </span>            :         MonoInst *use;
+<span class="lineNum">     359 </span>            : 
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 :         MONO_INST_NEW (cfg, use, OP_DUMMY_USE);</span>
+<span class="lineNum">     361 </span><span class="lineNoCov">          0 :         use-&gt;sreg1 = cfg-&gt;gsharedvt_info_var-&gt;dreg;</span>
+<span class="lineNum">     362 </span><span class="lineNoCov">          0 :         MONO_ADD_INS (cfg-&gt;cbb, use);</span>
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :         MONO_INST_NEW (cfg, use, OP_DUMMY_USE);</span>
+<span class="lineNum">     364 </span><span class="lineNoCov">          0 :         use-&gt;sreg1 = cfg-&gt;gsharedvt_locals_var-&gt;dreg;</span>
+<span class="lineNum">     365 </span><span class="lineNoCov">          0 :         MONO_ADD_INS (cfg-&gt;cbb, use);</span>
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span>            : #define NEW_VARLOADA(cfg,dest,var,vartype) do { \
+<span class="lineNum">     369 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_LDADDR); \
+<span class="lineNum">     370 </span>            :                 (dest)-&gt;inst_p0 = (var); \
+<span class="lineNum">     371 </span>            :                 (var)-&gt;flags |= MONO_INST_INDIRECT;  \
+<span class="lineNum">     372 </span>            :                 (dest)-&gt;type = STACK_MP;     \
+<span class="lineNum">     373 </span>            :                 (dest)-&gt;klass = (var)-&gt;klass;     \
+<span class="lineNum">     374 </span>            :         (dest)-&gt;dreg = alloc_dreg ((cfg), STACK_MP); \
+<span class="lineNum">     375 </span>            :                 (cfg)-&gt;has_indirection = TRUE;       \
+<span class="lineNum">     376 </span>            :                           if (G_UNLIKELY (cfg-&gt;gsharedvt) &amp;&amp; mini_is_gsharedvt_variable_type ((var)-&gt;inst_vtype)) { handle_gsharedvt_ldaddr ((cfg)); } \
+<span class="lineNum">     377 </span>            :                 if (SIZEOF_REGISTER == 4 &amp;&amp; DECOMPOSE_INTO_REGPAIR ((var)-&gt;type)) { MonoInst *var1 = get_vreg_to_inst (cfg, MONO_LVREG_LS ((var)-&gt;dreg)); MonoInst *var2 = get_vreg_to_inst (cfg, MONO_LVREG_MS ((var)-&gt;dreg)); g_assert (var1); g_assert (var2); var1-&gt;flags |= MONO_INST_INDIRECT; var2-&gt;flags |= MONO_INST_INDIRECT; } \
+<span class="lineNum">     378 </span>            :         } while (0)
+<span class="lineNum">     379 </span>            : 
+<span class="lineNum">     380 </span>            : #define NEW_VARSTORE(cfg,dest,var,vartype,inst) do {    \
+<span class="lineNum">     381 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_MOVE); \
+<span class="lineNum">     382 </span>            :                 (dest)-&gt;opcode = mono_type_to_regmove ((cfg), (vartype));    \
+<span class="lineNum">     383 </span>            :                 (dest)-&gt;klass = (var)-&gt;klass;     \
+<span class="lineNum">     384 </span>            :         (dest)-&gt;sreg1 = (inst)-&gt;dreg; \
+<span class="lineNum">     385 </span>            :                 (dest)-&gt;dreg = (var)-&gt;dreg;   \
+<span class="lineNum">     386 </span>            :         if ((dest)-&gt;opcode == OP_VMOVE) (dest)-&gt;klass = mono_class_from_mono_type ((vartype)); \
+<span class="lineNum">     387 </span>            :         } while (0)
+<span class="lineNum">     388 </span>            : 
+<span class="lineNum">     389 </span>            : #define NEW_TEMPLOAD(cfg,dest,num) NEW_VARLOAD ((cfg), (dest), (cfg)-&gt;varinfo [(num)], (cfg)-&gt;varinfo [(num)]-&gt;inst_vtype)
+<span class="lineNum">     390 </span>            : 
+<span class="lineNum">     391 </span>            : #define NEW_TEMPLOADA(cfg,dest,num) NEW_VARLOADA ((cfg), (dest), cfg-&gt;varinfo [(num)], cfg-&gt;varinfo [(num)]-&gt;inst_vtype)
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span>            : #define NEW_TEMPSTORE(cfg,dest,num,inst) NEW_VARSTORE ((cfg), (dest), (cfg)-&gt;varinfo [(num)], (cfg)-&gt;varinfo [(num)]-&gt;inst_vtype, (inst))
+<span class="lineNum">     394 </span>            : 
+<span class="lineNum">     395 </span>            : #define NEW_ARGLOAD(cfg,dest,num) NEW_VARLOAD ((cfg), (dest), cfg-&gt;args [(num)], cfg-&gt;arg_types [(num)])
+<span class="lineNum">     396 </span>            : 
+<span class="lineNum">     397 </span>            : #define NEW_LOCLOAD(cfg,dest,num) NEW_VARLOAD ((cfg), (dest), cfg-&gt;locals [(num)], header-&gt;locals [(num)])
+<span class="lineNum">     398 </span>            : 
+<span class="lineNum">     399 </span>            : #define NEW_LOCSTORE(cfg,dest,num,inst) NEW_VARSTORE ((cfg), (dest), (cfg)-&gt;locals [(num)], (cfg)-&gt;locals [(num)]-&gt;inst_vtype, (inst))
+<span class="lineNum">     400 </span>            : 
+<span class="lineNum">     401 </span>            : #define NEW_ARGSTORE(cfg,dest,num,inst) NEW_VARSTORE ((cfg), (dest), cfg-&gt;args [(num)], cfg-&gt;arg_types [(num)], (inst))
+<span class="lineNum">     402 </span>            : 
+<span class="lineNum">     403 </span>            : #define NEW_LOCLOADA(cfg,dest,num) NEW_VARLOADA ((cfg), (dest), (cfg)-&gt;locals [(num)], (cfg)-&gt;locals [(num)]-&gt;inst_vtype)
+<span class="lineNum">     404 </span>            : 
+<span class="lineNum">     405 </span>            : #define NEW_RETLOADA(cfg,dest) do {     \
+<span class="lineNum">     406 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_MOVE); \
+<span class="lineNum">     407 </span>            :         (dest)-&gt;type = STACK_MP; \
+<span class="lineNum">     408 </span>            :             (dest)-&gt;klass = cfg-&gt;ret-&gt;klass;   \
+<span class="lineNum">     409 </span>            :             (dest)-&gt;sreg1 = cfg-&gt;vret_addr-&gt;dreg;   \
+<span class="lineNum">     410 </span>            :         (dest)-&gt;dreg = alloc_dreg ((cfg), (MonoStackType)(dest)-&gt;type); \
+<span class="lineNum">     411 </span>            :         } while (0)
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span>            : #define NEW_ARGLOADA(cfg,dest,num) NEW_VARLOADA ((cfg), (dest), arg_array [(num)], param_types [(num)])
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span>            : /* Promote the vreg to a variable so its address can be taken */
+<span class="lineNum">     416 </span>            : #define NEW_VARLOADA_VREG(cfg,dest,vreg,ltype) do { \
+<span class="lineNum">     417 </span>            :         MonoInst *var = get_vreg_to_inst ((cfg), (vreg)); \
+<span class="lineNum">     418 </span>            :         if (!var) \
+<span class="lineNum">     419 </span>            :                     var = mono_compile_create_var_for_vreg ((cfg), (ltype), OP_LOCAL, (vreg)); \
+<span class="lineNum">     420 </span>            :         NEW_VARLOADA ((cfg), (dest), (var), (ltype)); \
+<span class="lineNum">     421 </span>            :     } while (0)
+<span class="lineNum">     422 </span>            : 
+<span class="lineNum">     423 </span>            : #define NEW_DUMMY_USE(cfg,dest,var) do { \
+<span class="lineNum">     424 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_DUMMY_USE); \
+<span class="lineNum">     425 </span>            :                 (dest)-&gt;sreg1 = var-&gt;dreg; \
+<span class="lineNum">     426 </span>            :     } while (0)
+<span class="lineNum">     427 </span>            : 
+<span class="lineNum">     428 </span>            : /* Variants which take a type argument and handle vtypes as well */
+<span class="lineNum">     429 </span>            : #define NEW_LOAD_MEMBASE_TYPE(cfg,dest,ltype,base,offset) do { \
+<span class="lineNum">     430 </span>            :             NEW_LOAD_MEMBASE ((cfg), (dest), mono_type_to_load_membase ((cfg), (ltype)), 0, (base), (offset)); \
+<span class="lineNum">     431 </span>            :             type_to_eval_stack_type ((cfg), (ltype), (dest)); \
+<span class="lineNum">     432 </span>            :             (dest)-&gt;dreg = alloc_dreg ((cfg), (MonoStackType)(dest)-&gt;type); \
+<span class="lineNum">     433 </span>            :     } while (0)
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span>            : #define NEW_STORE_MEMBASE_TYPE(cfg,dest,ltype,base,offset,sr) do { \
+<span class="lineNum">     436 </span>            :         MONO_INST_NEW ((cfg), (dest), mono_type_to_store_membase ((cfg), (ltype))); \
+<span class="lineNum">     437 </span>            :         (dest)-&gt;sreg1 = sr; \
+<span class="lineNum">     438 </span>            :         (dest)-&gt;inst_destbasereg = base; \
+<span class="lineNum">     439 </span>            :         (dest)-&gt;inst_offset = offset; \
+<span class="lineNum">     440 </span>            :             type_to_eval_stack_type ((cfg), (ltype), (dest)); \
+<span class="lineNum">     441 </span>            :         (dest)-&gt;klass = mono_class_from_mono_type (ltype); \
+<span class="lineNum">     442 </span>            :         } while (0)
+<span class="lineNum">     443 </span>            : 
+<span class="lineNum">     444 </span>            : #define NEW_SEQ_POINT(cfg,dest,il_offset,intr_loc) do {  \
+<span class="lineNum">     445 </span>            :         MONO_INST_NEW ((cfg), (dest), cfg-&gt;gen_sdb_seq_points ? OP_SEQ_POINT : OP_IL_SEQ_POINT); \
+<span class="lineNum">     446 </span>            :         (dest)-&gt;inst_imm = (il_offset); \
+<span class="lineNum">     447 </span>            :         (dest)-&gt;flags = intr_loc ? MONO_INST_SINGLE_STEP_LOC : 0; \
+<span class="lineNum">     448 </span>            :         } while (0)
+<span class="lineNum">     449 </span>            : 
+<span class="lineNum">     450 </span>            : #define NEW_GC_PARAM_SLOT_LIVENESS_DEF(cfg,dest,offset,type) do { \
+<span class="lineNum">     451 </span>            :         MONO_INST_NEW ((cfg), (dest), OP_GC_PARAM_SLOT_LIVENESS_DEF); \
+<span class="lineNum">     452 </span>            :         (dest)-&gt;inst_offset = (offset); \
+<span class="lineNum">     453 </span>            :         (dest)-&gt;inst_vtype = (type); \
+<span class="lineNum">     454 </span>            :         } while (0)
+<span class="lineNum">     455 </span>            : 
+<span class="lineNum">     456 </span>            : /*
+<span class="lineNum">     457 </span>            :  * Variants which do an emit as well.
+<span class="lineNum">     458 </span>            :  */
+<span class="lineNum">     459 </span>            : #define EMIT_NEW_ICONST(cfg,dest,val) do { NEW_ICONST ((cfg), (dest), (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span>            : #define EMIT_NEW_PCONST(cfg,dest,val) do { NEW_PCONST ((cfg), (dest), (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     462 </span>            : 
+<span class="lineNum">     463 </span>            : #define EMIT_NEW_I8CONST(cfg,dest,val) do { NEW_I8CONST ((cfg), (dest), (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     464 </span>            : 
+<span class="lineNum">     465 </span>            : #define EMIT_NEW_AOTCONST(cfg,dest,patch_type,cons) do { NEW_AOTCONST ((cfg), (dest), (patch_type), (cons)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     466 </span>            : 
+<span class="lineNum">     467 </span>            : #define EMIT_NEW_AOTCONST_TOKEN(cfg,dest,patch_type,image,token,stack_type,stack_class) do { NEW_AOTCONST_TOKEN ((cfg), (dest), (patch_type), (image), (token), NULL, (stack_type), (stack_class)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     468 </span>            : 
+<span class="lineNum">     469 </span>            : #define EMIT_NEW_CLASSCONST(cfg,dest,val) do { NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_CLASS, (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     470 </span>            : 
+<span class="lineNum">     471 </span>            : #define EMIT_NEW_IMAGECONST(cfg,dest,val) do { NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_IMAGE, (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     472 </span>            : 
+<span class="lineNum">     473 </span>            : #define EMIT_NEW_FIELDCONST(cfg,dest,val) do { NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_FIELD, (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     474 </span>            : 
+<span class="lineNum">     475 </span>            : #define EMIT_NEW_METHODCONST(cfg,dest,val) do { NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_METHODCONST, (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     476 </span>            : 
+<span class="lineNum">     477 </span>            : #define EMIT_NEW_VTABLECONST(cfg,dest,vtable) do { NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_VTABLE, cfg-&gt;compile_aot ? (gpointer)((vtable)-&gt;klass) : (vtable)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     478 </span>            : 
+<span class="lineNum">     479 </span>            : #define EMIT_NEW_SFLDACONST(cfg,dest,val) do { NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_SFLDA, (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     480 </span>            : 
+<span class="lineNum">     481 </span>            : #define EMIT_NEW_LDSTRCONST(cfg,dest,image,token) do { NEW_AOTCONST_TOKEN ((cfg), (dest), MONO_PATCH_INFO_LDSTR, (image), (token), NULL, STACK_OBJ, mono_defaults.string_class); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     482 </span>            : 
+<span class="lineNum">     483 </span>            : #define EMIT_NEW_LDSTRLITCONST(cfg,dest,val) do { NEW_AOTCONST ((cfg), (dest), MONO_PATCH_INFO_LDSTR_LIT, (val)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     484 </span>            : 
+<span class="lineNum">     485 </span>            : #define EMIT_NEW_TYPE_FROM_HANDLE_CONST(cfg,dest,image,token,generic_context) do { NEW_AOTCONST_TOKEN ((cfg), (dest), MONO_PATCH_INFO_TYPE_FROM_HANDLE, (image), (token), (generic_context), STACK_OBJ, mono_defaults.runtimetype_class); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     486 </span>            : 
+<span class="lineNum">     487 </span>            : #define EMIT_NEW_LDTOKENCONST(cfg,dest,image,token,generic_context) do { NEW_AOTCONST_TOKEN ((cfg), (dest), MONO_PATCH_INFO_LDTOKEN, (image), (token), (generic_context), STACK_PTR, NULL); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     488 </span>            : 
+<span class="lineNum">     489 </span>            : #define EMIT_NEW_TLS_OFFSETCONST(cfg,dest,key) do { NEW_TLS_OFFSETCONST ((cfg), (dest), (key)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     490 </span>            : 
+<span class="lineNum">     491 </span>            : #define EMIT_NEW_DOMAINCONST(cfg,dest) do { NEW_DOMAINCONST ((cfg), (dest)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     492 </span>            : 
+<span class="lineNum">     493 </span>            : #define EMIT_NEW_DECLSECCONST(cfg,dest,image,entry) do { NEW_DECLSECCONST ((cfg), (dest), (image), (entry)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     494 </span>            : 
+<span class="lineNum">     495 </span>            : #define EMIT_NEW_METHOD_RGCTX_CONST(cfg,dest,method) do { NEW_METHOD_RGCTX_CONST ((cfg), (dest), (method)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     496 </span>            : 
+<span class="lineNum">     497 </span>            : #define EMIT_NEW_JIT_ICALL_ADDRCONST(cfg,dest,name) do { NEW_JIT_ICALL_ADDRCONST ((cfg), (dest), (name)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     498 </span>            : 
+<span class="lineNum">     499 </span>            : #define EMIT_NEW_VARLOAD(cfg,dest,var,vartype) do { NEW_VARLOAD ((cfg), (dest), (var), (vartype)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     500 </span>            : 
+<span class="lineNum">     501 </span>            : #define EMIT_NEW_VARSTORE(cfg,dest,var,vartype,inst) do { NEW_VARSTORE ((cfg), (dest), (var), (vartype), (inst)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     502 </span>            : 
+<span class="lineNum">     503 </span>            : #define EMIT_NEW_VARLOADA(cfg,dest,var,vartype) do { NEW_VARLOADA ((cfg), (dest), (var), (vartype)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     504 </span>            : 
+<span class="lineNum">     505 </span>            : #ifdef MONO_ARCH_SOFT_FLOAT_FALLBACK
+<span class="lineNum">     506 </span>            : 
+<span class="lineNum">     507 </span>            : /*
+<span class="lineNum">     508 </span>            :  * Since the IL stack (and our vregs) contain double values, we have to do a conversion
+<span class="lineNum">     509 </span>            :  * when loading/storing args/locals of type R4.
+<span class="lineNum">     510 </span>            :  */
+<span class="lineNum">     511 </span>            : 
+<span class="lineNum">     512 </span>            : #define EMIT_NEW_VARLOAD_SFLOAT(cfg,dest,var,vartype) do { \
+<span class="lineNum">     513 </span>            :                 if (!COMPILE_LLVM ((cfg)) &amp;&amp; !(vartype)-&gt;byref &amp;&amp; (vartype)-&gt;type == MONO_TYPE_R4) { \
+<span class="lineNum">     514 </span>            :                         MonoInst *iargs [1]; \
+<span class="lineNum">     515 </span>            :                         EMIT_NEW_VARLOADA (cfg, iargs [0], (var), (vartype)); \
+<span class="lineNum">     516 </span>            :                         (dest) = mono_emit_jit_icall (cfg, mono_fload_r4, iargs); \
+<span class="lineNum">     517 </span>            :                 } else { \
+<span class="lineNum">     518 </span>            :                         EMIT_NEW_VARLOAD ((cfg), (dest), (var), (vartype)); \
+<span class="lineNum">     519 </span>            :                 } \
+<span class="lineNum">     520 </span>            :         } while (0)
+<span class="lineNum">     521 </span>            : 
+<span class="lineNum">     522 </span>            : #define EMIT_NEW_VARSTORE_SFLOAT(cfg,dest,var,vartype,inst) do {        \
+<span class="lineNum">     523 </span>            :                 if (COMPILE_SOFT_FLOAT ((cfg)) &amp;&amp; !(vartype)-&gt;byref &amp;&amp; (vartype)-&gt;type == MONO_TYPE_R4) { \
+<span class="lineNum">     524 </span>            :                         MonoInst *iargs [2]; \
+<span class="lineNum">     525 </span>            :                         iargs [0] = (inst); \
+<span class="lineNum">     526 </span>            :                         EMIT_NEW_VARLOADA (cfg, iargs [1], (var), (vartype)); \
+<span class="lineNum">     527 </span>            :                         (dest) = mono_emit_jit_icall (cfg, mono_fstore_r4, iargs);      \
+<span class="lineNum">     528 </span>            :                 } else { \
+<span class="lineNum">     529 </span>            :                         EMIT_NEW_VARSTORE ((cfg), (dest), (var), (vartype), (inst)); \
+<span class="lineNum">     530 </span>            :                 } \
+<span class="lineNum">     531 </span>            :         } while (0)
+<span class="lineNum">     532 </span>            : 
+<span class="lineNum">     533 </span>            : #define EMIT_NEW_ARGLOAD(cfg,dest,num) do {     \
+<span class="lineNum">     534 </span>            :                 if (mono_arch_is_soft_float ()) {       \
+<span class="lineNum">     535 </span>            :                         EMIT_NEW_VARLOAD_SFLOAT ((cfg), (dest), cfg-&gt;args [(num)], cfg-&gt;arg_types [(num)]);       \
+<span class="lineNum">     536 </span>            :                 } else {        \
+<span class="lineNum">     537 </span>            :                         NEW_ARGLOAD ((cfg), (dest), (num));     \
+<span class="lineNum">     538 </span>            :                         MONO_ADD_INS ((cfg)-&gt;cbb, (dest));   \
+<span class="lineNum">     539 </span>            :                 }       \
+<span class="lineNum">     540 </span>            :         } while (0)
+<span class="lineNum">     541 </span>            : 
+<span class="lineNum">     542 </span>            : #define EMIT_NEW_LOCLOAD(cfg,dest,num) do {     \
+<span class="lineNum">     543 </span>            :                 if (mono_arch_is_soft_float ()) {       \
+<span class="lineNum">     544 </span>            :                         EMIT_NEW_VARLOAD_SFLOAT ((cfg), (dest), cfg-&gt;locals [(num)], header-&gt;locals [(num)]);     \
+<span class="lineNum">     545 </span>            :                 } else {        \
+<span class="lineNum">     546 </span>            :                         NEW_LOCLOAD ((cfg), (dest), (num));     \
+<span class="lineNum">     547 </span>            :                         MONO_ADD_INS ((cfg)-&gt;cbb, (dest));   \
+<span class="lineNum">     548 </span>            :                 }       \
+<span class="lineNum">     549 </span>            :         } while (0)
+<span class="lineNum">     550 </span>            : 
+<span class="lineNum">     551 </span>            : #define EMIT_NEW_LOCSTORE(cfg,dest,num,inst) do {       \
+<span class="lineNum">     552 </span>            :                 if (mono_arch_is_soft_float ()) {       \
+<span class="lineNum">     553 </span>            :                         EMIT_NEW_VARSTORE_SFLOAT ((cfg), (dest), (cfg)-&gt;locals [(num)], (cfg)-&gt;locals [(num)]-&gt;inst_vtype, (inst));    \
+<span class="lineNum">     554 </span>            :                 } else {        \
+<span class="lineNum">     555 </span>            :                         NEW_LOCSTORE ((cfg), (dest), (num), (inst));    \
+<span class="lineNum">     556 </span>            :                         MONO_ADD_INS ((cfg)-&gt;cbb, (dest));   \
+<span class="lineNum">     557 </span>            :                 }       \
+<span class="lineNum">     558 </span>            :         } while (0)
+<span class="lineNum">     559 </span>            : 
+<span class="lineNum">     560 </span>            : #define EMIT_NEW_ARGSTORE(cfg,dest,num,inst) do {       \
+<span class="lineNum">     561 </span>            :                 if (mono_arch_is_soft_float ()) {       \
+<span class="lineNum">     562 </span>            :                         EMIT_NEW_VARSTORE_SFLOAT ((cfg), (dest), cfg-&gt;args [(num)], cfg-&gt;arg_types [(num)], (inst));      \
+<span class="lineNum">     563 </span>            :                 } else {        \
+<span class="lineNum">     564 </span>            :                         NEW_ARGSTORE ((cfg), (dest), (num), (inst));    \
+<span class="lineNum">     565 </span>            :                         MONO_ADD_INS ((cfg)-&gt;cbb, (dest));   \
+<span class="lineNum">     566 </span>            :                 }       \
+<span class="lineNum">     567 </span>            :         } while (0)
+<span class="lineNum">     568 </span>            : 
+<span class="lineNum">     569 </span>            : #else
+<span class="lineNum">     570 </span>            : 
+<span class="lineNum">     571 </span>            : #define EMIT_NEW_ARGLOAD(cfg,dest,num) do { NEW_ARGLOAD ((cfg), (dest), (num)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     572 </span>            : 
+<span class="lineNum">     573 </span>            : #define EMIT_NEW_LOCLOAD(cfg,dest,num) do { NEW_LOCLOAD ((cfg), (dest), (num)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     574 </span>            : 
+<span class="lineNum">     575 </span>            : #define EMIT_NEW_LOCSTORE(cfg,dest,num,inst) do { NEW_LOCSTORE ((cfg), (dest), (num), (inst)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     576 </span>            : 
+<span class="lineNum">     577 </span>            : #define EMIT_NEW_ARGSTORE(cfg,dest,num,inst) do { NEW_ARGSTORE ((cfg), (dest), (num), (inst)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     578 </span>            : 
+<span class="lineNum">     579 </span>            : #endif
+<span class="lineNum">     580 </span>            : 
+<span class="lineNum">     581 </span>            : #define EMIT_NEW_TEMPLOAD(cfg,dest,num) do { NEW_TEMPLOAD ((cfg), (dest), (num)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     582 </span>            : 
+<span class="lineNum">     583 </span>            : #define EMIT_NEW_TEMPLOADA(cfg,dest,num) do { NEW_TEMPLOADA ((cfg), (dest), (num)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     584 </span>            : 
+<span class="lineNum">     585 </span>            : #define EMIT_NEW_LOCLOADA(cfg,dest,num) do { NEW_LOCLOADA ((cfg), (dest), (num)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     586 </span>            : 
+<span class="lineNum">     587 </span>            : #define EMIT_NEW_ARGLOADA(cfg,dest,num) do { NEW_ARGLOADA ((cfg), (dest), (num)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     588 </span>            : 
+<span class="lineNum">     589 </span>            : #define EMIT_NEW_RETLOADA(cfg,dest) do { NEW_RETLOADA ((cfg), (dest)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     590 </span>            : 
+<span class="lineNum">     591 </span>            : #define EMIT_NEW_TEMPSTORE(cfg,dest,num,inst) do { NEW_TEMPSTORE ((cfg), (dest), (num), (inst)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     592 </span>            : 
+<span class="lineNum">     593 </span>            : #define EMIT_NEW_VARLOADA_VREG(cfg,dest,vreg,ltype) do { NEW_VARLOADA_VREG ((cfg), (dest), (vreg), (ltype)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     594 </span>            : 
+<span class="lineNum">     595 </span>            : #define EMIT_NEW_DUMMY_USE(cfg,dest,var) do { NEW_DUMMY_USE ((cfg), (dest), (var)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     596 </span>            : 
+<span class="lineNum">     597 </span>            : #define EMIT_NEW_UNALU(cfg,dest,op,dr,sr1) do { NEW_UNALU ((cfg), (dest), (op), (dr), (sr1)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     598 </span>            : 
+<span class="lineNum">     599 </span>            : #define EMIT_NEW_BIALU(cfg,dest,op,dr,sr1,sr2) do { NEW_BIALU ((cfg), (dest), (op), (dr), (sr1), (sr2)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     600 </span>            : 
+<span class="lineNum">     601 </span>            : #define EMIT_NEW_BIALU_IMM(cfg,dest,op,dr,sr,imm) do { NEW_BIALU_IMM ((cfg), (dest), (op), (dr), (sr), (imm)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     602 </span>            : 
+<span class="lineNum">     603 </span>            : #define EMIT_NEW_LOAD_MEMBASE(cfg,dest,op,dr,base,offset) do { NEW_LOAD_MEMBASE ((cfg), (dest), (op), (dr), (base), (offset)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     604 </span>            : 
+<span class="lineNum">     605 </span>            : #define EMIT_NEW_STORE_MEMBASE(cfg,dest,op,base,offset,sr) do { NEW_STORE_MEMBASE ((cfg), (dest), (op), (base), (offset), (sr)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     606 </span>            : 
+<span class="lineNum">     607 </span>            : #define EMIT_NEW_LOAD_MEMBASE_TYPE(cfg,dest,ltype,base,offset) do { NEW_LOAD_MEMBASE_TYPE ((cfg), (dest), (ltype), (base), (offset)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     608 </span>            : 
+<span class="lineNum">     609 </span>            : #define EMIT_NEW_STORE_MEMBASE_TYPE(cfg,dest,ltype,base,offset,sr) do { NEW_STORE_MEMBASE_TYPE ((cfg), (dest), (ltype), (base), (offset), (sr)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     610 </span>            : 
+<span class="lineNum">     611 </span>            : #define EMIT_NEW_GC_PARAM_SLOT_LIVENESS_DEF(cfg,dest,offset,type) do { NEW_GC_PARAM_SLOT_LIVENESS_DEF ((cfg), (dest), (offset), (type)); MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); } while (0)
+<span class="lineNum">     612 </span>            : /*
+<span class="lineNum">     613 </span>            :  * Variants which do not take an dest argument, but take a dreg argument.
+<span class="lineNum">     614 </span>            :  */
+<span class="lineNum">     615 </span>            : #define MONO_EMIT_NEW_ICONST(cfg,dr,imm) do { \
+<span class="lineNum">     616 </span>            :         MonoInst *inst; \
+<span class="lineNum">     617 </span>            :         MONO_INST_NEW ((cfg), (inst), OP_ICONST); \
+<span class="lineNum">     618 </span>            :         inst-&gt;dreg = dr; \
+<span class="lineNum">     619 </span>            :         inst-&gt;inst_c0 = imm; \
+<span class="lineNum">     620 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     621 </span>            :         } while (0)
+<span class="lineNum">     622 </span>            : 
+<span class="lineNum">     623 </span>            : #define MONO_EMIT_NEW_PCONST(cfg,dr,val) do {   \
+<span class="lineNum">     624 </span>            :         MonoInst *inst; \
+<span class="lineNum">     625 </span>            :         MONO_INST_NEW ((cfg), (inst), OP_PCONST); \
+<span class="lineNum">     626 </span>            :         inst-&gt;dreg = dr; \
+<span class="lineNum">     627 </span>            :                 (inst)-&gt;inst_p0 = (val);     \
+<span class="lineNum">     628 </span>            :                 (inst)-&gt;type = STACK_PTR;    \
+<span class="lineNum">     629 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     630 </span>            :         } while (0)
+<span class="lineNum">     631 </span>            : 
+<span class="lineNum">     632 </span>            : #define MONO_EMIT_NEW_I8CONST(cfg,dr,imm) do { \
+<span class="lineNum">     633 </span>            :         MonoInst *inst; \
+<span class="lineNum">     634 </span>            :         MONO_INST_NEW ((cfg), (inst), OP_I8CONST); \
+<span class="lineNum">     635 </span>            :         inst-&gt;dreg = dr; \
+<span class="lineNum">     636 </span>            :         inst-&gt;inst_l = imm; \
+<span class="lineNum">     637 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     638 </span>            :         } while (0)
+<span class="lineNum">     639 </span>            : 
+<span class="lineNum">     640 </span>            : #define MONO_EMIT_NEW_DUMMY_INIT(cfg,dr,op) do {                          \
+<span class="lineNum">     641 </span>            :                 MonoInst *inst;                                                                           \
+<span class="lineNum">     642 </span>            :                 MONO_INST_NEW ((cfg), (inst), (op));                              \
+<span class="lineNum">     643 </span>            :                 inst-&gt;dreg = dr;                                                                       \
+<span class="lineNum">     644 </span>            :                 MONO_ADD_INS ((cfg)-&gt;cbb, inst);                                       \
+<span class="lineNum">     645 </span>            :         } while (0)
+<span class="lineNum">     646 </span>            : 
+<span class="lineNum">     647 </span>            : #ifdef MONO_ARCH_NEED_GOT_VAR
+<span class="lineNum">     648 </span>            : 
+<span class="lineNum">     649 </span>            : #define MONO_EMIT_NEW_AOTCONST(cfg,dr,cons,patch_type) do { \
+<span class="lineNum">     650 </span>            :         MonoInst *inst; \
+<span class="lineNum">     651 </span>            :         NEW_AOTCONST ((cfg), (inst), (patch_type), (cons)); \
+<span class="lineNum">     652 </span>            :         inst-&gt;dreg = (dr); \
+<span class="lineNum">     653 </span>            :         MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     654 </span>            :     } while (0)
+<span class="lineNum">     655 </span>            : 
+<span class="lineNum">     656 </span>            : #else
+<span class="lineNum">     657 </span>            : 
+<span class="lineNum">     658 </span>            : #define MONO_EMIT_NEW_AOTCONST(cfg,dr,imm,type) do { \
+<span class="lineNum">     659 </span>            :         MonoInst *inst; \
+<span class="lineNum">     660 </span>            :         MONO_INST_NEW ((cfg), (inst), cfg-&gt;compile_aot ? OP_AOTCONST : OP_PCONST); \
+<span class="lineNum">     661 </span>            :         inst-&gt;dreg = dr; \
+<span class="lineNum">     662 </span>            :         inst-&gt;inst_p0 = imm; \
+<span class="lineNum">     663 </span>            :         inst-&gt;inst_c1 = type; \
+<span class="lineNum">     664 </span>            :                 MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     665 </span>            :         } while (0)
+<span class="lineNum">     666 </span>            : 
+<span class="lineNum">     667 </span>            : #endif
+<span class="lineNum">     668 </span>            : 
+<span class="lineNum">     669 </span>            : #define MONO_EMIT_NEW_CLASSCONST(cfg,dr,imm) MONO_EMIT_NEW_AOTCONST(cfg,dr,imm,MONO_PATCH_INFO_CLASS)
+<span class="lineNum">     670 </span>            : #define MONO_EMIT_NEW_VTABLECONST(cfg,dest,vtable) MONO_EMIT_NEW_AOTCONST ((cfg), (dest), (cfg)-&gt;compile_aot ? (gpointer)((vtable)-&gt;klass) : (vtable), MONO_PATCH_INFO_VTABLE)
+<span class="lineNum">     671 </span>            : #define MONO_EMIT_NEW_SIGNATURECONST(cfg,dr,sig) MONO_EMIT_NEW_AOTCONST ((cfg), (dr), (sig), MONO_PATCH_INFO_SIGNATURE)
+<span class="lineNum">     672 </span>            : 
+<span class="lineNum">     673 </span>            : #define MONO_EMIT_NEW_VZERO(cfg,dr,kl) do {     \
+<span class="lineNum">     674 </span>            :         MonoInst *inst; \
+<span class="lineNum">     675 </span>            :         MONO_INST_NEW ((cfg), (inst), MONO_CLASS_IS_SIMD (cfg, kl) ? OP_XZERO : OP_VZERO); \
+<span class="lineNum">     676 </span>            :         inst-&gt;dreg = dr; \
+<span class="lineNum">     677 </span>            :                 (inst)-&gt;type = STACK_VTYPE;  \
+<span class="lineNum">     678 </span>            :         (inst)-&gt;klass = (kl); \
+<span class="lineNum">     679 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     680 </span>            :         } while (0)
+<span class="lineNum">     681 </span>            : 
+<span class="lineNum">     682 </span>            : #define MONO_EMIT_NEW_UNALU(cfg,op,dr,sr1) do { \
+<span class="lineNum">     683 </span>            :         MonoInst *inst; \
+<span class="lineNum">     684 </span>            :         EMIT_NEW_UNALU ((cfg), (inst), (op), (dr), (sr1)); \
+<span class="lineNum">     685 </span>            :         } while (0)
+<span class="lineNum">     686 </span>            : 
+<span class="lineNum">     687 </span>            : #define MONO_EMIT_NEW_BIALU(cfg,op,dr,sr1,sr2) do { \
+<span class="lineNum">     688 </span>            :         MonoInst *inst; \
+<span class="lineNum">     689 </span>            :         MONO_INST_NEW ((cfg), (inst), (op)); \
+<span class="lineNum">     690 </span>            :         inst-&gt;dreg = dr; \
+<span class="lineNum">     691 </span>            :         inst-&gt;sreg1 = sr1; \
+<span class="lineNum">     692 </span>            :         inst-&gt;sreg2 = sr2; \
+<span class="lineNum">     693 </span>            :             MONO_ADD_INS (cfg-&gt;cbb, inst); \
+<span class="lineNum">     694 </span>            :         } while (0)
+<span class="lineNum">     695 </span>            : 
+<span class="lineNum">     696 </span>            : #define MONO_EMIT_NEW_BIALU_IMM(cfg,op,dr,sr,imm) do { \
+<span class="lineNum">     697 </span>            :         MonoInst *inst; \
+<span class="lineNum">     698 </span>            :         MONO_INST_NEW ((cfg), (inst), (op)); \
+<span class="lineNum">     699 </span>            :         inst-&gt;dreg = dr; \
+<span class="lineNum">     700 </span>            :         inst-&gt;sreg1 = sr; \
+<span class="lineNum">     701 </span>            :         inst-&gt;inst_imm = (mgreg_t)(imm);             \
+<span class="lineNum">     702 </span>            :             MONO_ADD_INS (cfg-&gt;cbb, inst); \
+<span class="lineNum">     703 </span>            :         } while (0)
+<span class="lineNum">     704 </span>            : 
+<span class="lineNum">     705 </span>            : #define MONO_EMIT_NEW_COMPARE_IMM(cfg,sr1,imm) do { \
+<span class="lineNum">     706 </span>            :         MonoInst *inst; \
+<span class="lineNum">     707 </span>            :         MONO_INST_NEW ((cfg), (inst), (OP_COMPARE_IMM)); \
+<span class="lineNum">     708 </span>            :         inst-&gt;sreg1 = sr1; \
+<span class="lineNum">     709 </span>            :         inst-&gt;inst_imm = (imm);                       \
+<span class="lineNum">     710 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     711 </span>            :         } while (0)
+<span class="lineNum">     712 </span>            : 
+<span class="lineNum">     713 </span>            : #define MONO_EMIT_NEW_ICOMPARE_IMM(cfg,sr1,imm) do { \
+<span class="lineNum">     714 </span>            :         MonoInst *inst; \
+<span class="lineNum">     715 </span>            :         MONO_INST_NEW ((cfg), (inst), sizeof (mgreg_t) == 8 ? OP_ICOMPARE_IMM : OP_COMPARE_IMM); \
+<span class="lineNum">     716 </span>            :         inst-&gt;sreg1 = sr1; \
+<span class="lineNum">     717 </span>            :         inst-&gt;inst_imm = (imm);                       \
+<span class="lineNum">     718 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     719 </span>            :         } while (0)
+<span class="lineNum">     720 </span>            : 
+<span class="lineNum">     721 </span>            : /* This is used on 32 bit machines too when running with LLVM */
+<span class="lineNum">     722 </span>            : #define MONO_EMIT_NEW_LCOMPARE_IMM(cfg,sr1,imm) do { \
+<span class="lineNum">     723 </span>            :         MonoInst *inst; \
+<span class="lineNum">     724 </span>            :         MONO_INST_NEW ((cfg), (inst), (OP_LCOMPARE_IMM)); \
+<span class="lineNum">     725 </span>            :         inst-&gt;sreg1 = sr1;                                                                   \
+<span class="lineNum">     726 </span>            :         if (SIZEOF_REGISTER == 4 &amp;&amp; COMPILE_LLVM (cfg))  {      \
+<span class="lineNum">     727 </span>            :                         guint64 _l = (imm);                                                             \
+<span class="lineNum">     728 </span>            :                         inst-&gt;inst_imm = _l &amp; 0xffffffff;                                \
+<span class="lineNum">     729 </span>            :                         inst-&gt;inst_offset = _l &gt;&gt; 32;                                          \
+<span class="lineNum">     730 </span>            :                 } else { \
+<span class="lineNum">     731 </span>            :                         inst-&gt;inst_imm = (imm);               \
+<span class="lineNum">     732 </span>            :                 }                                                                \
+<span class="lineNum">     733 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     734 </span>            :         } while (0)
+<span class="lineNum">     735 </span>            : 
+<span class="lineNum">     736 </span>            : #define MONO_EMIT_NEW_LOAD_MEMBASE_OP(cfg,op,dr,base,offset) do { \
+<span class="lineNum">     737 </span>            :         MonoInst *inst; \
+<span class="lineNum">     738 </span>            :         MONO_INST_NEW ((cfg), (inst), (op)); \
+<span class="lineNum">     739 </span>            :         inst-&gt;dreg = dr; \
+<span class="lineNum">     740 </span>            :         inst-&gt;inst_basereg = base; \
+<span class="lineNum">     741 </span>            :         inst-&gt;inst_offset = offset; \
+<span class="lineNum">     742 </span>            :             MONO_ADD_INS (cfg-&gt;cbb, inst); \
+<span class="lineNum">     743 </span>            :     } while (0)
+<span class="lineNum">     744 </span>            : 
+<span class="lineNum">     745 </span>            : #define MONO_EMIT_NEW_LOAD_MEMBASE(cfg,dr,base,offset) MONO_EMIT_NEW_LOAD_MEMBASE_OP ((cfg), (OP_LOAD_MEMBASE), (dr), (base), (offset))
+<span class="lineNum">     746 </span>            : 
+<span class="lineNum">     747 </span>            : #define MONO_EMIT_NEW_STORE_MEMBASE(cfg,op,base,offset,sr) do { \
+<span class="lineNum">     748 </span>            :         MonoInst *inst; \
+<span class="lineNum">     749 </span>            :         MONO_INST_NEW ((cfg), (inst), (op)); \
+<span class="lineNum">     750 </span>            :         (inst)-&gt;sreg1 = sr; \
+<span class="lineNum">     751 </span>            :         (inst)-&gt;inst_destbasereg = base; \
+<span class="lineNum">     752 </span>            :         (inst)-&gt;inst_offset = offset; \
+<span class="lineNum">     753 </span>            :             MONO_ADD_INS (cfg-&gt;cbb, inst); \
+<span class="lineNum">     754 </span>            :         } while (0)
+<span class="lineNum">     755 </span>            : 
+<span class="lineNum">     756 </span>            : #define MONO_EMIT_NEW_STORE_MEMBASE_IMM(cfg,op,base,offset,imm) do { \
+<span class="lineNum">     757 </span>            :         MonoInst *inst; \
+<span class="lineNum">     758 </span>            :         MONO_INST_NEW ((cfg), (inst), (op)); \
+<span class="lineNum">     759 </span>            :         inst-&gt;inst_destbasereg = base; \
+<span class="lineNum">     760 </span>            :         inst-&gt;inst_offset = offset; \
+<span class="lineNum">     761 </span>            :         inst-&gt;inst_imm = (mgreg_t)(imm); \
+<span class="lineNum">     762 </span>            :         MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     763 </span>            :         } while (0)
+<span class="lineNum">     764 </span>            : 
+<span class="lineNum">     765 </span>            : #define MONO_EMIT_NEW_COND_EXC(cfg,cond,name) do { \
+<span class="lineNum">     766 </span>            :         MonoInst *inst; \
+<span class="lineNum">     767 </span>            :         MONO_INST_NEW ((cfg), (inst), (OP_COND_EXC_##cond)); \
+<span class="lineNum">     768 </span>            :         inst-&gt;inst_p1 = (char*)name; \
+<span class="lineNum">     769 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, inst); \
+<span class="lineNum">     770 </span>            :         } while (0)
+<span class="lineNum">     771 </span>            : 
+<span class="lineNum">     772 </span>            : /* Branch support */
+<span class="lineNum">     773 </span>            : 
+<span class="lineNum">     774 </span>            : /*
+<span class="lineNum">     775 </span>            :  * Basic blocks have two numeric identifiers:
+<span class="lineNum">     776 </span>            :  * dfn: Depth First Number
+<span class="lineNum">     777 </span>            :  * block_num: unique ID assigned at bblock creation
+<span class="lineNum">     778 </span>            :  */
+<span class="lineNum">     779 </span>            : #define NEW_BBLOCK(cfg,bblock) do { \
+<span class="lineNum">     780 </span>            :         (bblock) = (MonoBasicBlock *)mono_mempool_alloc0 ((cfg)-&gt;mempool, sizeof (MonoBasicBlock)); \
+<span class="lineNum">     781 </span>            :         (bblock)-&gt;block_num = cfg-&gt;num_bblocks++; \
+<span class="lineNum">     782 </span>            :     } while (0)
+<span class="lineNum">     783 </span>            : 
+<span class="lineNum">     784 </span>            : #define ADD_BBLOCK(cfg,b) do {  \
+<span class="lineNum">     785 </span>            :         if ((b)-&gt;cil_code)  {\
+<span class="lineNum">     786 </span>            :                         cfg-&gt;cil_offset_to_bb [(b)-&gt;cil_code - cfg-&gt;cil_start] = (b);  \
+<span class="lineNum">     787 </span>            :         } \
+<span class="lineNum">     788 </span>            :                 (b)-&gt;real_offset = cfg-&gt;real_offset;      \
+<span class="lineNum">     789 </span>            :         } while (0)
+<span class="lineNum">     790 </span>            : 
+<span class="lineNum">     791 </span>            : /*
+<span class="lineNum">     792 </span>            :  * Emit a one-way conditional branch and start a new bblock.
+<span class="lineNum">     793 </span>            :  * The inst_false_bb field of the cond branch will not be set, the JIT code should be
+<span class="lineNum">     794 </span>            :  * prepared to deal with this.
+<span class="lineNum">     795 </span>            :  */
+<span class="lineNum">     796 </span>            : #ifdef DEBUG_EXTENDED_BBLOCKS
+<span class="lineNum">     797 </span>            : static int ccount = 0;
+<span class="lineNum">     798 </span>            : #define MONO_EMIT_NEW_BRANCH_BLOCK(cfg,op,truebb) do { \
+<span class="lineNum">     799 </span>            :         MonoInst *ins; \
+<span class="lineNum">     800 </span>            :         MonoBasicBlock *falsebb; \
+<span class="lineNum">     801 </span>            :         MONO_INST_NEW ((cfg), (ins), (op)); \
+<span class="lineNum">     802 </span>            :         if ((op) == OP_BR) { \
+<span class="lineNum">     803 </span>            :                 NEW_BBLOCK ((cfg), falsebb); \
+<span class="lineNum">     804 </span>            :             ins-&gt;inst_target_bb = (truebb); \
+<span class="lineNum">     805 </span>            :             mono_link_bblock ((cfg), (cfg)-&gt;cbb, (truebb)); \
+<span class="lineNum">     806 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, ins); \
+<span class="lineNum">     807 </span>            :             MONO_START_BB ((cfg), falsebb); \
+<span class="lineNum">     808 </span>            :         } else { \
+<span class="lineNum">     809 </span>            :             ccount ++; \
+<span class="lineNum">     810 </span>            :                     ins-&gt;inst_many_bb = mono_mempool_alloc (cfg-&gt;mempool, sizeof(gpointer)*2);    \
+<span class="lineNum">     811 </span>            :             ins-&gt;inst_true_bb = (truebb); \
+<span class="lineNum">     812 </span>            :             ins-&gt;inst_false_bb = NULL; \
+<span class="lineNum">     813 </span>            :             mono_link_bblock ((cfg), (cfg)-&gt;cbb, (truebb)); \
+<span class="lineNum">     814 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, ins); \
+<span class="lineNum">     815 </span>            :             if (g_getenv (&quot;COUNT2&quot;) &amp;&amp; ccount == atoi (g_getenv (&quot;COUNT2&quot;)) - 1) { printf (&quot;HIT: %d\n&quot;, cfg-&gt;cbb-&gt;block_num); } \
+<span class="lineNum">     816 </span>            :             if (g_getenv (&quot;COUNT2&quot;) &amp;&amp; ccount &lt; atoi (g_getenv (&quot;COUNT2&quot;))) { \
+<span class="lineNum">     817 </span>            :                  cfg-&gt;cbb-&gt;extended = TRUE; \
+<span class="lineNum">     818 </span>            :             } else { NEW_BBLOCK ((cfg), falsebb); ins-&gt;inst_false_bb = (falsebb); mono_link_bblock ((cfg), (cfg)-&gt;cbb, (falsebb)); MONO_START_BB ((cfg), falsebb); } \
+<span class="lineNum">     819 </span>            :         } \
+<span class="lineNum">     820 </span>            :         } while (0)
+<span class="lineNum">     821 </span>            : #else
+<span class="lineNum">     822 </span>            : #define MONO_EMIT_NEW_BRANCH_BLOCK(cfg,op,truebb) do { \
+<span class="lineNum">     823 </span>            :         MonoInst *ins; \
+<span class="lineNum">     824 </span>            :         MonoBasicBlock *falsebb; \
+<span class="lineNum">     825 </span>            :         MONO_INST_NEW ((cfg), (ins), (op)); \
+<span class="lineNum">     826 </span>            :         if ((op) == OP_BR) { \
+<span class="lineNum">     827 </span>            :                 NEW_BBLOCK ((cfg), falsebb); \
+<span class="lineNum">     828 </span>            :             ins-&gt;inst_target_bb = (truebb); \
+<span class="lineNum">     829 </span>            :             mono_link_bblock ((cfg), (cfg)-&gt;cbb, (truebb)); \
+<span class="lineNum">     830 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, ins); \
+<span class="lineNum">     831 </span>            :             MONO_START_BB ((cfg), falsebb); \
+<span class="lineNum">     832 </span>            :         } else { \
+<span class="lineNum">     833 </span>            :                     ins-&gt;inst_many_bb = (MonoBasicBlock **)mono_mempool_alloc (cfg-&gt;mempool, sizeof(gpointer)*2); \
+<span class="lineNum">     834 </span>            :             ins-&gt;inst_true_bb = (truebb); \
+<span class="lineNum">     835 </span>            :             ins-&gt;inst_false_bb = NULL; \
+<span class="lineNum">     836 </span>            :             mono_link_bblock ((cfg), (cfg)-&gt;cbb, (truebb)); \
+<span class="lineNum">     837 </span>            :             MONO_ADD_INS ((cfg)-&gt;cbb, ins); \
+<span class="lineNum">     838 </span>            :             if (!cfg-&gt;enable_extended_bblocks) { \
+<span class="lineNum">     839 </span>            :                 NEW_BBLOCK ((cfg), falsebb); \
+<span class="lineNum">     840 </span>            :                 ins-&gt;inst_false_bb = falsebb; \
+<span class="lineNum">     841 </span>            :                 mono_link_bblock ((cfg), (cfg)-&gt;cbb, (falsebb)); \
+<span class="lineNum">     842 </span>            :                 MONO_START_BB ((cfg), falsebb); \
+<span class="lineNum">     843 </span>            :             } else { \
+<span class="lineNum">     844 </span>            :                                 cfg-&gt;cbb-&gt;extended = TRUE; \
+<span class="lineNum">     845 </span>            :                         } \
+<span class="lineNum">     846 </span>            :         } \
+<span class="lineNum">     847 </span>            :         } while (0)
+<span class="lineNum">     848 </span>            : #endif
+<span class="lineNum">     849 </span>            : 
+<span class="lineNum">     850 </span>            : /* Emit a two-way conditional branch */
+<span class="lineNum">     851 </span>            : #define MONO_EMIT_NEW_BRANCH_BLOCK2(cfg,op,truebb,falsebb) do { \
+<span class="lineNum">     852 </span>            :         MonoInst *ins; \
+<span class="lineNum">     853 </span>            :         MONO_INST_NEW ((cfg), (ins), (op)); \
+<span class="lineNum">     854 </span>            :                 ins-&gt;inst_many_bb = (MonoBasicBlock **)mono_mempool_alloc (cfg-&gt;mempool, sizeof(gpointer)*2);     \
+<span class="lineNum">     855 </span>            :         ins-&gt;inst_true_bb = (truebb); \
+<span class="lineNum">     856 </span>            :         ins-&gt;inst_false_bb = (falsebb); \
+<span class="lineNum">     857 </span>            :         mono_link_bblock ((cfg), (cfg)-&gt;cbb, (truebb)); \
+<span class="lineNum">     858 </span>            :         mono_link_bblock ((cfg), (cfg)-&gt;cbb, (falsebb)); \
+<span class="lineNum">     859 </span>            :         MONO_ADD_INS ((cfg)-&gt;cbb, ins); \
+<span class="lineNum">     860 </span>            :         } while (0)
+<span class="lineNum">     861 </span>            : 
+<span class="lineNum">     862 </span>            : #define MONO_START_BB(cfg, bblock) do { \
+<span class="lineNum">     863 </span>            :         ADD_BBLOCK ((cfg), (bblock)); \
+<span class="lineNum">     864 </span>            :         if (cfg-&gt;cbb-&gt;last_ins &amp;&amp; MONO_IS_COND_BRANCH_OP (cfg-&gt;cbb-&gt;last_ins) &amp;&amp; !cfg-&gt;cbb-&gt;last_ins-&gt;inst_false_bb) { \
+<span class="lineNum">     865 </span>            :             cfg-&gt;cbb-&gt;last_ins-&gt;inst_false_bb = (bblock); \
+<span class="lineNum">     866 </span>            :             mono_link_bblock ((cfg), (cfg)-&gt;cbb, (bblock)); \
+<span class="lineNum">     867 </span>            :         } else if (! (cfg-&gt;cbb-&gt;last_ins &amp;&amp; ((cfg-&gt;cbb-&gt;last_ins-&gt;opcode == OP_BR) || (cfg-&gt;cbb-&gt;last_ins-&gt;opcode == OP_BR_REG) || MONO_IS_COND_BRANCH_OP (cfg-&gt;cbb-&gt;last_ins)))) \
+<span class="lineNum">     868 </span>            :             mono_link_bblock ((cfg), (cfg)-&gt;cbb, (bblock)); \
+<span class="lineNum">     869 </span>            :             (cfg)-&gt;cbb-&gt;next_bb = (bblock); \
+<span class="lineNum">     870 </span>            :             (cfg)-&gt;cbb = (bblock); \
+<span class="lineNum">     871 </span>            :     } while (0)
+<span class="lineNum">     872 </span>            : 
+<span class="lineNum">     873 </span>            : /* This marks a place in code where an implicit exception could be thrown */
+<span class="lineNum">     874 </span>            : #define MONO_EMIT_NEW_IMPLICIT_EXCEPTION(cfg) do { \
+<span class="lineNum">     875 </span>            :                 if (COMPILE_LLVM ((cfg))) {                                                                     \
+<span class="lineNum">     876 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_IMPLICIT_EXCEPTION, -1, -1);       \
+<span class="lineNum">     877 </span>            :                 } \
+<span class="lineNum">     878 </span>            :         } while (0)
+<span class="lineNum">     879 </span>            : 
+<span class="lineNum">     880 </span>            : /* Loads/Stores which can fault are handled correctly by the LLVM mono branch */
+<span class="lineNum">     881 </span>            : #define MONO_EMIT_NEW_IMPLICIT_EXCEPTION_LOAD_STORE(cfg) do { \
+<span class="lineNum">     882 </span>            :     } while (0)
+<span class="lineNum">     883 </span>            : 
+<span class="lineNum">     884 </span>            : /* Emit an explicit null check which doesn't depend on SIGSEGV signal handling */
+<span class="lineNum">     885 </span>            : #define MONO_EMIT_NULL_CHECK(cfg, reg) do { \
+<span class="lineNum">     886 </span>            :                 if (cfg-&gt;explicit_null_checks) {                                                       \
+<span class="lineNum">     887 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, (reg), 0); \
+<span class="lineNum">     888 </span>            :                         MONO_EMIT_NEW_COND_EXC (cfg, EQ, &quot;NullReferenceException&quot;); \
+<span class="lineNum">     889 </span>            :                 } else {                        \
+<span class="lineNum">     890 </span>            :                         MONO_EMIT_NEW_IMPLICIT_EXCEPTION_LOAD_STORE (cfg);                                              \
+<span class="lineNum">     891 </span>            :                 }                                                                                                                               \
+<span class="lineNum">     892 </span>            :         } while (0)
+<span class="lineNum">     893 </span>            : 
+<span class="lineNum">     894 </span>            : #define MONO_EMIT_NEW_CHECK_THIS(cfg, sreg) do { \
+<span class="lineNum">     895 </span>            :                 cfg-&gt;flags |= MONO_CFG_HAS_CHECK_THIS;        \
+<span class="lineNum">     896 </span>            :                 if (cfg-&gt;explicit_null_checks) {              \
+<span class="lineNum">     897 </span>            :                         MONO_EMIT_NULL_CHECK (cfg, sreg);                               \
+<span class="lineNum">     898 </span>            :                 } else {                                                                                        \
+<span class="lineNum">     899 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_CHECK_THIS, -1, sreg);                     \
+<span class="lineNum">     900 </span>            :                         MONO_EMIT_NEW_IMPLICIT_EXCEPTION_LOAD_STORE (cfg);                      \
+<span class="lineNum">     901 </span>            :                 }                                                                                                                               \
+<span class="lineNum">     902 </span>            :                 MONO_EMIT_NEW_UNALU (cfg, OP_NOT_NULL, -1, sreg);                               \
+<span class="lineNum">     903 </span>            :         } while (0)
+<span class="lineNum">     904 </span>            : 
+<span class="lineNum">     905 </span>            : #define NEW_LOAD_MEMBASE_FLAGS(cfg,dest,op,dr,base,offset,ins_flags) do {       \
+<span class="lineNum">     906 </span>            :                 int __ins_flags = ins_flags; \
+<span class="lineNum">     907 </span>            :                 if (__ins_flags &amp; MONO_INST_FAULT) {                                                                \
+<span class="lineNum">     908 </span>            :                         MONO_EMIT_NULL_CHECK ((cfg), (base));                                           \
+<span class="lineNum">     909 </span>            :                 }                                                                                                                               \
+<span class="lineNum">     910 </span>            :                 NEW_LOAD_MEMBASE ((cfg), (dest), (op), (dr), (base), (offset)); \
+<span class="lineNum">     911 </span>            :                 (dest)-&gt;flags = (__ins_flags);                                                                       \
+<span class="lineNum">     912 </span>            :         } while (0)
+<span class="lineNum">     913 </span>            : 
+<span class="lineNum">     914 </span>            : #define MONO_EMIT_NEW_LOAD_MEMBASE_OP_FLAGS(cfg,op,dr,base,offset,ins_flags) do { \
+<span class="lineNum">     915 </span>            :         MonoInst *inst;                                                                                                 \
+<span class="lineNum">     916 </span>            :                 int __ins_flags = ins_flags; \
+<span class="lineNum">     917 </span>            :             if (__ins_flags &amp; MONO_INST_FAULT) {                                                                    \
+<span class="lineNum">     918 </span>            :                         MONO_EMIT_NULL_CHECK ((cfg), (base));                                           \
+<span class="lineNum">     919 </span>            :                 }                                                                                                                               \
+<span class="lineNum">     920 </span>            :                 NEW_LOAD_MEMBASE ((cfg), (inst), (op), (dr), (base), (offset)); \
+<span class="lineNum">     921 </span>            :                 inst-&gt;flags = (__ins_flags); \
+<span class="lineNum">     922 </span>            :             MONO_ADD_INS (cfg-&gt;cbb, inst); \
+<span class="lineNum">     923 </span>            :     } while (0)
+<span class="lineNum">     924 </span>            : 
+<span class="lineNum">     925 </span>            : #define MONO_EMIT_NEW_LOAD_MEMBASE_FLAGS(cfg,dr,base,offset,ins_flags) MONO_EMIT_NEW_LOAD_MEMBASE_OP_FLAGS ((cfg), (OP_LOAD_MEMBASE), (dr), (base), (offset),(ins_flags))
+<span class="lineNum">     926 </span>            : 
+<span class="lineNum">     927 </span>            : /* A load which can cause a nullref */
+<span class="lineNum">     928 </span>            : #define NEW_LOAD_MEMBASE_FAULT(cfg,dest,op,dr,base,offset) NEW_LOAD_MEMBASE_FLAGS ((cfg), (dest), (op), (dr), (base), (offset), MONO_INST_FAULT)
+<span class="lineNum">     929 </span>            : 
+<span class="lineNum">     930 </span>            : #define EMIT_NEW_LOAD_MEMBASE_FAULT(cfg,dest,op,dr,base,offset) do { \
+<span class="lineNum">     931 </span>            :                 NEW_LOAD_MEMBASE_FAULT ((cfg), (dest), (op), (dr), (base), (offset)); \
+<span class="lineNum">     932 </span>            :                 MONO_ADD_INS ((cfg)-&gt;cbb, (dest)); \
+<span class="lineNum">     933 </span>            :         } while (0)
+<span class="lineNum">     934 </span>            : 
+<span class="lineNum">     935 </span>            : #define MONO_EMIT_NEW_LOAD_MEMBASE_OP_FAULT(cfg,op,dr,base,offset) MONO_EMIT_NEW_LOAD_MEMBASE_OP_FLAGS ((cfg), (op), (dr), (base), (offset), MONO_INST_FAULT)
+<span class="lineNum">     936 </span>            : 
+<span class="lineNum">     937 </span>            : #define MONO_EMIT_NEW_LOAD_MEMBASE_FAULT(cfg,dr,base,offset) MONO_EMIT_NEW_LOAD_MEMBASE_OP_FAULT ((cfg), (OP_LOAD_MEMBASE), (dr), (base), (offset))
+<span class="lineNum">     938 </span>            : 
+<span class="lineNum">     939 </span>            : #define NEW_LOAD_MEMBASE_INVARIANT(cfg,dest,op,dr,base,offset) NEW_LOAD_MEMBASE_FLAGS ((cfg), (dest), (op), (dr), (base), (offset), MONO_INST_INVARIANT_LOAD)
+<span class="lineNum">     940 </span>            : 
+<span class="lineNum">     941 </span>            : #define MONO_EMIT_NEW_LOAD_MEMBASE_OP_INVARIANT(cfg,op,dr,base,offset) MONO_EMIT_NEW_LOAD_MEMBASE_OP_FLAGS ((cfg), (op), (dr), (base), (offset), MONO_INST_INVARIANT_LOAD)
+<span class="lineNum">     942 </span>            : 
+<span class="lineNum">     943 </span>            : #define MONO_EMIT_NEW_LOAD_MEMBASE_INVARIANT(cfg,dr,base,offset) MONO_EMIT_NEW_LOAD_MEMBASE_OP_INVARIANT ((cfg), (OP_LOAD_MEMBASE), (dr), (base), (offset))
+<span class="lineNum">     944 </span>            : 
+<span class="lineNum">     945 </span>            : /*Object Model related macros*/
+<span class="lineNum">     946 </span>            : 
+<span class="lineNum">     947 </span>            : /* Default bounds check implementation for most architectures + llvm */
+<span class="lineNum">     948 </span>            : #define MONO_EMIT_DEFAULT_BOUNDS_CHECK(cfg, array_reg, offset, index_reg, fault) do { \
+<span class="lineNum">     949 </span>            :                         int _length_reg = alloc_ireg (cfg); \
+<span class="lineNum">     950 </span>            :                         if (fault) \
+<span class="lineNum">     951 </span>            :                                 MONO_EMIT_NEW_LOAD_MEMBASE_OP_FAULT (cfg, OP_LOADI4_MEMBASE, _length_reg, array_reg, offset); \
+<span class="lineNum">     952 </span>            :                         else \
+<span class="lineNum">     953 </span>            :                                 MONO_EMIT_NEW_LOAD_MEMBASE_OP_FLAGS (cfg, OP_LOADI4_MEMBASE, _length_reg, array_reg, offset, MONO_INST_INVARIANT_LOAD); \
+<span class="lineNum">     954 </span>            :                         MONO_EMIT_NEW_BIALU (cfg, OP_COMPARE, -1, _length_reg, index_reg); \
+<span class="lineNum">     955 </span>            :                         MONO_EMIT_NEW_COND_EXC (cfg, LE_UN, &quot;IndexOutOfRangeException&quot;); \
+<span class="lineNum">     956 </span>            :         } while (0)
+<span class="lineNum">     957 </span>            : 
+<span class="lineNum">     958 </span>            : #ifndef MONO_ARCH_EMIT_BOUNDS_CHECK
+<span class="lineNum">     959 </span>            : #define MONO_ARCH_EMIT_BOUNDS_CHECK(cfg, array_reg, offset, index_reg) MONO_EMIT_DEFAULT_BOUNDS_CHECK ((cfg), (array_reg), (offset), (index_reg), TRUE)
+<span class="lineNum">     960 </span>            : #endif
+<span class="lineNum">     961 </span>            : 
+<span class="lineNum">     962 </span>            : /* cfg is the MonoCompile been used
+<span class="lineNum">     963 </span>            :  * array_reg is the vreg holding the array object
+<span class="lineNum">     964 </span>            :  * array_type is a struct (usually MonoArray or MonoString)
+<span class="lineNum">     965 </span>            :  * array_length_field is the field in the previous struct with the length
+<span class="lineNum">     966 </span>            :  * index_reg is the vreg holding the index
+<span class="lineNum">     967 </span>            :  */
+<span class="lineNum">     968 </span>            : #define MONO_EMIT_BOUNDS_CHECK(cfg, array_reg, array_type, array_length_field, index_reg) do { \
+<span class="lineNum">     969 </span>            :                 if (!(cfg-&gt;opt &amp; MONO_OPT_UNSAFE)) {                                                     \
+<span class="lineNum">     970 </span>            :                 if (!(cfg-&gt;opt &amp; MONO_OPT_ABCREM)) {                                                     \
+<span class="lineNum">     971 </span>            :                         MONO_EMIT_NULL_CHECK (cfg, array_reg);                                          \
+<span class="lineNum">     972 </span>            :                         if (COMPILE_LLVM (cfg)) \
+<span class="lineNum">     973 </span>            :                                 MONO_EMIT_DEFAULT_BOUNDS_CHECK ((cfg), (array_reg), MONO_STRUCT_OFFSET (array_type, array_length_field), (index_reg), TRUE); \
+<span class="lineNum">     974 </span>            :                         else \
+<span class="lineNum">     975 </span>            :                                 MONO_ARCH_EMIT_BOUNDS_CHECK ((cfg), (array_reg), MONO_STRUCT_OFFSET (array_type, array_length_field), (index_reg)); \
+<span class="lineNum">     976 </span>            :                 } else {                                                                                                                \
+<span class="lineNum">     977 </span>            :                         MonoInst *ins;                                                                                          \
+<span class="lineNum">     978 </span>            :                         MONO_INST_NEW ((cfg), ins, OP_BOUNDS_CHECK);                            \
+<span class="lineNum">     979 </span>            :                         ins-&gt;sreg1 = array_reg;                                                                              \
+<span class="lineNum">     980 </span>            :                         ins-&gt;sreg2 = index_reg;                                                                              \
+<span class="lineNum">     981 </span>            :                         ins-&gt;inst_imm = MONO_STRUCT_OFFSET (array_type, array_length_field); \
+<span class="lineNum">     982 </span>            :                         ins-&gt;flags |= MONO_INST_FAULT; \
+<span class="lineNum">     983 </span>            :                         MONO_ADD_INS ((cfg)-&gt;cbb, ins);                                                              \
+<span class="lineNum">     984 </span>            :                         (cfg)-&gt;flags |= MONO_CFG_HAS_ARRAY_ACCESS;                                   \
+<span class="lineNum">     985 </span>            :                         (cfg)-&gt;cbb-&gt;has_array_access = TRUE;                                              \
+<span class="lineNum">     986 </span>            :                 }                                                                                                                               \
+<span class="lineNum">     987 </span>            :                 }                                                                                                                               \
+<span class="lineNum">     988 </span>            :     } while (0)
+<span class="lineNum">     989 </span>            : 
+<span class="lineNum">     990 </span>            : G_END_DECLS
+<span class="lineNum">     991 </span>            : 
+<span class="lineNum">     992 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

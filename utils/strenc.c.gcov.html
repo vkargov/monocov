@@ -1,0 +1,443 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/strenc.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - strenc.c<span style="font-size: 80%;"> (source / <a href="strenc.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">33</td>
+            <td class="headerCovTableEntry">170</td>
+            <td class="headerCovTableEntryLo">19.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">5</td>
+            <td class="headerCovTableEntryLo">60.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * strenc.c: string encoding conversions
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Dick Porter (dick@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2003 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      11 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &quot;strenc.h&quot;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : static const char trailingBytesForUTF8[256] = {
+<span class="lineNum">      17 </span>            :         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+<span class="lineNum">      18 </span>            :         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+<span class="lineNum">      19 </span>            :         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+<span class="lineNum">      20 </span>            :         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+<span class="lineNum">      21 </span>            :         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+<span class="lineNum">      22 </span>            :         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+<span class="lineNum">      23 </span>            :         1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+<span class="lineNum">      24 </span>            :         2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3,4,4,4,4,5,5,0,0
+<span class="lineNum">      25 </span>            : };
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : /**
+<span class="lineNum">      28 </span>            :  * mono_unicode_from_external:
+<span class="lineNum">      29 </span>            :  * @in: pointers to the buffer.
+<span class="lineNum">      30 </span>            :  * @bytes: number of bytes in the string.
+<span class="lineNum">      31 </span>            :  *
+<span class="lineNum">      32 </span>            :  * Tries to turn a NULL-terminated string into UTF16.
+<span class="lineNum">      33 </span>            :  *
+<span class="lineNum">      34 </span>            :  * First, see if it's valid UTF8, in which case just turn it directly
+<span class="lineNum">      35 </span>            :  * into UTF16.  Next, run through the colon-separated encodings in
+<span class="lineNum">      36 </span>            :  * MONO_EXTERNAL_ENCODINGS and do an iconv conversion on each,
+<span class="lineNum">      37 </span>            :  * returning the first successful conversion to UTF16.  If no
+<span class="lineNum">      38 </span>            :  * conversion succeeds, return NULL.
+<span class="lineNum">      39 </span>            :  *
+<span class="lineNum">      40 </span>            :  * Callers must free the returned string if not NULL. bytes holds the number
+<span class="lineNum">      41 </span>            :  * of bytes in the returned string, not including the terminator.
+<a name="42"><span class="lineNum">      42 </span>            :  */</a>
+<span class="lineNum">      43 </span>            : gunichar2 *
+<span class="lineNum">      44 </span>            : mono_unicode_from_external (const gchar *in, gsize *bytes)
+<span class="lineNum">      45 </span>            : {
+<span class="lineNum">      46 </span><span class="lineCov">      16094 :         gchar *res=NULL;</span>
+<span class="lineNum">      47 </span>            :         gchar **encodings;
+<span class="lineNum">      48 </span>            :         const gchar *encoding_list;
+<span class="lineNum">      49 </span>            :         int i;
+<span class="lineNum">      50 </span>            :         glong lbytes;
+<span class="lineNum">      51 </span>            :         
+<span class="lineNum">      52 </span><span class="lineCov">      16094 :         if(in==NULL) {</span>
+<span class="lineNum">      53 </span><span class="lineNoCov">          0 :                 return(NULL);</span>
+<span class="lineNum">      54 </span>            :         }
+<span class="lineNum">      55 </span>            :         
+<span class="lineNum">      56 </span><span class="lineCov">      16094 :         encoding_list=g_getenv (&quot;MONO_EXTERNAL_ENCODINGS&quot;);</span>
+<span class="lineNum">      57 </span><span class="lineCov">      16094 :         if(encoding_list==NULL) {</span>
+<span class="lineNum">      58 </span><span class="lineCov">      16094 :                 encoding_list = &quot;&quot;;</span>
+<span class="lineNum">      59 </span><span class="lineCov">      16094 :         }</span>
+<span class="lineNum">      60 </span>            :         
+<span class="lineNum">      61 </span><span class="lineCov">      16094 :         encodings=g_strsplit (encoding_list, &quot;:&quot;, 0);</span>
+<span class="lineNum">      62 </span><span class="lineCov">      32188 :         for(i=0;encodings[i]!=NULL; i++) {</span>
+<span class="lineNum">      63 </span>            :                 /* &quot;default_locale&quot; is a special case encoding */
+<span class="lineNum">      64 </span><span class="lineNoCov">          0 :                 if(!strcmp (encodings[i], &quot;default_locale&quot;)) {</span>
+<span class="lineNum">      65 </span><span class="lineNoCov">          0 :                         gchar *utf8=g_locale_to_utf8 (in, -1, NULL, NULL, NULL);</span>
+<span class="lineNum">      66 </span><span class="lineNoCov">          0 :                         if(utf8!=NULL) {</span>
+<span class="lineNum">      67 </span><span class="lineNoCov">          0 :                                 res=(gchar *) g_utf8_to_utf16 (utf8, -1, NULL, &amp;lbytes, NULL);</span>
+<span class="lineNum">      68 </span><span class="lineNoCov">          0 :                                 *bytes = (gsize) lbytes;</span>
+<span class="lineNum">      69 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">      70 </span><span class="lineNoCov">          0 :                         g_free (utf8);</span>
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">      72 </span>            :                         /* Don't use UTF16 here. It returns the &lt;FF FE&gt; prepended to the string */
+<span class="lineNum">      73 </span><span class="lineNoCov">          0 :                         res = g_convert (in, strlen (in), &quot;UTF8&quot;, encodings[i], NULL, bytes, NULL);</span>
+<span class="lineNum">      74 </span><span class="lineNoCov">          0 :                         if (res != NULL) {</span>
+<span class="lineNum">      75 </span><span class="lineNoCov">          0 :                                 gchar *ptr = res;</span>
+<span class="lineNum">      76 </span><span class="lineNoCov">          0 :                                 res = (gchar *) g_utf8_to_utf16 (res, -1, NULL, &amp;lbytes, NULL);</span>
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :                                 *bytes = (gsize) lbytes;</span>
+<span class="lineNum">      78 </span><span class="lineNoCov">          0 :                                 g_free (ptr);</span>
+<span class="lineNum">      79 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">      80 </span>            :                 }
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span><span class="lineNoCov">          0 :                 if(res!=NULL) {</span>
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 :                         g_strfreev (encodings);</span>
+<span class="lineNum">      84 </span><span class="lineNoCov">          0 :                         *bytes *= 2;</span>
+<span class="lineNum">      85 </span><span class="lineNoCov">          0 :                         return((gunichar2 *)res);</span>
+<span class="lineNum">      86 </span>            :                 }
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      88 </span>            :         
+<span class="lineNum">      89 </span><span class="lineCov">      16094 :         g_strfreev (encodings);</span>
+<span class="lineNum">      90 </span>            :         
+<span class="lineNum">      91 </span><span class="lineCov">      16094 :         if(g_utf8_validate (in, -1, NULL)) {</span>
+<span class="lineNum">      92 </span><span class="lineCov">      16094 :                 gunichar2 *unires=g_utf8_to_utf16 (in, -1, NULL, (glong *)bytes, NULL);</span>
+<span class="lineNum">      93 </span><span class="lineCov">      16094 :                 *bytes *= 2;</span>
+<span class="lineNum">      94 </span><span class="lineCov">      16094 :                 return(unires);</span>
+<span class="lineNum">      95 </span>            :         }
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :         return(NULL);</span>
+<span class="lineNum">      98 </span><span class="lineCov">      16094 : }</span>
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span>            : /**
+<span class="lineNum">     101 </span>            :  * mono_utf8_from_external:
+<span class="lineNum">     102 </span>            :  * @in: pointer to the string buffer.
+<span class="lineNum">     103 </span>            :  *
+<span class="lineNum">     104 </span>            :  * Tries to turn a NULL-terminated string into UTF8.
+<span class="lineNum">     105 </span>            :  *
+<span class="lineNum">     106 </span>            :  * First, see if it's valid UTF8, in which case there's nothing more
+<span class="lineNum">     107 </span>            :  * to be done.  Next, run through the colon-separated encodings in
+<span class="lineNum">     108 </span>            :  * MONO_EXTERNAL_ENCODINGS and do an iconv conversion on each,
+<span class="lineNum">     109 </span>            :  * returning the first successful conversion to utf8.  If no
+<span class="lineNum">     110 </span>            :  * conversion succeeds, return NULL.
+<span class="lineNum">     111 </span>            :  *
+<span class="lineNum">     112 </span>            :  * Callers must free the returned string if not NULL.
+<span class="lineNum">     113 </span>            :  *
+<span class="lineNum">     114 </span>            :  * This function is identical to mono_unicode_from_external, apart
+<span class="lineNum">     115 </span>            :  * from returning utf8 not utf16; it's handy in a few places to work
+<a name="116"><span class="lineNum">     116 </span>            :  * in utf8.</a>
+<span class="lineNum">     117 </span>            :  */
+<span class="lineNum">     118 </span>            : gchar *mono_utf8_from_external (const gchar *in)
+<span class="lineNum">     119 </span>            : {
+<span class="lineNum">     120 </span><span class="lineCov">     101428 :         gchar *res=NULL;</span>
+<span class="lineNum">     121 </span>            :         gchar **encodings;
+<span class="lineNum">     122 </span>            :         const gchar *encoding_list;
+<span class="lineNum">     123 </span>            :         int i;
+<span class="lineNum">     124 </span>            :         
+<span class="lineNum">     125 </span><span class="lineCov">     101428 :         if(in==NULL) {</span>
+<span class="lineNum">     126 </span><span class="lineCov">          4 :                 return(NULL);</span>
+<span class="lineNum">     127 </span>            :         }
+<span class="lineNum">     128 </span>            :         
+<span class="lineNum">     129 </span><span class="lineCov">     101421 :         encoding_list=g_getenv (&quot;MONO_EXTERNAL_ENCODINGS&quot;);</span>
+<span class="lineNum">     130 </span><span class="lineCov">     101421 :         if(encoding_list==NULL) {</span>
+<span class="lineNum">     131 </span><span class="lineCov">     101422 :                 encoding_list = &quot;&quot;;</span>
+<span class="lineNum">     132 </span><span class="lineCov">     101422 :         }</span>
+<span class="lineNum">     133 </span>            :         
+<span class="lineNum">     134 </span><span class="lineCov">     101422 :         encodings=g_strsplit (encoding_list, &quot;:&quot;, 0);</span>
+<span class="lineNum">     135 </span><span class="lineCov">     202847 :         for(i=0;encodings[i]!=NULL; i++) {</span>
+<span class="lineNum">     136 </span>            :                 
+<span class="lineNum">     137 </span>            :                 /* &quot;default_locale&quot; is a special case encoding */
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :                 if(!strcmp (encodings[i], &quot;default_locale&quot;)) {</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :                         res=g_locale_to_utf8 (in, -1, NULL, NULL, NULL);</span>
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :                         if(res!=NULL &amp;&amp; !g_utf8_validate (res, -1, NULL)) {</span>
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :                                 g_free (res);</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                                 res=NULL;</span>
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :                         res=g_convert (in, -1, &quot;UTF8&quot;, encodings[i], NULL,</span>
+<span class="lineNum">     146 </span>            :                                        NULL, NULL);
+<span class="lineNum">     147 </span>            :                 }
+<span class="lineNum">     148 </span>            : 
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :                 if(res!=NULL) {</span>
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :                         g_strfreev (encodings);</span>
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 :                         return(res);</span>
+<span class="lineNum">     152 </span>            :                 }
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     154 </span>            :         
+<span class="lineNum">     155 </span><span class="lineCov">     101425 :         g_strfreev (encodings);</span>
+<span class="lineNum">     156 </span>            :         
+<span class="lineNum">     157 </span><span class="lineCov">     101425 :         if(g_utf8_validate (in, -1, NULL)) {</span>
+<span class="lineNum">     158 </span><span class="lineCov">     101425 :                 return(g_strdup (in));</span>
+<span class="lineNum">     159 </span>            :         }
+<span class="lineNum">     160 </span>            : 
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         return(NULL);</span>
+<span class="lineNum">     162 </span><span class="lineCov">     101428 : }</span>
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span>            : /**
+<span class="lineNum">     165 </span>            :  * mono_unicode_to_external:
+<span class="lineNum">     166 </span>            :  * @uni: an UTF16 string to conver to an external representation.
+<span class="lineNum">     167 </span>            :  *
+<span class="lineNum">     168 </span>            :  * Turns NULL-terminated UTF16 into either UTF8, or the first
+<span class="lineNum">     169 </span>            :  * working item in MONO_EXTERNAL_ENCODINGS if set.  If no conversions
+<span class="lineNum">     170 </span>            :  * work, then UTF8 is returned.
+<span class="lineNum">     171 </span>            :  *
+<a name="172"><span class="lineNum">     172 </span>            :  * Callers must free the returned string.</a>
+<span class="lineNum">     173 </span>            :  */
+<span class="lineNum">     174 </span>            : gchar *mono_unicode_to_external (const gunichar2 *uni)
+<span class="lineNum">     175 </span>            : {
+<span class="lineNum">     176 </span>            :         gchar *utf8;
+<span class="lineNum">     177 </span>            :         const gchar *encoding_list;
+<span class="lineNum">     178 </span>            :         
+<span class="lineNum">     179 </span>            :         /* Turn the unicode into utf8 to start with, because its
+<span class="lineNum">     180 </span>            :          * easier to work with gchar * than gunichar2 *
+<span class="lineNum">     181 </span>            :          */
+<span class="lineNum">     182 </span><span class="lineCov">     622019 :         utf8=g_utf16_to_utf8 (uni, -1, NULL, NULL, NULL);</span>
+<span class="lineNum">     183 </span><span class="lineCov">    1866344 :         g_assert (utf8!=NULL);</span>
+<span class="lineNum">     184 </span>            :         
+<span class="lineNum">     185 </span><span class="lineCov">     622129 :         encoding_list=g_getenv (&quot;MONO_EXTERNAL_ENCODINGS&quot;);</span>
+<span class="lineNum">     186 </span><span class="lineCov">     622129 :         if(encoding_list==NULL) {</span>
+<span class="lineNum">     187 </span>            :                 /* Do UTF8 */
+<span class="lineNum">     188 </span><span class="lineCov">     622139 :                 return(utf8);</span>
+<span class="lineNum">     189 </span>            :         } else {
+<span class="lineNum">     190 </span>            :                 gchar *res, **encodings;
+<span class="lineNum">     191 </span>            :                 int i;
+<span class="lineNum">     192 </span>            :                 
+<span class="lineNum">     193 </span><span class="lineNoCov">          0 :                 encodings=g_strsplit (encoding_list, &quot;:&quot;, 0);</span>
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 :                 for(i=0; encodings[i]!=NULL; i++) {</span>
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :                         if(!strcmp (encodings[i], &quot;default_locale&quot;)) {</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :                                 res=g_locale_from_utf8 (utf8, -1, NULL, NULL,</span>
+<span class="lineNum">     197 </span>            :                                                         NULL);
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :                                 res=g_convert (utf8, -1, encodings[i], &quot;UTF8&quot;,</span>
+<span class="lineNum">     200 </span>            :                                                NULL, NULL, NULL);
+<span class="lineNum">     201 </span>            :                         }
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :                         if(res!=NULL) {</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :                                 g_free (utf8);</span>
+<span class="lineNum">     205 </span><span class="lineNoCov">          0 :                                 g_strfreev (encodings);</span>
+<span class="lineNum">     206 </span>            :                                 
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                                 return(res);</span>
+<span class="lineNum">     208 </span>            :                         }
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     210 </span>            :         
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :                 g_strfreev (encodings);</span>
+<span class="lineNum">     212 </span>            :         }
+<span class="lineNum">     213 </span>            :         
+<span class="lineNum">     214 </span>            :         /* Nothing else worked, so just return the utf8 */
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 :         return(utf8);</span>
+<span class="lineNum">     216 </span><span class="lineCov">     622076 : }</span>
+<span class="lineNum">     217 </span>            : 
+<span class="lineNum">     218 </span>            : /**
+<span class="lineNum">     219 </span>            :  * mono_utf8_validate_and_len
+<span class="lineNum">     220 </span>            :  * @source: Pointer to putative UTF-8 encoded string.
+<span class="lineNum">     221 </span>            :  *
+<span class="lineNum">     222 </span>            :  * Checks @source for being valid UTF-8. @utf is assumed to be
+<span class="lineNum">     223 </span>            :  * null-terminated.
+<span class="lineNum">     224 </span>            :  *
+<span class="lineNum">     225 </span>            :  * Return value: true if @source is valid.
+<span class="lineNum">     226 </span>            :  * oEnd : will equal the null terminator at the end of the string if valid.
+<span class="lineNum">     227 </span>            :  *            if not valid, it will equal the first charater of the invalid sequence.
+<span class="lineNum">     228 </span>            :  * oLengh : will equal the length to @oEnd
+<a name="229"><span class="lineNum">     229 </span>            :  **/</a>
+<span class="lineNum">     230 </span>            : gboolean
+<span class="lineNum">     231 </span>            : mono_utf8_validate_and_len (const gchar *source, glong* oLength, const gchar** oEnd)
+<span class="lineNum">     232 </span>            : {
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :         gboolean retVal = TRUE;</span>
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :         gboolean lastRet = TRUE;</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :         guchar* ptr = (guchar*) source;</span>
+<span class="lineNum">     236 </span>            :         guchar* srcPtr;
+<span class="lineNum">     237 </span>            :         guint length;
+<span class="lineNum">     238 </span>            :         guchar a;
+<span class="lineNum">     239 </span><span class="lineNoCov">          0 :         *oLength = 0;</span>
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :         while (*ptr != 0) {</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                 length = trailingBytesForUTF8 [*ptr] + 1;</span>
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :                 srcPtr = (guchar*) ptr + length;</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :                 switch (length) {</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :                 default: retVal = FALSE;</span>
+<span class="lineNum">     245 </span>            :                 /* Everything else falls through when &quot;TRUE&quot;... */
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :                 case 4: if ((a = (*--srcPtr)) &lt; (guchar) 0x80 || a &gt; (guchar) 0xBF) retVal = FALSE;</span>
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :                                 if ((a == (guchar) 0xBF || a == (guchar) 0xBE) &amp;&amp; *(srcPtr-1) == (guchar) 0xBF) {</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :                                 if (*(srcPtr-2) == (guchar) 0x8F || *(srcPtr-2) == (guchar) 0x9F ||</span>
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :                                         *(srcPtr-2) == (guchar) 0xAF || *(srcPtr-2) == (guchar) 0xBF)</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                                         retVal = FALSE;</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :                 case 3: if ((a = (*--srcPtr)) &lt; (guchar) 0x80 || a &gt; (guchar) 0xBF) retVal = FALSE;</span>
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :                 case 2: if ((a = (*--srcPtr)) &lt; (guchar) 0x80 || a &gt; (guchar) 0xBF) retVal = FALSE;</span>
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :                 switch (*ptr) {</span>
+<span class="lineNum">     256 </span>            :                 /* no fall-through in this inner switch */
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :                 case 0xE0: if (a &lt; (guchar) 0xA0) retVal = FALSE; break;</span>
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :                 case 0xED: if (a &gt; (guchar) 0x9F) retVal = FALSE; break;</span>
+<span class="lineNum">     259 </span><span class="lineNoCov">          0 :                 case 0xEF: if (a == (guchar)0xB7 &amp;&amp; (*(srcPtr+1) &gt; (guchar) 0x8F &amp;&amp; *(srcPtr+1) &lt; 0xB0)) retVal = FALSE;</span>
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :                                    if (a == (guchar)0xBF &amp;&amp; (*(srcPtr+1) == (guchar) 0xBE || *(srcPtr+1) == 0xBF)) retVal = FALSE; break;</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :                 case 0xF0: if (a &lt; (guchar) 0x90) retVal = FALSE; break;</span>
+<span class="lineNum">     262 </span><span class="lineNoCov">          0 :                 case 0xF4: if (a &gt; (guchar) 0x8F) retVal = FALSE; break;</span>
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :                 default:   if (a &lt; (guchar) 0x80) retVal = FALSE;</span>
+<span class="lineNum">     264 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :                 case 1: if (*ptr &gt;= (guchar ) 0x80 &amp;&amp; *ptr &lt; (guchar) 0xC2) retVal = FALSE;</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :                 if (*ptr &gt; (guchar) 0xF4)</span>
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :                         retVal = FALSE;</span>
+<span class="lineNum">     270 </span>            :                 //If the string is invalid, set the end to the invalid byte.
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                 if (!retVal &amp;&amp; lastRet) {</span>
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :                         if (oEnd != NULL)</span>
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :                                 *oEnd = (gchar*) ptr;</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                         lastRet = FALSE;</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                 ptr += length;</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :                 (*oLength)++;</span>
+<span class="lineNum">     278 </span>            :         }
+<span class="lineNum">     279 </span><span class="lineNoCov">          0 :         if (retVal &amp;&amp; oEnd != NULL)</span>
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :                 *oEnd = (gchar*) ptr;</span>
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 :         return retVal;</span>
+<span class="lineNum">     282 </span>            : }
+<span class="lineNum">     283 </span>            : 
+<span class="lineNum">     284 </span>            : 
+<span class="lineNum">     285 </span>            : /**
+<span class="lineNum">     286 </span>            :  * mono_utf8_validate_and_len_with_bounds
+<span class="lineNum">     287 </span>            :  * @source: Pointer to putative UTF-8 encoded string.
+<span class="lineNum">     288 </span>            :  * @max_bytes: Max number of bytes that can be decoded. This function returns FALSE if
+<span class="lineNum">     289 </span>            :  * it needs to decode characters beyond that.
+<span class="lineNum">     290 </span>            :  *
+<span class="lineNum">     291 </span>            :  * Checks @source for being valid UTF-8. @utf is assumed to be
+<span class="lineNum">     292 </span>            :  * null-terminated.
+<span class="lineNum">     293 </span>            :  *
+<span class="lineNum">     294 </span>            :  * Return value: true if @source is valid.
+<span class="lineNum">     295 </span>            :  * oEnd : will equal the null terminator at the end of the string if valid.
+<span class="lineNum">     296 </span>            :  *            if not valid, it will equal the first charater of the invalid sequence.
+<span class="lineNum">     297 </span>            :  * oLengh : will equal the length to @oEnd
+<a name="298"><span class="lineNum">     298 </span>            :  **/</a>
+<span class="lineNum">     299 </span>            : gboolean
+<span class="lineNum">     300 </span>            : mono_utf8_validate_and_len_with_bounds (const gchar *source, glong max_bytes, glong* oLength, const gchar** oEnd)
+<span class="lineNum">     301 </span>            : {
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :         gboolean retVal = TRUE;</span>
+<span class="lineNum">     303 </span><span class="lineNoCov">          0 :         gboolean lastRet = TRUE;</span>
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :         guchar* ptr = (guchar*) source;</span>
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :         guchar *end = ptr + max_bytes;</span>
+<span class="lineNum">     306 </span>            :         guchar* srcPtr;
+<span class="lineNum">     307 </span>            :         guint length;
+<span class="lineNum">     308 </span>            :         guchar a;
+<span class="lineNum">     309 </span><span class="lineNoCov">          0 :         *oLength = 0;</span>
+<span class="lineNum">     310 </span>            : 
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :         if (max_bytes &lt; 1) {</span>
+<span class="lineNum">     312 </span><span class="lineNoCov">          0 :                 if (oEnd)</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :                         *oEnd = (gchar*) ptr;</span>
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     315 </span>            :         }
+<span class="lineNum">     316 </span>            : 
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :         while (*ptr != 0) {</span>
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :                 length = trailingBytesForUTF8 [*ptr] + 1;</span>
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :                 srcPtr = (guchar*) ptr + length;</span>
+<span class="lineNum">     320 </span>            :                 
+<span class="lineNum">     321 </span>            :                 /* since *ptr is not zero we must ensure that we can decode the current char + the byte after
+<span class="lineNum">     322 </span>            :                    srcPtr points to the first byte after the current char.*/
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :                 if (srcPtr &gt;= end) {</span>
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :                         retVal = FALSE;</span>
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     326 </span>            :                 }
+<span class="lineNum">     327 </span><span class="lineNoCov">          0 :                 switch (length) {</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :                 default: retVal = FALSE;</span>
+<span class="lineNum">     329 </span>            :                 /* Everything else falls through when &quot;TRUE&quot;... */
+<span class="lineNum">     330 </span><span class="lineNoCov">          0 :                 case 4: if ((a = (*--srcPtr)) &lt; (guchar) 0x80 || a &gt; (guchar) 0xBF) retVal = FALSE;</span>
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :                                 if ((a == (guchar) 0xBF || a == (guchar) 0xBE) &amp;&amp; *(srcPtr-1) == (guchar) 0xBF) {</span>
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :                                 if (*(srcPtr-2) == (guchar) 0x8F || *(srcPtr-2) == (guchar) 0x9F ||</span>
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :                                         *(srcPtr-2) == (guchar) 0xAF || *(srcPtr-2) == (guchar) 0xBF)</span>
+<span class="lineNum">     334 </span><span class="lineNoCov">          0 :                                         retVal = FALSE;</span>
+<span class="lineNum">     335 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :                 case 3: if ((a = (*--srcPtr)) &lt; (guchar) 0x80 || a &gt; (guchar) 0xBF) retVal = FALSE;</span>
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :                 case 2: if ((a = (*--srcPtr)) &lt; (guchar) 0x80 || a &gt; (guchar) 0xBF) retVal = FALSE;</span>
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                 switch (*ptr) {</span>
+<span class="lineNum">     340 </span>            :                 /* no fall-through in this inner switch */
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :                 case 0xE0: if (a &lt; (guchar) 0xA0) retVal = FALSE; break;</span>
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :                 case 0xED: if (a &gt; (guchar) 0x9F) retVal = FALSE; break;</span>
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :                 case 0xEF: if (a == (guchar)0xB7 &amp;&amp; (*(srcPtr+1) &gt; (guchar) 0x8F &amp;&amp; *(srcPtr+1) &lt; 0xB0)) retVal = FALSE;</span>
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 :                                    if (a == (guchar)0xBF &amp;&amp; (*(srcPtr+1) == (guchar) 0xBE || *(srcPtr+1) == 0xBF)) retVal = FALSE; break;</span>
+<span class="lineNum">     345 </span><span class="lineNoCov">          0 :                 case 0xF0: if (a &lt; (guchar) 0x90) retVal = FALSE; break;</span>
+<span class="lineNum">     346 </span><span class="lineNoCov">          0 :                 case 0xF4: if (a &gt; (guchar) 0x8F) retVal = FALSE; break;</span>
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :                 default:   if (a &lt; (guchar) 0x80) retVal = FALSE;</span>
+<span class="lineNum">     348 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span><span class="lineNoCov">          0 :                 case 1: if (*ptr &gt;= (guchar ) 0x80 &amp;&amp; *ptr &lt; (guchar) 0xC2) retVal = FALSE;</span>
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     352 </span><span class="lineNoCov">          0 :                 if (*ptr &gt; (guchar) 0xF4)</span>
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :                         retVal = FALSE;</span>
+<span class="lineNum">     354 </span>            :                 //If the string is invalid, set the end to the invalid byte.
+<span class="lineNum">     355 </span><span class="lineNoCov">          0 :                 if (!retVal &amp;&amp; lastRet) {</span>
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :                         if (oEnd != NULL)</span>
+<span class="lineNum">     357 </span><span class="lineNoCov">          0 :                                 *oEnd = (gchar*) ptr;</span>
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :                         lastRet = FALSE;</span>
+<span class="lineNum">     359 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 :                 ptr += length;</span>
+<span class="lineNum">     361 </span><span class="lineNoCov">          0 :                 (*oLength)++;</span>
+<span class="lineNum">     362 </span>            :         }
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :         if (retVal &amp;&amp; oEnd != NULL)</span>
+<span class="lineNum">     364 </span><span class="lineNoCov">          0 :                 *oEnd = (gchar*) ptr;</span>
+<span class="lineNum">     365 </span><span class="lineNoCov">          0 :         return retVal;</span>
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     367 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

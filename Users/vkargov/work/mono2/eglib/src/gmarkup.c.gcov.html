@@ -1,0 +1,550 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - /Users/vkargov/work/mono2/eglib/src/gmarkup.c</title>
+  <link rel="stylesheet" type="text/css" href="../../../../../../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../../../../../../index.html">top level</a> - <a href="index.html">Users/vkargov/work/mono2/eglib/src</a> - gmarkup.c<span style="font-size: 80%;"> (source / <a href="gmarkup.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">186</td>
+            <td class="headerCovTableEntry">246</td>
+            <td class="headerCovTableEntryMed">75.6 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">11</td>
+            <td class="headerCovTableEntry">12</td>
+            <td class="headerCovTableEntryHi">91.7 %</td>
+          </tr>
+          <tr><td><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * gmakrup.c: Minimal XML markup reader.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Unlike the GLib one, this can not be restarted with more text
+<span class="lineNum">       5 </span>            :  * as the Mono use does not require it.
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Actually, with further thought, I think that this could be made
+<span class="lineNum">       8 </span>            :  * to restart very easily.  The pos == end condition would mean
+<span class="lineNum">       9 </span>            :  * &quot;return to caller&quot; and only at end parse this would be a fatal
+<span class="lineNum">      10 </span>            :  * error.
+<span class="lineNum">      11 </span>            :  *
+<span class="lineNum">      12 </span>            :  * Not that it matters to Mono, but it is very simple to change, there
+<span class="lineNum">      13 </span>            :  * is a tricky situation: there are a few places where we check p+n
+<span class="lineNum">      14 </span>            :  * in the source, and that would have to change to be progressive, instead
+<span class="lineNum">      15 </span>            :  * of depending on the string to be complete at that point, so we would
+<span class="lineNum">      16 </span>            :  * have to introduce extra states to cope with that.
+<span class="lineNum">      17 </span>            :  *
+<span class="lineNum">      18 </span>            :  * Author:
+<span class="lineNum">      19 </span>            :  *   Miguel de Icaza (miguel@novell.com)
+<span class="lineNum">      20 </span>            :  *
+<span class="lineNum">      21 </span>            :  * (C) 2006 Novell, Inc.
+<span class="lineNum">      22 </span>            :  *
+<span class="lineNum">      23 </span>            :  * Permission is hereby granted, free of charge, to any person obtaining
+<span class="lineNum">      24 </span>            :  * a copy of this software and associated documentation files (the
+<span class="lineNum">      25 </span>            :  * &quot;Software&quot;), to deal in the Software without restriction, including
+<span class="lineNum">      26 </span>            :  * without limitation the rights to use, copy, modify, merge, publish,
+<span class="lineNum">      27 </span>            :  * distribute, sublicense, and/or sell copies of the Software, and to
+<span class="lineNum">      28 </span>            :  * permit persons to whom the Software is furnished to do so, subject to
+<span class="lineNum">      29 </span>            :  * the following conditions:
+<span class="lineNum">      30 </span>            :  *
+<span class="lineNum">      31 </span>            :  * The above copyright notice and this permission notice shall be
+<span class="lineNum">      32 </span>            :  * included in all copies or substantial portions of the Software.
+<span class="lineNum">      33 </span>            :  *
+<span class="lineNum">      34 </span>            :  * THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+<span class="lineNum">      35 </span>            :  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+<span class="lineNum">      36 </span>            :  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+<span class="lineNum">      37 </span>            :  * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+<span class="lineNum">      38 </span>            :  * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+<span class="lineNum">      39 </span>            :  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+<span class="lineNum">      40 </span>            :  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+<span class="lineNum">      41 </span>            :  */
+<span class="lineNum">      42 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      43 </span>            : #include &lt;ctype.h&gt;
+<span class="lineNum">      44 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      45 </span>            : 
+<span class="lineNum">      46 </span>            : #define set_error(msg, ...) do { if (error != NULL) *error = g_error_new (GINT_TO_POINTER (1), 1, msg, __VA_ARGS__); } while (0);
+<span class="lineNum">      47 </span>            : 
+<span class="lineNum">      48 </span>            : typedef enum {
+<span class="lineNum">      49 </span>            :         START,
+<span class="lineNum">      50 </span>            :         START_ELEMENT,
+<span class="lineNum">      51 </span>            :         TEXT,
+<span class="lineNum">      52 </span>            :         FLUSH_TEXT,
+<span class="lineNum">      53 </span>            :         CLOSING_ELEMENT,
+<span class="lineNum">      54 </span>            :         COMMENT,
+<span class="lineNum">      55 </span>            :         SKIP_XML_DECLARATION
+<span class="lineNum">      56 </span>            : } ParseState;
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            : struct _GMarkupParseContext {
+<span class="lineNum">      59 </span>            :         GMarkupParser  parser;
+<span class="lineNum">      60 </span>            :         gpointer       user_data;
+<span class="lineNum">      61 </span>            :         GDestroyNotify user_data_dnotify;
+<span class="lineNum">      62 </span>            :         ParseState     state;
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            :         /* Stores the name of the current element, so we can issue the end_element */
+<span class="lineNum">      65 </span>            :         GSList         *level;
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            :         GString        *text;
+<span class="lineNum">      68 </span>            : };
+<a name="69"><span class="lineNum">      69 </span>            : </a>
+<span class="lineNum">      70 </span>            : GMarkupParseContext *
+<span class="lineNum">      71 </span>            : g_markup_parse_context_new (const GMarkupParser *parser,
+<span class="lineNum">      72 </span>            :                             GMarkupParseFlags flags,
+<span class="lineNum">      73 </span>            :                             gpointer user_data,
+<span class="lineNum">      74 </span>            :                             GDestroyNotify user_data_dnotify)
+<span class="lineNum">      75 </span>            : {
+<span class="lineNum">      76 </span><span class="lineCov">       7482 :         GMarkupParseContext *context = g_new0 (GMarkupParseContext, 1);</span>
+<span class="lineNum">      77 </span>            : 
+<span class="lineNum">      78 </span><span class="lineCov">       7482 :         context-&gt;parser = *parser;</span>
+<span class="lineNum">      79 </span><span class="lineCov">       7482 :         context-&gt;user_data = user_data;</span>
+<span class="lineNum">      80 </span><span class="lineCov">       7482 :         context-&gt;user_data_dnotify = user_data_dnotify;</span>
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span><span class="lineCov">       7482 :         return context;</span>
+<span class="lineNum">      83 </span>            : }
+<a name="84"><span class="lineNum">      84 </span>            : </a>
+<span class="lineNum">      85 </span>            : void
+<span class="lineNum">      86 </span>            : g_markup_parse_context_free (GMarkupParseContext *context)
+<span class="lineNum">      87 </span>            : {
+<span class="lineNum">      88 </span>            :         GSList *l;
+<span class="lineNum">      89 </span>            :         
+<span class="lineNum">      90 </span><span class="lineCov">      22446 :         g_return_if_fail (context != NULL);</span>
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span><span class="lineCov">       7482 :         if (context-&gt;user_data_dnotify != NULL)</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :                 (context-&gt;user_data_dnotify) (context-&gt;user_data);</span>
+<span class="lineNum">      94 </span>            :         
+<span class="lineNum">      95 </span><span class="lineCov">       7482 :         if (context-&gt;text != NULL)</span>
+<span class="lineNum">      96 </span><span class="lineCov">       5376 :                 g_string_free (context-&gt;text, TRUE);</span>
+<span class="lineNum">      97 </span><span class="lineCov">      23350 :         for (l = context-&gt;level; l; l = l-&gt;next)</span>
+<span class="lineNum">      98 </span><span class="lineCov">       4193 :                 g_free (l-&gt;data);</span>
+<span class="lineNum">      99 </span><span class="lineCov">       7482 :         g_slist_free (context-&gt;level);</span>
+<span class="lineNum">     100 </span><span class="lineCov">       7482 :         g_free (context);</span>
+<span class="lineNum">     101 </span><span class="lineCov">      14964 : }</span>
+<a name="102"><span class="lineNum">     102 </span>            : </a>
+<span class="lineNum">     103 </span>            : static gboolean
+<span class="lineNum">     104 </span>            : my_isspace (char c)
+<span class="lineNum">     105 </span>            : {
+<span class="lineNum">     106 </span><span class="lineCov">   11276214 :         if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\v')</span>
+<span class="lineNum">     107 </span><span class="lineCov">     560884 :                 return TRUE;</span>
+<span class="lineNum">     108 </span><span class="lineCov">    2143066 :         return FALSE;</span>
+<span class="lineNum">     109 </span><span class="lineCov">    2703950 : }</span>
+<a name="110"><span class="lineNum">     110 </span>            : </a>
+<span class="lineNum">     111 </span>            : static gboolean
+<span class="lineNum">     112 </span>            : my_isalnum (char c)
+<span class="lineNum">     113 </span>            : {
+<span class="lineNum">     114 </span><span class="lineCov">   11200083 :         if ((c &gt;= 'a' &amp;&amp; c &lt;= 'z') || (c &gt;= 'A' &amp;&amp; c &lt;= 'Z'))</span>
+<span class="lineNum">     115 </span><span class="lineCov">    4782883 :                 return TRUE;</span>
+<span class="lineNum">     116 </span><span class="lineCov">    1232878 :         if (c &gt;= '0' &amp;&amp; c &lt;= '9')</span>
+<span class="lineNum">     117 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span><span class="lineCov">     712964 :         return FALSE;</span>
+<span class="lineNum">     120 </span><span class="lineCov">    5495847 : }</span>
+<a name="121"><span class="lineNum">     121 </span>            : </a>
+<span class="lineNum">     122 </span>            : static gboolean
+<span class="lineNum">     123 </span>            : my_isalpha (char c)
+<span class="lineNum">     124 </span>            : {
+<span class="lineNum">     125 </span><span class="lineCov">     459458 :         if ((c &gt;= 'a' &amp;&amp; c &lt;= 'z') || (c &gt;= 'A' &amp;&amp; c &lt;= 'Z'))</span>
+<span class="lineNum">     126 </span><span class="lineCov">     229729 :                 return TRUE;</span>
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     128 </span><span class="lineCov">     229729 : }</span>
+<a name="129"><span class="lineNum">     129 </span>            : </a>
+<span class="lineNum">     130 </span>            : static const char *
+<span class="lineNum">     131 </span>            : skip_space (const char *p, const char *end)
+<span class="lineNum">     132 </span>            : {
+<span class="lineNum">     133 </span><span class="lineCov">    8556906 :         for (; p &lt; end &amp;&amp; my_isspace (*p); p++)</span>
+<span class="lineNum">     134 </span>            :                 ;
+<span class="lineNum">     135 </span><span class="lineCov">    1679434 :         return p;</span>
+<span class="lineNum">     136 </span>            : }
+<a name="137"><span class="lineNum">     137 </span>            : </a>
+<span class="lineNum">     138 </span>            : static const char *
+<span class="lineNum">     139 </span>            : parse_value (const char *p, const char *end, char **value, GError **error)
+<span class="lineNum">     140 </span>            : {
+<span class="lineNum">     141 </span>            :         const char *start;
+<span class="lineNum">     142 </span>            :         int l;
+<span class="lineNum">     143 </span>            :         
+<span class="lineNum">     144 </span><span class="lineCov">     483235 :         if (*p != '&quot;'){</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :                 set_error (&quot;%s&quot;, &quot;Expected the attribute value to start with a quote&quot;);</span>
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :                 return end;</span>
+<span class="lineNum">     147 </span>            :         }
+<span class="lineNum">     148 </span><span class="lineCov">     483235 :         start = ++p;</span>
+<span class="lineNum">     149 </span><span class="lineCov">   34567845 :         for (; p &lt; end &amp;&amp; *p != '&quot;'; p++)</span>
+<span class="lineNum">     150 </span>            :                 ;
+<span class="lineNum">     151 </span><span class="lineCov">     483235 :         if (p == end)</span>
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :                 return end;</span>
+<span class="lineNum">     153 </span><span class="lineCov">     483235 :         l = (int)(p - start);</span>
+<span class="lineNum">     154 </span><span class="lineCov">     483235 :         p++;</span>
+<span class="lineNum">     155 </span><span class="lineCov">     483235 :         *value = g_malloc (l + 1);</span>
+<span class="lineNum">     156 </span><span class="lineCov">     483235 :         if (*value == NULL)</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :                 return end;</span>
+<span class="lineNum">     158 </span><span class="lineCov">     483235 :         strncpy (*value, start, l);</span>
+<span class="lineNum">     159 </span><span class="lineCov">     483235 :         (*value) [l] = 0;</span>
+<span class="lineNum">     160 </span><span class="lineCov">     483235 :         return p;</span>
+<span class="lineNum">     161 </span><span class="lineCov">     483235 : }</span>
+<a name="162"><span class="lineNum">     162 </span>            : </a>
+<span class="lineNum">     163 </span>            : static const char *
+<span class="lineNum">     164 </span>            : parse_name (const char *p, const char *end, char **value)
+<span class="lineNum">     165 </span>            : {
+<span class="lineNum">     166 </span><span class="lineCov">     483235 :         const char *start = p;</span>
+<span class="lineNum">     167 </span>            :         int l;
+<span class="lineNum">     168 </span>            :         
+<span class="lineNum">     169 </span><span class="lineCov">   14716970 :         for (; p &lt; end &amp;&amp; my_isalnum (*p); p++)</span>
+<span class="lineNum">     170 </span>            :                 ;
+<span class="lineNum">     171 </span><span class="lineCov">     483235 :         if (p == end)</span>
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :                 return end;</span>
+<span class="lineNum">     173 </span>            : 
+<span class="lineNum">     174 </span><span class="lineCov">     483235 :         l = (int)(p - start);</span>
+<span class="lineNum">     175 </span><span class="lineCov">     483235 :         *value = g_malloc (l + 1);</span>
+<span class="lineNum">     176 </span><span class="lineCov">     483235 :         if (*value == NULL)</span>
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :                 return end;</span>
+<span class="lineNum">     178 </span><span class="lineCov">     483235 :         strncpy (*value, start, l);</span>
+<span class="lineNum">     179 </span><span class="lineCov">     483235 :         (*value) [l] = 0;</span>
+<span class="lineNum">     180 </span><span class="lineCov">     483235 :         return p;</span>
+<span class="lineNum">     181 </span><span class="lineCov">     483235 : }</span>
+<a name="182"><span class="lineNum">     182 </span>            : </a>
+<span class="lineNum">     183 </span>            : static const char *
+<span class="lineNum">     184 </span>            : parse_attributes (const char *p, const char *end, char ***names, char ***values, GError **error, int *full_stop, int state)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span><span class="lineCov">     229729 :         int nnames = 0;</span>
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span><span class="lineCov">     712964 :         while (TRUE){</span>
+<span class="lineNum">     189 </span><span class="lineCov">     712964 :                 p = skip_space (p, end);</span>
+<span class="lineNum">     190 </span><span class="lineCov">     712964 :                 if (p == end)</span>
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :                         return end;</span>
+<span class="lineNum">     192 </span>            :                         
+<span class="lineNum">     193 </span><span class="lineCov">     712964 :                 if (*p == '&gt;'){</span>
+<span class="lineNum">     194 </span><span class="lineCov">      64754 :                         *full_stop = 0;</span>
+<span class="lineNum">     195 </span><span class="lineCov">      64754 :                         return p; </span>
+<span class="lineNum">     196 </span>            :                 }
+<span class="lineNum">     197 </span><span class="lineCov">     669175 :                 if (state == SKIP_XML_DECLARATION &amp;&amp; *p == '?' &amp;&amp; ((p+1) &lt; end) &amp;&amp; *(p+1) == '&gt;'){</span>
+<span class="lineNum">     198 </span><span class="lineCov">       4193 :                         *full_stop = 0;</span>
+<span class="lineNum">     199 </span><span class="lineCov">       4193 :                         return p+1;</span>
+<span class="lineNum">     200 </span>            :                 }
+<span class="lineNum">     201 </span>            :                 
+<span class="lineNum">     202 </span><span class="lineCov">     965581 :                 if (*p == '/' &amp;&amp; ((p+1) &lt; end &amp;&amp; *(p+1) == '&gt;')){</span>
+<span class="lineNum">     203 </span><span class="lineCov">     160782 :                         *full_stop = 1;</span>
+<span class="lineNum">     204 </span><span class="lineCov">     160782 :                         return p+1;</span>
+<span class="lineNum">     205 </span>            :                 } else {
+<span class="lineNum">     206 </span>            :                         char *name, *value;
+<span class="lineNum">     207 </span>            :                         
+<span class="lineNum">     208 </span><span class="lineCov">     483235 :                         p = parse_name (p, end, &amp;name);</span>
+<span class="lineNum">     209 </span><span class="lineCov">     483235 :                         if (p == end)</span>
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :                                 return p;</span>
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span><span class="lineCov">     483235 :                         p = skip_space (p, end);</span>
+<span class="lineNum">     213 </span><span class="lineCov">     483235 :                         if (p == end){</span>
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                                 g_free (name);</span>
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 :                                 return p;</span>
+<span class="lineNum">     216 </span>            :                         }
+<span class="lineNum">     217 </span><span class="lineCov">     483235 :                         if (*p != '='){</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :                                 set_error (&quot;Expected an = after the attribute name `%s'&quot;, name);</span>
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :                                 g_free (name);</span>
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :                                 return end;</span>
+<span class="lineNum">     221 </span>            :                         }
+<span class="lineNum">     222 </span><span class="lineCov">     483235 :                         p++;</span>
+<span class="lineNum">     223 </span><span class="lineCov">     483235 :                         p = skip_space (p, end);</span>
+<span class="lineNum">     224 </span><span class="lineCov">     483235 :                         if (p == end){</span>
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :                                 g_free (name);</span>
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :                                 return end;</span>
+<span class="lineNum">     227 </span>            :                         }
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span><span class="lineCov">     483235 :                         p = parse_value (p, end, &amp;value, error);</span>
+<span class="lineNum">     230 </span><span class="lineCov">     483235 :                         if (p == end){</span>
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :                                 g_free (name);</span>
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :                                 return p;</span>
+<span class="lineNum">     233 </span>            :                         }
+<span class="lineNum">     234 </span>            : 
+<span class="lineNum">     235 </span><span class="lineCov">     483235 :                         ++nnames;</span>
+<span class="lineNum">     236 </span><span class="lineCov">     483235 :                         *names = g_realloc (*names, sizeof (char **) * (nnames+1));</span>
+<span class="lineNum">     237 </span><span class="lineCov">     483235 :                         *values = g_realloc (*values, sizeof (char **) * (nnames+1));</span>
+<span class="lineNum">     238 </span><span class="lineCov">     483235 :                         (*names) [nnames-1] = name;</span>
+<span class="lineNum">     239 </span><span class="lineCov">     483235 :                         (*values) [nnames-1] = value;</span>
+<span class="lineNum">     240 </span><span class="lineCov">     483235 :                         (*names) [nnames] = NULL;</span>
+<span class="lineNum">     241 </span><span class="lineCov">     483235 :                         (*values) [nnames] = NULL;                      </span>
+<span class="lineNum">     242 </span>            :                 }
+<span class="lineNum">     243 </span>            :         } 
+<span class="lineNum">     244 </span><span class="lineCov">     229729 : }</span>
+<a name="245"><span class="lineNum">     245 </span>            : </a>
+<span class="lineNum">     246 </span>            : static void
+<span class="lineNum">     247 </span>            : destroy_parse_state (GMarkupParseContext *context)
+<span class="lineNum">     248 </span>            : {
+<span class="lineNum">     249 </span>            :         GSList *p;
+<span class="lineNum">     250 </span>            : 
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :         for (p = context-&gt;level; p != NULL; p = p-&gt;next)</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :                 g_free (p-&gt;data);</span>
+<span class="lineNum">     253 </span>            :         
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :         g_slist_free (context-&gt;level);</span>
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :         if (context-&gt;text != NULL)</span>
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :                 g_string_free (context-&gt;text, TRUE);</span>
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :         context-&gt;text = NULL;</span>
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :         context-&gt;level = NULL;</span>
+<span class="lineNum">     259 </span><span class="lineNoCov">          0 : }</span>
+<a name="260"><span class="lineNum">     260 </span>            : </a>
+<span class="lineNum">     261 </span>            : gboolean
+<span class="lineNum">     262 </span>            : g_markup_parse_context_parse (GMarkupParseContext *context,
+<span class="lineNum">     263 </span>            :                               const gchar *text, gssize text_len,
+<span class="lineNum">     264 </span>            :                               GError **error)
+<span class="lineNum">     265 </span>            : {
+<span class="lineNum">     266 </span>            :         const char *p,  *end;
+<span class="lineNum">     267 </span>            :         
+<span class="lineNum">     268 </span><span class="lineCov">      22446 :         g_return_val_if_fail (context != NULL, FALSE);</span>
+<span class="lineNum">     269 </span><span class="lineCov">      22446 :         g_return_val_if_fail (text != NULL, FALSE);</span>
+<span class="lineNum">     270 </span><span class="lineCov">      22446 :         g_return_val_if_fail (text_len &gt;= 0, FALSE);</span>
+<span class="lineNum">     271 </span>            : 
+<span class="lineNum">     272 </span><span class="lineCov">       7482 :         end = text + text_len;</span>
+<span class="lineNum">     273 </span>            :         
+<span class="lineNum">     274 </span><span class="lineCov">    6231214 :         for (p = text; p &lt; end; p++){</span>
+<span class="lineNum">     275 </span><span class="lineCov">    6205642 :                 char c = *p;</span>
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span><span class="lineCov">    6205642 :                 switch (context-&gt;state){</span>
+<span class="lineNum">     278 </span>            :                 case START:
+<span class="lineNum">     279 </span><span class="lineCov">      53040 :                         if (c == ' ' || c == '\t' || c == '\f' || c == '\n' || (c &amp; 0x80))</span>
+<span class="lineNum">     280 </span><span class="lineCov">       3126 :                                 continue;</span>
+<span class="lineNum">     281 </span><span class="lineCov">       7482 :                         if (c == '&lt;'){</span>
+<span class="lineNum">     282 </span><span class="lineCov">      14964 :                                 if (p+1 &lt; end &amp;&amp; p [1] == '?'){</span>
+<span class="lineNum">     283 </span><span class="lineCov">       4193 :                                         context-&gt;state = SKIP_XML_DECLARATION;</span>
+<span class="lineNum">     284 </span><span class="lineCov">       4193 :                                         p++;</span>
+<span class="lineNum">     285 </span><span class="lineCov">       4193 :                                 } else</span>
+<span class="lineNum">     286 </span><span class="lineCov">       3289 :                                         context-&gt;state = START_ELEMENT;</span>
+<span class="lineNum">     287 </span><span class="lineCov">       7482 :                                 continue;</span>
+<span class="lineNum">     288 </span>            :                         }
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :                         set_error (&quot;%s&quot;, &quot;Expected &lt; to start the document&quot;);</span>
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :                         goto fail;</span>
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span>            :                 case SKIP_XML_DECLARATION:
+<span class="lineNum">     293 </span>            :                 case START_ELEMENT: {
+<span class="lineNum">     294 </span><span class="lineCov">     233903 :                         const char *element_start = p, *element_end;</span>
+<span class="lineNum">     295 </span><span class="lineCov">     233903 :                         char *ename = NULL;</span>
+<span class="lineNum">     296 </span><span class="lineCov">     233903 :                         int full_stop = 0, l;</span>
+<span class="lineNum">     297 </span><span class="lineCov">     233903 :                         gchar **names = NULL, **values = NULL;</span>
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span><span class="lineCov">     935612 :                         for (; p &lt; end &amp;&amp; my_isspace (*p); p++)</span>
+<span class="lineNum">     300 </span>            :                                 ;
+<span class="lineNum">     301 </span><span class="lineCov">     233903 :                         if (p == end){</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :                                 set_error (&quot;%s&quot;, &quot;Unfinished element&quot;);</span>
+<span class="lineNum">     303 </span><span class="lineNoCov">          0 :                                 goto fail;</span>
+<span class="lineNum">     304 </span>            :                         }
+<span class="lineNum">     305 </span>            : 
+<span class="lineNum">     306 </span><span class="lineCov">     246425 :                         if (*p == '!' &amp;&amp; (p+2 &lt; end) &amp;&amp; (p [1] == '-') &amp;&amp; (p [2] == '-')){</span>
+<span class="lineNum">     307 </span><span class="lineCov">       4174 :                                 context-&gt;state = COMMENT;</span>
+<span class="lineNum">     308 </span><span class="lineCov">       4174 :                                 p += 2;</span>
+<span class="lineNum">     309 </span><span class="lineCov">       4174 :                                 break;</span>
+<span class="lineNum">     310 </span>            :                         }
+<span class="lineNum">     311 </span>            :                         
+<span class="lineNum">     312 </span><span class="lineCov">     229729 :                         if (!my_isalpha (*p)){</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :                                 set_error (&quot;%s&quot;, &quot;Expected an element name&quot;);</span>
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :                                 goto fail;</span>
+<span class="lineNum">     315 </span>            :                         }
+<span class="lineNum">     316 </span>            :                         
+<span class="lineNum">     317 </span><span class="lineCov">   12279030 :                         for (++p; p &lt; end &amp;&amp; (my_isalnum (*p) || (*p == '.')); p++)</span>
+<span class="lineNum">     318 </span>            :                                 ;
+<span class="lineNum">     319 </span><span class="lineCov">     229729 :                         if (p == end){</span>
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                                 set_error (&quot;%s&quot;, &quot;Expected an element&quot;);</span>
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :                                 goto fail;</span>
+<span class="lineNum">     322 </span>            :                         }
+<span class="lineNum">     323 </span><span class="lineCov">     229729 :                         element_end = p;</span>
+<span class="lineNum">     324 </span>            :                         
+<span class="lineNum">     325 </span><span class="lineCov">    1884166 :                         for (; p &lt; end &amp;&amp; my_isspace (*p); p++)</span>
+<span class="lineNum">     326 </span>            :                                 ;
+<span class="lineNum">     327 </span><span class="lineCov">     229729 :                         if (p == end){</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :                                 set_error (&quot;%s&quot;, &quot;Unfinished element&quot;);</span>
+<span class="lineNum">     329 </span><span class="lineNoCov">          0 :                                 goto fail;</span>
+<span class="lineNum">     330 </span>            :                         }
+<span class="lineNum">     331 </span><span class="lineCov">     229729 :                         p = parse_attributes (p, end, &amp;names, &amp;values, error, &amp;full_stop, context-&gt;state);</span>
+<span class="lineNum">     332 </span><span class="lineCov">     229729 :                         if (p == end){</span>
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :                                 if (names != NULL) {</span>
+<span class="lineNum">     334 </span><span class="lineNoCov">          0 :                                         g_strfreev (names);</span>
+<span class="lineNum">     335 </span><span class="lineNoCov">          0 :                                         g_strfreev (values);</span>
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     337 </span>            :                                 /* Only set the error if parse_attributes did not */
+<span class="lineNum">     338 </span><span class="lineNoCov">          0 :                                 if (error != NULL &amp;&amp; *error == NULL)</span>
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                                         set_error (&quot;%s&quot;, &quot;Unfinished sequence&quot;);</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 :                                 goto fail;</span>
+<span class="lineNum">     341 </span>            :                         }
+<span class="lineNum">     342 </span><span class="lineCov">     229729 :                         l = (int)(element_end - element_start);</span>
+<span class="lineNum">     343 </span><span class="lineCov">     229729 :                         ename = g_malloc (l + 1);</span>
+<span class="lineNum">     344 </span><span class="lineCov">     229729 :                         if (ename == NULL)</span>
+<span class="lineNum">     345 </span><span class="lineNoCov">          0 :                                 goto fail;</span>
+<span class="lineNum">     346 </span><span class="lineCov">     229729 :                         strncpy (ename, element_start, l);</span>
+<span class="lineNum">     347 </span><span class="lineCov">     229729 :                         ename [l] = 0;</span>
+<span class="lineNum">     348 </span>            : 
+<span class="lineNum">     349 </span><span class="lineCov">     229729 :                         if (context-&gt;state == START_ELEMENT)</span>
+<span class="lineNum">     350 </span><span class="lineCov">     451072 :                                 if (context-&gt;parser.start_element != NULL)</span>
+<span class="lineNum">     351 </span><span class="lineCov">     451072 :                                         context-&gt;parser.start_element (context, ename,</span>
+<span class="lineNum">     352 </span><span class="lineCov">     225536 :                                                                        (const gchar **) names,</span>
+<span class="lineNum">     353 </span><span class="lineCov">     225536 :                                                                        (const gchar **) values,</span>
+<span class="lineNum">     354 </span><span class="lineCov">     225536 :                                                                        context-&gt;user_data, error);</span>
+<span class="lineNum">     355 </span>            : 
+<span class="lineNum">     356 </span><span class="lineCov">     229729 :                         if (names != NULL){</span>
+<span class="lineNum">     357 </span><span class="lineCov">     193050 :                                 g_strfreev (names);</span>
+<span class="lineNum">     358 </span><span class="lineCov">     193050 :                                 g_strfreev (values);</span>
+<span class="lineNum">     359 </span><span class="lineCov">     193050 :                         }</span>
+<span class="lineNum">     360 </span>            : 
+<span class="lineNum">     361 </span><span class="lineCov">     229729 :                         if (error != NULL &amp;&amp; *error != NULL){</span>
+<span class="lineNum">     362 </span><span class="lineNoCov">          0 :                                 g_free (ename);</span>
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :                                 goto fail;</span>
+<span class="lineNum">     364 </span>            :                         }
+<span class="lineNum">     365 </span>            :                         
+<span class="lineNum">     366 </span><span class="lineCov">     229729 :                         if (full_stop){</span>
+<span class="lineNum">     367 </span><span class="lineCov">     321564 :                                 if (context-&gt;parser.end_element != NULL &amp;&amp;  context-&gt;state == START_ELEMENT){</span>
+<span class="lineNum">     368 </span><span class="lineCov">     160782 :                                         context-&gt;parser.end_element (context, ename, context-&gt;user_data, error);</span>
+<span class="lineNum">     369 </span><span class="lineCov">     160782 :                                         if (error != NULL &amp;&amp; *error != NULL){</span>
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :                                                 g_free (ename);</span>
+<span class="lineNum">     371 </span><span class="lineNoCov">          0 :                                                 goto fail;</span>
+<span class="lineNum">     372 </span>            :                                         }
+<span class="lineNum">     373 </span><span class="lineCov">     160782 :                                 }</span>
+<span class="lineNum">     374 </span><span class="lineCov">     160782 :                                 g_free (ename);</span>
+<span class="lineNum">     375 </span><span class="lineCov">     160782 :                         } else {</span>
+<span class="lineNum">     376 </span><span class="lineCov">      68947 :                                 context-&gt;level = g_slist_prepend (context-&gt;level, ename);</span>
+<span class="lineNum">     377 </span>            :                         }
+<span class="lineNum">     378 </span>            :                         
+<span class="lineNum">     379 </span><span class="lineCov">     229729 :                         context-&gt;state = TEXT;</span>
+<span class="lineNum">     380 </span><span class="lineCov">     229729 :                         break;</span>
+<span class="lineNum">     381 </span>            :                 } /* case START_ELEMENT */
+<span class="lineNum">     382 </span>            : 
+<span class="lineNum">     383 </span>            :                 case TEXT: {
+<span class="lineNum">     384 </span><span class="lineCov">    1836471 :                         if (c == '&lt;'){</span>
+<span class="lineNum">     385 </span><span class="lineCov">     291175 :                                 context-&gt;state = FLUSH_TEXT;</span>
+<span class="lineNum">     386 </span><span class="lineCov">     291175 :                                 break;</span>
+<span class="lineNum">     387 </span>            :                         }
+<span class="lineNum">     388 </span><span class="lineCov">    1545296 :                         if (context-&gt;parser.text != NULL){</span>
+<span class="lineNum">     389 </span><span class="lineCov">     890912 :                                 if (context-&gt;text == NULL)</span>
+<span class="lineNum">     390 </span><span class="lineCov">       5376 :                                         context-&gt;text = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     391 </span><span class="lineCov">     890912 :                                 g_string_append_c (context-&gt;text, c);</span>
+<span class="lineNum">     392 </span><span class="lineCov">     890912 :                         }</span>
+<span class="lineNum">     393 </span><span class="lineCov">    1545296 :                         break;</span>
+<span class="lineNum">     394 </span>            :                 }
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span>            :                 case COMMENT:
+<span class="lineNum">     397 </span><span class="lineCov">     671214 :                         if (*p != '-')</span>
+<span class="lineNum">     398 </span><span class="lineCov">     667040 :                                 break;</span>
+<span class="lineNum">     399 </span><span class="lineCov">      12522 :                         if (p+2 &lt; end &amp;&amp; (p [1] == '-') &amp;&amp; (p [2] == '&gt;')){</span>
+<span class="lineNum">     400 </span><span class="lineCov">       4174 :                                 context-&gt;state = TEXT;</span>
+<span class="lineNum">     401 </span><span class="lineCov">       4174 :                                 p += 2;</span>
+<span class="lineNum">     402 </span><span class="lineCov">       4174 :                                 break;</span>
+<span class="lineNum">     403 </span>            :                         }
+<span class="lineNum">     404 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     405 </span>            :                         
+<span class="lineNum">     406 </span>            :                 case FLUSH_TEXT:
+<span class="lineNum">     407 </span><span class="lineCov">     492666 :                         if (context-&gt;parser.text != NULL &amp;&amp; context-&gt;text != NULL){</span>
+<span class="lineNum">     408 </span><span class="lineCov">     402982 :                                 context-&gt;parser.text (context, context-&gt;text-&gt;str, context-&gt;text-&gt;len,</span>
+<span class="lineNum">     409 </span><span class="lineCov">     201491 :                                                       context-&gt;user_data, error);</span>
+<span class="lineNum">     410 </span><span class="lineCov">     201491 :                                 if (error != NULL &amp;&amp; *error != NULL)</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :                                         goto fail;</span>
+<span class="lineNum">     412 </span><span class="lineCov">     201491 :                         }</span>
+<span class="lineNum">     413 </span>            :                         
+<span class="lineNum">     414 </span><span class="lineCov">     291175 :                         if (c == '/')</span>
+<span class="lineNum">     415 </span><span class="lineCov">      64754 :                                 context-&gt;state = CLOSING_ELEMENT;</span>
+<span class="lineNum">     416 </span>            :                         else {
+<span class="lineNum">     417 </span><span class="lineCov">     226421 :                                 p--;</span>
+<span class="lineNum">     418 </span><span class="lineCov">     226421 :                                 context-&gt;state = START_ELEMENT;</span>
+<span class="lineNum">     419 </span>            :                         }
+<span class="lineNum">     420 </span><span class="lineCov">     291175 :                         break;</span>
+<span class="lineNum">     421 </span>            : 
+<span class="lineNum">     422 </span>            :                 case CLOSING_ELEMENT: {
+<span class="lineNum">     423 </span><span class="lineCov">      64754 :                         GSList *current = context-&gt;level;</span>
+<span class="lineNum">     424 </span>            :                         char *text;
+<span class="lineNum">     425 </span>            : 
+<span class="lineNum">     426 </span><span class="lineCov">      64754 :                         if (context-&gt;level == NULL){</span>
+<span class="lineNum">     427 </span><span class="lineNoCov">          0 :                                 set_error (&quot;%s&quot;, &quot;Too many closing tags, not enough open tags&quot;);</span>
+<span class="lineNum">     428 </span><span class="lineNoCov">          0 :                                 goto fail;</span>
+<span class="lineNum">     429 </span>            :                         }
+<span class="lineNum">     430 </span>            :                         
+<span class="lineNum">     431 </span><span class="lineCov">      64754 :                         text = current-&gt;data;</span>
+<span class="lineNum">     432 </span><span class="lineCov">      64754 :                         if (context-&gt;parser.end_element != NULL){</span>
+<span class="lineNum">     433 </span><span class="lineCov">      64754 :                                 context-&gt;parser.end_element (context, text, context-&gt;user_data, error);</span>
+<span class="lineNum">     434 </span><span class="lineCov">      64754 :                                 if (error != NULL &amp;&amp; *error != NULL){</span>
+<span class="lineNum">     435 </span><span class="lineNoCov">          0 :                                         g_free (text);</span>
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 :                                         goto fail;</span>
+<span class="lineNum">     437 </span>            :                                 }
+<span class="lineNum">     438 </span><span class="lineCov">      64754 :                         }</span>
+<span class="lineNum">     439 </span><span class="lineCov">      64754 :                         g_free (text);</span>
+<span class="lineNum">     440 </span>            : 
+<span class="lineNum">     441 </span><span class="lineCov">    4039220 :                         while (p &lt; end &amp;&amp; *p != '&gt;')</span>
+<span class="lineNum">     442 </span><span class="lineCov">     945051 :                                 p++;</span>
+<span class="lineNum">     443 </span>            :                         
+<span class="lineNum">     444 </span><span class="lineCov">      64754 :                         context-&gt;level = context-&gt;level-&gt;next;</span>
+<span class="lineNum">     445 </span><span class="lineCov">      64754 :                         g_slist_free_1 (current);</span>
+<span class="lineNum">     446 </span><span class="lineCov">      64754 :                         context-&gt;state = TEXT;</span>
+<span class="lineNum">     447 </span><span class="lineCov">      64754 :                         break;</span>
+<span class="lineNum">     448 </span>            :                 } /* case CLOSING_ELEMENT */
+<span class="lineNum">     449 </span>            :                         
+<span class="lineNum">     450 </span>            :                 } /* switch */
+<span class="lineNum">     451 </span><span class="lineCov">    3097517 :         }</span>
+<span class="lineNum">     452 </span>            : 
+<span class="lineNum">     453 </span>            : 
+<span class="lineNum">     454 </span><span class="lineCov">       7482 :         return TRUE;</span>
+<span class="lineNum">     455 </span>            :  fail:
+<span class="lineNum">     456 </span><span class="lineNoCov">          0 :         if (context-&gt;parser.error &amp;&amp; error != NULL &amp;&amp; *error)</span>
+<span class="lineNum">     457 </span><span class="lineNoCov">          0 :                 context-&gt;parser.error (context, *error, context-&gt;user_data);</span>
+<span class="lineNum">     458 </span>            :         
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 :         destroy_parse_state (context);</span>
+<span class="lineNum">     460 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     461 </span><span class="lineCov">       7482 : }</span>
+<a name="462"><span class="lineNum">     462 </span>            : </a>
+<span class="lineNum">     463 </span>            : gboolean
+<span class="lineNum">     464 </span>            : g_markup_parse_context_end_parse (GMarkupParseContext *context, GError **error)
+<span class="lineNum">     465 </span>            : {
+<span class="lineNum">     466 </span><span class="lineCov">      22446 :         g_return_val_if_fail (context != NULL, FALSE);</span>
+<span class="lineNum">     467 </span>            : 
+<span class="lineNum">     468 </span>            :         /*
+<span class="lineNum">     469 </span>            :          * In our case, we always signal errors during parse, not at the end
+<span class="lineNum">     470 </span>            :          * see the notes at the top of this file for details on how this
+<span class="lineNum">     471 </span>            :          * could be moved here
+<span class="lineNum">     472 </span>            :          */
+<span class="lineNum">     473 </span><span class="lineCov">       7482 :         return TRUE;</span>
+<span class="lineNum">     474 </span><span class="lineCov">       7482 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

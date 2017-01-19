@@ -1,0 +1,395 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-descriptor.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-descriptor.h<span style="font-size: 80%;"> (source / <a href="sgen-descriptor.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">1</td>
+            <td class="headerCovTableEntry">1</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-descriptor.h: GC descriptors describe object layout.
+<span class="lineNum">       3 </span>            : 
+<span class="lineNum">       4 </span>            :  * Copyright 2001-2003 Ximian, Inc
+<span class="lineNum">       5 </span>            :  * Copyright 2003-2010 Novell, Inc.
+<span class="lineNum">       6 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : #ifndef __MONO_SGEN_DESCRIPTOR_H__
+<span class="lineNum">      13 </span>            : #define __MONO_SGEN_DESCRIPTOR_H__
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &lt;mono/sgen/sgen-conf.h&gt;
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : /*
+<span class="lineNum">      18 </span>            :  * ######################################################################
+<span class="lineNum">      19 </span>            :  * ########  GC descriptors
+<span class="lineNum">      20 </span>            :  * ######################################################################
+<span class="lineNum">      21 </span>            :  * Used to quickly get the info the GC needs about an object: size and
+<span class="lineNum">      22 </span>            :  * where the references are held.
+<span class="lineNum">      23 </span>            :  */
+<span class="lineNum">      24 </span>            : #define OBJECT_HEADER_WORDS (SGEN_CLIENT_OBJECT_HEADER_SIZE / sizeof(gpointer))
+<span class="lineNum">      25 </span>            : #define LOW_TYPE_BITS 3
+<span class="lineNum">      26 </span>            : #define DESC_TYPE_MASK  ((1 &lt;&lt; LOW_TYPE_BITS) - 1)
+<span class="lineNum">      27 </span>            : #define MAX_RUNLEN_OBJECT_SIZE 0xFFFF
+<span class="lineNum">      28 </span>            : #define VECTOR_INFO_SHIFT 14
+<span class="lineNum">      29 </span>            : #define VECTOR_KIND_SHIFT 13
+<span class="lineNum">      30 </span>            : #define VECTOR_ELSIZE_SHIFT 3
+<span class="lineNum">      31 </span>            : #define VECTOR_BITMAP_SHIFT 16
+<span class="lineNum">      32 </span>            : #define VECTOR_BITMAP_SIZE (GC_BITS_PER_WORD - VECTOR_BITMAP_SHIFT)
+<span class="lineNum">      33 </span>            : #define BITMAP_NUM_BITS (GC_BITS_PER_WORD - LOW_TYPE_BITS)
+<span class="lineNum">      34 </span>            : #define MAX_ELEMENT_SIZE 0x3ff
+<span class="lineNum">      35 </span>            : #define VECTOR_SUBTYPE_PTRFREE (DESC_TYPE_V_PTRFREE &lt;&lt; VECTOR_INFO_SHIFT)
+<span class="lineNum">      36 </span>            : #define VECTOR_SUBTYPE_REFS    (DESC_TYPE_V_REFS &lt;&lt; VECTOR_INFO_SHIFT)
+<span class="lineNum">      37 </span>            : #define VECTOR_SUBTYPE_BITMAP  (DESC_TYPE_V_BITMAP &lt;&lt; VECTOR_INFO_SHIFT)
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : #define VECTOR_KIND_SZARRAY  (DESC_TYPE_V_SZARRAY &lt;&lt; VECTOR_KIND_SHIFT)
+<span class="lineNum">      40 </span>            : #define VECTOR_KIND_ARRAY  (DESC_TYPE_V_ARRAY &lt;&lt; VECTOR_KIND_SHIFT)
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : /*
+<span class="lineNum">      43 </span>            :  * Objects are aligned to 8 bytes boundaries.
+<span class="lineNum">      44 </span>            :  *
+<span class="lineNum">      45 </span>            :  * A descriptor is a pointer in GCVTable, so 32 or 64 bits of size.
+<span class="lineNum">      46 </span>            :  * The low 3 bits define the type of the descriptor. The other bits
+<span class="lineNum">      47 </span>            :  * depend on the type.
+<span class="lineNum">      48 </span>            :  *
+<span class="lineNum">      49 </span>            :  * It's important to be able to quickly identify two properties of classes from their
+<span class="lineNum">      50 </span>            :  * descriptors: whether they are small enough to live in the regular major heap (size &lt;=
+<span class="lineNum">      51 </span>            :  * SGEN_MAX_SMALL_OBJ_SIZE), and whether they contain references.
+<span class="lineNum">      52 </span>            :  *
+<span class="lineNum">      53 </span>            :  * To that end we have three descriptor types that only apply to small classes: RUN_LENGTH,
+<span class="lineNum">      54 </span>            :  * BITMAP, and SMALL_PTRFREE.  We also have the type COMPLEX_PTRFREE, which applies to
+<span class="lineNum">      55 </span>            :  * classes that are either not small or of unknown size (those being strings and arrays).
+<span class="lineNum">      56 </span>            :  * The lowest two bits of the SMALL_PTRFREE and COMPLEX_PTRFREE tags are the same, so we can
+<span class="lineNum">      57 </span>            :  * quickly check for references.
+<span class="lineNum">      58 </span>            :  *
+<span class="lineNum">      59 </span>            :  * As a general rule the 13 remaining low bits define the size, either
+<span class="lineNum">      60 </span>            :  * of the whole object or of the elements in the arrays. While for objects
+<span class="lineNum">      61 </span>            :  * the size is already in bytes, for arrays we need to shift, because
+<span class="lineNum">      62 </span>            :  * array elements might be smaller than 8 bytes. In case of arrays, we
+<span class="lineNum">      63 </span>            :  * use two bits to describe what the additional high bits represents,
+<span class="lineNum">      64 </span>            :  * so the default behaviour can handle element sizes less than 2048 bytes.
+<span class="lineNum">      65 </span>            :  * The high 16 bits, if 0 it means the object is pointer-free.
+<span class="lineNum">      66 </span>            :  * This design should make it easy and fast to skip over ptr-free data.
+<span class="lineNum">      67 </span>            :  * The first 4 types should cover &gt;95% of the objects.
+<span class="lineNum">      68 </span>            :  * Note that since the size of objects is limited to 64K, larger objects
+<span class="lineNum">      69 </span>            :  * will be allocated in the large object heap.
+<span class="lineNum">      70 </span>            :  * If we want 4-bytes alignment, we need to put vector and small bitmap
+<span class="lineNum">      71 </span>            :  * inside complex.
+<span class="lineNum">      72 </span>            :  *
+<span class="lineNum">      73 </span>            :  * We don't use 0 so that 0 isn't a valid GC descriptor.  No deep reason for this other than
+<span class="lineNum">      74 </span>            :  * to be able to identify a non-inited descriptor for debugging.
+<span class="lineNum">      75 </span>            :  */
+<span class="lineNum">      76 </span>            : enum {
+<span class="lineNum">      77 </span>            :         /* Keep in sync with `descriptor_types` in sgen-debug.c! */
+<span class="lineNum">      78 </span>            :         DESC_TYPE_RUN_LENGTH = 1,   /* 16 bits aligned byte size | 1-3 (offset, numptr) bytes tuples */
+<span class="lineNum">      79 </span>            :         DESC_TYPE_BITMAP = 2,       /* | 29-61 bitmap bits */
+<span class="lineNum">      80 </span>            :         DESC_TYPE_SMALL_PTRFREE = 3,
+<span class="lineNum">      81 </span>            :         DESC_TYPE_MAX_SMALL_OBJ = 3,
+<span class="lineNum">      82 </span>            :         DESC_TYPE_COMPLEX = 4,      /* index for bitmap into complex_descriptors */
+<span class="lineNum">      83 </span>            :         DESC_TYPE_VECTOR = 5,       /* 10 bits element size | 1 bit kind | 2 bits desc | element desc */
+<span class="lineNum">      84 </span>            :         DESC_TYPE_COMPLEX_ARR = 6,  /* index for bitmap into complex_descriptors */
+<span class="lineNum">      85 </span>            :         DESC_TYPE_COMPLEX_PTRFREE = 7, /* Nothing, used to encode large ptr objects and strings. */
+<span class="lineNum">      86 </span>            :         DESC_TYPE_MAX = 7,
+<span class="lineNum">      87 </span>            : 
+<span class="lineNum">      88 </span>            :         DESC_TYPE_PTRFREE_MASK = 3,
+<span class="lineNum">      89 </span>            :         DESC_TYPE_PTRFREE_BITS = 3
+<span class="lineNum">      90 </span>            : };
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span>            : /* values for array kind */
+<span class="lineNum">      93 </span>            : enum {
+<span class="lineNum">      94 </span>            :         DESC_TYPE_V_SZARRAY = 0, /*vector with no bounds data */
+<span class="lineNum">      95 </span>            :         DESC_TYPE_V_ARRAY = 1, /* array with bounds data */
+<span class="lineNum">      96 </span>            : };
+<span class="lineNum">      97 </span>            : 
+<span class="lineNum">      98 </span>            : /* subtypes for arrays and vectors */
+<span class="lineNum">      99 </span>            : enum {
+<span class="lineNum">     100 </span>            :         DESC_TYPE_V_PTRFREE = 0,/* there are no refs: keep first so it has a zero value  */
+<span class="lineNum">     101 </span>            :         DESC_TYPE_V_REFS,       /* all the array elements are refs */
+<span class="lineNum">     102 </span>            :         DESC_TYPE_V_RUN_LEN,    /* elements are run-length encoded as DESC_TYPE_RUN_LENGTH */
+<span class="lineNum">     103 </span>            :         DESC_TYPE_V_BITMAP      /* elements are as the bitmap in DESC_TYPE_SMALL_BITMAP */
+<span class="lineNum">     104 </span>            : };
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span>            : #define SGEN_DESC_STRING        (DESC_TYPE_COMPLEX_PTRFREE | (1 &lt;&lt; LOW_TYPE_BITS))
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span>            : /* Root bitmap descriptors are simpler: the lower three bits describe the type
+<span class="lineNum">     109 </span>            :  * and we either have 30/62 bitmap bits or nibble-based run-length,
+<span class="lineNum">     110 </span>            :  * or a complex descriptor, or a user defined marker function.
+<span class="lineNum">     111 </span>            :  */
+<span class="lineNum">     112 </span>            : enum {
+<span class="lineNum">     113 </span>            :         ROOT_DESC_CONSERVATIVE, /* 0, so matches NULL value */
+<span class="lineNum">     114 </span>            :         ROOT_DESC_BITMAP,
+<span class="lineNum">     115 </span>            :         ROOT_DESC_RUN_LEN, 
+<span class="lineNum">     116 </span>            :         ROOT_DESC_COMPLEX,
+<span class="lineNum">     117 </span>            :         ROOT_DESC_USER,
+<span class="lineNum">     118 </span>            :         ROOT_DESC_TYPE_MASK = 0x7,
+<span class="lineNum">     119 </span>            :         ROOT_DESC_TYPE_SHIFT = 3,
+<span class="lineNum">     120 </span>            : };
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span>            : typedef void (*SgenUserMarkFunc)     (GCObject **addr, void *gc_data);
+<span class="lineNum">     123 </span>            : typedef void (*SgenUserRootMarkFunc) (void *addr, SgenUserMarkFunc mark_func, void *gc_data);
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span>            : SgenDescriptor sgen_make_user_root_descriptor (SgenUserRootMarkFunc marker);
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span>            : gsize* sgen_get_complex_descriptor (SgenDescriptor desc);
+<span class="lineNum">     128 </span>            : void* sgen_get_complex_descriptor_bitmap (SgenDescriptor desc);
+<span class="lineNum">     129 </span>            : SgenUserRootMarkFunc sgen_get_user_descriptor_func (SgenDescriptor desc);
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span>            : void sgen_init_descriptors (void);
+<span class="lineNum">     132 </span>            : 
+<span class="lineNum">     133 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     134 </span>            : void sgen_descriptor_count_scanned_object (SgenDescriptor desc);
+<span class="lineNum">     135 </span>            : void sgen_descriptor_count_copied_object (SgenDescriptor desc);
+<span class="lineNum">     136 </span>            : #endif
+<a name="137"><span class="lineNum">     137 </span>            : </a>
+<span class="lineNum">     138 </span>            : static inline gboolean
+<span class="lineNum">     139 </span>            : sgen_gc_descr_has_references (SgenDescriptor desc)
+<span class="lineNum">     140 </span>            : {
+<span class="lineNum">     141 </span>            :         /* This covers SMALL_PTRFREE and COMPLEX_PTRFREE */
+<span class="lineNum">     142 </span><span class="lineCov">  382020353 :         if ((desc &amp; DESC_TYPE_PTRFREE_MASK) == DESC_TYPE_PTRFREE_BITS)</span>
+<span class="lineNum">     143 </span><span class="lineCov">   80903995 :                 return FALSE;</span>
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span>            :         /*The array is ptr-free*/
+<span class="lineNum">     146 </span><span class="lineCov">  301116361 :         if ((desc &amp; 0xC007) == (DESC_TYPE_VECTOR | VECTOR_SUBTYPE_PTRFREE))</span>
+<span class="lineNum">     147 </span><span class="lineCov">   12954178 :                 return FALSE;</span>
+<span class="lineNum">     148 </span>            : 
+<span class="lineNum">     149 </span><span class="lineCov">  288162184 :         return TRUE;</span>
+<span class="lineNum">     150 </span><span class="lineCov">  382020348 : }</span>
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span>            : #define SGEN_VTABLE_HAS_REFERENCES(vt)  (sgen_gc_descr_has_references (sgen_vtable_get_descriptor ((vt))))
+<span class="lineNum">     153 </span>            : #define SGEN_OBJECT_HAS_REFERENCES(o)   (SGEN_VTABLE_HAS_REFERENCES (SGEN_LOAD_VTABLE ((o))))
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            : /* helper macros to scan and traverse objects, macros because we resue them in many functions */
+<span class="lineNum">     156 </span>            : #ifdef __GNUC__
+<span class="lineNum">     157 </span>            : #define PREFETCH_READ(addr)     __builtin_prefetch ((addr), 0, 1)
+<span class="lineNum">     158 </span>            : #define PREFETCH_WRITE(addr)    __builtin_prefetch ((addr), 1, 1)
+<span class="lineNum">     159 </span>            : #else
+<span class="lineNum">     160 </span>            : #define PREFETCH_READ(addr)
+<span class="lineNum">     161 </span>            : #define PREFETCH_WRITE(addr)
+<span class="lineNum">     162 </span>            : #endif
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span>            : #if defined(__GNUC__) &amp;&amp; SIZEOF_VOID_P==4
+<span class="lineNum">     165 </span>            : #define GNUC_BUILTIN_CTZ(bmap)  __builtin_ctz(bmap)
+<span class="lineNum">     166 </span>            : #elif defined(__GNUC__) &amp;&amp; SIZEOF_VOID_P==8
+<span class="lineNum">     167 </span>            : #define GNUC_BUILTIN_CTZ(bmap)  __builtin_ctzl(bmap)
+<span class="lineNum">     168 </span>            : #endif
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span>            : /* code using these macros must define a HANDLE_PTR(ptr) macro that does the work */
+<span class="lineNum">     171 </span>            : #define OBJ_RUN_LEN_FOREACH_PTR(desc,obj)       do {    \
+<span class="lineNum">     172 </span>            :                 if ((desc) &amp; 0xffff0000) {  \
+<span class="lineNum">     173 </span>            :                         /* there are pointers */        \
+<span class="lineNum">     174 </span>            :                         void **_objptr_end;     \
+<span class="lineNum">     175 </span>            :                         void **_objptr = (void**)(obj); \
+<span class="lineNum">     176 </span>            :                         _objptr += ((desc) &gt;&gt; 16) &amp; 0xff;     \
+<span class="lineNum">     177 </span>            :                         _objptr_end = _objptr + (((desc) &gt;&gt; 24) &amp; 0xff);      \
+<span class="lineNum">     178 </span>            :                         while (_objptr &lt; _objptr_end) {      \
+<span class="lineNum">     179 </span>            :                                 HANDLE_PTR ((GCObject**)_objptr, (obj)); \
+<span class="lineNum">     180 </span>            :                                 _objptr++;      \
+<span class="lineNum">     181 </span>            :                         };      \
+<span class="lineNum">     182 </span>            :                 }       \
+<span class="lineNum">     183 </span>            :         } while (0)
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span>            : /* a bitmap desc means that there are pointer references or we'd have
+<span class="lineNum">     186 </span>            :  * choosen run-length, instead: add an assert to check.
+<span class="lineNum">     187 </span>            :  */
+<span class="lineNum">     188 </span>            : #ifdef __GNUC__
+<span class="lineNum">     189 </span>            : #define OBJ_BITMAP_FOREACH_PTR(desc,obj)        do {            \
+<span class="lineNum">     190 </span>            :                 /* there are pointers */                        \
+<span class="lineNum">     191 </span>            :                 void **_objptr = (void**)(obj);                 \
+<span class="lineNum">     192 </span>            :                 gsize _bmap = (desc) &gt;&gt; LOW_TYPE_BITS;            \
+<span class="lineNum">     193 </span>            :                 _objptr += OBJECT_HEADER_WORDS;                 \
+<span class="lineNum">     194 </span>            :                 do {                                            \
+<span class="lineNum">     195 </span>            :                         int _index = GNUC_BUILTIN_CTZ (_bmap);  \
+<span class="lineNum">     196 </span>            :                         _objptr += _index;                      \
+<span class="lineNum">     197 </span>            :                         _bmap &gt;&gt;= (_index + 1);                   \
+<span class="lineNum">     198 </span>            :                         HANDLE_PTR ((GCObject**)_objptr, (obj));        \
+<span class="lineNum">     199 </span>            :                         ++_objptr;                              \
+<span class="lineNum">     200 </span>            :                 } while (_bmap);                                \
+<span class="lineNum">     201 </span>            :         } while (0)
+<span class="lineNum">     202 </span>            : #else
+<span class="lineNum">     203 </span>            : #define OBJ_BITMAP_FOREACH_PTR(desc,obj)        do {    \
+<span class="lineNum">     204 </span>            :                 /* there are pointers */        \
+<span class="lineNum">     205 </span>            :                 void **_objptr = (void**)(obj); \
+<span class="lineNum">     206 </span>            :                 gsize _bmap = (desc) &gt;&gt; LOW_TYPE_BITS;    \
+<span class="lineNum">     207 </span>            :                 _objptr += OBJECT_HEADER_WORDS; \
+<span class="lineNum">     208 </span>            :                 do {    \
+<span class="lineNum">     209 </span>            :                         if ((_bmap &amp; 1)) {  \
+<span class="lineNum">     210 </span>            :                                 HANDLE_PTR ((GCObject**)_objptr, (obj));        \
+<span class="lineNum">     211 </span>            :                         }       \
+<span class="lineNum">     212 </span>            :                         _bmap &gt;&gt;= 1;      \
+<span class="lineNum">     213 </span>            :                         ++_objptr;      \
+<span class="lineNum">     214 </span>            :                 } while (_bmap);        \
+<span class="lineNum">     215 </span>            :         } while (0)
+<span class="lineNum">     216 </span>            : #endif
+<span class="lineNum">     217 </span>            : 
+<span class="lineNum">     218 </span>            : #define OBJ_COMPLEX_FOREACH_PTR(desc,obj)       do {    \
+<span class="lineNum">     219 </span>            :                 /* there are pointers */        \
+<span class="lineNum">     220 </span>            :                 void **_objptr = (void**)(obj); \
+<span class="lineNum">     221 </span>            :                 gsize *bitmap_data = sgen_get_complex_descriptor ((desc)); \
+<span class="lineNum">     222 </span>            :                 gsize bwords = (*bitmap_data) - 1;      \
+<span class="lineNum">     223 </span>            :                 void **start_run = _objptr;     \
+<span class="lineNum">     224 </span>            :                 bitmap_data++;  \
+<span class="lineNum">     225 </span>            :                 while (bwords-- &gt; 0) {       \
+<span class="lineNum">     226 </span>            :                         gsize _bmap = *bitmap_data++;   \
+<span class="lineNum">     227 </span>            :                         _objptr = start_run;    \
+<span class="lineNum">     228 </span>            :                         /*g_print (&quot;bitmap: 0x%x/%d at %p\n&quot;, _bmap, bwords, _objptr);*/      \
+<span class="lineNum">     229 </span>            :                         while (_bmap) { \
+<span class="lineNum">     230 </span>            :                                 if ((_bmap &amp; 1)) {  \
+<span class="lineNum">     231 </span>            :                                         HANDLE_PTR ((GCObject**)_objptr, (obj));        \
+<span class="lineNum">     232 </span>            :                                 }       \
+<span class="lineNum">     233 </span>            :                                 _bmap &gt;&gt;= 1;      \
+<span class="lineNum">     234 </span>            :                                 ++_objptr;      \
+<span class="lineNum">     235 </span>            :                         }       \
+<span class="lineNum">     236 </span>            :                         start_run += GC_BITS_PER_WORD;  \
+<span class="lineNum">     237 </span>            :                 }       \
+<span class="lineNum">     238 </span>            :         } while (0)
+<span class="lineNum">     239 </span>            : 
+<span class="lineNum">     240 </span>            : /* this one is untested */
+<span class="lineNum">     241 </span>            : #define OBJ_COMPLEX_ARR_FOREACH_PTR(desc,obj)   do {    \
+<span class="lineNum">     242 </span>            :                 /* there are pointers */        \
+<span class="lineNum">     243 </span>            :                 GCVTable vt = SGEN_LOAD_VTABLE (obj); \
+<span class="lineNum">     244 </span>            :                 gsize *mbitmap_data = sgen_get_complex_descriptor ((desc)); \
+<span class="lineNum">     245 </span>            :                 gsize mbwords = (*mbitmap_data++) - 1;  \
+<span class="lineNum">     246 </span>            :                 gsize el_size = sgen_client_array_element_size (vt);    \
+<span class="lineNum">     247 </span>            :                 char *e_start = sgen_client_array_data_start ((GCObject*)(obj));        \
+<span class="lineNum">     248 </span>            :                 char *e_end = e_start + el_size * sgen_client_array_length ((GCObject*)(obj));  \
+<span class="lineNum">     249 </span>            :                 while (e_start &lt; e_end) {    \
+<span class="lineNum">     250 </span>            :                         void **_objptr = (void**)e_start;       \
+<span class="lineNum">     251 </span>            :                         gsize *bitmap_data = mbitmap_data;      \
+<span class="lineNum">     252 </span>            :                         gsize bwords = mbwords; \
+<span class="lineNum">     253 </span>            :                         while (bwords-- &gt; 0) {       \
+<span class="lineNum">     254 </span>            :                                 gsize _bmap = *bitmap_data++;   \
+<span class="lineNum">     255 </span>            :                                 void **start_run = _objptr;     \
+<span class="lineNum">     256 </span>            :                                 /*g_print (&quot;bitmap: 0x%x\n&quot;, _bmap);*/        \
+<span class="lineNum">     257 </span>            :                                 while (_bmap) { \
+<span class="lineNum">     258 </span>            :                                         if ((_bmap &amp; 1)) {  \
+<span class="lineNum">     259 </span>            :                                                 HANDLE_PTR ((GCObject**)_objptr, (obj));        \
+<span class="lineNum">     260 </span>            :                                         }       \
+<span class="lineNum">     261 </span>            :                                         _bmap &gt;&gt;= 1;      \
+<span class="lineNum">     262 </span>            :                                         ++_objptr;      \
+<span class="lineNum">     263 </span>            :                                 }       \
+<span class="lineNum">     264 </span>            :                                 _objptr = start_run + GC_BITS_PER_WORD; \
+<span class="lineNum">     265 </span>            :                         }       \
+<span class="lineNum">     266 </span>            :                         e_start += el_size;     \
+<span class="lineNum">     267 </span>            :                 }       \
+<span class="lineNum">     268 </span>            :         } while (0)
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span>            : #define OBJ_VECTOR_FOREACH_PTR(desc,obj)        do {    \
+<span class="lineNum">     271 </span>            :                 /* note: 0xffffc000 excludes DESC_TYPE_V_PTRFREE */     \
+<span class="lineNum">     272 </span>            :                 if ((desc) &amp; 0xffffc000) {                          \
+<span class="lineNum">     273 </span>            :                         int el_size = ((desc) &gt;&gt; 3) &amp; MAX_ELEMENT_SIZE;       \
+<span class="lineNum">     274 </span>            :                         /* there are pointers */        \
+<span class="lineNum">     275 </span>            :                         int etype = (desc) &amp; 0xc000;                        \
+<span class="lineNum">     276 </span>            :                         if (etype == (DESC_TYPE_V_REFS &lt;&lt; 14)) {  \
+<span class="lineNum">     277 </span>            :                                 void **p = (void**)sgen_client_array_data_start ((GCObject*)(obj));     \
+<span class="lineNum">     278 </span>            :                                 void **end_refs = (void**)((char*)p + el_size * sgen_client_array_length ((GCObject*)(obj)));   \
+<span class="lineNum">     279 </span>            :                                 /* Note: this code can handle also arrays of struct with only references in them */     \
+<span class="lineNum">     280 </span>            :                                 while (p &lt; end_refs) {       \
+<span class="lineNum">     281 </span>            :                                         HANDLE_PTR ((GCObject**)p, (obj));      \
+<span class="lineNum">     282 </span>            :                                         ++p;    \
+<span class="lineNum">     283 </span>            :                                 }       \
+<span class="lineNum">     284 </span>            :                         } else if (etype == DESC_TYPE_V_RUN_LEN &lt;&lt; 14) {  \
+<span class="lineNum">     285 </span>            :                                 int offset = ((desc) &gt;&gt; 16) &amp; 0xff;   \
+<span class="lineNum">     286 </span>            :                                 int num_refs = ((desc) &gt;&gt; 24) &amp; 0xff; \
+<span class="lineNum">     287 </span>            :                                 char *e_start = sgen_client_array_data_start ((GCObject*)(obj));        \
+<span class="lineNum">     288 </span>            :                                 char *e_end = e_start + el_size * sgen_client_array_length ((GCObject*)(obj));  \
+<span class="lineNum">     289 </span>            :                                 while (e_start &lt; e_end) {    \
+<span class="lineNum">     290 </span>            :                                         void **p = (void**)e_start;     \
+<span class="lineNum">     291 </span>            :                                         int i;  \
+<span class="lineNum">     292 </span>            :                                         p += offset;    \
+<span class="lineNum">     293 </span>            :                                         for (i = 0; i &lt; num_refs; ++i) {     \
+<span class="lineNum">     294 </span>            :                                                 HANDLE_PTR ((GCObject**)p + i, (obj));  \
+<span class="lineNum">     295 </span>            :                                         }       \
+<span class="lineNum">     296 </span>            :                                         e_start += el_size;     \
+<span class="lineNum">     297 </span>            :                                 }       \
+<span class="lineNum">     298 </span>            :                         } else if (etype == DESC_TYPE_V_BITMAP &lt;&lt; 14) {   \
+<span class="lineNum">     299 </span>            :                                 char *e_start = sgen_client_array_data_start ((GCObject*)(obj));        \
+<span class="lineNum">     300 </span>            :                                 char *e_end = e_start + el_size * sgen_client_array_length ((GCObject*)(obj));  \
+<span class="lineNum">     301 </span>            :                                 while (e_start &lt; e_end) {    \
+<span class="lineNum">     302 </span>            :                                         void **p = (void**)e_start;     \
+<span class="lineNum">     303 </span>            :                                         gsize _bmap = (desc) &gt;&gt; 16;       \
+<span class="lineNum">     304 </span>            :                                         /* Note: there is no object header here to skip */      \
+<span class="lineNum">     305 </span>            :                                         while (_bmap) { \
+<span class="lineNum">     306 </span>            :                                                 if ((_bmap &amp; 1)) {  \
+<span class="lineNum">     307 </span>            :                                                         HANDLE_PTR ((GCObject**)p, (obj));      \
+<span class="lineNum">     308 </span>            :                                                 }       \
+<span class="lineNum">     309 </span>            :                                                 _bmap &gt;&gt;= 1;      \
+<span class="lineNum">     310 </span>            :                                                 ++p;    \
+<span class="lineNum">     311 </span>            :                                         }       \
+<span class="lineNum">     312 </span>            :                                         e_start += el_size;     \
+<span class="lineNum">     313 </span>            :                                 }       \
+<span class="lineNum">     314 </span>            :                         }       \
+<span class="lineNum">     315 </span>            :                 }       \
+<span class="lineNum">     316 </span>            :         } while (0)
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span>            : 
+<span class="lineNum">     319 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

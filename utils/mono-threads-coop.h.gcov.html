@@ -1,0 +1,150 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-threads-coop.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-threads-coop.h<span style="font-size: 80%;"> (source / <a href="mono-threads-coop.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntryLo">66.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">1</td>
+            <td class="headerCovTableEntry">1</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-threads-coop.h: Cooperative suspend thread helpers
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Rodrigo Kumpera (kumpera@gmail.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2015 Xamarin
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #ifndef __MONO_THREADS_COOP_H__
+<span class="lineNum">      11 </span>            : #define __MONO_THREADS_COOP_H__
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &quot;checked-build.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono-threads.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;mono-threads-api.h&quot;
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : G_BEGIN_DECLS
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : /* JIT specific interface */
+<span class="lineNum">      23 </span>            : extern volatile size_t mono_polling_required;
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : /* Runtime consumable API */
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : gboolean
+<span class="lineNum">      28 </span>            : mono_threads_is_coop_enabled (void);
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : /* Internal API */
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : void
+<span class="lineNum">      33 </span>            : mono_threads_state_poll (void);
+<a name="34"><span class="lineNum">      34 </span>            : </a>
+<span class="lineNum">      35 </span>            : static inline void
+<span class="lineNum">      36 </span>            : mono_threads_safepoint (void)
+<span class="lineNum">      37 </span>            : {
+<span class="lineNum">      38 </span><span class="lineCov">   16350957 :         if (G_UNLIKELY (mono_polling_required))</span>
+<span class="lineNum">      39 </span><span class="lineNoCov">          0 :                 mono_threads_state_poll ();</span>
+<span class="lineNum">      40 </span><span class="lineCov">   16352472 : }</span>
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : /*
+<span class="lineNum">      43 </span>            :  * The following are used when detaching a thread. We need to pass the MonoThreadInfo*
+<span class="lineNum">      44 </span>            :  * as a paramater as the thread info TLS key is being destructed, meaning that
+<span class="lineNum">      45 </span>            :  * mono_thread_info_current_unchecked will return NULL, which would lead to a
+<span class="lineNum">      46 </span>            :  * runtime assertion error when trying to switch the state of the current thread.
+<span class="lineNum">      47 </span>            :  */
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span>            : gpointer
+<span class="lineNum">      50 </span>            : mono_threads_enter_gc_safe_region_with_info (THREAD_INFO_TYPE *info, gpointer *stackdata);
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span>            : #define MONO_ENTER_GC_SAFE_WITH_INFO(info)      \
+<span class="lineNum">      53 </span>            :         do {    \
+<span class="lineNum">      54 </span>            :                 gpointer __gc_safe_dummy;       \
+<span class="lineNum">      55 </span>            :                 gpointer __gc_safe_cookie = mono_threads_enter_gc_safe_region_with_info ((info), &amp;__gc_safe_dummy)
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : #define MONO_EXIT_GC_SAFE_WITH_INFO     MONO_EXIT_GC_SAFE
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span>            : gpointer
+<span class="lineNum">      60 </span>            : mono_threads_enter_gc_unsafe_region_with_info (THREAD_INFO_TYPE *info, gpointer *stackdata);
+<span class="lineNum">      61 </span>            : 
+<span class="lineNum">      62 </span>            : #define MONO_ENTER_GC_UNSAFE_WITH_INFO(info)    \
+<span class="lineNum">      63 </span>            :         do {    \
+<span class="lineNum">      64 </span>            :                 gpointer __gc_unsafe_dummy;     \
+<span class="lineNum">      65 </span>            :                 gpointer __gc_unsafe_cookie = mono_threads_enter_gc_unsafe_region_with_info ((info), &amp;__gc_unsafe_dummy)
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            : #define MONO_EXIT_GC_UNSAFE_WITH_INFO   MONO_EXIT_GC_UNSAFE
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span>            : gpointer
+<span class="lineNum">      70 </span>            : mono_threads_enter_gc_unsafe_region_unbalanced_with_info (THREAD_INFO_TYPE *info, gpointer *stackdata);
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            : G_END_DECLS
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

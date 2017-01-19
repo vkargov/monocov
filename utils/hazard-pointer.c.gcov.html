@@ -1,0 +1,490 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/hazard-pointer.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - hazard-pointer.c<span style="font-size: 80%;"> (source / <a href="hazard-pointer.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">125</td>
+            <td class="headerCovTableEntry">156</td>
+            <td class="headerCovTableEntryMed">80.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">14</td>
+            <td class="headerCovTableEntry">15</td>
+            <td class="headerCovTableEntryHi">93.3 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * hazard-pointer.c: Hazard pointer related code.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * (C) Copyright 2011 Novell, Inc
+<span class="lineNum">       5 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       6 </span>            :  */
+<span class="lineNum">       7 </span>            : 
+<span class="lineNum">       8 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;mono/utils/hazard-pointer.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;mono/utils/mono-membar.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;mono/utils/mono-memory-model.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;mono/utils/monobitset.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;mono/utils/lock-free-array-queue.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/utils/mono-os-mutex.h&gt;
+<span class="lineNum">      19 </span>            : #ifdef SGEN_WITHOUT_MONO
+<span class="lineNum">      20 </span>            : #include &lt;mono/sgen/sgen-gc.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/sgen/sgen-client.h&gt;
+<span class="lineNum">      22 </span>            : #else
+<span class="lineNum">      23 </span>            : #include &lt;mono/utils/mono-mmap.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;mono/utils/mono-threads.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;mono/utils/mono-counters.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/io-layer/io-layer.h&gt;
+<span class="lineNum">      27 </span>            : #endif
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : typedef struct {
+<span class="lineNum">      30 </span>            :         gpointer p;
+<span class="lineNum">      31 </span>            :         MonoHazardousFreeFunc free_func;
+<span class="lineNum">      32 </span>            : } DelayedFreeItem;
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : /* The hazard table */
+<span class="lineNum">      35 </span>            : #if MONO_SMALL_CONFIG
+<span class="lineNum">      36 </span>            : #define HAZARD_TABLE_MAX_SIZE   256
+<span class="lineNum">      37 </span>            : #define HAZARD_TABLE_OVERFLOW   4
+<span class="lineNum">      38 </span>            : #else
+<span class="lineNum">      39 </span>            : #define HAZARD_TABLE_MAX_SIZE   16384 /* There cannot be more threads than this number. */
+<span class="lineNum">      40 </span>            : #define HAZARD_TABLE_OVERFLOW   64
+<span class="lineNum">      41 </span>            : #endif
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : static volatile int hazard_table_size = 0;
+<span class="lineNum">      44 </span>            : static MonoThreadHazardPointers * volatile hazard_table = NULL;
+<span class="lineNum">      45 </span>            : static MonoHazardFreeQueueSizeCallback queue_size_cb;
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : /*
+<span class="lineNum">      48 </span>            :  * Each entry is either 0 or 1, indicating whether that overflow small
+<span class="lineNum">      49 </span>            :  * ID is busy.
+<span class="lineNum">      50 </span>            :  */
+<span class="lineNum">      51 </span>            : static volatile gint32 overflow_busy [HAZARD_TABLE_OVERFLOW];
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : /* The table where we keep pointers to blocks to be freed but that
+<span class="lineNum">      54 </span>            :    have to wait because they're guarded by a hazard pointer. */
+<span class="lineNum">      55 </span>            : static MonoLockFreeArrayQueue delayed_free_queue = MONO_LOCK_FREE_ARRAY_QUEUE_INIT (sizeof (DelayedFreeItem), MONO_MEM_ACCOUNT_HAZARD_POINTERS);
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : /* The table for small ID assignment */
+<span class="lineNum">      58 </span>            : static mono_mutex_t small_id_mutex;
+<span class="lineNum">      59 </span>            : static int small_id_next;
+<span class="lineNum">      60 </span>            : static int highest_small_id = -1;
+<span class="lineNum">      61 </span>            : static MonoBitSet *small_id_table;
+<span class="lineNum">      62 </span>            : static int hazardous_pointer_count;
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            : /*
+<span class="lineNum">      65 </span>            :  * Allocate a small thread id.
+<span class="lineNum">      66 </span>            :  *
+<span class="lineNum">      67 </span>            :  * FIXME: The biggest part of this function is very similar to
+<span class="lineNum">      68 </span>            :  * domain_id_alloc() in domain.c and should be merged.
+<a name="69"><span class="lineNum">      69 </span>            :  */</a>
+<span class="lineNum">      70 </span>            : int
+<span class="lineNum">      71 </span>            : mono_thread_small_id_alloc (void)
+<span class="lineNum">      72 </span>            : {
+<span class="lineNum">      73 </span><span class="lineCov">     234990 :         int i, id = -1;</span>
+<span class="lineNum">      74 </span>            : 
+<span class="lineNum">      75 </span><span class="lineCov">     234990 :         mono_os_mutex_lock (&amp;small_id_mutex);</span>
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span><span class="lineCov">     234990 :         if (!small_id_table)</span>
+<span class="lineNum">      78 </span><span class="lineCov">       3289 :                 small_id_table = mono_bitset_new (1, 0);</span>
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineCov">     234990 :         id = mono_bitset_find_first_unset (small_id_table, small_id_next - 1);</span>
+<span class="lineNum">      81 </span><span class="lineCov">     234990 :         if (id == -1)</span>
+<span class="lineNum">      82 </span><span class="lineCov">       3293 :                 id = mono_bitset_find_first_unset (small_id_table, -1);</span>
+<span class="lineNum">      83 </span>            : 
+<span class="lineNum">      84 </span><span class="lineCov">     234990 :         if (id == -1) {</span>
+<span class="lineNum">      85 </span>            :                 MonoBitSet *new_table;
+<span class="lineNum">      86 </span><span class="lineCov">       3293 :                 if (small_id_table-&gt;size * 2 &gt;= (1 &lt;&lt; 16))</span>
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">      88 </span><span class="lineCov">       3293 :                 new_table = mono_bitset_clone (small_id_table, small_id_table-&gt;size * 2);</span>
+<span class="lineNum">      89 </span><span class="lineCov">       3293 :                 id = mono_bitset_find_first_unset (new_table, small_id_table-&gt;size - 1);</span>
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span><span class="lineCov">       3293 :                 mono_bitset_free (small_id_table);</span>
+<span class="lineNum">      92 </span><span class="lineCov">       3293 :                 small_id_table = new_table;</span>
+<span class="lineNum">      93 </span><span class="lineCov">       3293 :         }</span>
+<span class="lineNum">      94 </span>            : 
+<span class="lineNum">      95 </span><span class="lineCov">     704970 :         g_assert (!mono_bitset_test_fast (small_id_table, id));</span>
+<span class="lineNum">      96 </span><span class="lineCov">     469980 :         mono_bitset_set_fast (small_id_table, id);</span>
+<span class="lineNum">      97 </span>            : 
+<span class="lineNum">      98 </span><span class="lineCov">     234990 :         small_id_next++;</span>
+<span class="lineNum">      99 </span><span class="lineCov">     234990 :         if (small_id_next &gt;= small_id_table-&gt;size)</span>
+<span class="lineNum">     100 </span><span class="lineCov">       3310 :                 small_id_next = 0;</span>
+<span class="lineNum">     101 </span>            : 
+<span class="lineNum">     102 </span><span class="lineCov">     704970 :         g_assert (id &lt; HAZARD_TABLE_MAX_SIZE);</span>
+<span class="lineNum">     103 </span><span class="lineCov">     234990 :         if (id &gt;= hazard_table_size) {</span>
+<span class="lineNum">     104 </span>            : #if MONO_SMALL_CONFIG
+<span class="lineNum">     105 </span>            :                 hazard_table = g_malloc0 (sizeof (MonoThreadHazardPointers) * HAZARD_TABLE_MAX_SIZE);
+<span class="lineNum">     106 </span>            :                 hazard_table_size = HAZARD_TABLE_MAX_SIZE;
+<span class="lineNum">     107 </span>            : #else
+<span class="lineNum">     108 </span>            :                 gpointer page_addr;
+<span class="lineNum">     109 </span><span class="lineCov">       3289 :                 int pagesize = mono_pagesize ();</span>
+<span class="lineNum">     110 </span><span class="lineCov">       3289 :                 int num_pages = (hazard_table_size * sizeof (MonoThreadHazardPointers) + pagesize - 1) / pagesize;</span>
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineCov">       3289 :                 if (hazard_table == NULL) {</span>
+<span class="lineNum">     113 </span><span class="lineCov">       3289 :                         hazard_table = (MonoThreadHazardPointers *volatile) mono_valloc (NULL,</span>
+<span class="lineNum">     114 </span>            :                                 sizeof (MonoThreadHazardPointers) * HAZARD_TABLE_MAX_SIZE,
+<span class="lineNum">     115 </span>            :                                 MONO_MMAP_NONE, MONO_MEM_ACCOUNT_HAZARD_POINTERS);
+<span class="lineNum">     116 </span><span class="lineCov">       3289 :                 }</span>
+<span class="lineNum">     117 </span>            : 
+<span class="lineNum">     118 </span><span class="lineCov">       9867 :                 g_assert (hazard_table != NULL);</span>
+<span class="lineNum">     119 </span><span class="lineCov">       3289 :                 page_addr = (guint8*)hazard_table + num_pages * pagesize;</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span><span class="lineCov">       3289 :                 mono_mprotect (page_addr, pagesize, MONO_MMAP_READ | MONO_MMAP_WRITE);</span>
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span><span class="lineCov">       3289 :                 ++num_pages;</span>
+<span class="lineNum">     124 </span><span class="lineCov">       3289 :                 hazard_table_size = num_pages * pagesize / sizeof (MonoThreadHazardPointers);</span>
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span>            : #endif
+<span class="lineNum">     127 </span><span class="lineCov">       9867 :                 g_assert (id &lt; hazard_table_size);</span>
+<span class="lineNum">     128 </span><span class="lineCov">      26312 :                 for (i = 0; i &lt; HAZARD_POINTER_COUNT; ++i)</span>
+<span class="lineNum">     129 </span><span class="lineCov">       9867 :                         hazard_table [id].hazard_pointers [i] = NULL;</span>
+<span class="lineNum">     130 </span><span class="lineCov">       3289 :         }</span>
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineCov">     234990 :         if (id &gt; highest_small_id) {</span>
+<span class="lineNum">     133 </span><span class="lineCov">     231585 :                 highest_small_id = id;</span>
+<span class="lineNum">     134 </span><span class="lineCov">     231585 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     135 </span><span class="lineCov">     231585 :         }</span>
+<span class="lineNum">     136 </span>            : 
+<span class="lineNum">     137 </span><span class="lineCov">     234990 :         mono_os_mutex_unlock (&amp;small_id_mutex);</span>
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span><span class="lineCov">     234990 :         return id;</span>
+<span class="lineNum">     140 </span>            : }
+<a name="141"><span class="lineNum">     141 </span>            : </a>
+<span class="lineNum">     142 </span>            : void
+<span class="lineNum">     143 </span>            : mono_thread_small_id_free (int id)
+<span class="lineNum">     144 </span>            : {
+<span class="lineNum">     145 </span>            :         /* MonoBitSet operations are not atomic. */
+<span class="lineNum">     146 </span><span class="lineCov">      17842 :         mono_os_mutex_lock (&amp;small_id_mutex);</span>
+<span class="lineNum">     147 </span>            : 
+<span class="lineNum">     148 </span><span class="lineCov">      89210 :         g_assert (id &gt;= 0 &amp;&amp; id &lt; small_id_table-&gt;size);</span>
+<span class="lineNum">     149 </span><span class="lineCov">      53526 :         g_assert (mono_bitset_test_fast (small_id_table, id));</span>
+<span class="lineNum">     150 </span><span class="lineCov">      35684 :         mono_bitset_clear_fast (small_id_table, id);</span>
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span><span class="lineCov">      17842 :         mono_os_mutex_unlock (&amp;small_id_mutex);</span>
+<span class="lineNum">     153 </span><span class="lineCov">      17842 : }</span>
+<a name="154"><span class="lineNum">     154 </span>            : </a>
+<span class="lineNum">     155 </span>            : static gboolean
+<span class="lineNum">     156 </span>            : is_pointer_hazardous (gpointer p)
+<span class="lineNum">     157 </span>            : {
+<span class="lineNum">     158 </span>            :         int i, j;
+<span class="lineNum">     159 </span><span class="lineCov">    7055022 :         int highest = highest_small_id;</span>
+<span class="lineNum">     160 </span>            : 
+<span class="lineNum">     161 </span><span class="lineCov">   21167242 :         g_assert (highest &lt; hazard_table_size);</span>
+<span class="lineNum">     162 </span>            : 
+<span class="lineNum">     163 </span><span class="lineCov">  827720477 :         for (i = 0; i &lt;= highest; ++i) {</span>
+<span class="lineNum">     164 </span><span class="lineCov"> 3148896584 :                 for (j = 0; j &lt; HAZARD_POINTER_COUNT; ++j) {</span>
+<span class="lineNum">     165 </span><span class="lineCov"> 1169947814 :                         if (hazard_table [i].hazard_pointers [j] == p)</span>
+<span class="lineNum">     166 </span><span class="lineCov">     208237 :                                 return TRUE;</span>
+<span class="lineNum">     167 </span>            :                         LOAD_LOAD_FENCE;
+<span class="lineNum">     168 </span><span class="lineCov"> 1172618286 :                 }</span>
+<span class="lineNum">     169 </span><span class="lineCov">  406638622 :         }</span>
+<span class="lineNum">     170 </span>            : 
+<span class="lineNum">     171 </span><span class="lineCov">    6821250 :         return FALSE;</span>
+<span class="lineNum">     172 </span><span class="lineCov">    7028092 : }</span>
+<a name="173"><span class="lineNum">     173 </span>            : </a>
+<span class="lineNum">     174 </span>            : MonoThreadHazardPointers*
+<span class="lineNum">     175 </span>            : mono_hazard_pointer_get (void)
+<span class="lineNum">     176 </span>            : {
+<span class="lineNum">     177 </span><span class="lineCov">  161735015 :         int small_id = mono_thread_info_get_small_id ();</span>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineCov">  161735015 :         if (small_id &lt; 0) {</span>
+<span class="lineNum">     180 </span>            :                 static MonoThreadHazardPointers emerg_hazard_table;
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :                 g_warning (&quot;Thread %p may have been prematurely finalized&quot;, (gpointer) (gsize) mono_native_thread_id_get ());</span>
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :                 return &amp;emerg_hazard_table;</span>
+<span class="lineNum">     183 </span>            :         }
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span><span class="lineCov">  161741482 :         return &amp;hazard_table [small_id];</span>
+<span class="lineNum">     186 </span><span class="lineCov">  161744181 : }</span>
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span>            : /* Can be called with hp==NULL, in which case it acts as an ordinary
+<span class="lineNum">     189 </span>            :    pointer fetch.  It's used that way indirectly from
+<span class="lineNum">     190 </span>            :    mono_jit_info_table_add(), which doesn't have to care about hazards
+<a name="191"><span class="lineNum">     191 </span>            :    because it holds the respective domain lock. */</a>
+<span class="lineNum">     192 </span>            : gpointer
+<span class="lineNum">     193 </span>            : mono_get_hazardous_pointer (gpointer volatile *pp, MonoThreadHazardPointers *hp, int hazard_index)
+<span class="lineNum">     194 </span>            : {
+<span class="lineNum">     195 </span>            :         gpointer p;
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span><span class="lineCov">  834620978 :         for (;;) {</span>
+<span class="lineNum">     198 </span>            :                 /* Get the pointer */
+<span class="lineNum">     199 </span><span class="lineCov">  834994111 :                 p = *pp;</span>
+<span class="lineNum">     200 </span>            :                 /* If we don't have hazard pointers just return the
+<span class="lineNum">     201 </span>            :                    pointer. */
+<span class="lineNum">     202 </span><span class="lineCov">  834994111 :                 if (!hp)</span>
+<span class="lineNum">     203 </span><span class="lineCov">   86055691 :                         return p;</span>
+<span class="lineNum">     204 </span>            :                 /* Make it hazardous */
+<span class="lineNum">     205 </span><span class="lineCov"> 5243017881 :                 mono_hazard_pointer_set (hp, hazard_index, p);</span>
+<span class="lineNum">     206 </span>            :                 /* Check that it's still the same.  If not, try
+<span class="lineNum">     207 </span>            :                    again. */
+<span class="lineNum">     208 </span><span class="lineCov">  749232125 :                 if (*pp != p) {</span>
+<span class="lineNum">     209 </span><span class="lineCov">       5473 :                         mono_hazard_pointer_clear (hp, hazard_index);</span>
+<span class="lineNum">     210 </span><span class="lineCov">        783 :                         continue;</span>
+<span class="lineNum">     211 </span>            :                 }
+<span class="lineNum">     212 </span><span class="lineCov">  749205592 :                 break;</span>
+<span class="lineNum">     213 </span>            :         }
+<span class="lineNum">     214 </span>            : 
+<span class="lineNum">     215 </span><span class="lineCov">  749217843 :         return p;</span>
+<span class="lineNum">     216 </span><span class="lineCov">  835009783 : }</span>
+<a name="217"><span class="lineNum">     217 </span>            : </a>
+<span class="lineNum">     218 </span>            : int
+<span class="lineNum">     219 </span>            : mono_hazard_pointer_save_for_signal_handler (void)
+<span class="lineNum">     220 </span>            : {
+<span class="lineNum">     221 </span>            :         int small_id, i;
+<span class="lineNum">     222 </span><span class="lineCov">        470 :         MonoThreadHazardPointers *hp = mono_hazard_pointer_get ();</span>
+<span class="lineNum">     223 </span>            :         MonoThreadHazardPointers *hp_overflow;
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span><span class="lineCov">       3754 :         for (i = 0; i &lt; HAZARD_POINTER_COUNT; ++i)</span>
+<span class="lineNum">     226 </span><span class="lineCov">       2818 :                 if (hp-&gt;hazard_pointers [i])</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :                         goto search;</span>
+<span class="lineNum">     228 </span><span class="lineCov">        470 :         return -1;</span>
+<span class="lineNum">     229 </span>            : 
+<span class="lineNum">     230 </span>            :  search:
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :         for (small_id = 0; small_id &lt; HAZARD_TABLE_OVERFLOW; ++small_id) {</span>
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :                 if (!overflow_busy [small_id])</span>
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     235 </span>            : 
+<span class="lineNum">     236 </span>            :         /*
+<span class="lineNum">     237 </span>            :          * If this assert fails we don't have enough overflow slots.
+<span class="lineNum">     238 </span>            :          * We should contemplate adding them dynamically.  If we can
+<span class="lineNum">     239 </span>            :          * make mono_thread_small_id_alloc() lock-free we can just
+<span class="lineNum">     240 </span>            :          * allocate them on-demand.
+<span class="lineNum">     241 </span>            :          */
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :         g_assert (small_id &lt; HAZARD_TABLE_OVERFLOW);</span>
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :         if (InterlockedCompareExchange (&amp;overflow_busy [small_id], 1, 0) != 0)</span>
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :                 goto search;</span>
+<span class="lineNum">     246 </span>            : 
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :         hp_overflow = &amp;hazard_table [small_id];</span>
+<span class="lineNum">     248 </span>            : 
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; HAZARD_POINTER_COUNT; ++i)</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                 g_assert (!hp_overflow-&gt;hazard_pointers [i]);</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :         *hp_overflow = *hp;</span>
+<span class="lineNum">     252 </span>            : 
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :         memset (hp, 0, sizeof (MonoThreadHazardPointers));</span>
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :         return small_id;</span>
+<span class="lineNum">     258 </span><span class="lineCov">        470 : }</span>
+<a name="259"><span class="lineNum">     259 </span>            : </a>
+<span class="lineNum">     260 </span>            : void
+<span class="lineNum">     261 </span>            : mono_hazard_pointer_restore_for_signal_handler (int small_id)
+<span class="lineNum">     262 </span>            : {
+<span class="lineNum">     263 </span><span class="lineCov">        469 :         MonoThreadHazardPointers *hp = mono_hazard_pointer_get ();</span>
+<span class="lineNum">     264 </span>            :         MonoThreadHazardPointers *hp_overflow;
+<span class="lineNum">     265 </span>            :         int i;
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineCov">        469 :         if (small_id &lt; 0)</span>
+<span class="lineNum">     268 </span><span class="lineCov">        469 :                 return;</span>
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :         g_assert (small_id &lt; HAZARD_TABLE_OVERFLOW);</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :         g_assert (overflow_busy [small_id]);</span>
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; HAZARD_POINTER_COUNT; ++i)</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                 g_assert (!hp-&gt;hazard_pointers [i]);</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :         hp_overflow = &amp;hazard_table [small_id];</span>
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :         *hp = *hp_overflow;</span>
+<span class="lineNum">     279 </span>            : 
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     281 </span>            : 
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :         memset (hp_overflow, 0, sizeof (MonoThreadHazardPointers));</span>
+<span class="lineNum">     283 </span>            : 
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :         overflow_busy [small_id] = 0;</span>
+<span class="lineNum">     287 </span><span class="lineCov">        469 : }</span>
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span>            : /**
+<span class="lineNum">     290 </span>            :  * mono_thread_hazardous_try_free:
+<span class="lineNum">     291 </span>            :  * @p: the pointer to free
+<span class="lineNum">     292 </span>            :  * @free_func: the function that can free the pointer
+<span class="lineNum">     293 </span>            :  *
+<span class="lineNum">     294 </span>            :  * If @p is not a hazardous pointer it will be immediately freed by calling @free_func.
+<span class="lineNum">     295 </span>            :  * Otherwise it will be queued for later.
+<span class="lineNum">     296 </span>            :  *
+<span class="lineNum">     297 </span>            :  * Use this function if @free_func can ALWAYS be called in the context where this function is being called.
+<span class="lineNum">     298 </span>            :  *
+<span class="lineNum">     299 </span>            :  * This function doesn't pump the free queue so try to accommodate a call at an appropriate time.
+<span class="lineNum">     300 </span>            :  * See mono_thread_hazardous_try_free_some for when it's appropriate.
+<span class="lineNum">     301 </span>            :  *
+<span class="lineNum">     302 </span>            :  * Return: TRUE if @p was free or FALSE if it was queued.
+<a name="303"><span class="lineNum">     303 </span>            :  */</a>
+<span class="lineNum">     304 </span>            : gboolean
+<span class="lineNum">     305 </span>            : mono_thread_hazardous_try_free (gpointer p, MonoHazardousFreeFunc free_func)
+<span class="lineNum">     306 </span>            : {
+<span class="lineNum">     307 </span><span class="lineCov">    1448426 :         if (!is_pointer_hazardous (p)) {</span>
+<span class="lineNum">     308 </span><span class="lineCov">    1448394 :                 free_func (p);</span>
+<span class="lineNum">     309 </span><span class="lineCov">    1448394 :                 return TRUE;</span>
+<span class="lineNum">     310 </span>            :         } else {
+<span class="lineNum">     311 </span><span class="lineCov">         32 :                 mono_thread_hazardous_queue_free (p, free_func);</span>
+<span class="lineNum">     312 </span><span class="lineCov">         32 :                 return FALSE;</span>
+<span class="lineNum">     313 </span>            :         }
+<span class="lineNum">     314 </span><span class="lineCov">    1448429 : }</span>
+<span class="lineNum">     315 </span>            : 
+<span class="lineNum">     316 </span>            : /**
+<span class="lineNum">     317 </span>            :  * mono_thread_hazardous_queue_free:
+<span class="lineNum">     318 </span>            :  * @p: the pointer to free
+<span class="lineNum">     319 </span>            :  * @free_func: the function that can free the pointer
+<span class="lineNum">     320 </span>            :  *
+<span class="lineNum">     321 </span>            :  * Queue @p to be freed later. @p will be freed once the hazard free queue is pumped.
+<span class="lineNum">     322 </span>            :  *
+<span class="lineNum">     323 </span>            :  * This function doesn't pump the free queue so try to accommodate a call at an appropriate time.
+<span class="lineNum">     324 </span>            :  * See mono_thread_hazardous_try_free_some for when it's appropriate.
+<span class="lineNum">     325 </span>            :  *
+<a name="326"><span class="lineNum">     326 </span>            :  */</a>
+<span class="lineNum">     327 </span>            : void
+<span class="lineNum">     328 </span>            : mono_thread_hazardous_queue_free (gpointer p, MonoHazardousFreeFunc free_func)
+<span class="lineNum">     329 </span>            : {
+<span class="lineNum">     330 </span><span class="lineCov">    5397856 :         DelayedFreeItem item = { p, free_func };</span>
+<span class="lineNum">     331 </span>            : 
+<span class="lineNum">     332 </span><span class="lineCov">    5397856 :         InterlockedIncrement (&amp;hazardous_pointer_count);</span>
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span><span class="lineCov">    5397856 :         mono_lock_free_array_queue_push (&amp;delayed_free_queue, &amp;item);</span>
+<span class="lineNum">     335 </span>            : 
+<span class="lineNum">     336 </span><span class="lineCov">    5397856 :         guint32 queue_size = delayed_free_queue.num_used_entries;</span>
+<span class="lineNum">     337 </span><span class="lineCov">   10776128 :         if (queue_size &amp;&amp; queue_size_cb)</span>
+<span class="lineNum">     338 </span><span class="lineCov">         32 :                 queue_size_cb (queue_size);</span>
+<span class="lineNum">     339 </span><span class="lineCov">    5398795 : }</span>
+<span class="lineNum">     340 </span>            : 
+<a name="341"><span class="lineNum">     341 </span>            : </a>
+<span class="lineNum">     342 </span>            : void
+<span class="lineNum">     343 </span>            : mono_hazard_pointer_install_free_queue_size_callback (MonoHazardFreeQueueSizeCallback cb)
+<span class="lineNum">     344 </span>            : {
+<span class="lineNum">     345 </span><span class="lineCov">       3285 :         queue_size_cb = cb;</span>
+<span class="lineNum">     346 </span><span class="lineCov">       3285 : }</span>
+<a name="347"><span class="lineNum">     347 </span>            : </a>
+<span class="lineNum">     348 </span>            : static void
+<span class="lineNum">     349 </span>            : try_free_delayed_free_items (guint32 limit)
+<span class="lineNum">     350 </span>            : {
+<span class="lineNum">     351 </span><span class="lineCov">    5215826 :         GArray *hazardous = NULL;</span>
+<span class="lineNum">     352 </span>            :         DelayedFreeItem item;
+<span class="lineNum">     353 </span><span class="lineCov">    5215826 :         guint32 freed = 0;</span>
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span>            :         // Free all the items we can and re-add the ones we can't to the queue.
+<span class="lineNum">     356 </span><span class="lineCov">   21379610 :         while (mono_lock_free_array_queue_pop (&amp;delayed_free_queue, &amp;item)) {</span>
+<span class="lineNum">     357 </span><span class="lineCov">    5581230 :                 if (is_pointer_hazardous (item.p)) {</span>
+<span class="lineNum">     358 </span><span class="lineCov">     208261 :                         if (!hazardous)</span>
+<span class="lineNum">     359 </span><span class="lineCov">     158606 :                                 hazardous = g_array_sized_new (FALSE, FALSE, sizeof (DelayedFreeItem), delayed_free_queue.num_used_entries);</span>
+<span class="lineNum">     360 </span>            : 
+<span class="lineNum">     361 </span><span class="lineCov">     208350 :                         g_array_append_val (hazardous, item);</span>
+<span class="lineNum">     362 </span><span class="lineCov">     208350 :                         continue;</span>
+<span class="lineNum">     363 </span>            :                 }
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span><span class="lineCov">    5365758 :                 item.free_func (item.p);</span>
+<span class="lineNum">     366 </span><span class="lineCov">    5365758 :                 freed++;</span>
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span><span class="lineCov">   10736574 :                 if (limit &amp;&amp; freed == limit)</span>
+<span class="lineNum">     369 </span><span class="lineCov">       1790 :                         break;</span>
+<span class="lineNum">     370 </span>            :         }
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span><span class="lineCov">    5188870 :         if (hazardous) {</span>
+<span class="lineNum">     373 </span><span class="lineCov">     734125 :                 for (gint i = 0; i &lt; hazardous-&gt;len; i++)</span>
+<span class="lineNum">     374 </span><span class="lineCov">     208280 :                         mono_lock_free_array_queue_push (&amp;delayed_free_queue, &amp;g_array_index (hazardous, DelayedFreeItem, i));</span>
+<span class="lineNum">     375 </span>            : 
+<span class="lineNum">     376 </span><span class="lineCov">     158827 :                 g_array_free (hazardous, TRUE);</span>
+<span class="lineNum">     377 </span><span class="lineCov">     158827 :         }</span>
+<span class="lineNum">     378 </span><span class="lineCov">    5191714 : }</span>
+<a name="379"><span class="lineNum">     379 </span>            : </a>
+<span class="lineNum">     380 </span>            : void
+<span class="lineNum">     381 </span>            : mono_thread_hazardous_try_free_all (void)
+<span class="lineNum">     382 </span>            : {
+<span class="lineNum">     383 </span><span class="lineCov">      31699 :         try_free_delayed_free_items (0);</span>
+<span class="lineNum">     384 </span><span class="lineCov">      31699 : }</span>
+<a name="385"><span class="lineNum">     385 </span>            : </a>
+<span class="lineNum">     386 </span>            : void
+<span class="lineNum">     387 </span>            : mono_thread_hazardous_try_free_some (void)
+<span class="lineNum">     388 </span>            : {
+<span class="lineNum">     389 </span><span class="lineCov">    5185317 :         try_free_delayed_free_items (10);</span>
+<span class="lineNum">     390 </span><span class="lineCov">    5185317 : }</span>
+<a name="391"><span class="lineNum">     391 </span>            : </a>
+<span class="lineNum">     392 </span>            : void
+<span class="lineNum">     393 </span>            : mono_thread_smr_init (void)
+<span class="lineNum">     394 </span>            : {
+<span class="lineNum">     395 </span>            :         int i;
+<span class="lineNum">     396 </span>            : 
+<span class="lineNum">     397 </span><span class="lineCov">       3289 :         mono_os_mutex_init_recursive(&amp;small_id_mutex);</span>
+<span class="lineNum">     398 </span><span class="lineCov">       3289 :         mono_counters_register (&quot;Hazardous pointers&quot;, MONO_COUNTER_JIT | MONO_COUNTER_INT, &amp;hazardous_pointer_count);</span>
+<span class="lineNum">     399 </span>            : 
+<span class="lineNum">     400 </span><span class="lineCov">     427570 :         for (i = 0; i &lt; HAZARD_TABLE_OVERFLOW; ++i) {</span>
+<span class="lineNum">     401 </span><span class="lineCov">     210496 :                 int small_id = mono_thread_small_id_alloc ();</span>
+<span class="lineNum">     402 </span><span class="lineCov">     631488 :                 g_assert (small_id == i);</span>
+<span class="lineNum">     403 </span><span class="lineCov">     210496 :         }</span>
+<span class="lineNum">     404 </span><span class="lineCov">       3289 : }</span>
+<a name="405"><span class="lineNum">     405 </span>            : </a>
+<span class="lineNum">     406 </span>            : void
+<span class="lineNum">     407 </span>            : mono_thread_smr_cleanup (void)
+<span class="lineNum">     408 </span>            : {
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :         mono_thread_hazardous_try_free_all ();</span>
+<span class="lineNum">     410 </span>            : 
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         mono_lock_free_array_queue_cleanup (&amp;delayed_free_queue);</span>
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span>            :         /*FIXME, can't we release the small id table here?*/
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,698 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/method-builder.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - method-builder.c<span style="font-size: 80%;"> (source / <a href="method-builder.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">243</td>
+            <td class="headerCovTableEntry">269</td>
+            <td class="headerCovTableEntryHi">90.3 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">39</td>
+            <td class="headerCovTableEntry">40</td>
+            <td class="headerCovTableEntryHi">97.5 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * method-builder.c: Functions for creating IL methods at runtime.
+<span class="lineNum">       3 </span>            :  * 
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2002-2003 Ximian, Inc (http://www.ximian.com)
+<span class="lineNum">       8 </span>            :  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      13 </span>            : #include &quot;loader.h&quot;
+<span class="lineNum">      14 </span>            : #include &quot;mono/metadata/abi-details.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;mono/metadata/method-builder.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;mono/metadata/tabledefs.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/metadata/exception.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;mono/metadata/appdomain.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;mono/metadata/debug-helpers.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;mono/metadata/metadata-internals.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;mono/metadata/domain-internals.h&quot;
+<span class="lineNum">      22 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : /* #define DEBUG_RUNTIME_CODE */
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : #define OPDEF(a,b,c,d,e,f,g,h,i,j) \
+<span class="lineNum">      28 </span>            :         a = i,
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : enum {
+<span class="lineNum">      31 </span>            : #include &quot;mono/cil/opcode.def&quot;
+<span class="lineNum">      32 </span>            :         LAST = 0xff
+<span class="lineNum">      33 </span>            : };
+<span class="lineNum">      34 </span>            : #undef OPDEF
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : #ifdef DEBUG_RUNTIME_CODE
+<span class="lineNum">      37 </span>            : static char*
+<span class="lineNum">      38 </span>            : indenter (MonoDisHelper *dh, MonoMethod *method, guint32 ip_offset)
+<span class="lineNum">      39 </span>            : {
+<span class="lineNum">      40 </span>            :         return g_strdup (&quot; &quot;);
+<span class="lineNum">      41 </span>            : }
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : static MonoDisHelper marshal_dh = {
+<span class="lineNum">      44 </span>            :         &quot;\n&quot;,
+<span class="lineNum">      45 </span>            :         &quot;IL_%04x: &quot;,
+<span class="lineNum">      46 </span>            :         &quot;IL_%04x&quot;,
+<span class="lineNum">      47 </span>            :         indenter, 
+<span class="lineNum">      48 </span>            :         NULL,
+<span class="lineNum">      49 </span>            :         NULL
+<span class="lineNum">      50 </span>            : };
+<span class="lineNum">      51 </span>            : #endif 
+<a name="52"><span class="lineNum">      52 </span>            : </a>
+<span class="lineNum">      53 </span>            : static MonoMethodBuilder *
+<span class="lineNum">      54 </span>            : mono_mb_new_base (MonoClass *klass, MonoWrapperType type)
+<span class="lineNum">      55 </span>            : {
+<span class="lineNum">      56 </span>            :         MonoMethodBuilder *mb;
+<span class="lineNum">      57 </span>            :         MonoMethod *m;
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span><span class="lineCov">   13561231 :         g_assert (klass != NULL);</span>
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span><span class="lineCov">    4520414 :         mb = g_new0 (MonoMethodBuilder, 1);</span>
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span><span class="lineCov">    4520414 :         mb-&gt;method = m = (MonoMethod *)g_new0 (MonoMethodWrapper, 1);</span>
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span><span class="lineCov">    4520414 :         m-&gt;klass = klass;</span>
+<span class="lineNum">      66 </span><span class="lineCov">    4520414 :         m-&gt;inline_info = 1;</span>
+<span class="lineNum">      67 </span><span class="lineCov">    4520414 :         m-&gt;wrapper_type = type;</span>
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      70 </span><span class="lineCov">    4520414 :         mb-&gt;code_size = 40;</span>
+<span class="lineNum">      71 </span><span class="lineCov">    4520414 :         mb-&gt;code = (unsigned char *)g_malloc (mb-&gt;code_size);</span>
+<span class="lineNum">      72 </span><span class="lineCov">    4520414 :         mb-&gt;init_locals = TRUE;</span>
+<span class="lineNum">      73 </span>            : #endif
+<span class="lineNum">      74 </span>            :         /* placeholder for the wrapper always at index 1 */
+<span class="lineNum">      75 </span><span class="lineCov">    4520414 :         mono_mb_add_data (mb, NULL);</span>
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span><span class="lineCov">    4520414 :         return mb;</span>
+<span class="lineNum">      78 </span>            : }
+<a name="79"><span class="lineNum">      79 </span>            : </a>
+<span class="lineNum">      80 </span>            : MonoMethodBuilder *
+<span class="lineNum">      81 </span>            : mono_mb_new_no_dup_name (MonoClass *klass, const char *name, MonoWrapperType type)
+<span class="lineNum">      82 </span>            : {
+<span class="lineNum">      83 </span><span class="lineCov">    3725010 :         MonoMethodBuilder *mb = mono_mb_new_base (klass, type);</span>
+<span class="lineNum">      84 </span><span class="lineCov">    3725010 :         mb-&gt;name = (char*)name;</span>
+<span class="lineNum">      85 </span><span class="lineCov">    3725010 :         mb-&gt;no_dup_name = TRUE;</span>
+<span class="lineNum">      86 </span><span class="lineCov">    3725010 :         return mb;</span>
+<span class="lineNum">      87 </span>            : }
+<a name="88"><span class="lineNum">      88 </span>            : </a>
+<span class="lineNum">      89 </span>            : MonoMethodBuilder *
+<span class="lineNum">      90 </span>            : mono_mb_new (MonoClass *klass, const char *name, MonoWrapperType type)
+<span class="lineNum">      91 </span>            : {
+<span class="lineNum">      92 </span><span class="lineCov">     795404 :         MonoMethodBuilder *mb = mono_mb_new_base (klass, type);</span>
+<span class="lineNum">      93 </span><span class="lineCov">     795404 :         mb-&gt;name = g_strdup (name);</span>
+<span class="lineNum">      94 </span><span class="lineCov">     795404 :         return mb;</span>
+<span class="lineNum">      95 </span>            : }
+<a name="96"><span class="lineNum">      96 </span>            : </a>
+<span class="lineNum">      97 </span>            : void
+<span class="lineNum">      98 </span>            : mono_mb_free (MonoMethodBuilder *mb)
+<span class="lineNum">      99 </span>            : {
+<span class="lineNum">     100 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     101 </span>            :         GList *l;
+<span class="lineNum">     102 </span>            : 
+<span class="lineNum">     103 </span><span class="lineCov">    9045860 :         for (l = mb-&gt;locals_list; l; l = l-&gt;next) {</span>
+<span class="lineNum">     104 </span>            :                 /* Allocated in mono_mb_add_local () */
+<span class="lineNum">     105 </span><span class="lineCov">       2546 :                 g_free (l-&gt;data);</span>
+<span class="lineNum">     106 </span><span class="lineCov">       2546 :         }</span>
+<span class="lineNum">     107 </span><span class="lineCov">    4520383 :         g_list_free (mb-&gt;locals_list);</span>
+<span class="lineNum">     108 </span><span class="lineCov">    4520383 :         if (!mb-&gt;dynamic) {</span>
+<span class="lineNum">     109 </span><span class="lineCov">    4520372 :                 g_free (mb-&gt;method);</span>
+<span class="lineNum">     110 </span><span class="lineCov">    4520372 :                 if (!mb-&gt;no_dup_name)</span>
+<span class="lineNum">     111 </span><span class="lineCov">     795362 :                         g_free (mb-&gt;name);</span>
+<span class="lineNum">     112 </span><span class="lineCov">    4520371 :                 g_free (mb-&gt;code);</span>
+<span class="lineNum">     113 </span><span class="lineCov">    4520371 :         }</span>
+<span class="lineNum">     114 </span>            : #else
+<span class="lineNum">     115 </span>            :         g_free (mb-&gt;method);
+<span class="lineNum">     116 </span>            :         if (!mb-&gt;no_dup_name)
+<span class="lineNum">     117 </span>            :                 g_free (mb-&gt;name);
+<span class="lineNum">     118 </span>            : #endif
+<span class="lineNum">     119 </span><span class="lineCov">    4520384 :         g_free (mb);</span>
+<span class="lineNum">     120 </span><span class="lineCov">    4520384 : }</span>
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span>            : /**
+<span class="lineNum">     123 </span>            :  * mono_mb_create_method:
+<span class="lineNum">     124 </span>            :  *
+<span class="lineNum">     125 </span>            :  * Create a MonoMethod from this method builder.
+<span class="lineNum">     126 </span>            :  * Returns: the newly created method.
+<span class="lineNum">     127 </span>            :  *
+<a name="128"><span class="lineNum">     128 </span>            :  */</a>
+<span class="lineNum">     129 </span>            : MonoMethod *
+<span class="lineNum">     130 </span>            : mono_mb_create_method (MonoMethodBuilder *mb, MonoMethodSignature *signature, int max_stack)
+<span class="lineNum">     131 </span>            : {
+<span class="lineNum">     132 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     133 </span>            :         MonoMethodHeader *header;
+<span class="lineNum">     134 </span>            : #endif
+<span class="lineNum">     135 </span>            :         MonoMethodWrapper *mw;
+<span class="lineNum">     136 </span>            :         MonoImage *image;
+<span class="lineNum">     137 </span>            :         MonoMethod *method;
+<span class="lineNum">     138 </span>            :         GList *l;
+<span class="lineNum">     139 </span>            :         int i;
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span><span class="lineCov">   13541878 :         g_assert (mb != NULL);</span>
+<span class="lineNum">     142 </span>            : 
+<span class="lineNum">     143 </span><span class="lineCov">    4513960 :         image = mb-&gt;method-&gt;klass-&gt;image;</span>
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     146 </span><span class="lineCov">    4513960 :         if (mb-&gt;dynamic) {</span>
+<span class="lineNum">     147 </span><span class="lineCov">         12 :                 method = mb-&gt;method;</span>
+<span class="lineNum">     148 </span><span class="lineCov">         12 :                 mw = (MonoMethodWrapper*)method;</span>
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span><span class="lineCov">         12 :                 method-&gt;name = mb-&gt;name;</span>
+<span class="lineNum">     151 </span><span class="lineCov">         12 :                 method-&gt;dynamic = TRUE;</span>
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span><span class="lineCov">         12 :                 mw-&gt;header = header = (MonoMethodHeader *) </span>
+<span class="lineNum">     154 </span><span class="lineCov">         12 :                         g_malloc0 (MONO_SIZEOF_METHOD_HEADER + mb-&gt;locals * sizeof (MonoType *));</span>
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineCov">         12 :                 header-&gt;code = mb-&gt;code;</span>
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span><span class="lineCov">        224 :                 for (i = 0, l = mb-&gt;locals_list; l; l = l-&gt;next, i++) {</span>
+<span class="lineNum">     159 </span><span class="lineCov">        100 :                         header-&gt;locals [i] = (MonoType*)l-&gt;data;</span>
+<span class="lineNum">     160 </span><span class="lineCov">        100 :                 }</span>
+<span class="lineNum">     161 </span><span class="lineCov">         12 :         } else</span>
+<span class="lineNum">     162 </span>            : #endif
+<span class="lineNum">     163 </span>            :         {
+<span class="lineNum">     164 </span>            :                 /* Realloc the method info into a mempool */
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span><span class="lineCov">    4513953 :                 method = (MonoMethod *)mono_image_alloc0 (image, sizeof (MonoMethodWrapper));</span>
+<span class="lineNum">     167 </span><span class="lineCov">    4513953 :                 memcpy (method, mb-&gt;method, sizeof (MonoMethodWrapper));</span>
+<span class="lineNum">     168 </span><span class="lineCov">    4513953 :                 mw = (MonoMethodWrapper*) method;</span>
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span><span class="lineCov">    4513953 :                 if (mb-&gt;no_dup_name)</span>
+<span class="lineNum">     171 </span><span class="lineCov">    3725010 :                         method-&gt;name = mb-&gt;name;</span>
+<span class="lineNum">     172 </span>            :                 else
+<span class="lineNum">     173 </span><span class="lineCov">     788943 :                         method-&gt;name = mono_image_strdup (image, mb-&gt;name);</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     176 </span><span class="lineCov">    4513953 :                 mw-&gt;header = header = (MonoMethodHeader *) </span>
+<span class="lineNum">     177 </span><span class="lineCov">    4513953 :                         mono_image_alloc0 (image, MONO_SIZEOF_METHOD_HEADER + mb-&gt;locals * sizeof (MonoType *));</span>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineCov">    4513953 :                 header-&gt;code = (const unsigned char *)mono_image_alloc (image, mb-&gt;pos);</span>
+<span class="lineNum">     180 </span><span class="lineCov">    4513953 :                 memcpy ((char*)header-&gt;code, mb-&gt;code, mb-&gt;pos);</span>
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span><span class="lineCov">   10560344 :                 for (i = 0, l = mb-&gt;locals_list; l; l = l-&gt;next, i++) {</span>
+<span class="lineNum">     183 </span><span class="lineCov">     766219 :                         header-&gt;locals [i] = (MonoType*)l-&gt;data;</span>
+<span class="lineNum">     184 </span><span class="lineCov">     766219 :                 }</span>
+<span class="lineNum">     185 </span>            : #endif
+<span class="lineNum">     186 </span>            :         }
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     189 </span>            :         /* Free the locals list so mono_mb_free () doesn't free the types twice */
+<span class="lineNum">     190 </span><span class="lineCov">    4513965 :         g_list_free (mb-&gt;locals_list);</span>
+<span class="lineNum">     191 </span><span class="lineCov">    4513965 :         mb-&gt;locals_list = NULL;</span>
+<span class="lineNum">     192 </span>            : #endif
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span><span class="lineCov">    4513965 :         method-&gt;signature = signature;</span>
+<span class="lineNum">     195 </span><span class="lineCov">    4513965 :         if (!signature-&gt;hasthis)</span>
+<span class="lineNum">     196 </span><span class="lineCov">     618468 :                 method-&gt;flags |= METHOD_ATTRIBUTE_STATIC;</span>
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     199 </span><span class="lineCov">    4513965 :         if (max_stack &lt; 8)</span>
+<span class="lineNum">     200 </span><span class="lineCov">      20332 :                 max_stack = 8;</span>
+<span class="lineNum">     201 </span>            : 
+<span class="lineNum">     202 </span><span class="lineCov">    4513965 :         header-&gt;max_stack = max_stack;</span>
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span><span class="lineCov">    4513965 :         header-&gt;code_size = mb-&gt;pos;</span>
+<span class="lineNum">     205 </span><span class="lineCov">    4513965 :         header-&gt;num_locals = mb-&gt;locals;</span>
+<span class="lineNum">     206 </span><span class="lineCov">    4513965 :         header-&gt;init_locals = mb-&gt;init_locals;</span>
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span><span class="lineCov">    4513965 :         header-&gt;num_clauses = mb-&gt;num_clauses;</span>
+<span class="lineNum">     209 </span><span class="lineCov">    4513965 :         header-&gt;clauses = mb-&gt;clauses;</span>
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineCov">    4513965 :         method-&gt;skip_visibility = mb-&gt;skip_visibility;</span>
+<span class="lineNum">     212 </span>            : #endif
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span><span class="lineCov">    4513965 :         i = g_list_length ((GList *)mw-&gt;method_data);</span>
+<span class="lineNum">     215 </span><span class="lineCov">    4513965 :         if (i) {</span>
+<span class="lineNum">     216 </span>            :                 GList *tmp;
+<span class="lineNum">     217 </span>            :                 void **data;
+<span class="lineNum">     218 </span><span class="lineCov">    4513965 :                 l = g_list_reverse ((GList *)mw-&gt;method_data);</span>
+<span class="lineNum">     219 </span><span class="lineCov">    4513965 :                 if (method_is_dynamic (method))</span>
+<span class="lineNum">     220 </span><span class="lineCov">         12 :                         data = (void **)g_malloc (sizeof (gpointer) * (i + 1));</span>
+<span class="lineNum">     221 </span>            :                 else
+<span class="lineNum">     222 </span><span class="lineCov">    4513953 :                         data = (void **)mono_image_alloc (image, sizeof (gpointer) * (i + 1));</span>
+<span class="lineNum">     223 </span>            :                 /* store the size in the first element */
+<span class="lineNum">     224 </span><span class="lineCov">    4513965 :                 data [0] = GUINT_TO_POINTER (i);</span>
+<span class="lineNum">     225 </span><span class="lineCov">    4513965 :                 i = 1;</span>
+<span class="lineNum">     226 </span><span class="lineCov">   32538741 :                 for (tmp = l; tmp; tmp = tmp-&gt;next) {</span>
+<span class="lineNum">     227 </span><span class="lineCov">   11755409 :                         data [i++] = tmp-&gt;data;</span>
+<span class="lineNum">     228 </span><span class="lineCov">   11755409 :                 }</span>
+<span class="lineNum">     229 </span><span class="lineCov">    4513964 :                 g_list_free (l);</span>
+<span class="lineNum">     230 </span>            : 
+<span class="lineNum">     231 </span><span class="lineCov">    4513964 :                 mw-&gt;method_data = data;</span>
+<span class="lineNum">     232 </span><span class="lineCov">    4513964 :         }</span>
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">     235 </span>            :         /*{
+<span class="lineNum">     236 </span>            :                 static int total_code = 0;
+<span class="lineNum">     237 </span>            :                 static int total_alloc = 0;
+<span class="lineNum">     238 </span>            :                 total_code += mb-&gt;pos;
+<span class="lineNum">     239 </span>            :                 total_alloc += mb-&gt;code_size;
+<span class="lineNum">     240 </span>            :                 g_print (&quot;code size: %d of %d (allocated: %d)\n&quot;, mb-&gt;pos, total_code, total_alloc);
+<span class="lineNum">     241 </span>            :         }*/
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span>            : #ifdef DEBUG_RUNTIME_CODE
+<span class="lineNum">     244 </span>            :         printf (&quot;RUNTIME CODE FOR %s\n&quot;, mono_method_full_name (method, TRUE));
+<span class="lineNum">     245 </span>            :         printf (&quot;%s\n&quot;, mono_disasm_code (&amp;marshal_dh, method, mb-&gt;code, mb-&gt;code + mb-&gt;pos));
+<span class="lineNum">     246 </span>            : #endif
+<span class="lineNum">     247 </span>            : 
+<span class="lineNum">     248 </span><span class="lineCov">    4513964 :         if (mb-&gt;param_names) {</span>
+<span class="lineNum">     249 </span><span class="lineCov">      85184 :                 char **param_names = (char **)mono_image_alloc0 (image, signature-&gt;param_count * sizeof (gpointer));</span>
+<span class="lineNum">     250 </span><span class="lineCov">     808524 :                 for (i = 0; i &lt; signature-&gt;param_count; ++i)</span>
+<span class="lineNum">     251 </span><span class="lineCov">     319078 :                         param_names [i] = mono_image_strdup (image, mb-&gt;param_names [i]);</span>
+<span class="lineNum">     252 </span>            : 
+<span class="lineNum">     253 </span><span class="lineCov">      85184 :                 mono_image_lock (image);</span>
+<span class="lineNum">     254 </span><span class="lineCov">      85184 :                 if (!image-&gt;wrapper_param_names)</span>
+<span class="lineNum">     255 </span><span class="lineCov">       6555 :                         image-&gt;wrapper_param_names = g_hash_table_new (NULL, NULL);</span>
+<span class="lineNum">     256 </span><span class="lineCov">      85184 :                 g_hash_table_insert (image-&gt;wrapper_param_names, method, param_names);</span>
+<span class="lineNum">     257 </span><span class="lineCov">      85184 :                 mono_image_unlock (image);</span>
+<span class="lineNum">     258 </span><span class="lineCov">      85184 :         }</span>
+<span class="lineNum">     259 </span>            : #endif
+<span class="lineNum">     260 </span>            : 
+<span class="lineNum">     261 </span><span class="lineCov">    4513964 :         return method;</span>
+<span class="lineNum">     262 </span>            : }
+<a name="263"><span class="lineNum">     263 </span>            : </a>
+<span class="lineNum">     264 </span>            : guint32
+<span class="lineNum">     265 </span>            : mono_mb_add_data (MonoMethodBuilder *mb, gpointer data)
+<span class="lineNum">     266 </span>            : {
+<span class="lineNum">     267 </span>            :         MonoMethodWrapper *mw;
+<span class="lineNum">     268 </span>            : 
+<span class="lineNum">     269 </span><span class="lineCov">   35367435 :         g_assert (mb != NULL);</span>
+<span class="lineNum">     270 </span>            : 
+<span class="lineNum">     271 </span><span class="lineCov">   11789229 :         mw = (MonoMethodWrapper *)mb-&gt;method;</span>
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span>            :         /* one O(n) is enough */
+<span class="lineNum">     274 </span><span class="lineCov">   11789229 :         mw-&gt;method_data = g_list_prepend ((GList *)mw-&gt;method_data, data);</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span><span class="lineCov">   11789229 :         return g_list_length ((GList *)mw-&gt;method_data);</span>
+<span class="lineNum">     277 </span>            : }
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span>            : #ifndef DISABLE_JIT
+<a name="280"><span class="lineNum">     280 </span>            : </a>
+<span class="lineNum">     281 </span>            : int
+<span class="lineNum">     282 </span>            : mono_mb_add_local (MonoMethodBuilder *mb, MonoType *type)
+<span class="lineNum">     283 </span>            : {
+<span class="lineNum">     284 </span>            :         int res;
+<span class="lineNum">     285 </span>            :         MonoType *t;
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span>            :         /*
+<span class="lineNum">     288 </span>            :          * Have to make a copy early since type might be sig-&gt;ret,
+<span class="lineNum">     289 </span>            :          * which is transient, see mono_metadata_signature_dup_internal_with_padding ().
+<span class="lineNum">     290 </span>            :          */
+<span class="lineNum">     291 </span><span class="lineCov">     768839 :         t = mono_metadata_type_dup (NULL, type);</span>
+<span class="lineNum">     292 </span>            : 
+<span class="lineNum">     293 </span><span class="lineCov">    2306533 :         g_assert (mb != NULL);</span>
+<span class="lineNum">     294 </span><span class="lineCov">    2306542 :         g_assert (type != NULL);</span>
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span><span class="lineCov">     768847 :         res = mb-&gt;locals;</span>
+<span class="lineNum">     297 </span><span class="lineCov">     768847 :         mb-&gt;locals_list = g_list_append (mb-&gt;locals_list, t);</span>
+<span class="lineNum">     298 </span><span class="lineCov">     768847 :         mb-&gt;locals++;</span>
+<span class="lineNum">     299 </span>            : 
+<span class="lineNum">     300 </span><span class="lineCov">     768847 :         return res;</span>
+<span class="lineNum">     301 </span>            : }
+<a name="302"><span class="lineNum">     302 </span>            : </a>
+<span class="lineNum">     303 </span>            : void
+<span class="lineNum">     304 </span>            : mono_mb_patch_addr (MonoMethodBuilder *mb, int pos, int value)
+<span class="lineNum">     305 </span>            : {
+<span class="lineNum">     306 </span><span class="lineCov">   11606435 :         mb-&gt;code [pos] = value &amp; 0xff;</span>
+<span class="lineNum">     307 </span><span class="lineCov">   11606435 :         mb-&gt;code [pos + 1] = (value &gt;&gt; 8) &amp; 0xff;</span>
+<span class="lineNum">     308 </span><span class="lineCov">   11606435 :         mb-&gt;code [pos + 2] = (value &gt;&gt; 16) &amp; 0xff;</span>
+<span class="lineNum">     309 </span><span class="lineCov">   11606435 :         mb-&gt;code [pos + 3] = (value &gt;&gt; 24) &amp; 0xff;</span>
+<span class="lineNum">     310 </span><span class="lineCov">   11606435 : }</span>
+<a name="311"><span class="lineNum">     311 </span>            : </a>
+<span class="lineNum">     312 </span>            : void
+<span class="lineNum">     313 </span>            : mono_mb_patch_addr_s (MonoMethodBuilder *mb, int pos, gint8 value)
+<span class="lineNum">     314 </span>            : {
+<span class="lineNum">     315 </span><span class="lineCov">     111747 :         *((gint8 *)(&amp;mb-&gt;code [pos])) = value;</span>
+<span class="lineNum">     316 </span><span class="lineCov">     111747 : }</span>
+<a name="317"><span class="lineNum">     317 </span>            : </a>
+<span class="lineNum">     318 </span>            : void
+<span class="lineNum">     319 </span>            : mono_mb_emit_byte (MonoMethodBuilder *mb, guint8 op)
+<span class="lineNum">     320 </span>            : {
+<span class="lineNum">     321 </span><span class="lineCov">   39030754 :         if (mb-&gt;pos &gt;= mb-&gt;code_size) {</span>
+<span class="lineNum">     322 </span><span class="lineCov">     248238 :                 mb-&gt;code_size += mb-&gt;code_size &gt;&gt; 1;</span>
+<span class="lineNum">     323 </span><span class="lineCov">     248238 :                 mb-&gt;code = (unsigned char *)g_realloc (mb-&gt;code, mb-&gt;code_size);</span>
+<span class="lineNum">     324 </span><span class="lineCov">     248238 :         }</span>
+<span class="lineNum">     325 </span>            : 
+<span class="lineNum">     326 </span><span class="lineCov">   39030685 :         mb-&gt;code [mb-&gt;pos++] = op;</span>
+<span class="lineNum">     327 </span><span class="lineCov">   39030685 : }</span>
+<a name="328"><span class="lineNum">     328 </span>            : </a>
+<span class="lineNum">     329 </span>            : void
+<span class="lineNum">     330 </span>            : mono_mb_emit_ldflda (MonoMethodBuilder *mb, gint32 offset)
+<span class="lineNum">     331 </span>            : {
+<span class="lineNum">     332 </span><span class="lineCov">     381490 :         mono_mb_emit_byte (mb, MONO_CUSTOM_PREFIX);</span>
+<span class="lineNum">     333 </span><span class="lineCov">     381490 :         mono_mb_emit_byte (mb, CEE_MONO_OBJADDR);</span>
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span><span class="lineCov">     381490 :         if (offset) {</span>
+<span class="lineNum">     336 </span><span class="lineCov">     250409 :                 mono_mb_emit_icon (mb, offset);</span>
+<span class="lineNum">     337 </span><span class="lineCov">     250409 :                 mono_mb_emit_byte (mb, CEE_ADD);</span>
+<span class="lineNum">     338 </span><span class="lineCov">     250409 :         }</span>
+<span class="lineNum">     339 </span><span class="lineCov">     381453 : }</span>
+<a name="340"><span class="lineNum">     340 </span>            : </a>
+<span class="lineNum">     341 </span>            : void
+<span class="lineNum">     342 </span>            : mono_mb_emit_i4 (MonoMethodBuilder *mb, gint32 data)
+<span class="lineNum">     343 </span>            : {
+<span class="lineNum">     344 </span><span class="lineCov">    9524497 :         if ((mb-&gt;pos + 4) &gt;= mb-&gt;code_size) {</span>
+<span class="lineNum">     345 </span><span class="lineCov">     592175 :                 mb-&gt;code_size += mb-&gt;code_size &gt;&gt; 1;</span>
+<span class="lineNum">     346 </span><span class="lineCov">     592175 :                 mb-&gt;code = (unsigned char *)g_realloc (mb-&gt;code, mb-&gt;code_size);</span>
+<span class="lineNum">     347 </span><span class="lineCov">     592175 :         }</span>
+<span class="lineNum">     348 </span>            : 
+<span class="lineNum">     349 </span><span class="lineCov">    9524395 :         mono_mb_patch_addr (mb, mb-&gt;pos, data);</span>
+<span class="lineNum">     350 </span><span class="lineCov">    9524395 :         mb-&gt;pos += 4;</span>
+<span class="lineNum">     351 </span><span class="lineCov">    9524395 : }</span>
+<a name="352"><span class="lineNum">     352 </span>            : </a>
+<span class="lineNum">     353 </span>            : void
+<span class="lineNum">     354 </span>            : mono_mb_emit_i8 (MonoMethodBuilder *mb, gint64 data)
+<span class="lineNum">     355 </span>            : {
+<span class="lineNum">     356 </span><span class="lineCov">       2568 :         if ((mb-&gt;pos + 8) &gt;= mb-&gt;code_size) {</span>
+<span class="lineNum">     357 </span><span class="lineNoCov">          0 :                 mb-&gt;code_size += mb-&gt;code_size &gt;&gt; 1;</span>
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :                 mb-&gt;code = (unsigned char *)g_realloc (mb-&gt;code, mb-&gt;code_size);</span>
+<span class="lineNum">     359 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     360 </span>            : 
+<span class="lineNum">     361 </span><span class="lineCov">       2568 :         mono_mb_patch_addr (mb, mb-&gt;pos, data);</span>
+<span class="lineNum">     362 </span><span class="lineCov">       2568 :         mono_mb_patch_addr (mb, mb-&gt;pos + 4, data &gt;&gt; 32);</span>
+<span class="lineNum">     363 </span><span class="lineCov">       2568 :         mb-&gt;pos += 8;</span>
+<span class="lineNum">     364 </span><span class="lineCov">       2568 : }</span>
+<a name="365"><span class="lineNum">     365 </span>            : </a>
+<span class="lineNum">     366 </span>            : void
+<span class="lineNum">     367 </span>            : mono_mb_emit_i2 (MonoMethodBuilder *mb, gint16 data)
+<span class="lineNum">     368 </span>            : {
+<span class="lineNum">     369 </span><span class="lineNoCov">          0 :         if ((mb-&gt;pos + 2) &gt;= mb-&gt;code_size) {</span>
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :                 mb-&gt;code_size += mb-&gt;code_size &gt;&gt; 1;</span>
+<span class="lineNum">     371 </span><span class="lineNoCov">          0 :                 mb-&gt;code = (unsigned char *)g_realloc (mb-&gt;code, mb-&gt;code_size);</span>
+<span class="lineNum">     372 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     373 </span>            : 
+<span class="lineNum">     374 </span><span class="lineNoCov">          0 :         mb-&gt;code [mb-&gt;pos] = data &amp; 0xff;</span>
+<span class="lineNum">     375 </span><span class="lineNoCov">          0 :         mb-&gt;code [mb-&gt;pos + 1] = (data &gt;&gt; 8) &amp; 0xff;</span>
+<span class="lineNum">     376 </span><span class="lineNoCov">          0 :         mb-&gt;pos += 2;</span>
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 : }</span>
+<a name="378"><span class="lineNum">     378 </span>            : </a>
+<span class="lineNum">     379 </span>            : void
+<span class="lineNum">     380 </span>            : mono_mb_emit_op (MonoMethodBuilder *mb, guint8 op, gpointer data)
+<span class="lineNum">     381 </span>            : {
+<span class="lineNum">     382 </span><span class="lineCov">    7211680 :         mono_mb_emit_byte (mb, op);</span>
+<span class="lineNum">     383 </span><span class="lineCov">    7211680 :         mono_mb_emit_i4 (mb, mono_mb_add_data (mb, data));</span>
+<span class="lineNum">     384 </span><span class="lineCov">    7211680 : }</span>
+<a name="385"><span class="lineNum">     385 </span>            : </a>
+<span class="lineNum">     386 </span>            : void
+<span class="lineNum">     387 </span>            : mono_mb_emit_ldstr (MonoMethodBuilder *mb, char *str)
+<span class="lineNum">     388 </span>            : {
+<span class="lineNum">     389 </span><span class="lineCov">       4210 :         mono_mb_emit_op (mb, CEE_LDSTR, str);</span>
+<span class="lineNum">     390 </span><span class="lineCov">       4210 : }</span>
+<a name="391"><span class="lineNum">     391 </span>            : </a>
+<span class="lineNum">     392 </span>            : void
+<span class="lineNum">     393 </span>            : mono_mb_emit_ldarg (MonoMethodBuilder *mb, guint argnum)
+<span class="lineNum">     394 </span>            : {
+<span class="lineNum">     395 </span><span class="lineCov">    8921832 :         if (argnum &lt; 4) {</span>
+<span class="lineNum">     396 </span><span class="lineCov">    8865607 :                 mono_mb_emit_byte (mb, CEE_LDARG_0 + argnum);</span>
+<span class="lineNum">     397 </span><span class="lineCov">    8921836 :         } else if (argnum &lt; 256) {</span>
+<span class="lineNum">     398 </span><span class="lineCov">      56229 :                 mono_mb_emit_byte (mb, CEE_LDARG_S);</span>
+<span class="lineNum">     399 </span><span class="lineCov">      56229 :                 mono_mb_emit_byte (mb, argnum);</span>
+<span class="lineNum">     400 </span><span class="lineCov">      56229 :         } else {</span>
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_PREFIX1);</span>
+<span class="lineNum">     402 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_LDARG);</span>
+<span class="lineNum">     403 </span><span class="lineNoCov">          0 :                 mono_mb_emit_i2 (mb, argnum);</span>
+<span class="lineNum">     404 </span>            :         }
+<span class="lineNum">     405 </span><span class="lineCov">    8921795 : }</span>
+<a name="406"><span class="lineNum">     406 </span>            : </a>
+<span class="lineNum">     407 </span>            : void
+<span class="lineNum">     408 </span>            : mono_mb_emit_ldarg_addr (MonoMethodBuilder *mb, guint argnum)
+<span class="lineNum">     409 </span>            : {
+<span class="lineNum">     410 </span><span class="lineCov">     166319 :         if (argnum &lt; 256) {</span>
+<span class="lineNum">     411 </span><span class="lineCov">     166319 :                 mono_mb_emit_byte (mb, CEE_LDARGA_S);</span>
+<span class="lineNum">     412 </span><span class="lineCov">     166319 :                 mono_mb_emit_byte (mb, argnum);</span>
+<span class="lineNum">     413 </span><span class="lineCov">     166319 :         } else {</span>
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_PREFIX1);</span>
+<span class="lineNum">     415 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_LDARGA);</span>
+<span class="lineNum">     416 </span><span class="lineNoCov">          0 :                 mono_mb_emit_i2 (mb, argnum);</span>
+<span class="lineNum">     417 </span>            :         }
+<span class="lineNum">     418 </span><span class="lineCov">     166320 : }</span>
+<a name="419"><span class="lineNum">     419 </span>            : </a>
+<span class="lineNum">     420 </span>            : void
+<span class="lineNum">     421 </span>            : mono_mb_emit_ldloc_addr (MonoMethodBuilder *mb, guint locnum)
+<span class="lineNum">     422 </span>            : {
+<span class="lineNum">     423 </span><span class="lineCov">     327572 :         if (locnum &lt; 256) {</span>
+<span class="lineNum">     424 </span><span class="lineCov">     327572 :                 mono_mb_emit_byte (mb, CEE_LDLOCA_S);</span>
+<span class="lineNum">     425 </span><span class="lineCov">     327572 :                 mono_mb_emit_byte (mb, locnum);</span>
+<span class="lineNum">     426 </span><span class="lineCov">     327572 :         } else {</span>
+<span class="lineNum">     427 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_PREFIX1);</span>
+<span class="lineNum">     428 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_LDLOCA);</span>
+<span class="lineNum">     429 </span><span class="lineNoCov">          0 :                 mono_mb_emit_i2 (mb, locnum);</span>
+<span class="lineNum">     430 </span>            :         }
+<span class="lineNum">     431 </span><span class="lineCov">     327570 : }</span>
+<a name="432"><span class="lineNum">     432 </span>            : </a>
+<span class="lineNum">     433 </span>            : void
+<span class="lineNum">     434 </span>            : mono_mb_emit_ldloc (MonoMethodBuilder *mb, guint num)
+<span class="lineNum">     435 </span>            : {
+<span class="lineNum">     436 </span><span class="lineCov">    1197265 :         if (num &lt; 4) {</span>
+<span class="lineNum">     437 </span><span class="lineCov">    1060126 :                 mono_mb_emit_byte (mb, CEE_LDLOC_0 + num);</span>
+<span class="lineNum">     438 </span><span class="lineCov">    1197264 :         } else if (num &lt; 256) {</span>
+<span class="lineNum">     439 </span><span class="lineCov">     137138 :                 mono_mb_emit_byte (mb, CEE_LDLOC_S);</span>
+<span class="lineNum">     440 </span><span class="lineCov">     137138 :                 mono_mb_emit_byte (mb, num);</span>
+<span class="lineNum">     441 </span><span class="lineCov">     137138 :         } else {</span>
+<span class="lineNum">     442 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_PREFIX1);</span>
+<span class="lineNum">     443 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_LDLOC);</span>
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :                 mono_mb_emit_i2 (mb, num);</span>
+<span class="lineNum">     445 </span>            :         }
+<span class="lineNum">     446 </span><span class="lineCov">    1197262 : }</span>
+<a name="447"><span class="lineNum">     447 </span>            : </a>
+<span class="lineNum">     448 </span>            : void
+<span class="lineNum">     449 </span>            : mono_mb_emit_stloc (MonoMethodBuilder *mb, guint num)
+<span class="lineNum">     450 </span>            : {
+<span class="lineNum">     451 </span><span class="lineCov">     695660 :         if (num &lt; 4) {</span>
+<span class="lineNum">     452 </span><span class="lineCov">     631148 :                 mono_mb_emit_byte (mb, CEE_STLOC_0 + num);</span>
+<span class="lineNum">     453 </span><span class="lineCov">     695659 :         } else if (num &lt; 256) {</span>
+<span class="lineNum">     454 </span><span class="lineCov">      64510 :                 mono_mb_emit_byte (mb, CEE_STLOC_S);</span>
+<span class="lineNum">     455 </span><span class="lineCov">      64510 :                 mono_mb_emit_byte (mb, num);</span>
+<span class="lineNum">     456 </span><span class="lineCov">      64510 :         } else {</span>
+<span class="lineNum">     457 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_PREFIX1);</span>
+<span class="lineNum">     458 </span><span class="lineNoCov">          0 :                 mono_mb_emit_byte (mb, CEE_STLOC);</span>
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 :                 mono_mb_emit_i2 (mb, num);</span>
+<span class="lineNum">     460 </span>            :         }
+<span class="lineNum">     461 </span><span class="lineCov">     695651 : }</span>
+<a name="462"><span class="lineNum">     462 </span>            : </a>
+<span class="lineNum">     463 </span>            : void
+<span class="lineNum">     464 </span>            : mono_mb_emit_icon (MonoMethodBuilder *mb, gint32 value)
+<span class="lineNum">     465 </span>            : {
+<span class="lineNum">     466 </span><span class="lineCov">    1237273 :         if (value &gt;= -1 &amp;&amp; value &lt; 8) {</span>
+<span class="lineNum">     467 </span><span class="lineCov">     143245 :                 mono_mb_emit_byte (mb, CEE_LDC_I4_0 + value);</span>
+<span class="lineNum">     468 </span><span class="lineCov">    1100519 :         } else if (value &gt;= -128 &amp;&amp; value &lt;= 127) {</span>
+<span class="lineNum">     469 </span><span class="lineCov">     436031 :                 mono_mb_emit_byte (mb, CEE_LDC_I4_S);</span>
+<span class="lineNum">     470 </span><span class="lineCov">     436031 :                 mono_mb_emit_byte (mb, value);</span>
+<span class="lineNum">     471 </span><span class="lineCov">     436031 :         } else {</span>
+<span class="lineNum">     472 </span><span class="lineCov">      42593 :                 mono_mb_emit_byte (mb, CEE_LDC_I4);</span>
+<span class="lineNum">     473 </span><span class="lineCov">      42593 :                 mono_mb_emit_i4 (mb, value);</span>
+<span class="lineNum">     474 </span>            :         }
+<span class="lineNum">     475 </span><span class="lineCov">     621866 : }</span>
+<a name="476"><span class="lineNum">     476 </span>            : </a>
+<span class="lineNum">     477 </span>            : void
+<span class="lineNum">     478 </span>            : mono_mb_emit_icon8 (MonoMethodBuilder *mb, gint64 value)
+<span class="lineNum">     479 </span>            : {
+<span class="lineNum">     480 </span><span class="lineCov">       2568 :         mono_mb_emit_byte (mb, CEE_LDC_I8);</span>
+<span class="lineNum">     481 </span><span class="lineCov">       2568 :         mono_mb_emit_i8 (mb, value);</span>
+<span class="lineNum">     482 </span><span class="lineCov">       2568 : }</span>
+<a name="483"><span class="lineNum">     483 </span>            : </a>
+<span class="lineNum">     484 </span>            : int
+<span class="lineNum">     485 </span>            : mono_mb_get_label (MonoMethodBuilder *mb)
+<span class="lineNum">     486 </span>            : {
+<span class="lineNum">     487 </span><span class="lineCov">     287798 :         return mb-&gt;pos;</span>
+<span class="lineNum">     488 </span>            : }
+<a name="489"><span class="lineNum">     489 </span>            : </a>
+<span class="lineNum">     490 </span>            : int
+<span class="lineNum">     491 </span>            : mono_mb_get_pos (MonoMethodBuilder *mb)
+<span class="lineNum">     492 </span>            : {
+<span class="lineNum">     493 </span><span class="lineCov">     127030 :         return mb-&gt;pos;</span>
+<span class="lineNum">     494 </span>            : }
+<a name="495"><span class="lineNum">     495 </span>            : </a>
+<span class="lineNum">     496 </span>            : guint32
+<span class="lineNum">     497 </span>            : mono_mb_emit_branch (MonoMethodBuilder *mb, guint8 op)
+<span class="lineNum">     498 </span>            : {
+<span class="lineNum">     499 </span>            :         guint32 res;
+<span class="lineNum">     500 </span><span class="lineCov">    2173089 :         mono_mb_emit_byte (mb, op);</span>
+<span class="lineNum">     501 </span><span class="lineCov">    2173089 :         res = mb-&gt;pos;</span>
+<span class="lineNum">     502 </span><span class="lineCov">    2173089 :         mono_mb_emit_i4 (mb, 0);</span>
+<span class="lineNum">     503 </span><span class="lineCov">    2173089 :         return res;</span>
+<span class="lineNum">     504 </span>            : }
+<a name="505"><span class="lineNum">     505 </span>            : </a>
+<span class="lineNum">     506 </span>            : guint32
+<span class="lineNum">     507 </span>            : mono_mb_emit_short_branch (MonoMethodBuilder *mb, guint8 op)
+<span class="lineNum">     508 </span>            : {
+<span class="lineNum">     509 </span>            :         guint32 res;
+<span class="lineNum">     510 </span><span class="lineCov">     111746 :         mono_mb_emit_byte (mb, op);</span>
+<span class="lineNum">     511 </span><span class="lineCov">     111746 :         res = mb-&gt;pos;</span>
+<span class="lineNum">     512 </span><span class="lineCov">     111746 :         mono_mb_emit_byte (mb, 0);</span>
+<span class="lineNum">     513 </span>            : 
+<span class="lineNum">     514 </span><span class="lineCov">     111746 :         return res;</span>
+<span class="lineNum">     515 </span>            : }
+<a name="516"><span class="lineNum">     516 </span>            : </a>
+<span class="lineNum">     517 </span>            : void
+<span class="lineNum">     518 </span>            : mono_mb_emit_branch_label (MonoMethodBuilder *mb, guint8 op, guint32 label)
+<span class="lineNum">     519 </span>            : {
+<span class="lineNum">     520 </span><span class="lineCov">      11160 :         mono_mb_emit_byte (mb, op);</span>
+<span class="lineNum">     521 </span><span class="lineCov">      11160 :         mono_mb_emit_i4 (mb, label - (mb-&gt;pos + 4));</span>
+<span class="lineNum">     522 </span><span class="lineCov">      11160 : }</span>
+<a name="523"><span class="lineNum">     523 </span>            : </a>
+<span class="lineNum">     524 </span>            : void
+<span class="lineNum">     525 </span>            : mono_mb_patch_branch (MonoMethodBuilder *mb, guint32 pos)
+<span class="lineNum">     526 </span>            : {
+<span class="lineNum">     527 </span><span class="lineCov">    2077641 :         mono_mb_patch_addr (mb, pos, mb-&gt;pos - (pos + 4));</span>
+<span class="lineNum">     528 </span><span class="lineCov">    2077641 : }</span>
+<a name="529"><span class="lineNum">     529 </span>            : </a>
+<span class="lineNum">     530 </span>            : void
+<span class="lineNum">     531 </span>            : mono_mb_patch_short_branch (MonoMethodBuilder *mb, guint32 pos)
+<span class="lineNum">     532 </span>            : {
+<span class="lineNum">     533 </span><span class="lineCov">     111747 :         mono_mb_patch_addr_s (mb, pos, mb-&gt;pos - (pos + 1));</span>
+<span class="lineNum">     534 </span><span class="lineCov">     111747 : }</span>
+<a name="535"><span class="lineNum">     535 </span>            : </a>
+<span class="lineNum">     536 </span>            : void
+<span class="lineNum">     537 </span>            : mono_mb_emit_ptr (MonoMethodBuilder *mb, gpointer ptr)
+<span class="lineNum">     538 </span>            : {
+<span class="lineNum">     539 </span><span class="lineCov">     650854 :         mono_mb_emit_byte (mb, MONO_CUSTOM_PREFIX);</span>
+<span class="lineNum">     540 </span><span class="lineCov">     650854 :         mono_mb_emit_op (mb, CEE_MONO_LDPTR, ptr);</span>
+<span class="lineNum">     541 </span><span class="lineCov">     650854 : }</span>
+<a name="542"><span class="lineNum">     542 </span>            : </a>
+<span class="lineNum">     543 </span>            : void
+<span class="lineNum">     544 </span>            : mono_mb_emit_calli (MonoMethodBuilder *mb, MonoMethodSignature *sig)
+<span class="lineNum">     545 </span>            : {
+<span class="lineNum">     546 </span><span class="lineCov">     593788 :         mono_mb_emit_op (mb, CEE_CALLI, sig);</span>
+<span class="lineNum">     547 </span><span class="lineCov">     593788 : }</span>
+<a name="548"><span class="lineNum">     548 </span>            : </a>
+<span class="lineNum">     549 </span>            : void
+<span class="lineNum">     550 </span>            : mono_mb_emit_managed_call (MonoMethodBuilder *mb, MonoMethod *method, MonoMethodSignature *opt_sig)
+<span class="lineNum">     551 </span>            : {
+<span class="lineNum">     552 </span><span class="lineCov">    4099445 :         mono_mb_emit_op (mb, CEE_CALL, method);</span>
+<span class="lineNum">     553 </span><span class="lineCov">    4099445 : }</span>
+<a name="554"><span class="lineNum">     554 </span>            : </a>
+<span class="lineNum">     555 </span>            : void
+<span class="lineNum">     556 </span>            : mono_mb_emit_native_call (MonoMethodBuilder *mb, MonoMethodSignature *sig, gpointer func)
+<span class="lineNum">     557 </span>            : {
+<span class="lineNum">     558 </span><span class="lineCov">     381567 :         mono_mb_emit_ptr (mb, func);</span>
+<span class="lineNum">     559 </span><span class="lineCov">     381567 :         mono_mb_emit_calli (mb, sig);</span>
+<span class="lineNum">     560 </span><span class="lineCov">     381567 : }</span>
+<a name="561"><span class="lineNum">     561 </span>            : </a>
+<span class="lineNum">     562 </span>            : void
+<span class="lineNum">     563 </span>            : mono_mb_emit_icall (MonoMethodBuilder *mb, gpointer func)
+<span class="lineNum">     564 </span>            : {
+<span class="lineNum">     565 </span><span class="lineCov">    1447044 :         mono_mb_emit_byte (mb, MONO_CUSTOM_PREFIX);</span>
+<span class="lineNum">     566 </span><span class="lineCov">    1447044 :         mono_mb_emit_op (mb, CEE_MONO_ICALL, func);</span>
+<span class="lineNum">     567 </span><span class="lineCov">    1447044 : }</span>
+<a name="568"><span class="lineNum">     568 </span>            : </a>
+<span class="lineNum">     569 </span>            : void
+<span class="lineNum">     570 </span>            : mono_mb_emit_exception_full (MonoMethodBuilder *mb, const char *exc_nspace, const char *exc_name, const char *msg)
+<span class="lineNum">     571 </span>            : {
+<span class="lineNum">     572 </span><span class="lineCov">      84195 :         MonoMethod *ctor = NULL;</span>
+<span class="lineNum">     573 </span>            : 
+<span class="lineNum">     574 </span><span class="lineCov">      84195 :         MonoClass *mme = mono_class_load_from_name (mono_defaults.corlib, exc_nspace, exc_name);</span>
+<span class="lineNum">     575 </span><span class="lineCov">      84195 :         mono_class_init (mme);</span>
+<span class="lineNum">     576 </span><span class="lineCov">      84195 :         ctor = mono_class_get_method_from_name (mme, &quot;.ctor&quot;, 0);</span>
+<span class="lineNum">     577 </span><span class="lineCov">     252587 :         g_assert (ctor);</span>
+<span class="lineNum">     578 </span><span class="lineCov">      84196 :         mono_mb_emit_op (mb, CEE_NEWOBJ, ctor);</span>
+<span class="lineNum">     579 </span><span class="lineCov">      84196 :         if (msg != NULL) {</span>
+<span class="lineNum">     580 </span><span class="lineCov">       4162 :                 mono_mb_emit_byte (mb, CEE_DUP);</span>
+<span class="lineNum">     581 </span><span class="lineCov">       4162 :                 mono_mb_emit_ldflda (mb, MONO_STRUCT_OFFSET (MonoException, message));</span>
+<span class="lineNum">     582 </span><span class="lineCov">       4162 :                 mono_mb_emit_ldstr (mb, (char*)msg);</span>
+<span class="lineNum">     583 </span><span class="lineCov">       4162 :                 mono_mb_emit_byte (mb, CEE_STIND_REF);</span>
+<span class="lineNum">     584 </span><span class="lineCov">       4162 :         }</span>
+<span class="lineNum">     585 </span><span class="lineCov">      84196 :         mono_mb_emit_byte (mb, CEE_THROW);</span>
+<span class="lineNum">     586 </span><span class="lineCov">      84196 : }</span>
+<a name="587"><span class="lineNum">     587 </span>            : </a>
+<span class="lineNum">     588 </span>            : void
+<span class="lineNum">     589 </span>            : mono_mb_emit_exception (MonoMethodBuilder *mb, const char *exc_name, const char *msg)
+<span class="lineNum">     590 </span>            : {
+<span class="lineNum">     591 </span><span class="lineCov">      82161 :         mono_mb_emit_exception_full (mb, &quot;System&quot;, exc_name, msg);</span>
+<span class="lineNum">     592 </span><span class="lineCov">      82161 : }</span>
+<a name="593"><span class="lineNum">     593 </span>            : </a>
+<span class="lineNum">     594 </span>            : void
+<span class="lineNum">     595 </span>            : mono_mb_emit_add_to_local (MonoMethodBuilder *mb, guint16 local, gint32 incr)
+<span class="lineNum">     596 </span>            : {
+<span class="lineNum">     597 </span><span class="lineCov">     118593 :         mono_mb_emit_ldloc (mb, local); </span>
+<span class="lineNum">     598 </span><span class="lineCov">     118593 :         mono_mb_emit_icon (mb, incr);</span>
+<span class="lineNum">     599 </span><span class="lineCov">     118593 :         mono_mb_emit_byte (mb, CEE_ADD);</span>
+<span class="lineNum">     600 </span><span class="lineCov">     118593 :         mono_mb_emit_stloc (mb, local); </span>
+<span class="lineNum">     601 </span><span class="lineCov">     118593 : }</span>
+<a name="602"><span class="lineNum">     602 </span>            : </a>
+<span class="lineNum">     603 </span>            : void
+<span class="lineNum">     604 </span>            : mono_mb_set_clauses (MonoMethodBuilder *mb, int num_clauses, MonoExceptionClause *clauses)
+<span class="lineNum">     605 </span>            : {
+<span class="lineNum">     606 </span><span class="lineCov">     100729 :         mb-&gt;num_clauses = num_clauses;</span>
+<span class="lineNum">     607 </span><span class="lineCov">     100729 :         mb-&gt;clauses = clauses;</span>
+<span class="lineNum">     608 </span><span class="lineCov">     100729 : }</span>
+<span class="lineNum">     609 </span>            : 
+<span class="lineNum">     610 </span>            : /*
+<span class="lineNum">     611 </span>            :  * mono_mb_set_param_names:
+<span class="lineNum">     612 </span>            :  *
+<span class="lineNum">     613 </span>            :  *   PARAM_NAMES should have length equal to the sig-&gt;param_count, the caller retains
+<span class="lineNum">     614 </span>            :  * ownership of the array, and its entries.
+<a name="615"><span class="lineNum">     615 </span>            :  */</a>
+<span class="lineNum">     616 </span>            : void
+<span class="lineNum">     617 </span>            : mono_mb_set_param_names (MonoMethodBuilder *mb, const char **param_names)
+<span class="lineNum">     618 </span>            : {
+<span class="lineNum">     619 </span><span class="lineCov">      85255 :         mb-&gt;param_names = param_names;</span>
+<span class="lineNum">     620 </span><span class="lineCov">      85255 : }</span>
+<span class="lineNum">     621 </span>            : 
+<span class="lineNum">     622 </span>            : #endif /* DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

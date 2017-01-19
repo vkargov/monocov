@@ -1,0 +1,129 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/mono-config-dirs.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - mono-config-dirs.c<span style="font-size: 80%;"> (source / <a href="mono-config-dirs.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntryMed">75.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntryMed">75.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-config-dirs.c:
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright 2015 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       5 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       6 </span>            :  */
+<span class="lineNum">       7 </span>            : 
+<span class="lineNum">       8 </span>            : /*
+<span class="lineNum">       9 </span>            :  * This file contains functions to return the values of various directories defined in Makefile.am.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;mono/metadata/mono-config-dirs.h&gt;
+<a name="13"><span class="lineNum">      13 </span>            : </a>
+<span class="lineNum">      14 </span>            : const char*
+<span class="lineNum">      15 </span>            : mono_config_get_assemblies_dir (void)
+<span class="lineNum">      16 </span>            : {
+<span class="lineNum">      17 </span>            : #ifdef MONO_ASSEMBLIES
+<span class="lineNum">      18 </span><span class="lineCov">       3286 :         return MONO_ASSEMBLIES;</span>
+<span class="lineNum">      19 </span>            : #else
+<span class="lineNum">      20 </span>            :         return NULL;
+<span class="lineNum">      21 </span>            : #endif
+<span class="lineNum">      22 </span>            : }
+<a name="23"><span class="lineNum">      23 </span>            : </a>
+<span class="lineNum">      24 </span>            : const char*
+<span class="lineNum">      25 </span>            : mono_config_get_cfg_dir (void)
+<span class="lineNum">      26 </span>            : {
+<span class="lineNum">      27 </span>            : #ifdef MONO_CFG_DIR
+<span class="lineNum">      28 </span><span class="lineCov">       3285 :         return MONO_CFG_DIR;</span>
+<span class="lineNum">      29 </span>            : #else
+<span class="lineNum">      30 </span>            :         return NULL;
+<span class="lineNum">      31 </span>            : #endif
+<span class="lineNum">      32 </span>            : }
+<a name="33"><span class="lineNum">      33 </span>            : </a>
+<span class="lineNum">      34 </span>            : const char*
+<span class="lineNum">      35 </span>            : mono_config_get_bin_dir (void)
+<span class="lineNum">      36 </span>            : {
+<span class="lineNum">      37 </span>            : #ifdef MONO_BINDIR
+<span class="lineNum">      38 </span><span class="lineNoCov">          0 :         return MONO_BINDIR;</span>
+<span class="lineNum">      39 </span>            : #else
+<span class="lineNum">      40 </span>            :         return NULL;
+<span class="lineNum">      41 </span>            : #endif
+<span class="lineNum">      42 </span>            : }
+<a name="43"><span class="lineNum">      43 </span>            : </a>
+<span class="lineNum">      44 </span>            : const char*
+<span class="lineNum">      45 </span>            : mono_config_get_reloc_lib_dir (void)
+<span class="lineNum">      46 </span>            : {
+<span class="lineNum">      47 </span>            : #ifdef MONO_RELOC_LIBDIR
+<span class="lineNum">      48 </span><span class="lineCov">         36 :         return MONO_RELOC_LIBDIR;</span>
+<span class="lineNum">      49 </span>            : #else
+<span class="lineNum">      50 </span>            :         return NULL;
+<span class="lineNum">      51 </span>            : #endif
+<span class="lineNum">      52 </span>            : }
+<span class="lineNum">      53 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

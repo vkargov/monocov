@@ -1,0 +1,398 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/lock-free-queue.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - lock-free-queue.c<span style="font-size: 80%;"> (source / <a href="lock-free-queue.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">89</td>
+            <td class="headerCovTableEntry">101</td>
+            <td class="headerCovTableEntryMed">88.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">9</td>
+            <td class="headerCovTableEntry">9</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * lock-free-queue.c: Lock free queue.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * (C) Copyright 2011 Novell, Inc
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Permission is hereby granted, free of charge, to any person obtaining
+<span class="lineNum">       7 </span>            :  * a copy of this software and associated documentation files (the
+<span class="lineNum">       8 </span>            :  * &quot;Software&quot;), to deal in the Software without restriction, including
+<span class="lineNum">       9 </span>            :  * without limitation the rights to use, copy, modify, merge, publish,
+<span class="lineNum">      10 </span>            :  * distribute, sublicense, and/or sell copies of the Software, and to
+<span class="lineNum">      11 </span>            :  * permit persons to whom the Software is furnished to do so, subject to
+<span class="lineNum">      12 </span>            :  * the following conditions:
+<span class="lineNum">      13 </span>            :  * 
+<span class="lineNum">      14 </span>            :  * The above copyright notice and this permission notice shall be
+<span class="lineNum">      15 </span>            :  * included in all copies or substantial portions of the Software.
+<span class="lineNum">      16 </span>            :  * 
+<span class="lineNum">      17 </span>            :  * THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+<span class="lineNum">      18 </span>            :  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+<span class="lineNum">      19 </span>            :  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+<span class="lineNum">      20 </span>            :  * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+<span class="lineNum">      21 </span>            :  * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+<span class="lineNum">      22 </span>            :  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+<span class="lineNum">      23 </span>            :  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+<span class="lineNum">      24 </span>            :  */
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : /*
+<span class="lineNum">      27 </span>            :  * This is an implementation of a lock-free queue, as described in
+<span class="lineNum">      28 </span>            :  *
+<span class="lineNum">      29 </span>            :  * Simple, Fast, and Practical Non-Blocking and Blocking
+<span class="lineNum">      30 </span>            :  *   Concurrent Queue Algorithms
+<span class="lineNum">      31 </span>            :  * Maged M. Michael, Michael L. Scott
+<span class="lineNum">      32 </span>            :  * 1995
+<span class="lineNum">      33 </span>            :  *
+<span class="lineNum">      34 </span>            :  * A few slight modifications have been made:
+<span class="lineNum">      35 </span>            :  *
+<span class="lineNum">      36 </span>            :  * We use hazard pointers to rule out the ABA problem, instead of the
+<span class="lineNum">      37 </span>            :  * counter as in the paper.
+<span class="lineNum">      38 </span>            :  *
+<span class="lineNum">      39 </span>            :  * Memory management of the queue entries is done by the caller, not
+<span class="lineNum">      40 </span>            :  * by the queue implementation.  This implies that the dequeue
+<span class="lineNum">      41 </span>            :  * function must return the queue entry, not just the data.
+<span class="lineNum">      42 </span>            :  *
+<span class="lineNum">      43 </span>            :  * Therefore, the dummy entry must never be returned.  We do this by
+<span class="lineNum">      44 </span>            :  * re-enqueuing a new dummy entry after we dequeue one and then
+<span class="lineNum">      45 </span>            :  * retrying the dequeue.  We need more than one dummy because they
+<span class="lineNum">      46 </span>            :  * must be hazardly freed.
+<span class="lineNum">      47 </span>            :  */
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      50 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">      51 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      52 </span>            : #endif
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span>            : #include &lt;mono/utils/mono-membar.h&gt;
+<span class="lineNum">      55 </span>            : #include &lt;mono/utils/hazard-pointer.h&gt;
+<span class="lineNum">      56 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            : #include &lt;mono/utils/lock-free-queue.h&gt;
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : #define INVALID_NEXT    ((MonoLockFreeQueueNode *volatile)-1)
+<span class="lineNum">      61 </span>            : #define END_MARKER      ((MonoLockFreeQueueNode *volatile)-2)
+<span class="lineNum">      62 </span>            : #define FREE_NEXT       ((MonoLockFreeQueueNode *volatile)-3)
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            : /*
+<span class="lineNum">      65 </span>            :  * Initialize a lock-free queue in-place at @q.
+<a name="66"><span class="lineNum">      66 </span>            :  */</a>
+<span class="lineNum">      67 </span>            : void
+<span class="lineNum">      68 </span>            : mono_lock_free_queue_init (MonoLockFreeQueue *q)
+<span class="lineNum">      69 </span>            : {
+<span class="lineNum">      70 </span>            :         int i;
+<span class="lineNum">      71 </span><span class="lineCov">     572130 :         for (i = 0; i &lt; MONO_LOCK_FREE_QUEUE_NUM_DUMMIES; ++i) {</span>
+<span class="lineNum">      72 </span><span class="lineCov">     190710 :                 q-&gt;dummies [i].node.next = (i == 0) ? END_MARKER : FREE_NEXT;</span>
+<span class="lineNum">      73 </span><span class="lineCov">     190710 :                 q-&gt;dummies [i].in_use = i == 0 ? 1 : 0;</span>
+<span class="lineNum">      74 </span>            : #ifdef QUEUE_DEBUG
+<span class="lineNum">      75 </span>            :                 q-&gt;dummies [i].node.in_queue = i == 0 ? TRUE : FALSE;
+<span class="lineNum">      76 </span>            : #endif
+<span class="lineNum">      77 </span><span class="lineCov">     190710 :         }</span>
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span><span class="lineCov">      95355 :         q-&gt;head = q-&gt;tail = &amp;q-&gt;dummies [0].node;</span>
+<span class="lineNum">      80 </span><span class="lineCov">      95355 :         q-&gt;has_dummy = 1;</span>
+<span class="lineNum">      81 </span><span class="lineCov">      95355 : }</span>
+<span class="lineNum">      82 </span>            : 
+<span class="lineNum">      83 </span>            : /*
+<span class="lineNum">      84 </span>            :  * Initialize @node's state. If @poison is TRUE, @node may not be enqueued to a
+<span class="lineNum">      85 </span>            :  * queue - @mono_lock_free_queue_node_unpoison must be called first; otherwise,
+<span class="lineNum">      86 </span>            :  * the node can be enqueued right away.
+<span class="lineNum">      87 </span>            :  *
+<span class="lineNum">      88 </span>            :  * The poisoning feature is mainly intended for ensuring correctness in complex
+<span class="lineNum">      89 </span>            :  * lock-free code that uses the queue. For example, in some code that reuses
+<span class="lineNum">      90 </span>            :  * nodes, nodes can be poisoned when they're dequeued, and then unpoisoned and
+<span class="lineNum">      91 </span>            :  * enqueued in their hazard free callback.
+<a name="92"><span class="lineNum">      92 </span>            :  */</a>
+<span class="lineNum">      93 </span>            : void
+<span class="lineNum">      94 </span>            : mono_lock_free_queue_node_init (MonoLockFreeQueueNode *node, gboolean poison)
+<span class="lineNum">      95 </span>            : {
+<span class="lineNum">      96 </span><span class="lineCov">     254366 :         node-&gt;next = poison ? INVALID_NEXT : FREE_NEXT;</span>
+<span class="lineNum">      97 </span>            : #ifdef QUEUE_DEBUG
+<span class="lineNum">      98 </span>            :         node-&gt;in_queue = FALSE;
+<span class="lineNum">      99 </span>            : #endif
+<span class="lineNum">     100 </span><span class="lineCov">     254366 : }</span>
+<span class="lineNum">     101 </span>            : 
+<span class="lineNum">     102 </span>            : /*
+<span class="lineNum">     103 </span>            :  * Unpoisons @node so that it may be enqueued.
+<a name="104"><span class="lineNum">     104 </span>            :  */</a>
+<span class="lineNum">     105 </span>            : void
+<span class="lineNum">     106 </span>            : mono_lock_free_queue_node_unpoison (MonoLockFreeQueueNode *node)
+<span class="lineNum">     107 </span>            : {
+<span class="lineNum">     108 </span><span class="lineCov">    1209732 :         g_assert (node-&gt;next == INVALID_NEXT);</span>
+<span class="lineNum">     109 </span>            : #ifdef QUEUE_DEBUG
+<span class="lineNum">     110 </span>            :         g_assert (!node-&gt;in_queue);
+<span class="lineNum">     111 </span>            : #endif
+<span class="lineNum">     112 </span><span class="lineCov">     403244 :         node-&gt;next = FREE_NEXT;</span>
+<span class="lineNum">     113 </span><span class="lineCov">     403244 : }</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span>            : /*
+<span class="lineNum">     116 </span>            :  * Enqueue @node to @q. @node must have been initialized by a prior call to
+<span class="lineNum">     117 </span>            :  * @mono_lock_free_queue_node_init, and must not be in a poisoned state.
+<a name="118"><span class="lineNum">     118 </span>            :  */</a>
+<span class="lineNum">     119 </span>            : void
+<span class="lineNum">     120 </span>            : mono_lock_free_queue_enqueue (MonoLockFreeQueue *q, MonoLockFreeQueueNode *node)
+<span class="lineNum">     121 </span>            : {
+<span class="lineNum">     122 </span><span class="lineCov">     404419 :         MonoThreadHazardPointers *hp = mono_hazard_pointer_get ();</span>
+<span class="lineNum">     123 </span>            :         MonoLockFreeQueueNode *tail;
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span>            : #ifdef QUEUE_DEBUG
+<span class="lineNum">     126 </span>            :         g_assert (!node-&gt;in_queue);
+<span class="lineNum">     127 </span>            :         node-&gt;in_queue = TRUE;
+<span class="lineNum">     128 </span>            :         mono_memory_write_barrier ();
+<span class="lineNum">     129 </span>            : #endif
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span><span class="lineCov">    1213255 :         g_assert (node-&gt;next == FREE_NEXT);</span>
+<span class="lineNum">     132 </span><span class="lineCov">     404418 :         node-&gt;next = END_MARKER;</span>
+<span class="lineNum">     133 </span><span class="lineCov">     404427 :         for (;;) {</span>
+<span class="lineNum">     134 </span>            :                 MonoLockFreeQueueNode *next;
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineCov">     404431 :                 tail = (MonoLockFreeQueueNode *) mono_get_hazardous_pointer ((gpointer volatile*)&amp;q-&gt;tail, hp, 0);</span>
+<span class="lineNum">     137 </span><span class="lineCov">     404431 :                 mono_memory_read_barrier ();</span>
+<span class="lineNum">     138 </span>            :                 /*
+<span class="lineNum">     139 </span>            :                  * We never dereference next so we don't need a
+<span class="lineNum">     140 </span>            :                  * hazardous load.
+<span class="lineNum">     141 </span>            :                  */
+<span class="lineNum">     142 </span><span class="lineCov">     404431 :                 next = tail-&gt;next;</span>
+<span class="lineNum">     143 </span><span class="lineCov">     404431 :                 mono_memory_read_barrier ();</span>
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span>            :                 /* Are tail and next consistent? */
+<span class="lineNum">     146 </span><span class="lineCov">     404431 :                 if (tail == q-&gt;tail) {</span>
+<span class="lineNum">     147 </span><span class="lineCov">    2022130 :                         g_assert (next != INVALID_NEXT &amp;&amp; next != FREE_NEXT);</span>
+<span class="lineNum">     148 </span><span class="lineCov">    1213278 :                         g_assert (next != tail);</span>
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span><span class="lineCov">     404426 :                         if (next == END_MARKER) {</span>
+<span class="lineNum">     151 </span>            :                                 /*
+<span class="lineNum">     152 </span>            :                                  * Here we require that nodes that
+<span class="lineNum">     153 </span>            :                                  * have been dequeued don't have
+<span class="lineNum">     154 </span>            :                                  * next==END_MARKER.  If they did, we
+<span class="lineNum">     155 </span>            :                                  * might append to a node that isn't
+<span class="lineNum">     156 </span>            :                                  * in the queue anymore here.
+<span class="lineNum">     157 </span>            :                                  */
+<span class="lineNum">     158 </span><span class="lineCov">     404426 :                                 if (InterlockedCompareExchangePointer ((gpointer volatile*)&amp;tail-&gt;next, node, END_MARKER) == END_MARKER)</span>
+<span class="lineNum">     159 </span><span class="lineCov">     404422 :                                         break;</span>
+<span class="lineNum">     160 </span><span class="lineCov">          4 :                         } else {</span>
+<span class="lineNum">     161 </span>            :                                 /* Try to advance tail */
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :                                 InterlockedCompareExchangePointer ((gpointer volatile*)&amp;q-&gt;tail, next, tail);</span>
+<span class="lineNum">     163 </span>            :                         }
+<span class="lineNum">     164 </span><span class="lineCov">          4 :                 }</span>
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span><span class="lineCov">          9 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     167 </span><span class="lineCov">         36 :                 mono_hazard_pointer_clear (hp, 0);</span>
+<span class="lineNum">     168 </span>            :         }
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span>            :         /* Try to advance tail */
+<span class="lineNum">     171 </span><span class="lineCov">     404422 :         InterlockedCompareExchangePointer ((gpointer volatile*)&amp;q-&gt;tail, node, tail);</span>
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span><span class="lineCov">     404422 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     174 </span><span class="lineCov">    1617688 :         mono_hazard_pointer_clear (hp, 0);</span>
+<span class="lineNum">     175 </span><span class="lineCov">     404422 : }</span>
+<a name="176"><span class="lineNum">     176 </span>            : </a>
+<span class="lineNum">     177 </span>            : static void
+<span class="lineNum">     178 </span>            : free_dummy (gpointer _dummy)
+<span class="lineNum">     179 </span>            : {
+<span class="lineNum">     180 </span><span class="lineCov">      96767 :         MonoLockFreeQueueDummy *dummy = (MonoLockFreeQueueDummy *) _dummy;</span>
+<span class="lineNum">     181 </span><span class="lineCov">      96767 :         mono_lock_free_queue_node_unpoison (&amp;dummy-&gt;node);</span>
+<span class="lineNum">     182 </span><span class="lineCov">     290301 :         g_assert (dummy-&gt;in_use);</span>
+<span class="lineNum">     183 </span><span class="lineCov">      96767 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     184 </span><span class="lineCov">      96767 :         dummy-&gt;in_use = 0;</span>
+<span class="lineNum">     185 </span><span class="lineCov">      96767 : }</span>
+<a name="186"><span class="lineNum">     186 </span>            : </a>
+<span class="lineNum">     187 </span>            : static MonoLockFreeQueueDummy*
+<span class="lineNum">     188 </span>            : get_dummy (MonoLockFreeQueue *q)
+<span class="lineNum">     189 </span>            : {
+<span class="lineNum">     190 </span>            :         int i;
+<span class="lineNum">     191 </span><span class="lineCov">     193534 :         for (i = 0; i &lt; MONO_LOCK_FREE_QUEUE_NUM_DUMMIES; ++i) {</span>
+<span class="lineNum">     192 </span><span class="lineCov">      96767 :                 MonoLockFreeQueueDummy *dummy = &amp;q-&gt;dummies [i];</span>
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span><span class="lineCov">      96767 :                 if (dummy-&gt;in_use)</span>
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span><span class="lineCov">      96767 :                 if (InterlockedCompareExchange (&amp;dummy-&gt;in_use, 1, 0) == 0)</span>
+<span class="lineNum">     198 </span><span class="lineCov">      96767 :                         return dummy;</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     201 </span><span class="lineCov">      96767 : }</span>
+<a name="202"><span class="lineNum">     202 </span>            : </a>
+<span class="lineNum">     203 </span>            : static gboolean
+<span class="lineNum">     204 </span>            : is_dummy (MonoLockFreeQueue *q, MonoLockFreeQueueNode *n)
+<span class="lineNum">     205 </span>            : {
+<span class="lineNum">     206 </span><span class="lineCov">    2933090 :         return n &gt;= &amp;q-&gt;dummies [0].node &amp;&amp; n &lt;= &amp;q-&gt;dummies [MONO_LOCK_FREE_QUEUE_NUM_DUMMIES-1].node;</span>
+<span class="lineNum">     207 </span>            : }
+<a name="208"><span class="lineNum">     208 </span>            : </a>
+<span class="lineNum">     209 </span>            : static gboolean
+<span class="lineNum">     210 </span>            : try_reenqueue_dummy (MonoLockFreeQueue *q)
+<span class="lineNum">     211 </span>            : {
+<span class="lineNum">     212 </span>            :         MonoLockFreeQueueDummy *dummy;
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span><span class="lineCov">      96767 :         if (q-&gt;has_dummy)</span>
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     216 </span>            : 
+<span class="lineNum">     217 </span><span class="lineCov">      96767 :         dummy = get_dummy (q);</span>
+<span class="lineNum">     218 </span><span class="lineCov">      96767 :         if (!dummy)</span>
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     220 </span>            : 
+<span class="lineNum">     221 </span><span class="lineCov">      96767 :         if (InterlockedCompareExchange (&amp;q-&gt;has_dummy, 1, 0) != 0) {</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :                 dummy-&gt;in_use = 0;</span>
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     224 </span>            :         }
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span><span class="lineCov">      96767 :         mono_lock_free_queue_enqueue (q, &amp;dummy-&gt;node);</span>
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span><span class="lineCov">      96767 :         return TRUE;</span>
+<span class="lineNum">     229 </span><span class="lineCov">      96767 : }</span>
+<span class="lineNum">     230 </span>            : 
+<span class="lineNum">     231 </span>            : /*
+<span class="lineNum">     232 </span>            :  * Dequeues a node from @q. Returns NULL if no nodes are available. The returned
+<span class="lineNum">     233 </span>            :  * node is hazardous and must be freed with @mono_thread_hazardous_try_free or
+<span class="lineNum">     234 </span>            :  * @mono_thread_hazardous_queue_free - it must not be freed directly.
+<a name="235"><span class="lineNum">     235 </span>            :  */</a>
+<span class="lineNum">     236 </span>            : MonoLockFreeQueueNode*
+<span class="lineNum">     237 </span>            : mono_lock_free_queue_dequeue (MonoLockFreeQueue *q)
+<span class="lineNum">     238 </span>            : {
+<span class="lineNum">     239 </span><span class="lineCov">     881631 :         MonoThreadHazardPointers *hp = mono_hazard_pointer_get ();</span>
+<span class="lineNum">     240 </span><span class="lineCov">     881631 :         MonoLockFreeQueueNode *head;</span>
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span>            :  retry:
+<span class="lineNum">     243 </span><span class="lineCov">     978410 :         for (;;) {</span>
+<span class="lineNum">     244 </span>            :                 MonoLockFreeQueueNode *tail, *next;
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">     978423 :                 head = (MonoLockFreeQueueNode *) mono_get_hazardous_pointer ((gpointer volatile*)&amp;q-&gt;head, hp, 0);</span>
+<span class="lineNum">     247 </span><span class="lineCov">     978423 :                 tail = (MonoLockFreeQueueNode*)q-&gt;tail;</span>
+<span class="lineNum">     248 </span><span class="lineCov">     978423 :                 mono_memory_read_barrier ();</span>
+<span class="lineNum">     249 </span><span class="lineCov">     978423 :                 next = head-&gt;next;</span>
+<span class="lineNum">     250 </span><span class="lineCov">     978423 :                 mono_memory_read_barrier ();</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span>            :                 /* Are head, tail and next consistent? */
+<span class="lineNum">     253 </span><span class="lineCov">     978423 :                 if (head == q-&gt;head) {</span>
+<span class="lineNum">     254 </span><span class="lineCov">    4892045 :                         g_assert (next != INVALID_NEXT &amp;&amp; next != FREE_NEXT);</span>
+<span class="lineNum">     255 </span><span class="lineCov">    2935227 :                         g_assert (next != head);</span>
+<span class="lineNum">     256 </span>            : 
+<span class="lineNum">     257 </span>            :                         /* Is queue empty or tail behind? */
+<span class="lineNum">     258 </span><span class="lineCov">     978408 :                         if (head == tail) {</span>
+<span class="lineNum">     259 </span><span class="lineCov">     579264 :                                 if (next == END_MARKER) {</span>
+<span class="lineNum">     260 </span>            :                                         /* Queue is empty */
+<span class="lineNum">     261 </span><span class="lineCov">    2317056 :                                         mono_hazard_pointer_clear (hp, 0);</span>
+<span class="lineNum">     262 </span>            : 
+<span class="lineNum">     263 </span>            :                                         /*
+<span class="lineNum">     264 </span>            :                                          * We only continue if we
+<span class="lineNum">     265 </span>            :                                          * reenqueue the dummy
+<span class="lineNum">     266 </span>            :                                          * ourselves, so as not to
+<span class="lineNum">     267 </span>            :                                          * wait for threads that might
+<span class="lineNum">     268 </span>            :                                          * not actually run.
+<span class="lineNum">     269 </span>            :                                          */
+<span class="lineNum">     270 </span><span class="lineCov">     579264 :                                         if (!is_dummy (q, head) &amp;&amp; try_reenqueue_dummy (q))</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                                                 continue;</span>
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span><span class="lineCov">     579264 :                                         return NULL;</span>
+<span class="lineNum">     274 </span>            :                                 }
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span>            :                                 /* Try to advance tail */
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :                                 InterlockedCompareExchangePointer ((gpointer volatile*)&amp;q-&gt;tail, next, tail);</span>
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     279 </span><span class="lineCov">    1197431 :                                 g_assert (next != END_MARKER);</span>
+<span class="lineNum">     280 </span>            :                                 /* Try to dequeue head */
+<span class="lineNum">     281 </span><span class="lineCov">     399145 :                                 if (InterlockedCompareExchangePointer ((gpointer volatile*)&amp;q-&gt;head, next, head) == head)</span>
+<span class="lineNum">     282 </span><span class="lineCov">     399138 :                                         break;</span>
+<span class="lineNum">     283 </span>            :                         }
+<span class="lineNum">     284 </span><span class="lineCov">          7 :                 }</span>
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span><span class="lineCov">         21 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     287 </span><span class="lineCov">         84 :                 mono_hazard_pointer_clear (hp, 0);</span>
+<span class="lineNum">     288 </span>            :         }
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span>            :         /*
+<span class="lineNum">     291 </span>            :          * The head is dequeued now, so we know it's this thread's
+<span class="lineNum">     292 </span>            :          * responsibility to free it - no other thread can.
+<span class="lineNum">     293 </span>            :          */
+<span class="lineNum">     294 </span><span class="lineCov">     399138 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     295 </span><span class="lineCov">    1596552 :         mono_hazard_pointer_clear (hp, 0);</span>
+<span class="lineNum">     296 </span>            : 
+<span class="lineNum">     297 </span><span class="lineCov">    1197414 :         g_assert (head-&gt;next);</span>
+<span class="lineNum">     298 </span>            :         /*
+<span class="lineNum">     299 </span>            :          * Setting next here isn't necessary for correctness, but we
+<span class="lineNum">     300 </span>            :          * do it to make sure that we catch dereferencing next in a
+<span class="lineNum">     301 </span>            :          * node that's not in the queue anymore.
+<span class="lineNum">     302 </span>            :          */
+<span class="lineNum">     303 </span><span class="lineCov">     399138 :         head-&gt;next = INVALID_NEXT;</span>
+<span class="lineNum">     304 </span>            : #if QUEUE_DEBUG
+<span class="lineNum">     305 </span>            :         g_assert (head-&gt;in_queue);
+<span class="lineNum">     306 </span>            :         head-&gt;in_queue = FALSE;
+<span class="lineNum">     307 </span>            :         mono_memory_write_barrier ();
+<span class="lineNum">     308 </span>            : #endif
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span><span class="lineCov">     399138 :         if (is_dummy (q, head)) {</span>
+<span class="lineNum">     311 </span><span class="lineCov">     290301 :                 g_assert (q-&gt;has_dummy);</span>
+<span class="lineNum">     312 </span><span class="lineCov">      96767 :                 q-&gt;has_dummy = 0;</span>
+<span class="lineNum">     313 </span><span class="lineCov">      96767 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     314 </span><span class="lineCov">      96767 :                 mono_thread_hazardous_try_free (head, free_dummy);</span>
+<span class="lineNum">     315 </span><span class="lineCov">      96767 :                 if (try_reenqueue_dummy (q))</span>
+<span class="lineNum">     316 </span><span class="lineCov">      96767 :                         goto retry;</span>
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     318 </span>            :         }
+<span class="lineNum">     319 </span>            : 
+<span class="lineNum">     320 </span>            :         /* The caller must hazardously free the node. */
+<span class="lineNum">     321 </span><span class="lineCov">     302371 :         return head;</span>
+<span class="lineNum">     322 </span><span class="lineCov">     881635 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

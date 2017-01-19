@@ -1,0 +1,492 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/handle.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - handle.h<span style="font-size: 80%;"> (source / <a href="handle.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">14</td>
+            <td class="headerCovTableEntry">14</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * handle.h: Handle to object in native code
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *  - Ludovic Henry &lt;ludovic@xamarin.com&gt;
+<span class="lineNum">       6 </span>            :  *  - Aleksey Klieger &lt;aleksey.klieger@xamarin.com&gt;
+<span class="lineNum">       7 </span>            :  *  - Rodrigo Kumpera &lt;kumpera@xamarin.com&gt;
+<span class="lineNum">       8 </span>            :  *
+<span class="lineNum">       9 </span>            :  * Copyright 2016 Dot net foundation.
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #ifndef __MONO_HANDLE_H__
+<span class="lineNum">      14 </span>            : #define __MONO_HANDLE_H__
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/object.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/metadata/class.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/utils/mono-error-internals.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;mono/utils/mono-threads.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/utils/checked-build.h&gt;
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : G_BEGIN_DECLS
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : 
+<span class="lineNum">      28 </span>            : /*
+<span class="lineNum">      29 </span>            : Handle stack.
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : The handle stack is designed so it's efficient to pop a large amount of entries at once.
+<span class="lineNum">      32 </span>            : The stack is made out of a series of fixed size segments.
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : To do bulk operations you use a stack mark.
+<span class="lineNum">      35 </span>            :         
+<span class="lineNum">      36 </span>            : */
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span>            : /*
+<span class="lineNum">      39 </span>            : 3 is the number of fields besides the data in the struct;
+<span class="lineNum">      40 </span>            : 128 words makes each chunk 512 or 1024 bytes each
+<span class="lineNum">      41 </span>            : */
+<span class="lineNum">      42 </span>            : #define OBJECTS_PER_HANDLES_CHUNK (128 - 3)
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span>            : /*
+<span class="lineNum">      45 </span>            : Whether this config needs stack watermark recording to know where to start scanning from.
+<span class="lineNum">      46 </span>            : */
+<span class="lineNum">      47 </span>            : #ifdef HOST_WATCHOS
+<span class="lineNum">      48 </span>            : #define MONO_NEEDS_STACK_WATERMARK 1
+<span class="lineNum">      49 </span>            : #endif
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : typedef struct _HandleChunk HandleChunk;
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : /* define MONO_HANDLE_TRACK_OWNER to store the file and line number of each call to MONO_HANDLE_NEW
+<span class="lineNum">      54 </span>            :  * in the handle stack.  (This doubles the amount of memory used for handles, so it's only useful for debugging).
+<span class="lineNum">      55 </span>            :  */
+<span class="lineNum">      56 </span>            : /* #define MONO_HANDLE_TRACK_OWNER */
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            : typedef struct {
+<span class="lineNum">      59 </span>            :         MonoObject *o;
+<span class="lineNum">      60 </span>            : #ifdef MONO_HANDLE_TRACK_OWNER
+<span class="lineNum">      61 </span>            :         const char *owner;
+<span class="lineNum">      62 </span>            : #endif
+<span class="lineNum">      63 </span>            : } HandleChunkElem;
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : struct _HandleChunk {
+<span class="lineNum">      66 </span>            :         int size; //number of bytes
+<span class="lineNum">      67 </span>            :         HandleChunk *prev, *next;
+<span class="lineNum">      68 </span>            :         HandleChunkElem objects [OBJECTS_PER_HANDLES_CHUNK];
+<span class="lineNum">      69 </span>            : };
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span>            : typedef struct {
+<span class="lineNum">      72 </span>            :         HandleChunk *top; //alloc from here
+<span class="lineNum">      73 </span>            :         HandleChunk *bottom; //scan from here
+<span class="lineNum">      74 </span>            : } HandleStack;
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span>            : typedef struct {
+<span class="lineNum">      77 </span>            :         int size;
+<span class="lineNum">      78 </span>            :         HandleChunk *chunk;
+<span class="lineNum">      79 </span>            : } HandleStackMark;
+<span class="lineNum">      80 </span>            : 
+<span class="lineNum">      81 </span>            : typedef void *MonoRawHandle;
+<span class="lineNum">      82 </span>            : 
+<span class="lineNum">      83 </span>            : typedef void (*GcScanFunc) (gpointer*, gpointer);
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span>            : 
+<span class="lineNum">      86 </span>            : #ifndef MONO_HANDLE_TRACK_OWNER
+<span class="lineNum">      87 </span>            : MonoRawHandle mono_handle_new (MonoObject *object);
+<span class="lineNum">      88 </span>            : #else
+<span class="lineNum">      89 </span>            : MonoRawHandle mono_handle_new (MonoObject *object, const char* owner);
+<span class="lineNum">      90 </span>            : #endif
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span>            : void mono_handle_stack_scan (HandleStack *stack, GcScanFunc func, gpointer gc_data);
+<span class="lineNum">      93 </span>            : gboolean mono_handle_stack_is_empty (HandleStack *stack);
+<span class="lineNum">      94 </span>            : HandleStack* mono_handle_stack_alloc (void);
+<span class="lineNum">      95 </span>            : void mono_handle_stack_free (HandleStack *handlestack);
+<span class="lineNum">      96 </span>            : MonoRawHandle mono_stack_mark_pop_value (MonoThreadInfo *info, HandleStackMark *stackmark, MonoRawHandle value);
+<span class="lineNum">      97 </span>            : void mono_stack_mark_record_size (MonoThreadInfo *info, HandleStackMark *stackmark, const char *func_name);
+<a name="98"><span class="lineNum">      98 </span>            : </a>
+<span class="lineNum">      99 </span>            : static inline void
+<span class="lineNum">     100 </span>            : mono_stack_mark_init (MonoThreadInfo *info, HandleStackMark *stackmark)
+<span class="lineNum">     101 </span>            : {
+<span class="lineNum">     102 </span><span class="lineCov">  304587610 :         HandleStack *handles = (HandleStack *)info-&gt;handle_stack;</span>
+<span class="lineNum">     103 </span><span class="lineCov">  304587610 :         stackmark-&gt;size = handles-&gt;top-&gt;size;</span>
+<span class="lineNum">     104 </span><span class="lineCov">  304587610 :         stackmark-&gt;chunk = handles-&gt;top;</span>
+<span class="lineNum">     105 </span><span class="lineCov">  304587610 : }</span>
+<a name="106"><span class="lineNum">     106 </span>            : </a>
+<span class="lineNum">     107 </span>            : static inline void
+<span class="lineNum">     108 </span>            : mono_stack_mark_pop (MonoThreadInfo *info, HandleStackMark *stackmark)
+<span class="lineNum">     109 </span>            : {
+<span class="lineNum">     110 </span><span class="lineCov">  304890014 :         HandleStack *handles = (HandleStack *)info-&gt;handle_stack;</span>
+<span class="lineNum">     111 </span><span class="lineCov">  304890014 :         HandleChunk *old_top = stackmark-&gt;chunk;</span>
+<span class="lineNum">     112 </span><span class="lineCov">  304890014 :         old_top-&gt;size = stackmark-&gt;size;</span>
+<span class="lineNum">     113 </span><span class="lineCov">  304890014 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     114 </span><span class="lineCov">  304890014 :         handles-&gt;top = old_top;</span>
+<span class="lineNum">     115 </span><span class="lineCov">  304890014 : }</span>
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span>            : /*
+<span class="lineNum">     118 </span>            : Icall macros
+<span class="lineNum">     119 </span>            : */
+<span class="lineNum">     120 </span>            : #define SETUP_ICALL_COMMON      \
+<span class="lineNum">     121 </span>            :         do { \
+<span class="lineNum">     122 </span>            :                 MonoError error;        \
+<span class="lineNum">     123 </span>            :                 MonoThreadInfo *__info = mono_thread_info_current ();   \
+<span class="lineNum">     124 </span>            :                 error_init (&amp;error);        \
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span>            : #define CLEAR_ICALL_COMMON      \
+<span class="lineNum">     127 </span>            :         mono_error_set_pending_exception (&amp;error);
+<span class="lineNum">     128 </span>            : 
+<span class="lineNum">     129 </span>            : #define SETUP_ICALL_FRAME       \
+<span class="lineNum">     130 </span>            :         HandleStackMark __mark; \
+<span class="lineNum">     131 </span>            :         mono_stack_mark_init (__info, &amp;__mark);
+<span class="lineNum">     132 </span>            : 
+<span class="lineNum">     133 </span>            : #define CLEAR_ICALL_FRAME       \
+<span class="lineNum">     134 </span>            :         mono_stack_mark_record_size (__info, &amp;__mark, __FUNCTION__);        \
+<span class="lineNum">     135 </span>            :         mono_stack_mark_pop (__info, &amp;__mark);
+<span class="lineNum">     136 </span>            : 
+<span class="lineNum">     137 </span>            : #define CLEAR_ICALL_FRAME_VALUE(RESULT, HANDLE)                         \
+<span class="lineNum">     138 </span>            :         mono_stack_mark_record_size (__info, &amp;__mark, __FUNCTION__);        \
+<span class="lineNum">     139 </span>            :         (RESULT) = mono_stack_mark_pop_value (__info, &amp;__mark, (HANDLE));
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span>            : #define HANDLE_FUNCTION_ENTER() do {                            \
+<span class="lineNum">     143 </span>            :         MonoThreadInfo *__info = mono_thread_info_current ();   \
+<span class="lineNum">     144 </span>            :         SETUP_ICALL_FRAME                                       \
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span>            : #define HANDLE_FUNCTION_RETURN()                \
+<span class="lineNum">     147 </span>            :         CLEAR_ICALL_FRAME;                      \
+<span class="lineNum">     148 </span>            :         } while (0)
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span>            : #define HANDLE_FUNCTION_RETURN_VAL(VAL)         \
+<span class="lineNum">     151 </span>            :         CLEAR_ICALL_FRAME;                      \
+<span class="lineNum">     152 </span>            :         return (VAL);                           \
+<span class="lineNum">     153 </span>            :         } while (0)
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            : #define HANDLE_FUNCTION_RETURN_OBJ(HANDLE)                      \
+<span class="lineNum">     156 </span>            :         do {                                                    \
+<span class="lineNum">     157 </span>            :                 void* __result = (MONO_HANDLE_RAW (HANDLE));    \
+<span class="lineNum">     158 </span>            :                 CLEAR_ICALL_FRAME;                              \
+<span class="lineNum">     159 </span>            :                 return __result;                                \
+<span class="lineNum">     160 </span>            :         } while (0); } while (0);
+<span class="lineNum">     161 </span>            : 
+<span class="lineNum">     162 </span>            : #define HANDLE_FUNCTION_RETURN_REF(TYPE, HANDLE)                        \
+<span class="lineNum">     163 </span>            :         do {                                                            \
+<span class="lineNum">     164 </span>            :                 MonoRawHandle __result;                                 \
+<span class="lineNum">     165 </span>            :                 CLEAR_ICALL_FRAME_VALUE (__result, ((MonoRawHandle) (HANDLE))); \
+<span class="lineNum">     166 </span>            :                 return MONO_HANDLE_CAST (TYPE, __result);               \
+<span class="lineNum">     167 </span>            :         } while (0); } while (0);
+<span class="lineNum">     168 </span>            : 
+<span class="lineNum">     169 </span>            : #ifdef MONO_NEEDS_STACK_WATERMARK
+<span class="lineNum">     170 </span>            : 
+<span class="lineNum">     171 </span>            : static void
+<span class="lineNum">     172 </span>            : mono_thread_info_pop_stack_mark (MonoThreadInfo *info, void *old_mark)
+<span class="lineNum">     173 </span>            : {
+<span class="lineNum">     174 </span>            :         info-&gt;stack_mark = old_mark;
+<span class="lineNum">     175 </span>            : }
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span>            : static void*
+<span class="lineNum">     178 </span>            : mono_thread_info_push_stack_mark (MonoThreadInfo *info, void *mark)
+<span class="lineNum">     179 </span>            : {
+<span class="lineNum">     180 </span>            :         void *old = info-&gt;stack_mark;
+<span class="lineNum">     181 </span>            :         info-&gt;stack_mark = mark;
+<span class="lineNum">     182 </span>            :         return old;
+<span class="lineNum">     183 </span>            : }
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span>            : #define SETUP_STACK_WATERMARK   \
+<span class="lineNum">     186 </span>            :         int __dummy;    \
+<span class="lineNum">     187 </span>            :         __builtin_unwind_init ();       \
+<span class="lineNum">     188 </span>            :         void *__old_stack_mark = mono_thread_info_push_stack_mark (__info, &amp;__dummy);
+<span class="lineNum">     189 </span>            : 
+<span class="lineNum">     190 </span>            : #define CLEAR_STACK_WATERMARK   \
+<span class="lineNum">     191 </span>            :         mono_thread_info_pop_stack_mark (__info, __old_stack_mark);
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span>            : #else
+<span class="lineNum">     194 </span>            : #define SETUP_STACK_WATERMARK
+<span class="lineNum">     195 </span>            : #define CLEAR_STACK_WATERMARK
+<span class="lineNum">     196 </span>            : #endif
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span>            : #define ICALL_ENTRY()   \
+<span class="lineNum">     199 </span>            :         SETUP_ICALL_COMMON      \
+<span class="lineNum">     200 </span>            :         SETUP_ICALL_FRAME       \
+<span class="lineNum">     201 </span>            :         SETUP_STACK_WATERMARK
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span>            : #define ICALL_RETURN()  \
+<span class="lineNum">     204 </span>            :         do {    \
+<span class="lineNum">     205 </span>            :                 CLEAR_STACK_WATERMARK   \
+<span class="lineNum">     206 </span>            :                 CLEAR_ICALL_COMMON      \
+<span class="lineNum">     207 </span>            :                 CLEAR_ICALL_FRAME       \
+<span class="lineNum">     208 </span>            :                 return; \
+<span class="lineNum">     209 </span>            :         } while (0); } while (0)
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span>            : #define ICALL_RETURN_VAL(VAL)   \
+<span class="lineNum">     212 </span>            :         do {    \
+<span class="lineNum">     213 </span>            :                 CLEAR_STACK_WATERMARK   \
+<span class="lineNum">     214 </span>            :                 CLEAR_ICALL_COMMON      \
+<span class="lineNum">     215 </span>            :                 CLEAR_ICALL_FRAME       \
+<span class="lineNum">     216 </span>            :                 return VAL;     \
+<span class="lineNum">     217 </span>            :         } while (0); } while (0)
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span>            : #define ICALL_RETURN_OBJ(HANDLE)        \
+<span class="lineNum">     220 </span>            :         do {    \
+<span class="lineNum">     221 </span>            :                 CLEAR_STACK_WATERMARK   \
+<span class="lineNum">     222 </span>            :                 CLEAR_ICALL_COMMON      \
+<span class="lineNum">     223 </span>            :                 void* __ret = MONO_HANDLE_RAW (HANDLE); \
+<span class="lineNum">     224 </span>            :                 CLEAR_ICALL_FRAME       \
+<span class="lineNum">     225 </span>            :                 return __ret;   \
+<span class="lineNum">     226 </span>            :         } while (0); } while (0)
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span>            : /*
+<span class="lineNum">     229 </span>            : Handle macros/functions
+<span class="lineNum">     230 </span>            : */
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span>            : #ifdef ENABLE_CHECKED_BUILD
+<span class="lineNum">     233 </span>            : void mono_handle_verify (MonoRawHandle handle);
+<span class="lineNum">     234 </span>            : #define HANDLE_INVARIANTS(H) mono_handle_verify((void*)(H))
+<span class="lineNum">     235 </span>            : #else
+<span class="lineNum">     236 </span>            : #define HANDLE_INVARIANTS(H) (0)
+<span class="lineNum">     237 </span>            : #endif
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span>            : #define TYPED_HANDLE_PAYLOAD_NAME(TYPE) TYPE ## HandlePayload
+<span class="lineNum">     240 </span>            : #define TYPED_HANDLE_NAME(TYPE) TYPE ## Handle
+<span class="lineNum">     241 </span>            : #define TYPED_OUT_HANDLE_NAME(TYPE) TYPE ## HandleOut
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span>            : #ifdef MONO_HANDLE_TRACK_OWNER
+<span class="lineNum">     244 </span>            : #define STRINGIFY_(x) #x
+<span class="lineNum">     245 </span>            : #define STRINGIFY(x) STRINGIFY_(x)
+<span class="lineNum">     246 </span>            : #define HANDLE_OWNER_STRINGIFY(file,lineno) (const char*) (file &quot;:&quot; STRINGIFY(lineno))
+<span class="lineNum">     247 </span>            : #endif
+<span class="lineNum">     248 </span>            : 
+<span class="lineNum">     249 </span>            : 
+<span class="lineNum">     250 </span>            : /*
+<span class="lineNum">     251 </span>            :  * TYPED_HANDLE_DECL(SomeType):
+<span class="lineNum">     252 </span>            :  *   Expands to a decl for handles to SomeType and to an internal payload struct.
+<span class="lineNum">     253 </span>            :  *
+<span class="lineNum">     254 </span>            :  * For example, TYPED_HANDLE_DECL(MonoObject) (see below) expands to:
+<span class="lineNum">     255 </span>            :  *
+<span class="lineNum">     256 </span>            :  * typedef struct {
+<span class="lineNum">     257 </span>            :  *   MonoObject *__obj;
+<span class="lineNum">     258 </span>            :  * } MonoObjectHandlePayload;
+<span class="lineNum">     259 </span>            :  *
+<span class="lineNum">     260 </span>            :  * typedef MonoObjectHandlePayload* MonoObjectHandle;
+<span class="lineNum">     261 </span>            :  * typedef MonoObjectHandlePayload* MonoObjectHandleOut;
+<span class="lineNum">     262 </span>            :  */
+<span class="lineNum">     263 </span>            : #define TYPED_HANDLE_DECL(TYPE)                                         \
+<span class="lineNum">     264 </span>            :         typedef struct { TYPE *__obj; } TYPED_HANDLE_PAYLOAD_NAME (TYPE) ; \
+<span class="lineNum">     265 </span>            :         typedef TYPED_HANDLE_PAYLOAD_NAME (TYPE) * TYPED_HANDLE_NAME (TYPE); \
+<span class="lineNum">     266 </span>            :         typedef TYPED_HANDLE_PAYLOAD_NAME (TYPE) * TYPED_OUT_HANDLE_NAME (TYPE)
+<span class="lineNum">     267 </span>            : /* Have to double expand because MONO_STRUCT_OFFSET is doing token pasting on cross-compilers. */
+<span class="lineNum">     268 </span>            : #define MONO_HANDLE_PAYLOAD_OFFSET_(PayloadType) MONO_STRUCT_OFFSET(PayloadType, __obj)
+<span class="lineNum">     269 </span>            : #define MONO_HANDLE_PAYLOAD_OFFSET(TYPE) MONO_HANDLE_PAYLOAD_OFFSET_(TYPED_HANDLE_PAYLOAD_NAME (TYPE))
+<span class="lineNum">     270 </span>            : 
+<span class="lineNum">     271 </span>            : #define MONO_HANDLE_INIT ((void*) mono_null_value_handle)
+<span class="lineNum">     272 </span>            : #define NULL_HANDLE mono_null_value_handle
+<span class="lineNum">     273 </span>            : 
+<span class="lineNum">     274 </span>            : //XXX add functions to get/set raw, set field, set field to null, set array, set array to null
+<span class="lineNum">     275 </span>            : #define MONO_HANDLE_RAW(HANDLE) (HANDLE_INVARIANTS (HANDLE), ((HANDLE)-&gt;__obj))
+<span class="lineNum">     276 </span>            : #define MONO_HANDLE_DCL(TYPE, NAME) TYPED_HANDLE_NAME(TYPE) NAME = MONO_HANDLE_NEW (TYPE, (NAME ## _raw))
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span>            : #ifndef MONO_HANDLE_TRACK_OWNER
+<span class="lineNum">     279 </span>            : #define MONO_HANDLE_NEW(TYPE, VALUE) (TYPED_HANDLE_NAME(TYPE))( mono_handle_new ((MonoObject*)(VALUE)) )
+<span class="lineNum">     280 </span>            : #else
+<span class="lineNum">     281 </span>            : #define MONO_HANDLE_NEW(TYPE, VALUE) (TYPED_HANDLE_NAME(TYPE))( mono_handle_new ((MonoObject*)(VALUE), HANDLE_OWNER_STRINGIFY(__FILE__, __LINE__)))
+<span class="lineNum">     282 </span>            : #endif
+<span class="lineNum">     283 </span>            : 
+<span class="lineNum">     284 </span>            : #define MONO_HANDLE_CAST(TYPE, VALUE) (TYPED_HANDLE_NAME(TYPE))( VALUE )
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span>            : #define MONO_HANDLE_IS_NULL(HANDLE) (MONO_HANDLE_RAW(HANDLE) == NULL)
+<span class="lineNum">     287 </span>            : 
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span>            : /*
+<span class="lineNum">     290 </span>            : WARNING WARNING WARNING
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span>            : The following functions require a particular evaluation ordering to ensure correctness.
+<span class="lineNum">     293 </span>            : We must not have exposed handles while any sort of evaluation is happening as that very evaluation might trigger
+<span class="lineNum">     294 </span>            : a safepoint and break us.
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span>            : This is why we evaluate index and value before any call to MONO_HANDLE_RAW or other functions that deal with naked objects.
+<span class="lineNum">     297 </span>            : */
+<span class="lineNum">     298 </span>            : #define MONO_HANDLE_SETRAW(HANDLE, FIELD, VALUE) do {   \
+<span class="lineNum">     299 </span>            :                 MonoObject *__val = (MonoObject*)(VALUE);       \
+<span class="lineNum">     300 </span>            :                 MONO_OBJECT_SETREF (MONO_HANDLE_RAW (HANDLE), FIELD, __val);    \
+<span class="lineNum">     301 </span>            :         } while (0)
+<span class="lineNum">     302 </span>            : 
+<span class="lineNum">     303 </span>            : #define MONO_HANDLE_SET(HANDLE, FIELD, VALUE) do {      \
+<span class="lineNum">     304 </span>            :                 MonoObjectHandle __val = MONO_HANDLE_CAST (MonoObject, VALUE);  \
+<span class="lineNum">     305 </span>            :                 MONO_OBJECT_SETREF (MONO_HANDLE_RAW (HANDLE), FIELD, MONO_HANDLE_RAW (__val));  \
+<span class="lineNum">     306 </span>            :         } while (0)
+<span class="lineNum">     307 </span>            : 
+<span class="lineNum">     308 </span>            : /* N.B. RESULT is evaluated before HANDLE */
+<span class="lineNum">     309 </span>            : #define MONO_HANDLE_GET(RESULT, HANDLE, FIELD) do {                     \
+<span class="lineNum">     310 </span>            :                 MonoObjectHandle __dest = MONO_HANDLE_CAST(MonoObject, RESULT); \
+<span class="lineNum">     311 </span>            :                 mono_gc_wbarrier_generic_store (&amp;__dest-&gt;__obj,  (MonoObject*)(MONO_HANDLE_RAW(HANDLE)-&gt;FIELD)); \
+<span class="lineNum">     312 </span>            :         } while (0)
+<span class="lineNum">     313 </span>            : 
+<span class="lineNum">     314 </span>            : #define MONO_HANDLE_GETVAL(HANDLE, FIELD) (MONO_HANDLE_RAW(HANDLE)-&gt;FIELD)
+<span class="lineNum">     315 </span>            : 
+<span class="lineNum">     316 </span>            : /* VS doesn't support typeof :( :( :( */
+<span class="lineNum">     317 </span>            : #define MONO_HANDLE_SETVAL(HANDLE, FIELD, TYPE, VALUE) do {     \
+<span class="lineNum">     318 </span>            :                 TYPE __val = (VALUE);   \
+<span class="lineNum">     319 </span>            :                 MONO_HANDLE_RAW (HANDLE)-&gt;FIELD = __val;     \
+<span class="lineNum">     320 </span>            :          } while (0)
+<span class="lineNum">     321 </span>            : 
+<span class="lineNum">     322 </span>            : #define MONO_HANDLE_ARRAY_SETREF(HANDLE, IDX, VALUE) do {       \
+<span class="lineNum">     323 </span>            :                 int __idx = (IDX);      \
+<span class="lineNum">     324 </span>            :                 MonoObjectHandle __val = MONO_HANDLE_CAST (MonoObject, VALUE);          \
+<span class="lineNum">     325 </span>            :                 mono_array_setref_fast (MONO_HANDLE_RAW (HANDLE), __idx, MONO_HANDLE_RAW (__val));      \
+<span class="lineNum">     326 </span>            :         } while (0)
+<span class="lineNum">     327 </span>            : 
+<span class="lineNum">     328 </span>            : #define MONO_HANDLE_ARRAY_SETVAL(HANDLE, TYPE, IDX, VALUE) do {         \
+<span class="lineNum">     329 </span>            :                 int __idx = (IDX);                                      \
+<span class="lineNum">     330 </span>            :                 TYPE __val = (VALUE);                   \
+<span class="lineNum">     331 </span>            :                 mono_array_set (MONO_HANDLE_RAW (HANDLE), TYPE, __idx, __val); \
+<span class="lineNum">     332 </span>            :         } while (0)
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span>            : #define MONO_HANDLE_ARRAY_SETRAW(HANDLE, IDX, VALUE) do {       \
+<span class="lineNum">     335 </span>            :                 int __idx = (IDX);      \
+<span class="lineNum">     336 </span>            :                 MonoObject *__val = (MonoObject*)(VALUE);       \
+<span class="lineNum">     337 </span>            :                 mono_array_setref_fast (MONO_HANDLE_RAW (HANDLE), __idx, __val); \
+<span class="lineNum">     338 </span>            :         } while (0)
+<span class="lineNum">     339 </span>            : 
+<span class="lineNum">     340 </span>            : /* N.B. DEST is evaluated AFTER all the other arguments */
+<span class="lineNum">     341 </span>            : #define MONO_HANDLE_ARRAY_GETVAL(DEST, HANDLE, TYPE, IDX) do {          \
+<span class="lineNum">     342 </span>            :                 MonoArrayHandle __arr = (HANDLE);                       \
+<span class="lineNum">     343 </span>            :                 int __idx = (IDX);                                      \
+<span class="lineNum">     344 </span>            :                 TYPE __result = mono_array_get (MONO_HANDLE_RAW(__arr), TYPE, __idx); \
+<span class="lineNum">     345 </span>            :                 (DEST) =  __result;                                     \
+<span class="lineNum">     346 </span>            :         } while (0)
+<span class="lineNum">     347 </span>            : 
+<span class="lineNum">     348 </span>            : #define MONO_HANDLE_ARRAY_GETREF(DEST, HANDLE, IDX) do {                \
+<span class="lineNum">     349 </span>            :                 mono_handle_array_getref (MONO_HANDLE_CAST(MonoObject, (DEST)), (HANDLE), (IDX)); \
+<span class="lineNum">     350 </span>            :         } while (0)
+<span class="lineNum">     351 </span>            : 
+<span class="lineNum">     352 </span>            : #define MONO_HANDLE_ASSIGN(DESTH, SRCH)                         \
+<span class="lineNum">     353 </span>            :         mono_handle_assign (MONO_HANDLE_CAST (MonoObject, (DESTH)), MONO_HANDLE_CAST(MonoObject, (SRCH)))
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span>            : #define MONO_HANDLE_DOMAIN(HANDLE) (mono_object_domain (MONO_HANDLE_RAW (MONO_HANDLE_CAST (MonoObject, HANDLE))))
+<span class="lineNum">     356 </span>            : 
+<span class="lineNum">     357 </span>            : /* Baked typed handles we all want */
+<span class="lineNum">     358 </span>            : TYPED_HANDLE_DECL (MonoString);
+<span class="lineNum">     359 </span>            : TYPED_HANDLE_DECL (MonoArray);
+<span class="lineNum">     360 </span>            : TYPED_HANDLE_DECL (MonoObject);
+<span class="lineNum">     361 </span>            : TYPED_HANDLE_DECL (MonoException);
+<span class="lineNum">     362 </span>            : 
+<span class="lineNum">     363 </span>            : #define NULL_HANDLE_STRING MONO_HANDLE_CAST(MonoString, NULL_HANDLE)
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span>            : /*
+<span class="lineNum">     366 </span>            : This is the constant for a handle that points nowhere.
+<span class="lineNum">     367 </span>            : Init values to it.
+<span class="lineNum">     368 </span>            : */
+<span class="lineNum">     369 </span>            : extern const MonoObjectHandle mono_null_value_handle;
+<a name="370"><span class="lineNum">     370 </span>            : </a>
+<span class="lineNum">     371 </span>            : static inline void
+<span class="lineNum">     372 </span>            : mono_handle_assign (MonoObjectHandleOut dest, MonoObjectHandle src)
+<span class="lineNum">     373 </span>            : {
+<span class="lineNum">     374 </span><span class="lineCov">  880197136 :         mono_gc_wbarrier_generic_store (&amp;dest-&gt;__obj, src ? MONO_HANDLE_RAW(src) : NULL);</span>
+<span class="lineNum">     375 </span><span class="lineCov">  293340456 : }</span>
+<span class="lineNum">     376 </span>            : 
+<span class="lineNum">     377 </span>            : //FIXME this should go somewhere else
+<span class="lineNum">     378 </span>            : MonoStringHandle mono_string_new_handle (MonoDomain *domain, const char *data, MonoError *error);
+<span class="lineNum">     379 </span>            : MonoArrayHandle mono_array_new_handle (MonoDomain *domain, MonoClass *eclass, uintptr_t n, MonoError *error);
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span>            : uintptr_t mono_array_handle_length (MonoArrayHandle arr);
+<a name="382"><span class="lineNum">     382 </span>            : </a>
+<span class="lineNum">     383 </span>            : static inline void
+<span class="lineNum">     384 </span>            : mono_handle_array_getref (MonoObjectHandleOut dest, MonoArrayHandle array, uintptr_t index)
+<span class="lineNum">     385 </span>            : {
+<span class="lineNum">     386 </span><span class="lineCov">         20 :         mono_gc_wbarrier_generic_store (&amp;dest-&gt;__obj, mono_array_get (MONO_HANDLE_RAW (array),gpointer, index));</span>
+<span class="lineNum">     387 </span><span class="lineCov">         20 : }</span>
+<span class="lineNum">     388 </span>            : 
+<span class="lineNum">     389 </span>            : #define mono_handle_class(o) mono_object_class (MONO_HANDLE_RAW (o))
+<span class="lineNum">     390 </span>            : 
+<span class="lineNum">     391 </span>            : /* Local handles to global GC handles and back */
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span>            : uint32_t
+<span class="lineNum">     394 </span>            : mono_gchandle_from_handle (MonoObjectHandle handle, mono_bool pinned);
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span>            : MonoObjectHandle
+<span class="lineNum">     397 </span>            : mono_gchandle_get_target_handle (uint32_t gchandle);
+<span class="lineNum">     398 </span>            : 
+<span class="lineNum">     399 </span>            : void
+<span class="lineNum">     400 </span>            : mono_array_handle_memcpy_refs (MonoArrayHandle dest, uintptr_t dest_idx, MonoArrayHandle src, uintptr_t src_idx, uintptr_t len);
+<span class="lineNum">     401 </span>            : 
+<span class="lineNum">     402 </span>            : /* Pins the MonoArray using a gchandle and returns a pointer to the
+<span class="lineNum">     403 </span>            :  * element with the given index (where each element is of the given
+<span class="lineNum">     404 </span>            :  * size.  Call mono_gchandle_free to unpin.
+<span class="lineNum">     405 </span>            :  */
+<span class="lineNum">     406 </span>            : gpointer
+<span class="lineNum">     407 </span>            : mono_array_handle_pin_with_size (MonoArrayHandle handle, int size, uintptr_t index, uint32_t *gchandle);
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span>            : #define MONO_ARRAY_HANDLE_PIN(handle,type,index,gchandle_out) mono_array_handle_pin_with_size (MONO_HANDLE_CAST(MonoArray,(handle)), sizeof (type), (index), (gchandle_out))
+<span class="lineNum">     410 </span>            : 
+<span class="lineNum">     411 </span>            : void
+<span class="lineNum">     412 </span>            : mono_error_set_exception_handle (MonoError *error, MonoExceptionHandle exc);
+<span class="lineNum">     413 </span>            : 
+<span class="lineNum">     414 </span>            : G_END_DECLS
+<span class="lineNum">     415 </span>            : 
+<span class="lineNum">     416 </span>            : #endif /* __MONO_HANDLE_H__ */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

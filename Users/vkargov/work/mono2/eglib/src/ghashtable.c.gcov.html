@@ -1,0 +1,747 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - /Users/vkargov/work/mono2/eglib/src/ghashtable.c</title>
+  <link rel="stylesheet" type="text/css" href="../../../../../../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../../../../../../index.html">top level</a> - <a href="index.html">Users/vkargov/work/mono2/eglib/src</a> - ghashtable.c<span style="font-size: 80%;"> (source / <a href="ghashtable.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">221</td>
+            <td class="headerCovTableEntry">303</td>
+            <td class="headerCovTableEntryLo">72.9 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">21</td>
+            <td class="headerCovTableEntry">30</td>
+            <td class="headerCovTableEntryLo">70.0 %</td>
+          </tr>
+          <tr><td><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * ghashtable.c: Hashtable implementation
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Miguel de Icaza (miguel@novell.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2006 Novell, Inc.
+<span class="lineNum">       8 </span>            :  *
+<span class="lineNum">       9 </span>            :  * Permission is hereby granted, free of charge, to any person obtaining
+<span class="lineNum">      10 </span>            :  * a copy of this software and associated documentation files (the
+<span class="lineNum">      11 </span>            :  * &quot;Software&quot;), to deal in the Software without restriction, including
+<span class="lineNum">      12 </span>            :  * without limitation the rights to use, copy, modify, merge, publish,
+<span class="lineNum">      13 </span>            :  * distribute, sublicense, and/or sell copies of the Software, and to
+<span class="lineNum">      14 </span>            :  * permit persons to whom the Software is furnished to do so, subject to
+<span class="lineNum">      15 </span>            :  * the following conditions:
+<span class="lineNum">      16 </span>            :  *
+<span class="lineNum">      17 </span>            :  * The above copyright notice and this permission notice shall be
+<span class="lineNum">      18 </span>            :  * included in all copies or substantial portions of the Software.
+<span class="lineNum">      19 </span>            :  *
+<span class="lineNum">      20 </span>            :  * THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+<span class="lineNum">      21 </span>            :  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+<span class="lineNum">      22 </span>            :  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+<span class="lineNum">      23 </span>            :  * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+<span class="lineNum">      24 </span>            :  * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+<span class="lineNum">      25 </span>            :  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+<span class="lineNum">      26 </span>            :  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+<span class="lineNum">      27 </span>            :  */
+<span class="lineNum">      28 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      29 </span>            : #include &lt;math.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : typedef struct _Slot Slot;
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : struct _Slot {
+<span class="lineNum">      35 </span>            :         gpointer key;
+<span class="lineNum">      36 </span>            :         gpointer value;
+<span class="lineNum">      37 </span>            :         Slot    *next;
+<span class="lineNum">      38 </span>            : };
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : static gpointer KEYMARKER_REMOVED = &amp;KEYMARKER_REMOVED;
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : struct _GHashTable {
+<span class="lineNum">      43 </span>            :         GHashFunc      hash_func;
+<span class="lineNum">      44 </span>            :         GEqualFunc     key_equal_func;
+<span class="lineNum">      45 </span>            : 
+<span class="lineNum">      46 </span>            :         Slot **table;
+<span class="lineNum">      47 </span>            :         int   table_size;
+<span class="lineNum">      48 </span>            :         int   in_use;
+<span class="lineNum">      49 </span>            :         int   threshold;
+<span class="lineNum">      50 </span>            :         int   last_rehash;
+<span class="lineNum">      51 </span>            :         GDestroyNotify value_destroy_func, key_destroy_func;
+<span class="lineNum">      52 </span>            : };
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span>            : typedef struct {
+<span class="lineNum">      55 </span>            :         GHashTable *ht;
+<span class="lineNum">      56 </span>            :         int slot_index;
+<span class="lineNum">      57 </span>            :         Slot *slot;
+<span class="lineNum">      58 </span>            : } Iter;
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : static const guint prime_tbl[] = {
+<span class="lineNum">      61 </span>            :         11, 19, 37, 73, 109, 163, 251, 367, 557, 823, 1237,
+<span class="lineNum">      62 </span>            :         1861, 2777, 4177, 6247, 9371, 14057, 21089, 31627,
+<span class="lineNum">      63 </span>            :         47431, 71143, 106721, 160073, 240101, 360163,
+<span class="lineNum">      64 </span>            :         540217, 810343, 1215497, 1823231, 2734867, 4102283,
+<span class="lineNum">      65 </span>            :         6153409, 9230113, 13845163
+<span class="lineNum">      66 </span>            : };
+<a name="67"><span class="lineNum">      67 </span>            : </a>
+<span class="lineNum">      68 </span>            : static gboolean
+<span class="lineNum">      69 </span>            : test_prime (int x)
+<span class="lineNum">      70 </span>            : {
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :         if ((x &amp; 1) != 0) {</span>
+<span class="lineNum">      72 </span>            :                 int n;
+<span class="lineNum">      73 </span><span class="lineNoCov">          0 :                 for (n = 3; n&lt; (int)sqrt (x); n += 2) {</span>
+<span class="lineNum">      74 </span><span class="lineNoCov">          0 :                         if ((x % n) == 0)</span>
+<span class="lineNum">      75 </span><span class="lineNoCov">          0 :                                 return FALSE;</span>
+<span class="lineNum">      76 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">      78 </span>            :         }
+<span class="lineNum">      79 </span>            :         // There is only one even prime - 2.
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :         return (x == 2);</span>
+<span class="lineNum">      81 </span><span class="lineNoCov">          0 : }</span>
+<a name="82"><span class="lineNum">      82 </span>            : </a>
+<span class="lineNum">      83 </span>            : static int
+<span class="lineNum">      84 </span>            : calc_prime (int x)
+<span class="lineNum">      85 </span>            : {
+<span class="lineNum">      86 </span>            :         int i;
+<span class="lineNum">      87 </span>            :         
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 :         for (i = (x &amp; (~1))-1; i&lt; G_MAXINT32; i += 2) {</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :                 if (test_prime (i))</span>
+<span class="lineNum">      90 </span><span class="lineNoCov">          0 :                         return i;</span>
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :         return x;</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 : }</span>
+<a name="94"><span class="lineNum">      94 </span>            : </a>
+<span class="lineNum">      95 </span>            : guint
+<span class="lineNum">      96 </span>            : g_spaced_primes_closest (guint x)
+<span class="lineNum">      97 </span>            : {
+<span class="lineNum">      98 </span>            :         int i;
+<span class="lineNum">      99 </span>            :         
+<span class="lineNum">     100 </span><span class="lineCov">  210684795 :         for (i = 0; i &lt; G_N_ELEMENTS (prime_tbl); i++) {</span>
+<span class="lineNum">     101 </span><span class="lineCov">  105345862 :                 if (x &lt;= prime_tbl [i])</span>
+<span class="lineNum">     102 </span><span class="lineCov">  103225690 :                         return prime_tbl [i];</span>
+<span class="lineNum">     103 </span><span class="lineCov">    2121699 :         }</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         return calc_prime (x);</span>
+<span class="lineNum">     105 </span><span class="lineCov">  103227413 : }</span>
+<a name="106"><span class="lineNum">     106 </span>            : </a>
+<span class="lineNum">     107 </span>            : GHashTable *
+<span class="lineNum">     108 </span>            : g_hash_table_new (GHashFunc hash_func, GEqualFunc key_equal_func)
+<span class="lineNum">     109 </span>            : {
+<span class="lineNum">     110 </span>            :         GHashTable *hash;
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span><span class="lineCov">  102722848 :         if (hash_func == NULL)</span>
+<span class="lineNum">     113 </span><span class="lineCov">   36323128 :                 hash_func = g_direct_hash;</span>
+<span class="lineNum">     114 </span><span class="lineCov">  102729075 :         if (key_equal_func == NULL)</span>
+<span class="lineNum">     115 </span><span class="lineCov">   37520303 :                 key_equal_func = g_direct_equal;</span>
+<span class="lineNum">     116 </span><span class="lineCov">  102726929 :         hash = g_new0 (GHashTable, 1);</span>
+<span class="lineNum">     117 </span>            : 
+<span class="lineNum">     118 </span><span class="lineCov">  102726929 :         hash-&gt;hash_func = hash_func;</span>
+<span class="lineNum">     119 </span><span class="lineCov">  102726929 :         hash-&gt;key_equal_func = key_equal_func;</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span><span class="lineCov">  102726929 :         hash-&gt;table_size = g_spaced_primes_closest (1);</span>
+<span class="lineNum">     122 </span><span class="lineCov">  102726929 :         hash-&gt;table = g_new0 (Slot *, hash-&gt;table_size);</span>
+<span class="lineNum">     123 </span><span class="lineCov">  102726929 :         hash-&gt;last_rehash = hash-&gt;table_size;</span>
+<span class="lineNum">     124 </span>            :         
+<span class="lineNum">     125 </span><span class="lineCov">  102726929 :         return hash;</span>
+<span class="lineNum">     126 </span>            : }
+<a name="127"><span class="lineNum">     127 </span>            : </a>
+<span class="lineNum">     128 </span>            : GHashTable *
+<span class="lineNum">     129 </span>            : g_hash_table_new_full (GHashFunc hash_func, GEqualFunc key_equal_func,
+<span class="lineNum">     130 </span>            :                        GDestroyNotify key_destroy_func, GDestroyNotify value_destroy_func)
+<span class="lineNum">     131 </span>            : {
+<span class="lineNum">     132 </span><span class="lineCov">     410674 :         GHashTable *hash = g_hash_table_new (hash_func, key_equal_func);</span>
+<span class="lineNum">     133 </span><span class="lineCov">     410674 :         if (hash == NULL)</span>
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     135 </span>            :         
+<span class="lineNum">     136 </span><span class="lineCov">     410674 :         hash-&gt;key_destroy_func = key_destroy_func;</span>
+<span class="lineNum">     137 </span><span class="lineCov">     410674 :         hash-&gt;value_destroy_func = value_destroy_func;</span>
+<span class="lineNum">     138 </span>            :         
+<span class="lineNum">     139 </span><span class="lineCov">     410674 :         return hash;</span>
+<span class="lineNum">     140 </span><span class="lineCov">     410674 : }</span>
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span>            : #if 0
+<span class="lineNum">     143 </span>            : static void
+<span class="lineNum">     144 </span>            : dump_hash_table (GHashTable *hash)
+<span class="lineNum">     145 </span>            : {
+<span class="lineNum">     146 </span>            :         int i;
+<span class="lineNum">     147 </span>            : 
+<span class="lineNum">     148 </span>            :         for (i = 0; i &lt; hash-&gt;table_size; i++) {
+<span class="lineNum">     149 </span>            :                 Slot *s;
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span>            :                 for (s = hash-&gt;table [i]; s != NULL; s = s-&gt;next){
+<span class="lineNum">     152 </span>            :                         guint hashcode = (*hash-&gt;hash_func) (s-&gt;key);
+<span class="lineNum">     153 </span>            :                         guint slot = (hashcode) % hash-&gt;table_size;
+<span class="lineNum">     154 </span>            :                         printf (&quot;key %p hash %x on slot %d correct slot %d tb size %d\n&quot;, s-&gt;key, hashcode, i, slot, hash-&gt;table_size);
+<span class="lineNum">     155 </span>            :                 }
+<span class="lineNum">     156 </span>            :         }
+<span class="lineNum">     157 </span>            : }
+<span class="lineNum">     158 </span>            : #endif
+<span class="lineNum">     159 </span>            : 
+<span class="lineNum">     160 </span>            : #ifdef SANITY_CHECK
+<span class="lineNum">     161 </span>            : static void
+<span class="lineNum">     162 </span>            : sanity_check (GHashTable *hash)
+<span class="lineNum">     163 </span>            : {
+<span class="lineNum">     164 </span>            :         int i;
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span>            :         for (i = 0; i &lt; hash-&gt;table_size; i++) {
+<span class="lineNum">     167 </span>            :                 Slot *s;
+<span class="lineNum">     168 </span>            : 
+<span class="lineNum">     169 </span>            :                 for (s = hash-&gt;table [i]; s != NULL; s = s-&gt;next){
+<span class="lineNum">     170 </span>            :                         guint hashcode = (*hash-&gt;hash_func) (s-&gt;key);
+<span class="lineNum">     171 </span>            :                         guint slot = (hashcode) % hash-&gt;table_size;
+<span class="lineNum">     172 </span>            :                         if (slot != i) {
+<span class="lineNum">     173 </span>            :                                 dump_hashcode_func = 1;
+<span class="lineNum">     174 </span>            :                                 hashcode = (*hash-&gt;hash_func) (s-&gt;key);
+<span class="lineNum">     175 </span>            :                                 dump_hashcode_func = 0;
+<span class="lineNum">     176 </span>            :                                 g_error (&quot;Key %p (bucket %d) on invalid bucket %d (hashcode %x) (tb size %d)&quot;, s-&gt;key, slot, i, hashcode, hash-&gt;table_size);
+<span class="lineNum">     177 </span>            :                         }
+<span class="lineNum">     178 </span>            :                 }
+<span class="lineNum">     179 </span>            :         }
+<span class="lineNum">     180 </span>            : }
+<span class="lineNum">     181 </span>            : #else
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span>            : #define sanity_check(HASH) do {}while(0)
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span>            : #endif
+<a name="186"><span class="lineNum">     186 </span>            : </a>
+<span class="lineNum">     187 </span>            : static void
+<span class="lineNum">     188 </span>            : do_rehash (GHashTable *hash)
+<span class="lineNum">     189 </span>            : {
+<span class="lineNum">     190 </span>            :         int current_size, i;
+<span class="lineNum">     191 </span>            :         Slot **table;
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span>            :         /* printf (&quot;Resizing diff=%d slots=%d\n&quot;, hash-&gt;in_use - hash-&gt;last_rehash, hash-&gt;table_size); */
+<span class="lineNum">     194 </span><span class="lineCov">     420915 :         hash-&gt;last_rehash = hash-&gt;table_size;</span>
+<span class="lineNum">     195 </span><span class="lineCov">     420915 :         current_size = hash-&gt;table_size;</span>
+<span class="lineNum">     196 </span><span class="lineCov">     420915 :         hash-&gt;table_size = g_spaced_primes_closest (hash-&gt;in_use);</span>
+<span class="lineNum">     197 </span>            :         /* printf (&quot;New size: %d\n&quot;, hash-&gt;table_size); */
+<span class="lineNum">     198 </span><span class="lineCov">     420915 :         table = hash-&gt;table;</span>
+<span class="lineNum">     199 </span><span class="lineCov">     420915 :         hash-&gt;table = g_new0 (Slot *, hash-&gt;table_size);</span>
+<span class="lineNum">     200 </span>            :         
+<span class="lineNum">     201 </span><span class="lineCov">   66288949 :         for (i = 0; i &lt; current_size; i++){</span>
+<span class="lineNum">     202 </span>            :                 Slot *s, *next;
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span><span class="lineCov">  262374691 :                 for (s = table [i]; s != NULL; s = next){</span>
+<span class="lineNum">     205 </span><span class="lineCov">   98463895 :                         guint hashcode = ((*hash-&gt;hash_func) (s-&gt;key)) % hash-&gt;table_size;</span>
+<span class="lineNum">     206 </span><span class="lineCov">   98463895 :                         next = s-&gt;next;</span>
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span><span class="lineCov">   98463895 :                         s-&gt;next = hash-&gt;table [hashcode];</span>
+<span class="lineNum">     209 </span><span class="lineCov">   98463895 :                         hash-&gt;table [hashcode] = s;</span>
+<span class="lineNum">     210 </span><span class="lineCov">   98463895 :                 }</span>
+<span class="lineNum">     211 </span><span class="lineCov">   32723548 :         }</span>
+<span class="lineNum">     212 </span><span class="lineCov">     420914 :         g_free (table);</span>
+<span class="lineNum">     213 </span><span class="lineCov">     420914 : }</span>
+<a name="214"><span class="lineNum">     214 </span>            : </a>
+<span class="lineNum">     215 </span>            : static void
+<span class="lineNum">     216 </span>            : rehash (GHashTable *hash)
+<span class="lineNum">     217 </span>            : {
+<span class="lineNum">     218 </span><span class="lineCov">  893888914 :         int diff = ABS (hash-&gt;last_rehash - hash-&gt;in_use);</span>
+<span class="lineNum">     219 </span>            : 
+<span class="lineNum">     220 </span>            :         /* These are the factors to play with to change the rehashing strategy */
+<span class="lineNum">     221 </span>            :         /* I played with them with a large range, and could not really get */
+<span class="lineNum">     222 </span>            :         /* something that was too good, maybe the tests are not that great */
+<span class="lineNum">     223 </span><span class="lineCov">  297949594 :         if (!(diff * 0.75 &gt; hash-&gt;table_size * 2))</span>
+<span class="lineNum">     224 </span><span class="lineCov">  297530354 :                 return;</span>
+<span class="lineNum">     225 </span><span class="lineCov">     420915 :         do_rehash (hash);</span>
+<span class="lineNum">     226 </span><span class="lineCov">     841830 :         sanity_check (hash);</span>
+<span class="lineNum">     227 </span><span class="lineCov">  297951628 : }</span>
+<a name="228"><span class="lineNum">     228 </span>            : </a>
+<span class="lineNum">     229 </span>            : void
+<span class="lineNum">     230 </span>            : g_hash_table_insert_replace (GHashTable *hash, gpointer key, gpointer value, gboolean replace)
+<span class="lineNum">     231 </span>            : {
+<span class="lineNum">     232 </span>            :         guint hashcode;
+<span class="lineNum">     233 </span>            :         Slot *s;
+<span class="lineNum">     234 </span>            :         GEqualFunc equal;
+<span class="lineNum">     235 </span>            :         
+<span class="lineNum">     236 </span><span class="lineCov">  893233576 :         g_return_if_fail (hash != NULL);</span>
+<span class="lineNum">     237 </span><span class="lineCov">  595494154 :         sanity_check (hash);</span>
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span><span class="lineCov">  297750531 :         equal = hash-&gt;key_equal_func;</span>
+<span class="lineNum">     240 </span><span class="lineCov">  297750531 :         if (hash-&gt;in_use &gt;= hash-&gt;threshold)</span>
+<span class="lineNum">     241 </span><span class="lineCov">  297750099 :                 rehash (hash);</span>
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span><span class="lineCov">  297755967 :         hashcode = ((*hash-&gt;hash_func) (key)) % hash-&gt;table_size;</span>
+<span class="lineNum">     244 </span><span class="lineCov"> 1052563019 :         for (s = hash-&gt;table [hashcode]; s != NULL; s = s-&gt;next){</span>
+<span class="lineNum">     245 </span><span class="lineCov">  229260281 :                 if ((*equal) (s-&gt;key, key)){</span>
+<span class="lineNum">     246 </span><span class="lineCov">     732293 :                         if (replace){</span>
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :                                 if (hash-&gt;key_destroy_func != NULL)</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :                                         (*hash-&gt;key_destroy_func)(s-&gt;key);</span>
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :                                 s-&gt;key = key;</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     251 </span><span class="lineCov">     732293 :                         if (hash-&gt;value_destroy_func != NULL)</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :                                 (*hash-&gt;value_destroy_func) (s-&gt;value);</span>
+<span class="lineNum">     253 </span><span class="lineCov">     732292 :                         s-&gt;value = value;</span>
+<span class="lineNum">     254 </span><span class="lineCov">    1464584 :                         sanity_check (hash);</span>
+<span class="lineNum">     255 </span><span class="lineCov">     732292 :                         return;</span>
+<span class="lineNum">     256 </span>            :                 }
+<span class="lineNum">     257 </span><span class="lineCov">  228528194 :         }</span>
+<span class="lineNum">     258 </span><span class="lineCov">  297017009 :         s = g_new (Slot, 1);</span>
+<span class="lineNum">     259 </span><span class="lineCov">  297017009 :         s-&gt;key = key;</span>
+<span class="lineNum">     260 </span><span class="lineCov">  297017009 :         s-&gt;value = value;</span>
+<span class="lineNum">     261 </span><span class="lineCov">  297017009 :         s-&gt;next = hash-&gt;table [hashcode];</span>
+<span class="lineNum">     262 </span><span class="lineCov">  297017009 :         hash-&gt;table [hashcode] = s;</span>
+<span class="lineNum">     263 </span><span class="lineCov">  297017009 :         hash-&gt;in_use++;</span>
+<span class="lineNum">     264 </span><span class="lineCov">  594063207 :         sanity_check (hash);</span>
+<span class="lineNum">     265 </span><span class="lineCov">  297779034 : }</span>
+<a name="266"><span class="lineNum">     266 </span>            : </a>
+<span class="lineNum">     267 </span>            : GList*
+<span class="lineNum">     268 </span>            : g_hash_table_get_keys (GHashTable *hash)
+<span class="lineNum">     269 </span>            : {
+<span class="lineNum">     270 </span>            :         GHashTableIter iter;
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :         GList *rv = NULL;</span>
+<span class="lineNum">     272 </span>            :         gpointer key;
+<span class="lineNum">     273 </span>            : 
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :         g_hash_table_iter_init (&amp;iter, hash);</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :         while (g_hash_table_iter_next (&amp;iter, &amp;key, NULL))</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :                 rv = g_list_prepend (rv, key);</span>
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span><span class="lineNoCov">          0 :         return g_list_reverse (rv);</span>
+<span class="lineNum">     280 </span>            : }
+<a name="281"><span class="lineNum">     281 </span>            : </a>
+<span class="lineNum">     282 </span>            : GList*
+<span class="lineNum">     283 </span>            : g_hash_table_get_values (GHashTable *hash)
+<span class="lineNum">     284 </span>            : {
+<span class="lineNum">     285 </span>            :         GHashTableIter iter;
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :         GList *rv = NULL;</span>
+<span class="lineNum">     287 </span>            :         gpointer value;
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :         g_hash_table_iter_init (&amp;iter, hash);</span>
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :         while (g_hash_table_iter_next (&amp;iter, NULL, &amp;value))</span>
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :                 rv = g_list_prepend (rv, value);</span>
+<span class="lineNum">     293 </span>            : 
+<span class="lineNum">     294 </span><span class="lineNoCov">          0 :         return g_list_reverse (rv);</span>
+<span class="lineNum">     295 </span>            : }
+<span class="lineNum">     296 </span>            : 
+<a name="297"><span class="lineNum">     297 </span>            : </a>
+<span class="lineNum">     298 </span>            : guint
+<span class="lineNum">     299 </span>            : g_hash_table_size (GHashTable *hash)
+<span class="lineNum">     300 </span>            : {
+<span class="lineNum">     301 </span><span class="lineCov">      60219 :         g_return_val_if_fail (hash != NULL, 0);</span>
+<span class="lineNum">     302 </span>            :         
+<span class="lineNum">     303 </span><span class="lineCov">      20073 :         return hash-&gt;in_use;</span>
+<span class="lineNum">     304 </span><span class="lineCov">      20073 : }</span>
+<a name="305"><span class="lineNum">     305 </span>            : </a>
+<span class="lineNum">     306 </span>            : gpointer
+<span class="lineNum">     307 </span>            : g_hash_table_lookup (GHashTable *hash, gconstpointer key)
+<span class="lineNum">     308 </span>            : {
+<span class="lineNum">     309 </span>            :         gpointer orig_key, value;
+<span class="lineNum">     310 </span>            :         
+<span class="lineNum">     311 </span><span class="lineCov"> 1912381828 :         if (g_hash_table_lookup_extended (hash, key, &amp;orig_key, &amp;value))</span>
+<span class="lineNum">     312 </span><span class="lineCov"> 1273505540 :                 return value;</span>
+<span class="lineNum">     313 </span>            :         else
+<span class="lineNum">     314 </span><span class="lineCov">  638836486 :                 return NULL;</span>
+<span class="lineNum">     315 </span><span class="lineCov"> 1910921836 : }</span>
+<a name="316"><span class="lineNum">     316 </span>            : </a>
+<span class="lineNum">     317 </span>            : gboolean
+<span class="lineNum">     318 </span>            : g_hash_table_lookup_extended (GHashTable *hash, gconstpointer key, gpointer *orig_key, gpointer *value)
+<span class="lineNum">     319 </span>            : {
+<span class="lineNum">     320 </span>            :         GEqualFunc equal;
+<span class="lineNum">     321 </span>            :         Slot *s;
+<span class="lineNum">     322 </span>            :         guint hashcode;
+<span class="lineNum">     323 </span>            :         
+<span class="lineNum">     324 </span><span class="lineCov"> 5732397871 :         g_return_val_if_fail (hash != NULL, FALSE);</span>
+<span class="lineNum">     325 </span><span class="lineCov"> 3822057418 :         sanity_check (hash);</span>
+<span class="lineNum">     326 </span><span class="lineCov"> 1911076878 :         equal = hash-&gt;key_equal_func;</span>
+<span class="lineNum">     327 </span>            : 
+<span class="lineNum">     328 </span><span class="lineCov"> 1911076878 :         hashcode = ((*hash-&gt;hash_func) (key)) % hash-&gt;table_size;</span>
+<span class="lineNum">     329 </span>            :         
+<span class="lineNum">     330 </span><span class="lineCov"> 6583793148 :         for (s = hash-&gt;table [hashcode]; s != NULL; s = s-&gt;next){</span>
+<span class="lineNum">     331 </span><span class="lineCov"> 2654244775 :                 if ((*equal)(s-&gt;key, key)){</span>
+<span class="lineNum">     332 </span><span class="lineCov"> 1273339405 :                         if (orig_key)</span>
+<span class="lineNum">     333 </span><span class="lineCov"> 1273423887 :                                 *orig_key = s-&gt;key;</span>
+<span class="lineNum">     334 </span><span class="lineCov"> 1273469656 :                         if (value)</span>
+<span class="lineNum">     335 </span><span class="lineCov"> 1273481022 :                                 *value = s-&gt;value;</span>
+<span class="lineNum">     336 </span><span class="lineCov"> 1273490882 :                         return TRUE;</span>
+<span class="lineNum">     337 </span>            :                 }
+<span class="lineNum">     338 </span><span class="lineCov"> 1381089959 :         }</span>
+<span class="lineNum">     339 </span><span class="lineCov">  638906767 :         return FALSE;</span>
+<span class="lineNum">     340 </span><span class="lineCov"> 1911021938 : }</span>
+<a name="341"><span class="lineNum">     341 </span>            : </a>
+<span class="lineNum">     342 </span>            : void
+<span class="lineNum">     343 </span>            : g_hash_table_foreach (GHashTable *hash, GHFunc func, gpointer user_data)
+<span class="lineNum">     344 </span>            : {
+<span class="lineNum">     345 </span>            :         int i;
+<span class="lineNum">     346 </span>            :         
+<span class="lineNum">     347 </span><span class="lineCov">   30879741 :         g_return_if_fail (hash != NULL);</span>
+<span class="lineNum">     348 </span><span class="lineCov">   30879741 :         g_return_if_fail (func != NULL);</span>
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span><span class="lineCov">  247442961 :         for (i = 0; i &lt; hash-&gt;table_size; i++){</span>
+<span class="lineNum">     351 </span>            :                 Slot *s;
+<span class="lineNum">     352 </span>            : 
+<span class="lineNum">     353 </span><span class="lineCov">  277449503 :                 for (s = hash-&gt;table [i]; s != NULL; s = s-&gt;next)</span>
+<span class="lineNum">     354 </span><span class="lineCov">   25296520 :                         (*func)(s-&gt;key, s-&gt;value, user_data);</span>
+<span class="lineNum">     355 </span><span class="lineCov">  113428233 :         }</span>
+<span class="lineNum">     356 </span><span class="lineCov">   10293247 : }</span>
+<a name="357"><span class="lineNum">     357 </span>            : </a>
+<span class="lineNum">     358 </span>            : gpointer
+<span class="lineNum">     359 </span>            : g_hash_table_find (GHashTable *hash, GHRFunc predicate, gpointer user_data)
+<span class="lineNum">     360 </span>            : {
+<span class="lineNum">     361 </span>            :         int i;
+<span class="lineNum">     362 </span>            :         
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (hash != NULL, NULL);</span>
+<span class="lineNum">     364 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (predicate != NULL, NULL);</span>
+<span class="lineNum">     365 </span>            : 
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; hash-&gt;table_size; i++){</span>
+<span class="lineNum">     367 </span>            :                 Slot *s;
+<span class="lineNum">     368 </span>            : 
+<span class="lineNum">     369 </span><span class="lineNoCov">          0 :                 for (s = hash-&gt;table [i]; s != NULL; s = s-&gt;next)</span>
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :                         if ((*predicate)(s-&gt;key, s-&gt;value, user_data))</span>
+<span class="lineNum">     371 </span><span class="lineNoCov">          0 :                                 return s-&gt;value;</span>
+<span class="lineNum">     372 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     373 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     374 </span><span class="lineNoCov">          0 : }</span>
+<a name="375"><span class="lineNum">     375 </span>            : </a>
+<span class="lineNum">     376 </span>            : void
+<span class="lineNum">     377 </span>            : g_hash_table_remove_all (GHashTable *hash)
+<span class="lineNum">     378 </span>            : {
+<span class="lineNum">     379 </span>            :         int i;
+<span class="lineNum">     380 </span>            :         
+<span class="lineNum">     381 </span><span class="lineCov">  150099996 :         g_return_if_fail (hash != NULL);</span>
+<span class="lineNum">     382 </span>            : 
+<span class="lineNum">     383 </span><span class="lineCov"> 1199622383 :         for (i = 0; i &lt; hash-&gt;table_size; i++){</span>
+<span class="lineNum">     384 </span>            :                 Slot *s;
+<span class="lineNum">     385 </span>            : 
+<span class="lineNum">     386 </span><span class="lineCov"> 1133013012 :                 while (hash-&gt;table [i]) {</span>
+<span class="lineNum">     387 </span><span class="lineCov">   16747902 :                         s = hash-&gt;table [i];</span>
+<span class="lineNum">     388 </span><span class="lineCov">   16747902 :                         g_hash_table_remove (hash, s-&gt;key);</span>
+<span class="lineNum">     389 </span>            :                 }
+<span class="lineNum">     390 </span><span class="lineCov">  549758494 :         }</span>
+<span class="lineNum">     391 </span><span class="lineCov">   50027899 : }</span>
+<a name="392"><span class="lineNum">     392 </span>            : </a>
+<span class="lineNum">     393 </span>            : gboolean
+<span class="lineNum">     394 </span>            : g_hash_table_remove (GHashTable *hash, gconstpointer key)
+<span class="lineNum">     395 </span>            : {
+<span class="lineNum">     396 </span>            :         GEqualFunc equal;
+<span class="lineNum">     397 </span>            :         Slot *s, *last;
+<span class="lineNum">     398 </span>            :         guint hashcode;
+<span class="lineNum">     399 </span>            :         
+<span class="lineNum">     400 </span><span class="lineCov">  268828700 :         g_return_val_if_fail (hash != NULL, FALSE);</span>
+<span class="lineNum">     401 </span><span class="lineCov">  179215705 :         sanity_check (hash);</span>
+<span class="lineNum">     402 </span><span class="lineCov">   89611429 :         equal = hash-&gt;key_equal_func;</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineCov">   89611429 :         hashcode = ((*hash-&gt;hash_func)(key)) % hash-&gt;table_size;</span>
+<span class="lineNum">     405 </span><span class="lineCov">   89611429 :         last = NULL;</span>
+<span class="lineNum">     406 </span><span class="lineCov">  187723717 :         for (s = hash-&gt;table [hashcode]; s != NULL; s = s-&gt;next){</span>
+<span class="lineNum">     407 </span><span class="lineCov">   22285481 :                 if ((*equal)(s-&gt;key, key)){</span>
+<span class="lineNum">     408 </span><span class="lineCov">   18067321 :                         if (hash-&gt;key_destroy_func != NULL)</span>
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :                                 (*hash-&gt;key_destroy_func)(s-&gt;key);</span>
+<span class="lineNum">     410 </span><span class="lineCov">   18067387 :                         if (hash-&gt;value_destroy_func != NULL)</span>
+<span class="lineNum">     411 </span><span class="lineCov">      73242 :                                 (*hash-&gt;value_destroy_func)(s-&gt;value);</span>
+<span class="lineNum">     412 </span><span class="lineCov">   18067422 :                         if (last == NULL)</span>
+<span class="lineNum">     413 </span><span class="lineCov">   18030392 :                                 hash-&gt;table [hashcode] = s-&gt;next;</span>
+<span class="lineNum">     414 </span>            :                         else
+<span class="lineNum">     415 </span><span class="lineCov">      37023 :                                 last-&gt;next = s-&gt;next;</span>
+<span class="lineNum">     416 </span><span class="lineCov">   18067177 :                         g_free (s);</span>
+<span class="lineNum">     417 </span><span class="lineCov">   18067177 :                         hash-&gt;in_use--;</span>
+<span class="lineNum">     418 </span><span class="lineCov">   36134807 :                         sanity_check (hash);</span>
+<span class="lineNum">     419 </span><span class="lineCov">   18067925 :                         return TRUE;</span>
+<span class="lineNum">     420 </span>            :                 }
+<span class="lineNum">     421 </span><span class="lineCov">    4217971 :                 last = s;</span>
+<span class="lineNum">     422 </span><span class="lineCov">    4217971 :         }</span>
+<span class="lineNum">     423 </span><span class="lineCov">  143241981 :         sanity_check (hash);</span>
+<span class="lineNum">     424 </span><span class="lineCov">   71626227 :         return FALSE;</span>
+<span class="lineNum">     425 </span><span class="lineCov">   89642348 : }</span>
+<a name="426"><span class="lineNum">     426 </span>            : </a>
+<span class="lineNum">     427 </span>            : guint
+<span class="lineNum">     428 </span>            : g_hash_table_foreach_remove (GHashTable *hash, GHRFunc func, gpointer user_data)
+<span class="lineNum">     429 </span>            : {
+<span class="lineNum">     430 </span>            :         int i;
+<span class="lineNum">     431 </span><span class="lineCov">     153135 :         int count = 0;</span>
+<span class="lineNum">     432 </span>            :         
+<span class="lineNum">     433 </span><span class="lineCov">     459405 :         g_return_val_if_fail (hash != NULL, 0);</span>
+<span class="lineNum">     434 </span><span class="lineCov">     459405 :         g_return_val_if_fail (func != NULL, 0);</span>
+<span class="lineNum">     435 </span>            : 
+<span class="lineNum">     436 </span><span class="lineCov">     306270 :         sanity_check (hash);</span>
+<span class="lineNum">     437 </span><span class="lineCov">   31608116 :         for (i = 0; i &lt; hash-&gt;table_size; i++){</span>
+<span class="lineNum">     438 </span>            :                 Slot *s, *last;
+<span class="lineNum">     439 </span>            : 
+<span class="lineNum">     440 </span><span class="lineCov">   15650923 :                 last = NULL;</span>
+<span class="lineNum">     441 </span><span class="lineCov">   78790016 :                 for (s = hash-&gt;table [i]; s != NULL; ){</span>
+<span class="lineNum">     442 </span><span class="lineCov">   23744085 :                         if ((*func)(s-&gt;key, s-&gt;value, user_data)){</span>
+<span class="lineNum">     443 </span>            :                                 Slot *n;
+<span class="lineNum">     444 </span>            : 
+<span class="lineNum">     445 </span><span class="lineCov">   23743379 :                                 if (hash-&gt;key_destroy_func != NULL)</span>
+<span class="lineNum">     446 </span><span class="lineNoCov">          0 :                                         (*hash-&gt;key_destroy_func)(s-&gt;key);</span>
+<span class="lineNum">     447 </span><span class="lineCov">   23743379 :                                 if (hash-&gt;value_destroy_func != NULL)</span>
+<span class="lineNum">     448 </span><span class="lineCov">   23743357 :                                         (*hash-&gt;value_destroy_func)(s-&gt;value);</span>
+<span class="lineNum">     449 </span><span class="lineCov">   23743379 :                                 if (last == NULL){</span>
+<span class="lineNum">     450 </span><span class="lineCov">   23743379 :                                         hash-&gt;table [i] = s-&gt;next;</span>
+<span class="lineNum">     451 </span><span class="lineCov">   23743379 :                                         n = s-&gt;next;</span>
+<span class="lineNum">     452 </span><span class="lineCov">   23743379 :                                 } else  {</span>
+<span class="lineNum">     453 </span><span class="lineNoCov">          0 :                                         last-&gt;next = s-&gt;next;</span>
+<span class="lineNum">     454 </span><span class="lineNoCov">          0 :                                         n = last-&gt;next;</span>
+<span class="lineNum">     455 </span>            :                                 }
+<span class="lineNum">     456 </span><span class="lineCov">   23743379 :                                 g_free (s);</span>
+<span class="lineNum">     457 </span><span class="lineCov">   23743379 :                                 hash-&gt;in_use--;</span>
+<span class="lineNum">     458 </span><span class="lineCov">   23743379 :                                 count++;</span>
+<span class="lineNum">     459 </span><span class="lineCov">   23743379 :                                 s = n;</span>
+<span class="lineNum">     460 </span><span class="lineCov">   23743379 :                         } else {</span>
+<span class="lineNum">     461 </span><span class="lineCov">        706 :                                 last = s;</span>
+<span class="lineNum">     462 </span><span class="lineCov">        706 :                                 s = s-&gt;next;</span>
+<span class="lineNum">     463 </span>            :                         }
+<span class="lineNum">     464 </span>            :                 }
+<span class="lineNum">     465 </span><span class="lineCov">   15650923 :         }</span>
+<span class="lineNum">     466 </span><span class="lineCov">     306270 :         sanity_check (hash);</span>
+<span class="lineNum">     467 </span><span class="lineCov">     153135 :         if (count &gt; 0)</span>
+<span class="lineNum">     468 </span><span class="lineCov">      79688 :                 rehash (hash);</span>
+<span class="lineNum">     469 </span><span class="lineCov">     153135 :         return count;</span>
+<span class="lineNum">     470 </span><span class="lineCov">     153135 : }</span>
+<a name="471"><span class="lineNum">     471 </span>            : </a>
+<span class="lineNum">     472 </span>            : gboolean
+<span class="lineNum">     473 </span>            : g_hash_table_steal (GHashTable *hash, gconstpointer key)
+<span class="lineNum">     474 </span>            : {
+<span class="lineNum">     475 </span>            :         GEqualFunc equal;
+<span class="lineNum">     476 </span>            :         Slot *s, *last;
+<span class="lineNum">     477 </span>            :         guint hashcode;
+<span class="lineNum">     478 </span>            :         
+<span class="lineNum">     479 </span><span class="lineNoCov">          0 :         g_return_val_if_fail (hash != NULL, FALSE);</span>
+<span class="lineNum">     480 </span><span class="lineNoCov">          0 :         sanity_check (hash);</span>
+<span class="lineNum">     481 </span><span class="lineNoCov">          0 :         equal = hash-&gt;key_equal_func;</span>
+<span class="lineNum">     482 </span>            :         
+<span class="lineNum">     483 </span><span class="lineNoCov">          0 :         hashcode = ((*hash-&gt;hash_func)(key)) % hash-&gt;table_size;</span>
+<span class="lineNum">     484 </span><span class="lineNoCov">          0 :         last = NULL;</span>
+<span class="lineNum">     485 </span><span class="lineNoCov">          0 :         for (s = hash-&gt;table [hashcode]; s != NULL; s = s-&gt;next){</span>
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :                 if ((*equal)(s-&gt;key, key)) {</span>
+<span class="lineNum">     487 </span><span class="lineNoCov">          0 :                         if (last == NULL)</span>
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :                                 hash-&gt;table [hashcode] = s-&gt;next;</span>
+<span class="lineNum">     489 </span>            :                         else
+<span class="lineNum">     490 </span><span class="lineNoCov">          0 :                                 last-&gt;next = s-&gt;next;</span>
+<span class="lineNum">     491 </span><span class="lineNoCov">          0 :                         g_free (s);</span>
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :                         hash-&gt;in_use--;</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 :                         sanity_check (hash);</span>
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     495 </span>            :                 }
+<span class="lineNum">     496 </span><span class="lineNoCov">          0 :                 last = s;</span>
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :         sanity_check (hash);</span>
+<span class="lineNum">     499 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     500 </span>            :         
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 : }</span>
+<a name="502"><span class="lineNum">     502 </span>            : </a>
+<span class="lineNum">     503 </span>            : guint
+<span class="lineNum">     504 </span>            : g_hash_table_foreach_steal (GHashTable *hash, GHRFunc func, gpointer user_data)
+<span class="lineNum">     505 </span>            : {
+<span class="lineNum">     506 </span>            :         int i;
+<span class="lineNum">     507 </span><span class="lineCov">     136440 :         int count = 0;</span>
+<span class="lineNum">     508 </span>            :         
+<span class="lineNum">     509 </span><span class="lineCov">     409320 :         g_return_val_if_fail (hash != NULL, 0);</span>
+<span class="lineNum">     510 </span><span class="lineCov">     409320 :         g_return_val_if_fail (func != NULL, 0);</span>
+<span class="lineNum">     511 </span>            : 
+<span class="lineNum">     512 </span><span class="lineCov">     272880 :         sanity_check (hash);</span>
+<span class="lineNum">     513 </span><span class="lineCov">   29633368 :         for (i = 0; i &lt; hash-&gt;table_size; i++){</span>
+<span class="lineNum">     514 </span>            :                 Slot *s, *last;
+<span class="lineNum">     515 </span>            : 
+<span class="lineNum">     516 </span><span class="lineCov">   14680244 :                 last = NULL;</span>
+<span class="lineNum">     517 </span><span class="lineCov">   69076630 :                 for (s = hash-&gt;table [i]; s != NULL; ){</span>
+<span class="lineNum">     518 </span><span class="lineCov">   19858071 :                         if ((*func)(s-&gt;key, s-&gt;value, user_data)){</span>
+<span class="lineNum">     519 </span>            :                                 Slot *n;
+<span class="lineNum">     520 </span>            : 
+<span class="lineNum">     521 </span><span class="lineCov">   19858071 :                                 if (last == NULL){</span>
+<span class="lineNum">     522 </span><span class="lineCov">   19858071 :                                         hash-&gt;table [i] = s-&gt;next;</span>
+<span class="lineNum">     523 </span><span class="lineCov">   19858071 :                                         n = s-&gt;next;</span>
+<span class="lineNum">     524 </span><span class="lineCov">   19858071 :                                 } else  {</span>
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :                                         last-&gt;next = s-&gt;next;</span>
+<span class="lineNum">     526 </span><span class="lineNoCov">          0 :                                         n = last-&gt;next;</span>
+<span class="lineNum">     527 </span>            :                                 }
+<span class="lineNum">     528 </span><span class="lineCov">   19858071 :                                 g_free (s);</span>
+<span class="lineNum">     529 </span><span class="lineCov">   19858071 :                                 hash-&gt;in_use--;</span>
+<span class="lineNum">     530 </span><span class="lineCov">   19858071 :                                 count++;</span>
+<span class="lineNum">     531 </span><span class="lineCov">   19858071 :                                 s = n;</span>
+<span class="lineNum">     532 </span><span class="lineCov">   19858071 :                         } else {</span>
+<span class="lineNum">     533 </span><span class="lineNoCov">          0 :                                 last = s;</span>
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 :                                 s = s-&gt;next;</span>
+<span class="lineNum">     535 </span>            :                         }
+<span class="lineNum">     536 </span>            :                 }
+<span class="lineNum">     537 </span><span class="lineCov">   14680244 :         }</span>
+<span class="lineNum">     538 </span><span class="lineCov">     272880 :         sanity_check (hash);</span>
+<span class="lineNum">     539 </span><span class="lineCov">     136440 :         if (count &gt; 0)</span>
+<span class="lineNum">     540 </span><span class="lineCov">     116114 :                 rehash (hash);</span>
+<span class="lineNum">     541 </span><span class="lineCov">     136440 :         return count;</span>
+<span class="lineNum">     542 </span><span class="lineCov">     136440 : }</span>
+<a name="543"><span class="lineNum">     543 </span>            : </a>
+<span class="lineNum">     544 </span>            : void
+<span class="lineNum">     545 </span>            : g_hash_table_destroy (GHashTable *hash)
+<span class="lineNum">     546 </span>            : {
+<span class="lineNum">     547 </span>            :         int i;
+<span class="lineNum">     548 </span>            :         
+<span class="lineNum">     549 </span><span class="lineCov">  307992715 :         g_return_if_fail (hash != NULL);</span>
+<span class="lineNum">     550 </span>            : 
+<span class="lineNum">     551 </span><span class="lineCov"> 2636966617 :         for (i = 0; i &lt; hash-&gt;table_size; i++){</span>
+<span class="lineNum">     552 </span>            :                 Slot *s, *next;
+<span class="lineNum">     553 </span>            : 
+<span class="lineNum">     554 </span><span class="lineCov"> 2899637920 :                 for (s = hash-&gt;table [i]; s != NULL; s = next){</span>
+<span class="lineNum">     555 </span><span class="lineCov">  233997300 :                         next = s-&gt;next;</span>
+<span class="lineNum">     556 </span>            :                         
+<span class="lineNum">     557 </span><span class="lineCov">  233997300 :                         if (hash-&gt;key_destroy_func != NULL)</span>
+<span class="lineNum">     558 </span><span class="lineCov">      69756 :                                 (*hash-&gt;key_destroy_func)(s-&gt;key);</span>
+<span class="lineNum">     559 </span><span class="lineCov">  233997900 :                         if (hash-&gt;value_destroy_func != NULL)</span>
+<span class="lineNum">     560 </span><span class="lineCov">   13067872 :                                 (*hash-&gt;value_destroy_func)(s-&gt;value);</span>
+<span class="lineNum">     561 </span><span class="lineCov">  233997967 :                         g_free (s);</span>
+<span class="lineNum">     562 </span><span class="lineCov">  233997967 :                 }</span>
+<span class="lineNum">     563 </span><span class="lineCov"> 1215812257 :         }</span>
+<span class="lineNum">     564 </span><span class="lineCov">  102662067 :         g_free (hash-&gt;table);</span>
+<span class="lineNum">     565 </span>            :         
+<span class="lineNum">     566 </span><span class="lineCov">  102662067 :         g_free (hash);</span>
+<span class="lineNum">     567 </span><span class="lineCov">  205329098 : }</span>
+<a name="568"><span class="lineNum">     568 </span>            : </a>
+<span class="lineNum">     569 </span>            : void
+<span class="lineNum">     570 </span>            : g_hash_table_print_stats (GHashTable *table)
+<span class="lineNum">     571 </span>            : {
+<span class="lineNum">     572 </span>            :         int i, max_chain_index, chain_size, max_chain_size;
+<span class="lineNum">     573 </span>            :         Slot *node;
+<span class="lineNum">     574 </span>            : 
+<span class="lineNum">     575 </span><span class="lineNoCov">          0 :         max_chain_size = 0;</span>
+<span class="lineNum">     576 </span><span class="lineNoCov">          0 :         max_chain_index = -1;</span>
+<span class="lineNum">     577 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; table-&gt;table_size; i++) {</span>
+<span class="lineNum">     578 </span><span class="lineNoCov">          0 :                 chain_size = 0;</span>
+<span class="lineNum">     579 </span><span class="lineNoCov">          0 :                 for (node = table-&gt;table [i]; node; node = node-&gt;next)</span>
+<span class="lineNum">     580 </span><span class="lineNoCov">          0 :                         chain_size ++;</span>
+<span class="lineNum">     581 </span><span class="lineNoCov">          0 :                 if (chain_size &gt; max_chain_size) {</span>
+<span class="lineNum">     582 </span><span class="lineNoCov">          0 :                         max_chain_size = chain_size;</span>
+<span class="lineNum">     583 </span><span class="lineNoCov">          0 :                         max_chain_index = i;</span>
+<span class="lineNum">     584 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     585 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     586 </span>            : 
+<span class="lineNum">     587 </span><span class="lineNoCov">          0 :         printf (&quot;Size: %d Table Size: %d Max Chain Length: %d at %d\n&quot;, table-&gt;in_use, table-&gt;table_size, max_chain_size, max_chain_index);</span>
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 : }</span>
+<a name="589"><span class="lineNum">     589 </span>            : </a>
+<span class="lineNum">     590 </span>            : void
+<span class="lineNum">     591 </span>            : g_hash_table_iter_init (GHashTableIter *it, GHashTable *hash_table)
+<span class="lineNum">     592 </span>            : {
+<span class="lineNum">     593 </span><span class="lineCov">     146692 :         Iter *iter = (Iter*)it;</span>
+<span class="lineNum">     594 </span>            : 
+<span class="lineNum">     595 </span><span class="lineCov">     146692 :         memset (iter, 0, sizeof (Iter));</span>
+<span class="lineNum">     596 </span><span class="lineCov">     146692 :         iter-&gt;ht = hash_table;</span>
+<span class="lineNum">     597 </span><span class="lineCov">     146692 :         iter-&gt;slot_index = -1;</span>
+<a name="598"><span class="lineNum">     598 </span><span class="lineCov">     146692 : }</span></a>
+<span class="lineNum">     599 </span>            : 
+<span class="lineNum">     600 </span>            : gboolean g_hash_table_iter_next (GHashTableIter *it, gpointer *key, gpointer *value)
+<span class="lineNum">     601 </span>            : {
+<span class="lineNum">     602 </span><span class="lineCov">     151403 :         Iter *iter = (Iter*)it;</span>
+<span class="lineNum">     603 </span>            : 
+<span class="lineNum">     604 </span><span class="lineCov">     151403 :         GHashTable *hash = iter-&gt;ht;</span>
+<span class="lineNum">     605 </span>            : 
+<span class="lineNum">     606 </span><span class="lineCov">     454209 :         g_assert (iter-&gt;slot_index != -2);</span>
+<span class="lineNum">     607 </span><span class="lineCov">     302806 :         g_assert (sizeof (Iter) &lt;= sizeof (GHashTableIter));</span>
+<span class="lineNum">     608 </span>            : 
+<span class="lineNum">     609 </span><span class="lineCov">     151403 :         if (!iter-&gt;slot) {</span>
+<span class="lineNum">     610 </span><span class="lineCov">    1674419 :                 while (TRUE) {</span>
+<span class="lineNum">     611 </span><span class="lineCov">    1674419 :                         iter-&gt;slot_index ++;</span>
+<span class="lineNum">     612 </span><span class="lineCov">    1674419 :                         if (iter-&gt;slot_index &gt;= hash-&gt;table_size) {</span>
+<span class="lineNum">     613 </span><span class="lineCov">     133208 :                                 iter-&gt;slot_index = -2;</span>
+<span class="lineNum">     614 </span><span class="lineCov">     133208 :                                 return FALSE;</span>
+<span class="lineNum">     615 </span>            :                         }
+<span class="lineNum">     616 </span><span class="lineCov">    1541211 :                         if (hash-&gt;table [iter-&gt;slot_index])</span>
+<span class="lineNum">     617 </span><span class="lineCov">      18153 :                                 break;</span>
+<span class="lineNum">     618 </span>            :                 }
+<span class="lineNum">     619 </span><span class="lineCov">      18153 :                 iter-&gt;slot = hash-&gt;table [iter-&gt;slot_index];</span>
+<span class="lineNum">     620 </span><span class="lineCov">      18153 :         }</span>
+<span class="lineNum">     621 </span>            : 
+<span class="lineNum">     622 </span><span class="lineCov">      18195 :         if (key)</span>
+<span class="lineNum">     623 </span><span class="lineCov">      17964 :                 *key = iter-&gt;slot-&gt;key;</span>
+<span class="lineNum">     624 </span><span class="lineCov">      18195 :         if (value)</span>
+<span class="lineNum">     625 </span><span class="lineCov">      18195 :                 *value = iter-&gt;slot-&gt;value;</span>
+<span class="lineNum">     626 </span><span class="lineCov">      18195 :         iter-&gt;slot = iter-&gt;slot-&gt;next;</span>
+<span class="lineNum">     627 </span>            : 
+<span class="lineNum">     628 </span><span class="lineCov">      18195 :         return TRUE;</span>
+<span class="lineNum">     629 </span><span class="lineCov">     151403 : }</span>
+<a name="630"><span class="lineNum">     630 </span>            : </a>
+<span class="lineNum">     631 </span>            : gboolean
+<span class="lineNum">     632 </span>            : g_direct_equal (gconstpointer v1, gconstpointer v2)
+<span class="lineNum">     633 </span>            : {
+<span class="lineNum">     634 </span><span class="lineCov"> 1756621484 :         return v1 == v2;</span>
+<span class="lineNum">     635 </span>            : }
+<a name="636"><span class="lineNum">     636 </span>            : </a>
+<span class="lineNum">     637 </span>            : guint
+<span class="lineNum">     638 </span>            : g_direct_hash (gconstpointer v1)
+<span class="lineNum">     639 </span>            : {
+<span class="lineNum">     640 </span><span class="lineCov"> 1623475807 :         return GPOINTER_TO_UINT (v1);</span>
+<span class="lineNum">     641 </span>            : }
+<a name="642"><span class="lineNum">     642 </span>            : </a>
+<span class="lineNum">     643 </span>            : gboolean
+<span class="lineNum">     644 </span>            : g_int_equal (gconstpointer v1, gconstpointer v2)
+<span class="lineNum">     645 </span>            : {
+<span class="lineNum">     646 </span><span class="lineNoCov">          0 :         return *(gint *)v1 == *(gint *)v2;</span>
+<span class="lineNum">     647 </span>            : }
+<a name="648"><span class="lineNum">     648 </span>            : </a>
+<span class="lineNum">     649 </span>            : guint
+<span class="lineNum">     650 </span>            : g_int_hash (gconstpointer v1)
+<span class="lineNum">     651 </span>            : {
+<span class="lineNum">     652 </span><span class="lineNoCov">          0 :         return *(guint *)v1;</span>
+<span class="lineNum">     653 </span>            : }
+<a name="654"><span class="lineNum">     654 </span>            : </a>
+<span class="lineNum">     655 </span>            : gboolean
+<span class="lineNum">     656 </span>            : g_str_equal (gconstpointer v1, gconstpointer v2)
+<span class="lineNum">     657 </span>            : {
+<span class="lineNum">     658 </span><span class="lineCov">  340628883 :         return strcmp (v1, v2) == 0;</span>
+<span class="lineNum">     659 </span>            : }
+<a name="660"><span class="lineNum">     660 </span>            : </a>
+<span class="lineNum">     661 </span>            : guint
+<span class="lineNum">     662 </span>            : g_str_hash (gconstpointer v1)
+<span class="lineNum">     663 </span>            : {
+<span class="lineNum">     664 </span><span class="lineCov">  202113307 :         guint hash = 0;</span>
+<span class="lineNum">     665 </span><span class="lineCov">  202113307 :         char *p = (char *) v1;</span>
+<span class="lineNum">     666 </span>            : 
+<span class="lineNum">     667 </span><span class="lineCov"> 7601606904 :         while (*p++)</span>
+<span class="lineNum">     668 </span><span class="lineCov"> 3598720363 :                 hash = (hash &lt;&lt; 5) - (hash + *p);</span>
+<span class="lineNum">     669 </span>            : 
+<span class="lineNum">     670 </span><span class="lineCov">  202093532 :         return hash;</span>
+<span class="lineNum">     671 </span>            : }
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

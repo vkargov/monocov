@@ -1,0 +1,634 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/dynamic-image.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - dynamic-image.c<span style="font-size: 80%;"> (source / <a href="dynamic-image.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">195</td>
+            <td class="headerCovTableEntry">225</td>
+            <td class="headerCovTableEntryMed">86.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">20</td>
+            <td class="headerCovTableEntry">22</td>
+            <td class="headerCovTableEntryHi">90.9 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * dynamic-image.c: Images created at runtime.
+<span class="lineNum">       3 </span>            :  *   
+<span class="lineNum">       4 </span>            :  * 
+<span class="lineNum">       5 </span>            :  * Author:
+<span class="lineNum">       6 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright 2001-2003 Ximian, Inc (http://www.ximian.com)
+<span class="lineNum">       9 </span>            :  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">      10 </span>            :  * Copyright 2011 Rodrigo Kumpera
+<span class="lineNum">      11 </span>            :  * Copyright 2016 Microsoft
+<span class="lineNum">      12 </span>            :  *
+<span class="lineNum">      13 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      14 </span>            :  */
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      18 </span>            : #include &quot;mono/metadata/object.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;mono/metadata/dynamic-image-internals.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;mono/metadata/dynamic-stream-internals.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;mono/metadata/gc-internals.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;mono/metadata/metadata-internals.h&quot;
+<span class="lineNum">      23 </span>            : #include &quot;mono/metadata/profiler-private.h&quot;
+<span class="lineNum">      24 </span>            : #include &quot;mono/metadata/reflection-internals.h&quot;
+<span class="lineNum">      25 </span>            : #include &quot;mono/metadata/sre-internals.h&quot;
+<span class="lineNum">      26 </span>            : #include &quot;mono/utils/checked-build.h&quot;
+<span class="lineNum">      27 </span>            : #include &quot;mono/utils/mono-error-internals.h&quot;
+<span class="lineNum">      28 </span>            : #include &quot;mono/utils/mono-os-mutex.h&quot;
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : const unsigned char table_sizes [MONO_TABLE_NUM] = {
+<span class="lineNum">      31 </span>            :         MONO_MODULE_SIZE,
+<span class="lineNum">      32 </span>            :         MONO_TYPEREF_SIZE,
+<span class="lineNum">      33 </span>            :         MONO_TYPEDEF_SIZE,
+<span class="lineNum">      34 </span>            :         0,
+<span class="lineNum">      35 </span>            :         MONO_FIELD_SIZE,
+<span class="lineNum">      36 </span>            :         0,
+<span class="lineNum">      37 </span>            :         MONO_METHOD_SIZE,
+<span class="lineNum">      38 </span>            :         0,
+<span class="lineNum">      39 </span>            :         MONO_PARAM_SIZE,
+<span class="lineNum">      40 </span>            :         MONO_INTERFACEIMPL_SIZE,
+<span class="lineNum">      41 </span>            :         MONO_MEMBERREF_SIZE,    /* 0x0A */
+<span class="lineNum">      42 </span>            :         MONO_CONSTANT_SIZE,
+<span class="lineNum">      43 </span>            :         MONO_CUSTOM_ATTR_SIZE,
+<span class="lineNum">      44 </span>            :         MONO_FIELD_MARSHAL_SIZE,
+<span class="lineNum">      45 </span>            :         MONO_DECL_SECURITY_SIZE,
+<span class="lineNum">      46 </span>            :         MONO_CLASS_LAYOUT_SIZE,
+<span class="lineNum">      47 </span>            :         MONO_FIELD_LAYOUT_SIZE, /* 0x10 */
+<span class="lineNum">      48 </span>            :         MONO_STAND_ALONE_SIGNATURE_SIZE,
+<span class="lineNum">      49 </span>            :         MONO_EVENT_MAP_SIZE,
+<span class="lineNum">      50 </span>            :         0,
+<span class="lineNum">      51 </span>            :         MONO_EVENT_SIZE,
+<span class="lineNum">      52 </span>            :         MONO_PROPERTY_MAP_SIZE,
+<span class="lineNum">      53 </span>            :         0,
+<span class="lineNum">      54 </span>            :         MONO_PROPERTY_SIZE,
+<span class="lineNum">      55 </span>            :         MONO_METHOD_SEMA_SIZE,
+<span class="lineNum">      56 </span>            :         MONO_METHODIMPL_SIZE,
+<span class="lineNum">      57 </span>            :         MONO_MODULEREF_SIZE,    /* 0x1A */
+<span class="lineNum">      58 </span>            :         MONO_TYPESPEC_SIZE,
+<span class="lineNum">      59 </span>            :         MONO_IMPLMAP_SIZE,      
+<span class="lineNum">      60 </span>            :         MONO_FIELD_RVA_SIZE,
+<span class="lineNum">      61 </span>            :         0,
+<span class="lineNum">      62 </span>            :         0,
+<span class="lineNum">      63 </span>            :         MONO_ASSEMBLY_SIZE,     /* 0x20 */
+<span class="lineNum">      64 </span>            :         MONO_ASSEMBLY_PROCESSOR_SIZE,
+<span class="lineNum">      65 </span>            :         MONO_ASSEMBLYOS_SIZE,
+<span class="lineNum">      66 </span>            :         MONO_ASSEMBLYREF_SIZE,
+<span class="lineNum">      67 </span>            :         MONO_ASSEMBLYREFPROC_SIZE,
+<span class="lineNum">      68 </span>            :         MONO_ASSEMBLYREFOS_SIZE,
+<span class="lineNum">      69 </span>            :         MONO_FILE_SIZE,
+<span class="lineNum">      70 </span>            :         MONO_EXP_TYPE_SIZE,
+<span class="lineNum">      71 </span>            :         MONO_MANIFEST_SIZE,
+<span class="lineNum">      72 </span>            :         MONO_NESTED_CLASS_SIZE,
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span>            :         MONO_GENERICPARAM_SIZE, /* 0x2A */
+<span class="lineNum">      75 </span>            :         MONO_METHODSPEC_SIZE,
+<span class="lineNum">      76 </span>            :         MONO_GENPARCONSTRAINT_SIZE
+<span class="lineNum">      77 </span>            : 
+<span class="lineNum">      78 </span>            : };
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span>            : // The dynamic images list is only needed to support the mempool reference tracking feature in checked-build.
+<span class="lineNum">      81 </span>            : static GPtrArray *dynamic_images;
+<span class="lineNum">      82 </span>            : static mono_mutex_t dynamic_images_mutex;
+<a name="83"><span class="lineNum">      83 </span>            : </a>
+<span class="lineNum">      84 </span>            : static inline void
+<span class="lineNum">      85 </span>            : dynamic_images_lock (void)
+<span class="lineNum">      86 </span>            : {
+<span class="lineNum">      87 </span><span class="lineCov">        192 :         mono_os_mutex_lock (&amp;dynamic_images_mutex);</span>
+<span class="lineNum">      88 </span><span class="lineCov">        192 : }</span>
+<a name="89"><span class="lineNum">      89 </span>            : </a>
+<span class="lineNum">      90 </span>            : static inline void
+<span class="lineNum">      91 </span>            : dynamic_images_unlock (void)
+<span class="lineNum">      92 </span>            : {
+<span class="lineNum">      93 </span><span class="lineCov">        192 :         mono_os_mutex_unlock (&amp;dynamic_images_mutex);</span>
+<span class="lineNum">      94 </span><span class="lineCov">        192 : }</span>
+<a name="95"><span class="lineNum">      95 </span>            : </a>
+<span class="lineNum">      96 </span>            : void
+<span class="lineNum">      97 </span>            : mono_dynamic_images_init (void)
+<span class="lineNum">      98 </span>            : {
+<span class="lineNum">      99 </span><span class="lineCov">       3285 :         mono_os_mutex_init (&amp;dynamic_images_mutex);</span>
+<span class="lineNum">     100 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     101 </span>            : 
+<a name="102"><span class="lineNum">     102 </span>            : #ifndef DISABLE_REFLECTION_EMIT</a>
+<span class="lineNum">     103 </span>            : static void
+<span class="lineNum">     104 </span>            : string_heap_init (MonoDynamicStream *sh)
+<span class="lineNum">     105 </span>            : {
+<span class="lineNum">     106 </span><span class="lineCov">         96 :         mono_dynstream_init (sh);</span>
+<span class="lineNum">     107 </span><span class="lineCov">         96 : }</span>
+<span class="lineNum">     108 </span>            : #endif
+<span class="lineNum">     109 </span>            : 
+<a name="110"><span class="lineNum">     110 </span>            : #ifndef DISABLE_REFLECTION_EMIT</a>
+<span class="lineNum">     111 </span>            : static int
+<span class="lineNum">     112 </span>            : mono_blob_entry_hash (const char* str)
+<span class="lineNum">     113 </span>            : {
+<span class="lineNum">     114 </span>            :         MONO_REQ_GC_NEUTRAL_MODE;
+<span class="lineNum">     115 </span>            : 
+<span class="lineNum">     116 </span>            :         guint len, h;
+<span class="lineNum">     117 </span>            :         const char *end;
+<span class="lineNum">     118 </span><span class="lineCov">        348 :         len = mono_metadata_decode_blob_size (str, &amp;str);</span>
+<span class="lineNum">     119 </span><span class="lineCov">        348 :         if (len &gt; 0) {</span>
+<span class="lineNum">     120 </span><span class="lineCov">        156 :                 end = str + len;</span>
+<span class="lineNum">     121 </span><span class="lineCov">        156 :                 h = *str;</span>
+<span class="lineNum">     122 </span><span class="lineCov">       1416 :                 for (str += 1; str &lt; end; str++)</span>
+<span class="lineNum">     123 </span><span class="lineCov">        552 :                         h = (h &lt;&lt; 5) - h + *str;</span>
+<span class="lineNum">     124 </span><span class="lineCov">        156 :                 return h;</span>
+<span class="lineNum">     125 </span>            :         } else {
+<span class="lineNum">     126 </span><span class="lineCov">        192 :                 return 0;</span>
+<span class="lineNum">     127 </span>            :         }
+<span class="lineNum">     128 </span><span class="lineCov">        348 : }</span>
+<a name="129"><span class="lineNum">     129 </span>            : </a>
+<span class="lineNum">     130 </span>            : static gboolean
+<span class="lineNum">     131 </span>            : mono_blob_entry_equal (const char *str1, const char *str2) {
+<span class="lineNum">     132 </span>            :         MONO_REQ_GC_NEUTRAL_MODE;
+<span class="lineNum">     133 </span>            : 
+<span class="lineNum">     134 </span>            :         int len, len2;
+<span class="lineNum">     135 </span>            :         const char *end1;
+<span class="lineNum">     136 </span>            :         const char *end2;
+<span class="lineNum">     137 </span><span class="lineCov">         66 :         len = mono_metadata_decode_blob_size (str1, &amp;end1);</span>
+<span class="lineNum">     138 </span><span class="lineCov">         66 :         len2 = mono_metadata_decode_blob_size (str2, &amp;end2);</span>
+<span class="lineNum">     139 </span><span class="lineCov">         66 :         if (len != len2)</span>
+<span class="lineNum">     140 </span><span class="lineCov">         36 :                 return 0;</span>
+<span class="lineNum">     141 </span><span class="lineCov">         30 :         return memcmp (end1, end2, len) == 0;</span>
+<span class="lineNum">     142 </span><span class="lineCov">         66 : }</span>
+<span class="lineNum">     143 </span>            : #endif
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span>            : /**
+<span class="lineNum">     147 </span>            :  * mono_find_dynamic_image_owner:
+<span class="lineNum">     148 </span>            :  *
+<span class="lineNum">     149 </span>            :  * Find the dynamic image, if any, which a given pointer is located in the memory of.
+<a name="150"><span class="lineNum">     150 </span>            :  */</a>
+<span class="lineNum">     151 </span>            : MonoImage *
+<span class="lineNum">     152 </span>            : mono_find_dynamic_image_owner (void *ptr)
+<span class="lineNum">     153 </span>            : {
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :         MonoImage *owner = NULL;</span>
+<span class="lineNum">     155 </span>            :         int i;
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :         dynamic_images_lock ();</span>
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :         if (dynamic_images)</span>
+<span class="lineNum">     160 </span>            :         {
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :                 for (i = 0; !owner &amp;&amp; i &lt; dynamic_images-&gt;len; ++i) {</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :                         MonoImage *image = (MonoImage *)g_ptr_array_index (dynamic_images, i);</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :                         if (mono_mempool_contains_addr (image-&gt;mempool, ptr))</span>
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :                                 owner = image;</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     167 </span>            : 
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :         dynamic_images_unlock ();</span>
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :         return owner;</span>
+<span class="lineNum">     171 </span>            : }
+<a name="172"><span class="lineNum">     172 </span>            : </a>
+<span class="lineNum">     173 </span>            : static inline void
+<span class="lineNum">     174 </span>            : dynamic_image_lock (MonoDynamicImage *image)
+<span class="lineNum">     175 </span>            : {
+<span class="lineNum">     176 </span><span class="lineCov">       4402 :         MONO_ENTER_GC_SAFE;</span>
+<span class="lineNum">     177 </span><span class="lineCov">       2201 :         mono_image_lock ((MonoImage*)image);</span>
+<span class="lineNum">     178 </span><span class="lineCov">       2201 :         MONO_EXIT_GC_SAFE;</span>
+<span class="lineNum">     179 </span><span class="lineCov">       2201 : }</span>
+<a name="180"><span class="lineNum">     180 </span>            : </a>
+<span class="lineNum">     181 </span>            : static inline void
+<span class="lineNum">     182 </span>            : dynamic_image_unlock (MonoDynamicImage *image)
+<span class="lineNum">     183 </span>            : {
+<span class="lineNum">     184 </span><span class="lineCov">       2201 :         mono_image_unlock ((MonoImage*)image);</span>
+<span class="lineNum">     185 </span><span class="lineCov">       2201 : }</span>
+<a name="186"><span class="lineNum">     186 </span>            : </a>
+<span class="lineNum">     187 </span>            : void
+<span class="lineNum">     188 </span>            : mono_dynamic_image_register_token (MonoDynamicImage *assembly, guint32 token, MonoObject *obj)
+<span class="lineNum">     189 </span>            : {
+<span class="lineNum">     190 </span>            :         MONO_REQ_GC_UNSAFE_MODE;
+<span class="lineNum">     191 </span>            : 
+<span class="lineNum">     192 </span><span class="lineCov">        314 :         dynamic_image_lock (assembly);</span>
+<span class="lineNum">     193 </span><span class="lineCov">        314 :         mono_g_hash_table_insert (assembly-&gt;tokens, GUINT_TO_POINTER (token), obj);</span>
+<span class="lineNum">     194 </span><span class="lineCov">        314 :         dynamic_image_unlock (assembly);</span>
+<span class="lineNum">     195 </span><span class="lineCov">        314 : }</span>
+<a name="196"><span class="lineNum">     196 </span>            : </a>
+<span class="lineNum">     197 </span>            : static MonoObject*
+<span class="lineNum">     198 </span>            : lookup_dyn_token (MonoDynamicImage *assembly, guint32 token)
+<span class="lineNum">     199 </span>            : {
+<span class="lineNum">     200 </span>            :         MONO_REQ_GC_UNSAFE_MODE;
+<span class="lineNum">     201 </span>            : 
+<span class="lineNum">     202 </span>            :         MonoObject *obj;
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span><span class="lineCov">        646 :         dynamic_image_lock (assembly);</span>
+<span class="lineNum">     205 </span><span class="lineCov">        646 :         obj = (MonoObject *)mono_g_hash_table_lookup (assembly-&gt;tokens, GUINT_TO_POINTER (token));</span>
+<span class="lineNum">     206 </span><span class="lineCov">        646 :         dynamic_image_unlock (assembly);</span>
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span><span class="lineCov">        646 :         return obj;</span>
+<span class="lineNum">     209 </span>            : }
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span>            : /**
+<span class="lineNum">     212 </span>            :  * 
+<span class="lineNum">     213 </span>            :  * mono_dynamic_image_is_valid_token:
+<span class="lineNum">     214 </span>            :  * 
+<span class="lineNum">     215 </span>            :  * Returns TRUE if token is valid in the given image.
+<span class="lineNum">     216 </span>            :  * 
+<a name="217"><span class="lineNum">     217 </span>            :  */</a>
+<span class="lineNum">     218 </span>            : gboolean
+<span class="lineNum">     219 </span>            : mono_dynamic_image_is_valid_token (MonoDynamicImage *image, guint32 token)
+<span class="lineNum">     220 </span>            : {
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :         return lookup_dyn_token (image, token) != NULL;</span>
+<span class="lineNum">     222 </span>            : }
+<span class="lineNum">     223 </span>            : 
+<span class="lineNum">     224 </span>            : #ifndef DISABLE_REFLECTION_EMIT
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span>            : #endif /* DISABLE_REFLECTION_EMIT */
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span>            : #ifndef DISABLE_REFLECTION_EMIT
+<span class="lineNum">     229 </span>            : /**
+<span class="lineNum">     230 </span>            :  * mono_reflection_lookup_dynamic_token:
+<span class="lineNum">     231 </span>            :  *
+<span class="lineNum">     232 </span>            :  * Finish the Builder object pointed to by TOKEN and return the corresponding
+<span class="lineNum">     233 </span>            :  * runtime structure. If HANDLE_CLASS is not NULL, it is set to the class required by 
+<span class="lineNum">     234 </span>            :  * mono_ldtoken. If valid_token is TRUE, assert if it is not found in the token-&gt;object
+<span class="lineNum">     235 </span>            :  * mapping table.
+<span class="lineNum">     236 </span>            :  *
+<span class="lineNum">     237 </span>            :  * LOCKING: Take the loader lock
+<a name="238"><span class="lineNum">     238 </span>            :  */</a>
+<span class="lineNum">     239 </span>            : gpointer
+<span class="lineNum">     240 </span>            : mono_reflection_lookup_dynamic_token (MonoImage *image, guint32 token, gboolean valid_token, MonoClass **handle_class, MonoGenericContext *context, MonoError *error)
+<span class="lineNum">     241 </span>            : {
+<span class="lineNum">     242 </span><span class="lineCov">        646 :         MonoDynamicImage *assembly = (MonoDynamicImage*)image;</span>
+<span class="lineNum">     243 </span>            :         MonoObject *obj;
+<span class="lineNum">     244 </span>            :         MonoClass *klass;
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">        646 :         mono_error_init (error);</span>
+<span class="lineNum">     247 </span>            :         
+<span class="lineNum">     248 </span><span class="lineCov">        646 :         obj = lookup_dyn_token (assembly, token);</span>
+<span class="lineNum">     249 </span><span class="lineCov">        646 :         if (!obj) {</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                 if (valid_token)</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :                         g_error (&quot;Could not find required dynamic token 0x%08x&quot;, token);</span>
+<span class="lineNum">     252 </span>            :                 else {
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :                         mono_error_set_execution_engine (error, &quot;Could not find dynamic token 0x%08x&quot;, token);</span>
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     255 </span>            :                 }
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span><span class="lineCov">        646 :         if (!handle_class)</span>
+<span class="lineNum">     259 </span><span class="lineNoCov">          0 :                 handle_class = &amp;klass;</span>
+<span class="lineNum">     260 </span><span class="lineCov">        646 :         gpointer result = mono_reflection_resolve_object (image, obj, handle_class, context, error);</span>
+<span class="lineNum">     261 </span><span class="lineCov">        646 :         return result;</span>
+<span class="lineNum">     262 </span><span class="lineCov">        646 : }</span>
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span>            : /*
+<span class="lineNum">     265 </span>            :  * mono_image_register_token:
+<span class="lineNum">     266 </span>            :  *
+<span class="lineNum">     267 </span>            :  *   Register the TOKEN-&gt;OBJ mapping in the mapping table in ASSEMBLY. This is required for
+<span class="lineNum">     268 </span>            :  * the Module.ResolveXXXToken () methods to work.
+<a name="269"><span class="lineNum">     269 </span>            :  */</a>
+<span class="lineNum">     270 </span>            : void
+<span class="lineNum">     271 </span>            : mono_image_register_token (MonoDynamicImage *assembly, guint32 token, MonoObject *obj)
+<span class="lineNum">     272 </span>            : {
+<span class="lineNum">     273 </span>            :         MonoObject *prev;
+<span class="lineNum">     274 </span>            : 
+<span class="lineNum">     275 </span><span class="lineCov">       1241 :         dynamic_image_lock (assembly);</span>
+<span class="lineNum">     276 </span><span class="lineCov">       1241 :         prev = (MonoObject *)mono_g_hash_table_lookup (assembly-&gt;tokens, GUINT_TO_POINTER (token));</span>
+<span class="lineNum">     277 </span><span class="lineCov">       1241 :         if (prev) {</span>
+<span class="lineNum">     278 </span>            :                 /* There could be multiple MethodInfo objects with the same token */
+<span class="lineNum">     279 </span>            :                 //g_assert (prev == obj);
+<span class="lineNum">     280 </span><span class="lineCov">        517 :         } else {</span>
+<span class="lineNum">     281 </span><span class="lineCov">        724 :                 mono_g_hash_table_insert (assembly-&gt;tokens, GUINT_TO_POINTER (token), obj);</span>
+<span class="lineNum">     282 </span>            :         }
+<span class="lineNum">     283 </span><span class="lineCov">       1241 :         dynamic_image_unlock (assembly);</span>
+<span class="lineNum">     284 </span><span class="lineCov">       1241 : }</span>
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span>            : #else /* DISABLE_REFLECTION_EMIT */
+<span class="lineNum">     287 </span>            : 
+<span class="lineNum">     288 </span>            : gpointer
+<span class="lineNum">     289 </span>            : mono_reflection_lookup_dynamic_token (MonoImage *image, guint32 token, gboolean valid_token, MonoClass **handle_class, MonoGenericContext *context, MonoError *error)
+<span class="lineNum">     290 </span>            : {
+<span class="lineNum">     291 </span>            :         mono_error_init (error);
+<span class="lineNum">     292 </span>            :         return NULL;
+<span class="lineNum">     293 </span>            : }
+<span class="lineNum">     294 </span>            : 
+<span class="lineNum">     295 </span>            : void
+<span class="lineNum">     296 </span>            : mono_image_register_token (MonoDynamicImage *assembly, guint32 token, MonoObject *obj)
+<span class="lineNum">     297 </span>            : {
+<span class="lineNum">     298 </span>            : }
+<span class="lineNum">     299 </span>            : 
+<span class="lineNum">     300 </span>            : #endif /* DISABLE_REFLECTION_EMIT */
+<span class="lineNum">     301 </span>            : 
+<a name="302"><span class="lineNum">     302 </span>            : #ifndef DISABLE_REFLECTION_EMIT</a>
+<span class="lineNum">     303 </span>            : MonoDynamicImage*
+<span class="lineNum">     304 </span>            : mono_dynamic_image_create (MonoDynamicAssembly *assembly, char *assembly_name, char *module_name)
+<span class="lineNum">     305 </span>            : {
+<span class="lineNum">     306 </span>            :         static const guchar entrycode [16] = {0xff, 0x25, 0};
+<span class="lineNum">     307 </span>            :         MonoDynamicImage *image;
+<span class="lineNum">     308 </span>            :         int i;
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span>            :         const char *version;
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span><span class="lineCov">         96 :         if (!strcmp (mono_get_runtime_info ()-&gt;framework_version, &quot;2.1&quot;))</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :                 version = &quot;v2.0.50727&quot;; /* HACK: SL 2 enforces the .net 2 metadata version */</span>
+<span class="lineNum">     314 </span>            :         else
+<span class="lineNum">     315 </span><span class="lineCov">         96 :                 version = mono_get_runtime_info ()-&gt;runtime_version;</span>
+<span class="lineNum">     316 </span>            : 
+<span class="lineNum">     317 </span>            : #if HAVE_BOEHM_GC
+<span class="lineNum">     318 </span>            :         /* The MonoGHashTable's need GC tracking */
+<span class="lineNum">     319 </span>            :         image = (MonoDynamicImage *)GC_MALLOC (sizeof (MonoDynamicImage));
+<span class="lineNum">     320 </span>            : #else
+<span class="lineNum">     321 </span><span class="lineCov">         96 :         image = g_new0 (MonoDynamicImage, 1);</span>
+<span class="lineNum">     322 </span>            : #endif
+<span class="lineNum">     323 </span>            : 
+<span class="lineNum">     324 </span><span class="lineCov">         96 :         mono_profiler_module_event (&amp;image-&gt;image, MONO_PROFILE_START_LOAD);</span>
+<span class="lineNum">     325 </span>            :         
+<span class="lineNum">     326 </span>            :         /*g_print (&quot;created image %p\n&quot;, image);*/
+<span class="lineNum">     327 </span>            :         /* keep in sync with image.c */
+<span class="lineNum">     328 </span><span class="lineCov">         96 :         image-&gt;image.name = assembly_name;</span>
+<span class="lineNum">     329 </span><span class="lineCov">         96 :         image-&gt;image.assembly_name = image-&gt;image.name; /* they may be different */</span>
+<span class="lineNum">     330 </span><span class="lineCov">         96 :         image-&gt;image.module_name = module_name;</span>
+<span class="lineNum">     331 </span><span class="lineCov">         96 :         image-&gt;image.version = g_strdup (version);</span>
+<span class="lineNum">     332 </span><span class="lineCov">         96 :         image-&gt;image.md_version_major = 1;</span>
+<span class="lineNum">     333 </span><span class="lineCov">         96 :         image-&gt;image.md_version_minor = 1;</span>
+<span class="lineNum">     334 </span><span class="lineCov">         96 :         image-&gt;image.dynamic = TRUE;</span>
+<span class="lineNum">     335 </span>            : 
+<span class="lineNum">     336 </span><span class="lineCov">         96 :         image-&gt;image.references = g_new0 (MonoAssembly*, 1);</span>
+<span class="lineNum">     337 </span><span class="lineCov">         96 :         image-&gt;image.references [0] = NULL;</span>
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span><span class="lineCov">         96 :         mono_image_init (&amp;image-&gt;image);</span>
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span><span class="lineCov">         96 :         image-&gt;token_fixups = mono_g_hash_table_new_type ((GHashFunc)mono_object_hash, NULL, MONO_HASH_KEY_GC, MONO_ROOT_SOURCE_REFLECTION, &quot;dynamic module token fixups table&quot;);</span>
+<span class="lineNum">     342 </span><span class="lineCov">         96 :         image-&gt;method_to_table_idx = g_hash_table_new (NULL, NULL);</span>
+<span class="lineNum">     343 </span><span class="lineCov">         96 :         image-&gt;field_to_table_idx = g_hash_table_new (NULL, NULL);</span>
+<span class="lineNum">     344 </span><span class="lineCov">         96 :         image-&gt;method_aux_hash = g_hash_table_new (NULL, NULL);</span>
+<span class="lineNum">     345 </span><span class="lineCov">         96 :         image-&gt;vararg_aux_hash = g_hash_table_new (NULL, NULL);</span>
+<span class="lineNum">     346 </span><span class="lineCov">         96 :         image-&gt;handleref = g_hash_table_new (NULL, NULL);</span>
+<span class="lineNum">     347 </span><span class="lineCov">         96 :         image-&gt;handleref_managed = mono_g_hash_table_new_type ((GHashFunc)mono_object_hash, NULL, MONO_HASH_KEY_GC, MONO_ROOT_SOURCE_REFLECTION, &quot;dynamic module reference-to-token table&quot;);</span>
+<span class="lineNum">     348 </span><span class="lineCov">         96 :         image-&gt;tokens = mono_g_hash_table_new_type (NULL, NULL, MONO_HASH_VALUE_GC, MONO_ROOT_SOURCE_REFLECTION, &quot;dynamic module tokens table&quot;);</span>
+<span class="lineNum">     349 </span><span class="lineCov">         96 :         image-&gt;generic_def_objects = mono_g_hash_table_new_type (NULL, NULL, MONO_HASH_VALUE_GC, MONO_ROOT_SOURCE_REFLECTION, &quot;dynamic module generic definitions table&quot;);</span>
+<span class="lineNum">     350 </span><span class="lineCov">         96 :         image-&gt;typespec = g_hash_table_new ((GHashFunc)mono_metadata_type_hash, (GCompareFunc)mono_metadata_type_equal);</span>
+<span class="lineNum">     351 </span><span class="lineCov">         96 :         image-&gt;typeref = g_hash_table_new ((GHashFunc)mono_metadata_type_hash, (GCompareFunc)mono_metadata_type_equal);</span>
+<span class="lineNum">     352 </span><span class="lineCov">         96 :         image-&gt;blob_cache = g_hash_table_new ((GHashFunc)mono_blob_entry_hash, (GCompareFunc)mono_blob_entry_equal);</span>
+<span class="lineNum">     353 </span><span class="lineCov">         96 :         image-&gt;gen_params = g_ptr_array_new ();</span>
+<span class="lineNum">     354 </span><span class="lineCov">         96 :         image-&gt;remapped_tokens = mono_g_hash_table_new_type (NULL, NULL, MONO_HASH_VALUE_GC, MONO_ROOT_SOURCE_REFLECTION, &quot;dynamic module remapped tokens table&quot;);</span>
+<span class="lineNum">     355 </span>            : 
+<span class="lineNum">     356 </span>            :         /*g_print (&quot;string heap create for image %p (%s)\n&quot;, image, module_name);*/
+<span class="lineNum">     357 </span><span class="lineCov">         96 :         string_heap_init (&amp;image-&gt;sheap);</span>
+<span class="lineNum">     358 </span><span class="lineCov">         96 :         mono_dynstream_add_data (&amp;image-&gt;us, &quot;&quot;, 1);</span>
+<span class="lineNum">     359 </span><span class="lineCov">         96 :         mono_dynamic_image_add_to_blob_cached (image, (char*) &quot;&quot;, 1, NULL, 0);</span>
+<span class="lineNum">     360 </span>            :         /* import tables... */
+<span class="lineNum">     361 </span><span class="lineCov">         96 :         mono_dynstream_add_data (&amp;image-&gt;code, (char*)entrycode, sizeof (entrycode));</span>
+<span class="lineNum">     362 </span><span class="lineCov">         96 :         image-&gt;iat_offset = mono_dynstream_add_zero (&amp;image-&gt;code, 8); /* two IAT entries */</span>
+<span class="lineNum">     363 </span><span class="lineCov">         96 :         image-&gt;idt_offset = mono_dynstream_add_zero (&amp;image-&gt;code, 2 * sizeof (MonoIDT)); /* two IDT entries */</span>
+<span class="lineNum">     364 </span><span class="lineCov">         96 :         image-&gt;imp_names_offset = mono_dynstream_add_zero (&amp;image-&gt;code, 2); /* flags for name entry */</span>
+<span class="lineNum">     365 </span><span class="lineCov">         96 :         mono_dynstream_add_data (&amp;image-&gt;code, &quot;_CorExeMain&quot;, 12);</span>
+<span class="lineNum">     366 </span><span class="lineCov">         96 :         mono_dynstream_add_data (&amp;image-&gt;code, &quot;mscoree.dll&quot;, 12);</span>
+<span class="lineNum">     367 </span><span class="lineCov">         96 :         image-&gt;ilt_offset = mono_dynstream_add_zero (&amp;image-&gt;code, 8); /* two ILT entries */</span>
+<span class="lineNum">     368 </span><span class="lineCov">         96 :         mono_dynstream_data_align (&amp;image-&gt;code);</span>
+<span class="lineNum">     369 </span>            : 
+<span class="lineNum">     370 </span><span class="lineCov">         96 :         image-&gt;cli_header_offset = mono_dynstream_add_zero (&amp;image-&gt;code, sizeof (MonoCLIHeader));</span>
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span><span class="lineCov">      10944 :         for (i=0; i &lt; MONO_TABLE_NUM; ++i) {</span>
+<span class="lineNum">     373 </span><span class="lineCov">       5376 :                 image-&gt;tables [i].next_idx = 1;</span>
+<span class="lineNum">     374 </span><span class="lineCov">       5376 :                 image-&gt;tables [i].columns = table_sizes [i];</span>
+<span class="lineNum">     375 </span><span class="lineCov">       5376 :         }</span>
+<span class="lineNum">     376 </span>            : 
+<span class="lineNum">     377 </span><span class="lineCov">         96 :         image-&gt;image.assembly = (MonoAssembly*)assembly;</span>
+<span class="lineNum">     378 </span><span class="lineCov">         96 :         image-&gt;run = assembly-&gt;run;</span>
+<span class="lineNum">     379 </span><span class="lineCov">         96 :         image-&gt;save = assembly-&gt;save;</span>
+<span class="lineNum">     380 </span><span class="lineCov">         96 :         image-&gt;pe_kind = 0x1; /* ILOnly */</span>
+<span class="lineNum">     381 </span><span class="lineCov">         96 :         image-&gt;machine = 0x14c; /* I386 */</span>
+<span class="lineNum">     382 </span>            :         
+<span class="lineNum">     383 </span><span class="lineCov">         96 :         mono_profiler_module_loaded (&amp;image-&gt;image, MONO_PROFILE_OK);</span>
+<span class="lineNum">     384 </span>            : 
+<span class="lineNum">     385 </span><span class="lineCov">         96 :         dynamic_images_lock ();</span>
+<span class="lineNum">     386 </span>            : 
+<span class="lineNum">     387 </span><span class="lineCov">         96 :         if (!dynamic_images)</span>
+<span class="lineNum">     388 </span><span class="lineCov">         42 :                 dynamic_images = g_ptr_array_new ();</span>
+<span class="lineNum">     389 </span>            : 
+<span class="lineNum">     390 </span><span class="lineCov">         96 :         g_ptr_array_add (dynamic_images, image);</span>
+<span class="lineNum">     391 </span>            : 
+<span class="lineNum">     392 </span><span class="lineCov">         96 :         dynamic_images_unlock ();</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span><span class="lineCov">         96 :         return image;</span>
+<span class="lineNum">     395 </span>            : }
+<span class="lineNum">     396 </span>            : #else /* DISABLE_REFLECTION_EMIT */
+<span class="lineNum">     397 </span>            : MonoDynamicImage*
+<span class="lineNum">     398 </span>            : mono_dynamic_image_create (MonoDynamicAssembly *assembly, char *assembly_name, char *module_name)
+<span class="lineNum">     399 </span>            : {
+<span class="lineNum">     400 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     401 </span>            :         return NULL;
+<span class="lineNum">     402 </span>            : }
+<span class="lineNum">     403 </span>            : #endif /* DISABLE_REFLECTION_EMIT */
+<a name="404"><span class="lineNum">     404 </span>            : </a>
+<span class="lineNum">     405 </span>            : guint32
+<span class="lineNum">     406 </span>            : mono_dynamic_image_add_to_blob_cached (MonoDynamicImage *assembly, char *b1, int s1, char *b2, int s2)
+<span class="lineNum">     407 </span>            : {
+<span class="lineNum">     408 </span>            :         MONO_REQ_GC_NEUTRAL_MODE;
+<span class="lineNum">     409 </span>            : 
+<span class="lineNum">     410 </span>            :         guint32 idx;
+<span class="lineNum">     411 </span>            :         char *copy;
+<span class="lineNum">     412 </span>            :         gpointer oldkey, oldval;
+<span class="lineNum">     413 </span>            : 
+<span class="lineNum">     414 </span><span class="lineCov">        186 :         copy = (char *)g_malloc (s1+s2);</span>
+<span class="lineNum">     415 </span><span class="lineCov">        186 :         memcpy (copy, b1, s1);</span>
+<span class="lineNum">     416 </span><span class="lineCov">        186 :         memcpy (copy + s1, b2, s2);</span>
+<span class="lineNum">     417 </span><span class="lineCov">        186 :         if (g_hash_table_lookup_extended (assembly-&gt;blob_cache, copy, &amp;oldkey, &amp;oldval)) {</span>
+<span class="lineNum">     418 </span><span class="lineCov">         24 :                 g_free (copy);</span>
+<span class="lineNum">     419 </span><span class="lineCov">         24 :                 idx = GPOINTER_TO_UINT (oldval);</span>
+<span class="lineNum">     420 </span><span class="lineCov">         24 :         } else {</span>
+<span class="lineNum">     421 </span><span class="lineCov">        162 :                 idx = mono_dynstream_add_data (&amp;assembly-&gt;blob, b1, s1);</span>
+<span class="lineNum">     422 </span><span class="lineCov">        162 :                 mono_dynstream_add_data (&amp;assembly-&gt;blob, b2, s2);</span>
+<span class="lineNum">     423 </span><span class="lineCov">        162 :                 g_hash_table_insert (assembly-&gt;blob_cache, copy, GUINT_TO_POINTER (idx));</span>
+<span class="lineNum">     424 </span>            :         }
+<span class="lineNum">     425 </span><span class="lineCov">        186 :         return idx;</span>
+<span class="lineNum">     426 </span>            : }
+<a name="427"><span class="lineNum">     427 </span>            : </a>
+<span class="lineNum">     428 </span>            : void
+<span class="lineNum">     429 </span>            : mono_dynimage_alloc_table (MonoDynamicTable *table, guint nrows)
+<span class="lineNum">     430 </span>            : {
+<span class="lineNum">     431 </span>            :         MONO_REQ_GC_NEUTRAL_MODE;
+<span class="lineNum">     432 </span>            : 
+<span class="lineNum">     433 </span><span class="lineCov">        242 :         table-&gt;rows = nrows;</span>
+<span class="lineNum">     434 </span><span class="lineCov">        726 :         g_assert (table-&gt;columns);</span>
+<span class="lineNum">     435 </span><span class="lineCov">        242 :         if (nrows + 1 &gt;= table-&gt;alloc_rows) {</span>
+<span class="lineNum">     436 </span><span class="lineCov">        696 :                 while (nrows + 1 &gt;= table-&gt;alloc_rows) {</span>
+<span class="lineNum">     437 </span><span class="lineCov">        174 :                         if (table-&gt;alloc_rows == 0)</span>
+<span class="lineNum">     438 </span><span class="lineCov">        174 :                                 table-&gt;alloc_rows = 16;</span>
+<span class="lineNum">     439 </span>            :                         else
+<span class="lineNum">     440 </span><span class="lineNoCov">          0 :                                 table-&gt;alloc_rows *= 2;</span>
+<span class="lineNum">     441 </span>            :                 }
+<span class="lineNum">     442 </span>            : 
+<span class="lineNum">     443 </span><span class="lineCov">        174 :                 table-&gt;values = (guint32 *)g_renew (guint32, table-&gt;values, (table-&gt;alloc_rows) * table-&gt;columns);</span>
+<span class="lineNum">     444 </span><span class="lineCov">        174 :         }</span>
+<span class="lineNum">     445 </span><span class="lineCov">        242 : }</span>
+<span class="lineNum">     446 </span>            : 
+<a name="447"><span class="lineNum">     447 </span>            : </a>
+<span class="lineNum">     448 </span>            : static void
+<span class="lineNum">     449 </span>            : free_blob_cache_entry (gpointer key, gpointer val, gpointer user_data)
+<span class="lineNum">     450 </span>            : {
+<span class="lineNum">     451 </span><span class="lineCov">        112 :         g_free (key);</span>
+<span class="lineNum">     452 </span><span class="lineCov">        112 : }</span>
+<a name="453"><span class="lineNum">     453 </span>            : </a>
+<span class="lineNum">     454 </span>            : static void
+<span class="lineNum">     455 </span>            : release_hashtable (MonoGHashTable **hash)
+<span class="lineNum">     456 </span>            : {
+<span class="lineNum">     457 </span><span class="lineCov">        480 :         if (*hash) {</span>
+<span class="lineNum">     458 </span><span class="lineCov">        480 :                 mono_g_hash_table_destroy (*hash);</span>
+<span class="lineNum">     459 </span><span class="lineCov">        480 :                 *hash = NULL;</span>
+<span class="lineNum">     460 </span><span class="lineCov">        480 :         }</span>
+<span class="lineNum">     461 </span><span class="lineCov">        480 : }</span>
+<a name="462"><span class="lineNum">     462 </span>            : </a>
+<span class="lineNum">     463 </span>            : void
+<span class="lineNum">     464 </span>            : mono_dynamic_image_release_gc_roots (MonoDynamicImage *image)
+<span class="lineNum">     465 </span>            : {
+<span class="lineNum">     466 </span><span class="lineCov">         96 :         release_hashtable (&amp;image-&gt;token_fixups);</span>
+<span class="lineNum">     467 </span><span class="lineCov">         96 :         release_hashtable (&amp;image-&gt;handleref_managed);</span>
+<span class="lineNum">     468 </span><span class="lineCov">         96 :         release_hashtable (&amp;image-&gt;tokens);</span>
+<span class="lineNum">     469 </span><span class="lineCov">         96 :         release_hashtable (&amp;image-&gt;remapped_tokens);</span>
+<span class="lineNum">     470 </span><span class="lineCov">         96 :         release_hashtable (&amp;image-&gt;generic_def_objects);</span>
+<span class="lineNum">     471 </span><span class="lineCov">         96 : }</span>
+<span class="lineNum">     472 </span>            : 
+<a name="473"><span class="lineNum">     473 </span>            : // Free dynamic image pass one: Free resources but not image itself</a>
+<span class="lineNum">     474 </span>            : void
+<span class="lineNum">     475 </span>            : mono_dynamic_image_free (MonoDynamicImage *image)
+<span class="lineNum">     476 </span>            : {
+<span class="lineNum">     477 </span><span class="lineCov">         96 :         MonoDynamicImage *di = image;</span>
+<span class="lineNum">     478 </span>            :         GList *list;
+<span class="lineNum">     479 </span>            :         int i;
+<span class="lineNum">     480 </span>            : 
+<span class="lineNum">     481 </span><span class="lineCov">         96 :         if (di-&gt;typespec)</span>
+<span class="lineNum">     482 </span><span class="lineCov">         96 :                 g_hash_table_destroy (di-&gt;typespec);</span>
+<span class="lineNum">     483 </span><span class="lineCov">         96 :         if (di-&gt;typeref)</span>
+<span class="lineNum">     484 </span><span class="lineCov">         96 :                 g_hash_table_destroy (di-&gt;typeref);</span>
+<span class="lineNum">     485 </span><span class="lineCov">         96 :         if (di-&gt;handleref)</span>
+<span class="lineNum">     486 </span><span class="lineCov">         96 :                 g_hash_table_destroy (di-&gt;handleref);</span>
+<span class="lineNum">     487 </span><span class="lineCov">         96 :         if (di-&gt;handleref_managed)</span>
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :                 mono_g_hash_table_destroy (di-&gt;handleref_managed);</span>
+<span class="lineNum">     489 </span><span class="lineCov">         96 :         if (di-&gt;tokens)</span>
+<span class="lineNum">     490 </span><span class="lineNoCov">          0 :                 mono_g_hash_table_destroy (di-&gt;tokens);</span>
+<span class="lineNum">     491 </span><span class="lineCov">         96 :         if (di-&gt;remapped_tokens)</span>
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :                 mono_g_hash_table_destroy (di-&gt;remapped_tokens);</span>
+<span class="lineNum">     493 </span><span class="lineCov">         96 :         if (di-&gt;generic_def_objects)</span>
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :                 mono_g_hash_table_destroy (di-&gt;generic_def_objects);</span>
+<span class="lineNum">     495 </span><span class="lineCov">         96 :         if (di-&gt;blob_cache) {</span>
+<span class="lineNum">     496 </span><span class="lineCov">         86 :                 g_hash_table_foreach (di-&gt;blob_cache, free_blob_cache_entry, NULL);</span>
+<span class="lineNum">     497 </span><span class="lineCov">         86 :                 g_hash_table_destroy (di-&gt;blob_cache);</span>
+<span class="lineNum">     498 </span><span class="lineCov">         86 :         }</span>
+<span class="lineNum">     499 </span><span class="lineCov">         96 :         if (di-&gt;standalonesig_cache)</span>
+<span class="lineNum">     500 </span><span class="lineNoCov">          0 :                 g_hash_table_destroy (di-&gt;standalonesig_cache);</span>
+<span class="lineNum">     501 </span><span class="lineCov">        192 :         for (list = di-&gt;array_methods; list; list = list-&gt;next) {</span>
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 :                 ArrayMethod *am = (ArrayMethod *)list-&gt;data;</span>
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :                 mono_sre_array_method_free (am);</span>
+<span class="lineNum">     504 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     505 </span><span class="lineCov">         96 :         g_list_free (di-&gt;array_methods);</span>
+<span class="lineNum">     506 </span><span class="lineCov">         96 :         if (di-&gt;gen_params) {</span>
+<span class="lineNum">     507 </span><span class="lineCov">        216 :                 for (i = 0; i &lt; di-&gt;gen_params-&gt;len; i++) {</span>
+<span class="lineNum">     508 </span><span class="lineCov">         12 :                         GenericParamTableEntry *entry = (GenericParamTableEntry *)g_ptr_array_index (di-&gt;gen_params, i);</span>
+<span class="lineNum">     509 </span><span class="lineCov">         12 :                         mono_sre_generic_param_table_entry_free (entry);</span>
+<span class="lineNum">     510 </span><span class="lineCov">         12 :                 }</span>
+<span class="lineNum">     511 </span><span class="lineCov">         96 :                 g_ptr_array_free (di-&gt;gen_params, TRUE);</span>
+<span class="lineNum">     512 </span><span class="lineCov">         96 :         }</span>
+<span class="lineNum">     513 </span><span class="lineCov">         96 :         if (di-&gt;token_fixups)</span>
+<span class="lineNum">     514 </span><span class="lineNoCov">          0 :                 mono_g_hash_table_destroy (di-&gt;token_fixups);</span>
+<span class="lineNum">     515 </span><span class="lineCov">         96 :         if (di-&gt;method_to_table_idx)</span>
+<span class="lineNum">     516 </span><span class="lineCov">         96 :                 g_hash_table_destroy (di-&gt;method_to_table_idx);</span>
+<span class="lineNum">     517 </span><span class="lineCov">         96 :         if (di-&gt;field_to_table_idx)</span>
+<span class="lineNum">     518 </span><span class="lineCov">         96 :                 g_hash_table_destroy (di-&gt;field_to_table_idx);</span>
+<span class="lineNum">     519 </span><span class="lineCov">         96 :         if (di-&gt;method_aux_hash)</span>
+<span class="lineNum">     520 </span><span class="lineCov">         96 :                 g_hash_table_destroy (di-&gt;method_aux_hash);</span>
+<span class="lineNum">     521 </span><span class="lineCov">         96 :         if (di-&gt;vararg_aux_hash)</span>
+<span class="lineNum">     522 </span><span class="lineCov">         96 :                 g_hash_table_destroy (di-&gt;vararg_aux_hash);</span>
+<span class="lineNum">     523 </span><span class="lineCov">         96 :         g_free (di-&gt;strong_name);</span>
+<span class="lineNum">     524 </span><span class="lineCov">         96 :         g_free (di-&gt;win32_res);</span>
+<span class="lineNum">     525 </span><span class="lineCov">         96 :         if (di-&gt;public_key)</span>
+<span class="lineNum">     526 </span><span class="lineNoCov">          0 :                 g_free (di-&gt;public_key);</span>
+<span class="lineNum">     527 </span>            : 
+<span class="lineNum">     528 </span>            :         /*g_print (&quot;string heap destroy for image %p\n&quot;, di);*/
+<span class="lineNum">     529 </span><span class="lineCov">         96 :         mono_dynamic_stream_reset (&amp;di-&gt;sheap);</span>
+<span class="lineNum">     530 </span><span class="lineCov">         96 :         mono_dynamic_stream_reset (&amp;di-&gt;code);</span>
+<span class="lineNum">     531 </span><span class="lineCov">         96 :         mono_dynamic_stream_reset (&amp;di-&gt;resources);</span>
+<span class="lineNum">     532 </span><span class="lineCov">         96 :         mono_dynamic_stream_reset (&amp;di-&gt;us);</span>
+<span class="lineNum">     533 </span><span class="lineCov">         96 :         mono_dynamic_stream_reset (&amp;di-&gt;blob);</span>
+<span class="lineNum">     534 </span><span class="lineCov">         96 :         mono_dynamic_stream_reset (&amp;di-&gt;tstream);</span>
+<span class="lineNum">     535 </span><span class="lineCov">         96 :         mono_dynamic_stream_reset (&amp;di-&gt;guid);</span>
+<span class="lineNum">     536 </span><span class="lineCov">      10944 :         for (i = 0; i &lt; MONO_TABLE_NUM; ++i) {</span>
+<span class="lineNum">     537 </span><span class="lineCov">       5376 :                 g_free (di-&gt;tables [i].values);</span>
+<span class="lineNum">     538 </span><span class="lineCov">       5376 :         }</span>
+<span class="lineNum">     539 </span>            : 
+<span class="lineNum">     540 </span><span class="lineCov">         96 :         dynamic_images_lock ();</span>
+<span class="lineNum">     541 </span>            : 
+<span class="lineNum">     542 </span><span class="lineCov">         96 :         if (dynamic_images)</span>
+<span class="lineNum">     543 </span><span class="lineCov">         96 :                 g_ptr_array_remove (dynamic_images, di);</span>
+<span class="lineNum">     544 </span>            : 
+<span class="lineNum">     545 </span><span class="lineCov">         96 :         dynamic_images_unlock ();</span>
+<span class="lineNum">     546 </span><span class="lineCov">         96 : }</span>
+<span class="lineNum">     547 </span>            : 
+<a name="548"><span class="lineNum">     548 </span>            : // Free dynamic image pass two: Free image itself (might never get called in some debug modes)</a>
+<span class="lineNum">     549 </span>            : void
+<span class="lineNum">     550 </span>            : mono_dynamic_image_free_image (MonoDynamicImage *image)
+<span class="lineNum">     551 </span>            : {
+<span class="lineNum">     552 </span>            :         /* See create_dynamic_mono_image () */
+<span class="lineNum">     553 </span>            : #if HAVE_BOEHM_GC
+<span class="lineNum">     554 </span>            :         /* Allocated using GC_MALLOC */
+<span class="lineNum">     555 </span>            : #else
+<span class="lineNum">     556 </span><span class="lineCov">         96 :         g_free (image);</span>
+<span class="lineNum">     557 </span>            : #endif
+<span class="lineNum">     558 </span><span class="lineCov">         96 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,421 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - /Users/vkargov/work/mono2/eglib/src/glist.c</title>
+  <link rel="stylesheet" type="text/css" href="../../../../../../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../../../../../../index.html">top level</a> - <a href="index.html">Users/vkargov/work/mono2/eglib/src</a> - glist.c<span style="font-size: 80%;"> (source / <a href="glist.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">98</td>
+            <td class="headerCovTableEntry">147</td>
+            <td class="headerCovTableEntryLo">66.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">20</td>
+            <td class="headerCovTableEntry">26</td>
+            <td class="headerCovTableEntryMed">76.9 %</td>
+          </tr>
+          <tr><td><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * glist.c: Doubly-linked list implementation
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *   Duncan Mak (duncan@novell.com)
+<span class="lineNum">       6 </span>            :  *   Raja R Harinath (rharinath@novell.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Permission is hereby granted, free of charge, to any person obtaining
+<span class="lineNum">       9 </span>            :  * a copy of this software and associated documentation files (the
+<span class="lineNum">      10 </span>            :  * &quot;Software&quot;), to deal in the Software without restriction, including
+<span class="lineNum">      11 </span>            :  * without limitation the rights to use, copy, modify, merge, publish,
+<span class="lineNum">      12 </span>            :  * distribute, sublicense, and/or sell copies of the Software, and to
+<span class="lineNum">      13 </span>            :  * permit persons to whom the Software is furnished to do so, subject to
+<span class="lineNum">      14 </span>            :  * the following conditions:
+<span class="lineNum">      15 </span>            :  * 
+<span class="lineNum">      16 </span>            :  * The above copyright notice and this permission notice shall be
+<span class="lineNum">      17 </span>            :  * included in all copies or substantial portions of the Software.
+<span class="lineNum">      18 </span>            :  * 
+<span class="lineNum">      19 </span>            :  * THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+<span class="lineNum">      20 </span>            :  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+<span class="lineNum">      21 </span>            :  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+<span class="lineNum">      22 </span>            :  * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+<span class="lineNum">      23 </span>            :  * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+<span class="lineNum">      24 </span>            :  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+<span class="lineNum">      25 </span>            :  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+<span class="lineNum">      26 </span>            :  *
+<span class="lineNum">      27 </span>            :  * (C) 2006 Novell, Inc.
+<span class="lineNum">      28 </span>            :  */
+<span class="lineNum">      29 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;glib.h&gt;
+<a name="31"><span class="lineNum">      31 </span>            : </a>
+<span class="lineNum">      32 </span>            : GList*
+<span class="lineNum">      33 </span>            : g_list_alloc ()
+<span class="lineNum">      34 </span>            : {
+<span class="lineNum">      35 </span><span class="lineCov">  432440342 :         return g_new0 (GList, 1);</span>
+<span class="lineNum">      36 </span>            : }
+<a name="37"><span class="lineNum">      37 </span>            : </a>
+<span class="lineNum">      38 </span>            : static inline GList*
+<span class="lineNum">      39 </span>            : new_node (GList *prev, gpointer data, GList *next)
+<span class="lineNum">      40 </span>            : {
+<span class="lineNum">      41 </span><span class="lineCov">  432790560 :         GList *node = g_list_alloc ();</span>
+<span class="lineNum">      42 </span><span class="lineCov">  432790560 :         node-&gt;data = data;</span>
+<span class="lineNum">      43 </span><span class="lineCov">  432790560 :         node-&gt;prev = prev;</span>
+<span class="lineNum">      44 </span><span class="lineCov">  432790560 :         node-&gt;next = next;</span>
+<span class="lineNum">      45 </span><span class="lineCov">  432790560 :         if (prev)</span>
+<span class="lineNum">      46 </span><span class="lineCov">   12190462 :                 prev-&gt;next = node;</span>
+<span class="lineNum">      47 </span><span class="lineCov">  432846502 :         if (next)</span>
+<span class="lineNum">      48 </span><span class="lineCov">  312597019 :                 next-&gt;prev = node;</span>
+<span class="lineNum">      49 </span><span class="lineCov">  432728075 :         return node;</span>
+<span class="lineNum">      50 </span>            : }
+<a name="51"><span class="lineNum">      51 </span>            : </a>
+<span class="lineNum">      52 </span>            : static inline GList*
+<span class="lineNum">      53 </span>            : disconnect_node (GList *node)
+<span class="lineNum">      54 </span>            : {
+<span class="lineNum">      55 </span><span class="lineCov">  353509473 :         if (node-&gt;next)</span>
+<span class="lineNum">      56 </span><span class="lineCov">  272584301 :                 node-&gt;next-&gt;prev = node-&gt;prev;</span>
+<span class="lineNum">      57 </span><span class="lineCov">  353412220 :         if (node-&gt;prev)</span>
+<span class="lineNum">      58 </span><span class="lineCov">    5161627 :                 node-&gt;prev-&gt;next = node-&gt;next;</span>
+<span class="lineNum">      59 </span><span class="lineCov">  353404826 :         return node;</span>
+<span class="lineNum">      60 </span>            : }
+<a name="61"><span class="lineNum">      61 </span>            : </a>
+<span class="lineNum">      62 </span>            : GList *
+<span class="lineNum">      63 </span>            : g_list_prepend (GList *list, gpointer data)
+<span class="lineNum">      64 </span>            : {
+<span class="lineNum">      65 </span><span class="lineCov"> 1193196099 :         return new_node (list ? list-&gt;prev : NULL, data, list);</span>
+<span class="lineNum">      66 </span>            : }
+<a name="67"><span class="lineNum">      67 </span>            : </a>
+<span class="lineNum">      68 </span>            : void
+<span class="lineNum">      69 </span>            : g_list_free_1 (GList *list)
+<span class="lineNum">      70 </span>            : {
+<span class="lineNum">      71 </span><span class="lineCov">  432437254 :         g_free (list);</span>
+<span class="lineNum">      72 </span><span class="lineCov">  432437254 : }</span>
+<a name="73"><span class="lineNum">      73 </span>            : </a>
+<span class="lineNum">      74 </span>            : void
+<span class="lineNum">      75 </span>            : g_list_free (GList *list)
+<span class="lineNum">      76 </span>            : {
+<span class="lineNum">      77 </span><span class="lineCov">  521348303 :         while (list){</span>
+<span class="lineNum">      78 </span><span class="lineCov">  175781892 :                 GList *next = list-&gt;next;</span>
+<span class="lineNum">      79 </span><span class="lineCov">  175781892 :                 g_list_free_1 (list);</span>
+<span class="lineNum">      80 </span><span class="lineCov">  175781892 :                 list = next;</span>
+<span class="lineNum">      81 </span>            :         }
+<span class="lineNum">      82 </span><span class="lineCov">   84898878 : }</span>
+<a name="83"><span class="lineNum">      83 </span>            : </a>
+<span class="lineNum">      84 </span>            : GList*
+<span class="lineNum">      85 </span>            : g_list_append (GList *list, gpointer data)
+<span class="lineNum">      86 </span>            : {
+<span class="lineNum">      87 </span><span class="lineCov">    6724720 :         GList *node = new_node (g_list_last (list), data, NULL);</span>
+<span class="lineNum">      88 </span><span class="lineCov">   20170639 :         return list ? list : node;</span>
+<span class="lineNum">      89 </span>            : }
+<a name="90"><span class="lineNum">      90 </span>            : </a>
+<span class="lineNum">      91 </span>            : GList *
+<span class="lineNum">      92 </span>            : g_list_concat (GList *list1, GList *list2)
+<span class="lineNum">      93 </span>            : {
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 :         if (list1 &amp;&amp; list2) {</span>
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :                 list2-&gt;prev = g_list_last (list1);</span>
+<span class="lineNum">      96 </span><span class="lineNoCov">          0 :                 list2-&gt;prev-&gt;next = list2;</span>
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      98 </span><span class="lineNoCov">          0 :         return list1 ? list1 : list2;</span>
+<span class="lineNum">      99 </span>            : }
+<a name="100"><span class="lineNum">     100 </span>            : </a>
+<span class="lineNum">     101 </span>            : guint
+<span class="lineNum">     102 </span>            : g_list_length (GList *list)
+<span class="lineNum">     103 </span>            : {
+<span class="lineNum">     104 </span><span class="lineCov">   64914976 :         guint length = 0;</span>
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span><span class="lineCov">  580507973 :         while (list) {</span>
+<span class="lineNum">     107 </span><span class="lineCov">  225335941 :                 length ++;</span>
+<span class="lineNum">     108 </span><span class="lineCov">  225335941 :                 list = list-&gt;next;</span>
+<span class="lineNum">     109 </span>            :         }
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span><span class="lineCov">   64931850 :         return length;</span>
+<span class="lineNum">     112 </span>            : }
+<a name="113"><span class="lineNum">     113 </span>            : </a>
+<span class="lineNum">     114 </span>            : GList*
+<span class="lineNum">     115 </span>            : g_list_remove (GList *list, gconstpointer data)
+<span class="lineNum">     116 </span>            : {
+<span class="lineNum">     117 </span><span class="lineCov">   49363271 :         GList *current = g_list_find (list, data);</span>
+<span class="lineNum">     118 </span><span class="lineCov">   49363271 :         if (!current)</span>
+<span class="lineNum">     119 </span><span class="lineCov">         48 :                 return list;</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span><span class="lineCov">   49361614 :         if (current == list)</span>
+<span class="lineNum">     122 </span><span class="lineCov">   49330830 :                 list = list-&gt;next;</span>
+<span class="lineNum">     123 </span><span class="lineCov">   49363970 :         g_list_free_1 (disconnect_node (current));</span>
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span><span class="lineCov">   49363970 :         return list;</span>
+<span class="lineNum">     126 </span><span class="lineCov">   49376400 : }</span>
+<a name="127"><span class="lineNum">     127 </span>            : </a>
+<span class="lineNum">     128 </span>            : GList*
+<span class="lineNum">     129 </span>            : g_list_remove_all (GList *list, gconstpointer data)
+<span class="lineNum">     130 </span>            : {
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :         GList *current = g_list_find (list, data);</span>
+<span class="lineNum">     132 </span>            : 
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :         if (!current)</span>
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :                 return list;</span>
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         while (current) {</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :                 if (current == list)</span>
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :                         list = list-&gt;next;</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :                 g_list_free_1 (disconnect_node (current));</span>
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :                 current = g_list_find (list, data);</span>
+<span class="lineNum">     142 </span>            :         }
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :         return list;</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 : }</span>
+<a name="146"><span class="lineNum">     146 </span>            : </a>
+<span class="lineNum">     147 </span>            : GList*
+<span class="lineNum">     148 </span>            : g_list_remove_link (GList *list, GList *link)
+<span class="lineNum">     149 </span>            : {
+<span class="lineNum">     150 </span><span class="lineCov">  304017607 :         if (list == link)</span>
+<span class="lineNum">     151 </span><span class="lineCov">  298918909 :                 list = list-&gt;next;</span>
+<span class="lineNum">     152 </span>            : 
+<span class="lineNum">     153 </span><span class="lineCov">  304058895 :         disconnect_node (link);</span>
+<span class="lineNum">     154 </span><span class="lineCov">  304058895 :         link-&gt;next = NULL;</span>
+<span class="lineNum">     155 </span><span class="lineCov">  304058895 :         link-&gt;prev = NULL;</span>
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span><span class="lineCov">  304058895 :         return list;</span>
+<span class="lineNum">     158 </span>            : }
+<a name="159"><span class="lineNum">     159 </span>            : </a>
+<span class="lineNum">     160 </span>            : GList*
+<span class="lineNum">     161 </span>            : g_list_delete_link (GList *list, GList *link)
+<span class="lineNum">     162 </span>            : {
+<span class="lineNum">     163 </span><span class="lineCov">  207602731 :         list = g_list_remove_link (list, link);</span>
+<span class="lineNum">     164 </span><span class="lineCov">  207602731 :         g_list_free_1 (link);</span>
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span><span class="lineCov">  207602731 :         return list;</span>
+<span class="lineNum">     167 </span>            : }
+<a name="168"><span class="lineNum">     168 </span>            : </a>
+<span class="lineNum">     169 </span>            : GList*
+<span class="lineNum">     170 </span>            : g_list_find (GList *list, gconstpointer data)
+<span class="lineNum">     171 </span>            : {
+<span class="lineNum">     172 </span><span class="lineCov">  667740974 :         while (list){</span>
+<span class="lineNum">     173 </span><span class="lineCov">  253253208 :                 if (list-&gt;data == data)</span>
+<span class="lineNum">     174 </span><span class="lineCov">   49859332 :                         return list;</span>
+<span class="lineNum">     175 </span>            : 
+<span class="lineNum">     176 </span><span class="lineCov">  203396445 :                 list = list-&gt;next;</span>
+<span class="lineNum">     177 </span>            :         }
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineCov">   80655620 :         return NULL;</span>
+<span class="lineNum">     180 </span><span class="lineCov">  130487480 : }</span>
+<a name="181"><span class="lineNum">     181 </span>            : </a>
+<span class="lineNum">     182 </span>            : GList*
+<span class="lineNum">     183 </span>            : g_list_find_custom (GList *list, gconstpointer data, GCompareFunc func)
+<span class="lineNum">     184 </span>            : {
+<span class="lineNum">     185 </span><span class="lineNoCov">          0 :         if (!func)</span>
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     187 </span>            :         
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :         while (list) {</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                 if (func (list-&gt;data, data) == 0)</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 :                         return list;</span>
+<span class="lineNum">     191 </span>            :                 
+<span class="lineNum">     192 </span><span class="lineNoCov">          0 :                 list = list-&gt;next;</span>
+<span class="lineNum">     193 </span>            :         }
+<span class="lineNum">     194 </span>            :         
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 : }</span>
+<a name="197"><span class="lineNum">     197 </span>            : </a>
+<span class="lineNum">     198 </span>            : GList*
+<span class="lineNum">     199 </span>            : g_list_reverse (GList *list)
+<span class="lineNum">     200 </span>            : {
+<span class="lineNum">     201 </span><span class="lineCov">    4897217 :         GList *reverse = NULL;</span>
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span><span class="lineCov">   37520496 :         while (list) {</span>
+<span class="lineNum">     204 </span><span class="lineCov">   13863028 :                 reverse = list;</span>
+<span class="lineNum">     205 </span><span class="lineCov">   13863028 :                 list = reverse-&gt;next;</span>
+<span class="lineNum">     206 </span>            : 
+<span class="lineNum">     207 </span><span class="lineCov">   13863028 :                 reverse-&gt;next = reverse-&gt;prev;</span>
+<span class="lineNum">     208 </span><span class="lineCov">   13863028 :                 reverse-&gt;prev = list;</span>
+<span class="lineNum">     209 </span>            :         }
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineCov">    4897218 :         return reverse;</span>
+<span class="lineNum">     212 </span>            : }
+<a name="213"><span class="lineNum">     213 </span>            : </a>
+<span class="lineNum">     214 </span>            : GList*
+<span class="lineNum">     215 </span>            : g_list_first (GList *list)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :         if (!list)</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     219 </span>            : 
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :         while (list-&gt;prev)</span>
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :                 list = list-&gt;prev;</span>
+<span class="lineNum">     222 </span>            : 
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :         return list;</span>
+<span class="lineNum">     224 </span><span class="lineNoCov">          0 : }</span>
+<a name="225"><span class="lineNum">     225 </span>            : </a>
+<span class="lineNum">     226 </span>            : GList*
+<span class="lineNum">     227 </span>            : g_list_last (GList *list)
+<span class="lineNum">     228 </span>            : {
+<span class="lineNum">     229 </span><span class="lineCov">    6719317 :         if (!list)</span>
+<span class="lineNum">     230 </span><span class="lineCov">    1362402 :                 return NULL;</span>
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span><span class="lineCov">   18025806 :         while (list-&gt;next)</span>
+<span class="lineNum">     233 </span><span class="lineCov">    3654146 :                 list = list-&gt;next;</span>
+<span class="lineNum">     234 </span>            : 
+<span class="lineNum">     235 </span><span class="lineCov">    5360149 :         return list;</span>
+<span class="lineNum">     236 </span><span class="lineCov">    6723206 : }</span>
+<a name="237"><span class="lineNum">     237 </span>            : </a>
+<span class="lineNum">     238 </span>            : GList*
+<span class="lineNum">     239 </span>            : g_list_insert_sorted (GList *list, gpointer data, GCompareFunc func)
+<span class="lineNum">     240 </span>            : {
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :         GList *prev = NULL;</span>
+<span class="lineNum">     242 </span>            :         GList *current;
+<span class="lineNum">     243 </span>            :         GList *node;
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :         if (!func)</span>
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :                 return list;</span>
+<span class="lineNum">     247 </span>            : 
+<span class="lineNum">     248 </span>            :         /* Invariant: !prev || func (prev-&gt;data, data) &lt;= 0) */
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :         for (current = list; current; current = current-&gt;next) {</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                 if (func (current-&gt;data, data) &gt; 0)</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :                 prev = current;</span>
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :         node = new_node (prev, data, current);</span>
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :         return list == current ? node : list;</span>
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 : }</span>
+<a name="258"><span class="lineNum">     258 </span>            : </a>
+<span class="lineNum">     259 </span>            : GList*
+<span class="lineNum">     260 </span>            : g_list_insert_before (GList *list, GList *sibling, gpointer data)
+<span class="lineNum">     261 </span>            : {
+<span class="lineNum">     262 </span><span class="lineCov">   28174700 :         if (sibling) {</span>
+<span class="lineNum">     263 </span><span class="lineCov">   28185218 :                 GList *node = new_node (sibling-&gt;prev, data, sibling);</span>
+<span class="lineNum">     264 </span><span class="lineCov">   84554018 :                 return list == sibling ? node : list;</span>
+<span class="lineNum">     265 </span>            :         }
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :         return g_list_append (list, data);</span>
+<span class="lineNum">     267 </span><span class="lineCov">   28181177 : }</span>
+<a name="268"><span class="lineNum">     268 </span>            : </a>
+<span class="lineNum">     269 </span>            : void
+<span class="lineNum">     270 </span>            : g_list_foreach (GList *list, GFunc func, gpointer user_data)
+<span class="lineNum">     271 </span>            : {
+<span class="lineNum">     272 </span><span class="lineCov">       2968 :         while (list){</span>
+<span class="lineNum">     273 </span><span class="lineCov">        742 :                 (*func) (list-&gt;data, user_data);</span>
+<span class="lineNum">     274 </span><span class="lineCov">        742 :                 list = list-&gt;next;</span>
+<span class="lineNum">     275 </span>            :         }
+<span class="lineNum">     276 </span><span class="lineCov">        742 : }</span>
+<a name="277"><span class="lineNum">     277 </span>            : </a>
+<span class="lineNum">     278 </span>            : gint
+<span class="lineNum">     279 </span>            : g_list_index (GList *list, gconstpointer data)
+<span class="lineNum">     280 </span>            : {
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 :         gint index = 0;</span>
+<span class="lineNum">     282 </span>            : 
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :         while (list){</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                 if (list-&gt;data == data)</span>
+<span class="lineNum">     285 </span><span class="lineNoCov">          0 :                         return index;</span>
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :                 index ++;</span>
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :                 list = list-&gt;next;</span>
+<span class="lineNum">     289 </span>            :         }
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :         return -1;</span>
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 : }</span>
+<a name="293"><span class="lineNum">     293 </span>            : </a>
+<span class="lineNum">     294 </span>            : GList*
+<span class="lineNum">     295 </span>            : g_list_nth (GList *list, guint n)
+<span class="lineNum">     296 </span>            : {
+<span class="lineNum">     297 </span><span class="lineCov">  103494207 :         for (; list; list = list-&gt;next) {</span>
+<span class="lineNum">     298 </span><span class="lineCov">   51747109 :                 if (n == 0)</span>
+<span class="lineNum">     299 </span><span class="lineCov">    9725068 :                         break;</span>
+<span class="lineNum">     300 </span><span class="lineCov">   42023535 :                 n--;</span>
+<span class="lineNum">     301 </span><span class="lineCov">   42023535 :         }</span>
+<span class="lineNum">     302 </span><span class="lineCov">    9725249 :         return list;</span>
+<span class="lineNum">     303 </span>            : }
+<a name="304"><span class="lineNum">     304 </span>            : </a>
+<span class="lineNum">     305 </span>            : gpointer
+<span class="lineNum">     306 </span>            : g_list_nth_data (GList *list, guint n)
+<span class="lineNum">     307 </span>            : {
+<span class="lineNum">     308 </span><span class="lineCov">      89421 :         GList *node = g_list_nth (list, n);</span>
+<span class="lineNum">     309 </span><span class="lineCov">     268263 :         return node ? node-&gt;data : NULL;</span>
+<span class="lineNum">     310 </span>            : }
+<a name="311"><span class="lineNum">     311 </span>            : </a>
+<span class="lineNum">     312 </span>            : GList*
+<span class="lineNum">     313 </span>            : g_list_copy (GList *list)
+<span class="lineNum">     314 </span>            : {
+<span class="lineNum">     315 </span><span class="lineCov">      31051 :         GList *copy = NULL;</span>
+<span class="lineNum">     316 </span>            : 
+<span class="lineNum">     317 </span><span class="lineCov">      31051 :         if (list) {</span>
+<span class="lineNum">     318 </span><span class="lineCov">      31051 :                 GList *tmp = new_node (NULL, list-&gt;data, NULL);</span>
+<span class="lineNum">     319 </span><span class="lineCov">      31051 :                 copy = tmp;</span>
+<span class="lineNum">     320 </span>            : 
+<span class="lineNum">     321 </span><span class="lineCov">     193106 :                 for (list = list-&gt;next; list; list = list-&gt;next)</span>
+<span class="lineNum">     322 </span><span class="lineCov">      65502 :                         tmp = new_node (tmp, list-&gt;data, NULL);</span>
+<span class="lineNum">     323 </span><span class="lineCov">      31051 :         }</span>
+<span class="lineNum">     324 </span>            : 
+<span class="lineNum">     325 </span><span class="lineCov">      31051 :         return copy;</span>
+<span class="lineNum">     326 </span>            : }
+<span class="lineNum">     327 </span>            : 
+<span class="lineNum">     328 </span>            : typedef GList list_node;
+<span class="lineNum">     329 </span>            : #include &quot;sort.frag.h&quot;
+<a name="330"><span class="lineNum">     330 </span>            : </a>
+<span class="lineNum">     331 </span>            : GList*
+<span class="lineNum">     332 </span>            : g_list_sort (GList *list, GCompareFunc func)
+<span class="lineNum">     333 </span>            : {
+<span class="lineNum">     334 </span>            :         GList *current;
+<span class="lineNum">     335 </span><span class="lineCov">   46507397 :         if (!list || !list-&gt;next)</span>
+<span class="lineNum">     336 </span><span class="lineCov">   16056874 :                 return list;</span>
+<span class="lineNum">     337 </span><span class="lineCov">   12429166 :         list = do_sort (list, func);</span>
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span>            :         /* Fixup: do_sort doesn't update 'prev' pointers */
+<span class="lineNum">     340 </span><span class="lineCov">   12429166 :         list-&gt;prev = NULL;</span>
+<span class="lineNum">     341 </span><span class="lineCov">  150083858 :         for (current = list; current-&gt;next; current = current-&gt;next)</span>
+<span class="lineNum">     342 </span><span class="lineCov">   62613652 :                 current-&gt;next-&gt;prev = current;</span>
+<span class="lineNum">     343 </span>            : 
+<span class="lineNum">     344 </span><span class="lineCov">   12432604 :         return list;</span>
+<span class="lineNum">     345 </span><span class="lineCov">   28485894 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,707 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-threads-state-machine.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-threads-state-machine.c<span style="font-size: 80%;"> (source / <a href="mono-threads-state-machine.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">73</td>
+            <td class="headerCovTableEntry">221</td>
+            <td class="headerCovTableEntryLo">33.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">14</td>
+            <td class="headerCovTableEntry">21</td>
+            <td class="headerCovTableEntryLo">66.7 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : #include &lt;config.h&gt;</a>
+<span class="lineNum">       2 </span>            : 
+<span class="lineNum">       3 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">       4 </span>            : #include &lt;mono/utils/mono-threads.h&gt;
+<span class="lineNum">       5 </span>            : #include &lt;mono/utils/mono-tls.h&gt;
+<span class="lineNum">       6 </span>            : #include &lt;mono/utils/mono-memory-model.h&gt;
+<span class="lineNum">       7 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">       8 </span>            : #include &lt;mono/utils/checked-build.h&gt;
+<span class="lineNum">       9 </span>            : #include &lt;mono/utils/mono-threads-debug.h&gt;
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      12 </span>            : 
+<a name="13"><span class="lineNum">      13 </span>            : /*thread state helpers*/</a>
+<span class="lineNum">      14 </span>            : static inline int
+<span class="lineNum">      15 </span>            : get_thread_state (int thread_state)
+<span class="lineNum">      16 </span>            : {
+<span class="lineNum">      17 </span><span class="lineCov">    7949255 :         return thread_state &amp; THREAD_STATE_MASK;</span>
+<span class="lineNum">      18 </span>            : }
+<a name="19"><span class="lineNum">      19 </span>            : </a>
+<span class="lineNum">      20 </span>            : static inline int
+<span class="lineNum">      21 </span>            : get_thread_suspend_count (int thread_state)
+<span class="lineNum">      22 </span>            : {
+<span class="lineNum">      23 </span><span class="lineCov">    4390100 :         return (thread_state &amp; THREAD_SUSPEND_COUNT_MASK) &gt;&gt; THREAD_SUSPEND_COUNT_SHIFT;</span>
+<span class="lineNum">      24 </span>            : }
+<a name="25"><span class="lineNum">      25 </span>            : </a>
+<span class="lineNum">      26 </span>            : static inline int
+<span class="lineNum">      27 </span>            : build_thread_state (int thread_state, int suspend_count) 
+<span class="lineNum">      28 </span>            : {
+<span class="lineNum">      29 </span><span class="lineCov">    5478860 :         g_assert (suspend_count &gt;= 0 &amp;&amp; suspend_count &lt;= THREAD_SUSPEND_COUNT_MAX);</span>
+<span class="lineNum">      30 </span><span class="lineCov">    5478860 :         g_assert (thread_state &gt;= 0 &amp;&amp; thread_state &lt;= STATE_MAX);</span>
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span><span class="lineCov">    1095772 :         return thread_state | (suspend_count &lt;&lt; THREAD_SUSPEND_COUNT_SHIFT);</span>
+<span class="lineNum">      33 </span>            : }
+<a name="34"><span class="lineNum">      34 </span>            : </a>
+<span class="lineNum">      35 </span>            : static const char*
+<span class="lineNum">      36 </span>            : state_name (int state)
+<span class="lineNum">      37 </span>            : {
+<span class="lineNum">      38 </span>            :         static const char *state_names [] = {
+<span class="lineNum">      39 </span>            :                 &quot;STARTING&quot;,
+<span class="lineNum">      40 </span>            :                 &quot;RUNNING&quot;,
+<span class="lineNum">      41 </span>            :                 &quot;DETACHED&quot;,
+<span class="lineNum">      42 </span>            :                 &quot;ASYNC_SUSPENDED&quot;,
+<span class="lineNum">      43 </span>            :                 &quot;SELF_SUSPENDED&quot;,
+<span class="lineNum">      44 </span>            :                 &quot;ASYNC_SUSPEND_REQUESTED&quot;,
+<span class="lineNum">      45 </span>            :                 &quot;SELF_SUSPEND_REQUESTED&quot;,
+<span class="lineNum">      46 </span>            :                 &quot;STATE_BLOCKING&quot;,
+<span class="lineNum">      47 </span>            :                 &quot;STATE_BLOCKING_AND_SUSPENDED&quot;,
+<span class="lineNum">      48 </span>            :         };
+<span class="lineNum">      49 </span><span class="lineNoCov">          0 :         return state_names [get_thread_state (state)];</span>
+<span class="lineNum">      50 </span>            : }
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span>            : #define UNWRAP_THREAD_STATE(RAW,CUR,COUNT,INFO) do {    \
+<span class="lineNum">      53 </span>            :         RAW = (INFO)-&gt;thread_state;  \
+<span class="lineNum">      54 </span>            :         CUR = get_thread_state (RAW);   \
+<span class="lineNum">      55 </span>            :         COUNT = get_thread_suspend_count (RAW); \
+<span class="lineNum">      56 </span>            : } while (0)
+<a name="57"><span class="lineNum">      57 </span>            : </a>
+<span class="lineNum">      58 </span>            : static void
+<span class="lineNum">      59 </span>            : check_thread_state (MonoThreadInfo* info)
+<span class="lineNum">      60 </span>            : {
+<span class="lineNum">      61 </span>            :         int raw_state, cur_state, suspend_count;
+<span class="lineNum">      62 </span><span class="lineCov">    3207950 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">      63 </span><span class="lineCov">    1603975 :         switch (cur_state) {</span>
+<span class="lineNum">      64 </span>            :         case STATE_STARTING:
+<span class="lineNum">      65 </span>            :         case STATE_RUNNING:
+<span class="lineNum">      66 </span>            :         case STATE_DETACHED:
+<span class="lineNum">      67 </span><span class="lineCov">    1524609 :                 g_assert (suspend_count == 0);</span>
+<span class="lineNum">      68 </span><span class="lineCov">     508203 :                 break;</span>
+<span class="lineNum">      69 </span>            :         case STATE_ASYNC_SUSPENDED:
+<span class="lineNum">      70 </span>            :         case STATE_SELF_SUSPENDED:
+<span class="lineNum">      71 </span>            :         case STATE_ASYNC_SUSPEND_REQUESTED:
+<span class="lineNum">      72 </span>            :         case STATE_SELF_SUSPEND_REQUESTED:
+<span class="lineNum">      73 </span>            :         case STATE_BLOCKING_AND_SUSPENDED:
+<span class="lineNum">      74 </span><span class="lineCov">    3287316 :                 g_assert (suspend_count &gt; 0);</span>
+<span class="lineNum">      75 </span><span class="lineCov">    1095772 :                 break;</span>
+<span class="lineNum">      76 </span>            :         case STATE_BLOCKING: //this is a special state that can have zero or positive suspend count.
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">      78 </span>            :         default:
+<span class="lineNum">      79 </span><span class="lineNoCov">          0 :                 g_error (&quot;Invalid state %d&quot;, cur_state);</span>
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      81 </span><span class="lineCov">    1603975 : }</span>
+<a name="82"><span class="lineNum">      82 </span>            : </a>
+<span class="lineNum">      83 </span>            : static inline void
+<span class="lineNum">      84 </span>            : trace_state_change (const char *transition, MonoThreadInfo *info, int cur_raw_state, int next_state, int suspend_count_delta)
+<span class="lineNum">      85 </span>            : {
+<span class="lineNum">      86 </span><span class="lineCov">    1603975 :         check_thread_state (info);</span>
+<span class="lineNum">      87 </span>            :         THREADS_STATE_MACHINE_DEBUG (&quot;[%s][%p] %s -&gt; %s (%d -&gt; %d)\n&quot;,
+<span class="lineNum">      88 </span>            :                 transition,
+<span class="lineNum">      89 </span>            :                 mono_thread_info_get_tid (info),
+<span class="lineNum">      90 </span>            :                 state_name (get_thread_state (cur_raw_state)),
+<span class="lineNum">      91 </span>            :                 state_name (next_state),
+<span class="lineNum">      92 </span>            :                 get_thread_suspend_count (cur_raw_state),
+<span class="lineNum">      93 </span>            :                 get_thread_suspend_count (cur_raw_state) + suspend_count_delta);
+<span class="lineNum">      94 </span>            : 
+<span class="lineNum">      95 </span>            :         CHECKED_BUILD_THREAD_TRANSITION (transition, info, get_thread_state (cur_raw_state), get_thread_suspend_count (cur_raw_state), next_state, suspend_count_delta);
+<span class="lineNum">      96 </span><span class="lineCov">    1603975 : }</span>
+<span class="lineNum">      97 </span>            : 
+<span class="lineNum">      98 </span>            : /*
+<span class="lineNum">      99 </span>            : This is the transition that signals that a thread is functioning.
+<span class="lineNum">     100 </span>            : Its main goal is to catch threads been witnessed before been fully registered.
+<a name="101"><span class="lineNum">     101 </span>            : */</a>
+<span class="lineNum">     102 </span>            : void
+<span class="lineNum">     103 </span>            : mono_threads_transition_attach (MonoThreadInfo* info)
+<span class="lineNum">     104 </span>            : {
+<span class="lineNum">     105 </span><span class="lineCov">      21193 :         int raw_state, cur_state, suspend_count;</span>
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span>            : retry_state_change:
+<span class="lineNum">     108 </span><span class="lineCov">      42386 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     109 </span><span class="lineCov">      21193 :         switch (cur_state) {</span>
+<span class="lineNum">     110 </span>            :         case STATE_STARTING:
+<span class="lineNum">     111 </span><span class="lineCov">      21193 :                 if (!(suspend_count == 0))</span>
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be == 0&quot;, suspend_count);</span>
+<span class="lineNum">     113 </span><span class="lineCov">      21193 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, STATE_RUNNING, raw_state) != raw_state)</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     115 </span><span class="lineCov">      21193 :                 trace_state_change (&quot;ATTACH&quot;, info, raw_state, STATE_RUNNING, 0);</span>
+<span class="lineNum">     116 </span><span class="lineCov">      21193 :                 break;</span>
+<span class="lineNum">     117 </span>            :         default:
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition current thread from %s with ATTACH&quot;, state_name (cur_state));</span>
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     120 </span><span class="lineCov">      21193 : }</span>
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span>            : /*
+<span class="lineNum">     123 </span>            : This is the transition that signals that a thread is no longer registered with the runtime.
+<span class="lineNum">     124 </span>            : Its main goal is to catch threads been witnessed after they detach.
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span>            : This returns TRUE is the transition succeeded.
+<span class="lineNum">     127 </span>            : If it returns false it means that there's a pending suspend that should be acted upon.
+<a name="128"><span class="lineNum">     128 </span>            : */</a>
+<span class="lineNum">     129 </span>            : gboolean
+<span class="lineNum">     130 </span>            : mono_threads_transition_detach (MonoThreadInfo *info)
+<span class="lineNum">     131 </span>            : {
+<span class="lineNum">     132 </span><span class="lineCov">      17842 :         int raw_state, cur_state, suspend_count;</span>
+<span class="lineNum">     133 </span>            : 
+<span class="lineNum">     134 </span>            : retry_state_change:
+<span class="lineNum">     135 </span><span class="lineCov">      35684 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     136 </span><span class="lineCov">      17842 :         switch (cur_state) {</span>
+<span class="lineNum">     137 </span>            :         case STATE_RUNNING:
+<span class="lineNum">     138 </span>            :         case STATE_BLOCKING: /* An OS thread on coop goes STARTING-&gt;BLOCKING-&gt;RUNNING-&gt;BLOCKING-&gt;DETACHED */
+<span class="lineNum">     139 </span><span class="lineCov">      17842 :                 if (!(suspend_count == 0))</span>
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be == 0&quot;, suspend_count);</span>
+<span class="lineNum">     141 </span><span class="lineCov">      17842 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, STATE_DETACHED, raw_state) != raw_state)</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     143 </span><span class="lineCov">      17842 :                 trace_state_change (&quot;DETACH&quot;, info, raw_state, STATE_DETACHED, 0);</span>
+<span class="lineNum">     144 </span><span class="lineCov">      17842 :                 return TRUE;</span>
+<span class="lineNum">     145 </span>            :         case STATE_ASYNC_SUSPEND_REQUESTED: //Can't detach until whoever asked us to suspend to be happy with us
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     147 </span>            : 
+<span class="lineNum">     148 </span>            : /*
+<span class="lineNum">     149 </span>            : STATE_ASYNC_SUSPENDED: Code should not be running while suspended.
+<span class="lineNum">     150 </span>            : STATE_SELF_SUSPENDED: Code should not be running while suspended.
+<span class="lineNum">     151 </span>            : STATE_SELF_SUSPEND_REQUESTED: This is a bug in the self suspend code that didn't execute the second part of it
+<span class="lineNum">     152 </span>            : STATE_BLOCKING_AND_SUSPENDED: This is a bug in coop x suspend that resulted the thread in an undetachable state.
+<span class="lineNum">     153 </span>            : */
+<span class="lineNum">     154 </span>            :         default:
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition current thread %p from %s with DETACH&quot;, info, state_name (cur_state));</span>
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     157 </span><span class="lineCov">      17842 : }</span>
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span>            : /*
+<span class="lineNum">     160 </span>            : This transition initiates the suspension of another thread.
+<span class="lineNum">     161 </span>            : 
+<span class="lineNum">     162 </span>            : Returns one of the following values:
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span>            : - AsyncSuspendInitSuspend: Thread suspend requested, async suspend needs to be done.
+<span class="lineNum">     165 </span>            : - AsyncSuspendAlreadySuspended: Thread already suspended, nothing to do.
+<span class="lineNum">     166 </span>            : - AsyncSuspendWait: Self suspend in progress, asked it to notify us. Caller must add target to the notification set.
+<span class="lineNum">     167 </span>            : - AsyncSuspendBlocking: Thread in blocking state
+<a name="168"><span class="lineNum">     168 </span>            : */</a>
+<span class="lineNum">     169 </span>            : MonoRequestAsyncSuspendResult
+<span class="lineNum">     170 </span>            : mono_threads_transition_request_async_suspension (MonoThreadInfo *info)
+<span class="lineNum">     171 </span>            : {
+<span class="lineNum">     172 </span>            :         int raw_state, cur_state, suspend_count;
+<span class="lineNum">     173 </span><span class="lineCov">    2191544 :         g_assert (info != mono_thread_info_current ());</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span>            : retry_state_change:
+<span class="lineNum">     176 </span><span class="lineCov">    1095772 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     177 </span>            : 
+<span class="lineNum">     178 </span><span class="lineCov">     547886 :         switch (cur_state) {</span>
+<span class="lineNum">     179 </span>            :         case STATE_RUNNING: //Post an async suspend request
+<span class="lineNum">     180 </span><span class="lineCov">     469168 :                 if (!(suspend_count == 0))</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be == 0&quot;, suspend_count);</span>
+<span class="lineNum">     182 </span><span class="lineCov">     469168 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_ASYNC_SUSPEND_REQUESTED, 1), raw_state) != raw_state)</span>
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     184 </span><span class="lineCov">     469168 :                 trace_state_change (&quot;ASYNC_SUSPEND_REQUESTED&quot;, info, raw_state, STATE_ASYNC_SUSPEND_REQUESTED, 1);</span>
+<span class="lineNum">     185 </span><span class="lineCov">     469168 :                 return AsyncSuspendInitSuspend; //This is the first async suspend request against the target</span>
+<span class="lineNum">     186 </span>            : 
+<span class="lineNum">     187 </span>            :         case STATE_ASYNC_SUSPENDED:
+<span class="lineNum">     188 </span>            :         case STATE_SELF_SUSPENDED: //Async suspend can suspend the same thread multiple times as it starts from the outside
+<span class="lineNum">     189 </span>            :         case STATE_BLOCKING_AND_SUSPENDED:
+<span class="lineNum">     190 </span><span class="lineCov">     157436 :                 if (!(suspend_count &gt; 0 &amp;&amp; suspend_count &lt; THREAD_SUSPEND_COUNT_MAX))</span>
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be &gt; 0 and &lt; THREAD_SUSPEND_COUNT_MAX&quot;, suspend_count);</span>
+<span class="lineNum">     192 </span><span class="lineCov">      78718 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (cur_state, suspend_count + 1), raw_state) != raw_state)</span>
+<span class="lineNum">     193 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     194 </span><span class="lineCov">      78718 :                 trace_state_change (&quot;ASYNC_SUSPEND_REQUESTED&quot;, info, raw_state, cur_state, 1);</span>
+<span class="lineNum">     195 </span><span class="lineCov">      78718 :                 return AsyncSuspendAlreadySuspended; //Thread is already suspended so we don't need to wait it to suspend</span>
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span>            :         case STATE_SELF_SUSPEND_REQUESTED: //This suspend needs to notify the initiator, so we need to promote the suspend to async
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                 if (!(suspend_count &gt; 0 &amp;&amp; suspend_count &lt; THREAD_SUSPEND_COUNT_MAX))</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be &gt; 0 and &lt; THREAD_SUSPEND_COUNT_MAX&quot;, suspend_count);</span>
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_ASYNC_SUSPEND_REQUESTED, suspend_count + 1), raw_state) != raw_state)</span>
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     202 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;ASYNC_SUSPEND_REQUESTED&quot;, info, raw_state, STATE_ASYNC_SUSPEND_REQUESTED, 1);</span>
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :                 return AsyncSuspendWait; //This is the first async suspend request, change the thread and let it notify us [1]</span>
+<span class="lineNum">     204 </span>            : 
+<span class="lineNum">     205 </span>            :         case STATE_BLOCKING:
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :                 if (!(suspend_count &lt; THREAD_SUSPEND_COUNT_MAX))</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be &lt; THREAD_SUSPEND_COUNT_MAX&quot;, suspend_count);</span>
+<span class="lineNum">     208 </span><span class="lineNoCov">          0 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (cur_state, suspend_count + 1), raw_state) != raw_state)</span>
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;ASYNC_SUSPEND_REQUESTED&quot;, info, raw_state, cur_state, 1);</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :                 return AsyncSuspendBlocking; //A thread in the blocking state has its state saved so we can treat it as suspended.</span>
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span>            : /*
+<span class="lineNum">     214 </span>            : 
+<span class="lineNum">     215 </span>            : [1] It's questionable on what to do if we hit the beginning of a self suspend.
+<span class="lineNum">     216 </span>            : The expected behavior is that the target should poll its state very soon so the the suspend latency should be minimal.
+<span class="lineNum">     217 </span>            : 
+<span class="lineNum">     218 </span>            : STATE_ASYNC_SUSPEND_REQUESTED: Since there can only be one async suspend in progress and it must finish, it should not be possible to witness this.
+<span class="lineNum">     219 </span>            : */
+<span class="lineNum">     220 </span>            :         default:
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition thread %p from %s with ASYNC_SUSPEND_REQUESTED&quot;, mono_thread_info_get_tid (info), state_name (cur_state));</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :         return (MonoRequestAsyncSuspendResult) FALSE;</span>
+<span class="lineNum">     224 </span><span class="lineCov">     547886 : }</span>
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span>            : /*
+<span class="lineNum">     227 </span>            : Check the current state of the thread and try to init a self suspend.
+<span class="lineNum">     228 </span>            : This must be called with self state saved.
+<span class="lineNum">     229 </span>            : 
+<span class="lineNum">     230 </span>            : Returns one of the following values:
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span>            : - Resumed: Async resume happened and current thread should keep running
+<span class="lineNum">     233 </span>            : - Suspend: Caller should wait for a resume signal
+<span class="lineNum">     234 </span>            : - SelfSuspendNotifyAndWait: Notify the suspend initiator and wait for a resume signals
+<span class="lineNum">     235 </span>            :  suspend should start.
+<span class="lineNum">     236 </span>            : 
+<a name="237"><span class="lineNum">     237 </span>            : */</a>
+<span class="lineNum">     238 </span>            : MonoSelfSupendResult
+<span class="lineNum">     239 </span>            : mono_threads_transition_state_poll (MonoThreadInfo *info)
+<span class="lineNum">     240 </span>            : {
+<span class="lineNum">     241 </span>            :         int raw_state, cur_state, suspend_count;
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :         g_assert (mono_thread_info_is_current (info));</span>
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span>            : retry_state_change:
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :         switch (cur_state) {</span>
+<span class="lineNum">     247 </span>            :         case STATE_RUNNING:
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :                 if (!(suspend_count == 0))</span>
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be == 0&quot;, suspend_count);</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;STATE_POLL&quot;, info, raw_state, cur_state, 0);</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :                 return SelfSuspendResumed; //We're fine, don't suspend</span>
+<span class="lineNum">     252 </span>            : 
+<span class="lineNum">     253 </span>            :         case STATE_ASYNC_SUSPEND_REQUESTED: //Async suspend requested, service it with a self suspend
+<span class="lineNum">     254 </span>            :         case STATE_SELF_SUSPEND_REQUESTED: //Start the self suspend process
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :                 if (!(suspend_count &gt; 0))</span>
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be &gt; 0&quot;, suspend_count);</span>
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_SELF_SUSPENDED, suspend_count), raw_state) != raw_state)</span>
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     259 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;STATE_POLL&quot;, info, raw_state, STATE_SELF_SUSPENDED, 0);</span>
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :                 if (cur_state == STATE_SELF_SUSPEND_REQUESTED)</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :                         return SelfSuspendWait; //Caller should wait for resume</span>
+<span class="lineNum">     262 </span>            :                 else
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :                         return SelfSuspendNotifyAndWait; //Caller should notify suspend initiator and wait for resume</span>
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span>            : /*
+<span class="lineNum">     266 </span>            : STATE_ASYNC_SUSPENDED: Code should not be running while suspended.
+<span class="lineNum">     267 </span>            : STATE_SELF_SUSPENDED: Code should not be running while suspended.
+<span class="lineNum">     268 </span>            : STATE_BLOCKING:
+<span class="lineNum">     269 </span>            : STATE_BLOCKING_AND_SUSPENDED: Pool is a local state transition. No VM activities are allowed while in blocking mode.
+<span class="lineNum">     270 </span>            : */
+<span class="lineNum">     271 </span>            :         default:
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition thread %p from %s with STATE_POLL&quot;, mono_thread_info_get_tid (info), state_name (cur_state));</span>
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span>            : /*
+<span class="lineNum">     277 </span>            : Try to resume a suspended thread.
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span>            : Returns one of the following values:
+<span class="lineNum">     280 </span>            : - Sucess: The thread was resumed.
+<span class="lineNum">     281 </span>            : - Error: The thread was not suspended in the first place. [2]
+<span class="lineNum">     282 </span>            : - InitSelfResume: The thread is blocked on self suspend and should be resumed 
+<span class="lineNum">     283 </span>            : - InitAsycResume: The thread is blocked on async suspend and should be resumed
+<span class="lineNum">     284 </span>            : - ResumeInitBlockingResume: The thread was suspended on the exit path of blocking state and should be resumed
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span>            : [2] This threading system uses an unsigned suspend count. Which means a resume cannot be
+<span class="lineNum">     287 </span>            : used as a suspend permit and cancel each other.
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span>            : Suspend permits are really useful to implement managed synchronization structures that
+<span class="lineNum">     290 </span>            : don't consume native resources. The downside is that they further complicate the design of this
+<span class="lineNum">     291 </span>            : system as the RUNNING state now has a non zero suspend counter.
+<span class="lineNum">     292 </span>            : 
+<span class="lineNum">     293 </span>            : It can be implemented in the future if we find resume/suspend races that cannot be (efficiently) fixed by other means.
+<span class="lineNum">     294 </span>            : 
+<span class="lineNum">     295 </span>            : One major issue with suspend permits is runtime facilities (GC, debugger) that must have the target suspended when requested.
+<span class="lineNum">     296 </span>            : This would make permits really harder to add.
+<a name="297"><span class="lineNum">     297 </span>            : */</a>
+<span class="lineNum">     298 </span>            : MonoResumeResult
+<span class="lineNum">     299 </span>            : mono_threads_transition_request_resume (MonoThreadInfo* info)
+<span class="lineNum">     300 </span>            : {
+<span class="lineNum">     301 </span>            :         int raw_state, cur_state, suspend_count;
+<span class="lineNum">     302 </span><span class="lineCov">    2191544 :         g_assert (info != mono_thread_info_current ()); //One can't self resume [3]</span>
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span>            : retry_state_change:
+<span class="lineNum">     305 </span><span class="lineCov">    1095772 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     306 </span><span class="lineCov">     547886 :         switch (cur_state) {</span>
+<span class="lineNum">     307 </span>            :         case STATE_RUNNING: //Thread already running.
+<span class="lineNum">     308 </span><span class="lineNoCov">          0 :                 if (!(suspend_count == 0))</span>
+<span class="lineNum">     309 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be == 0&quot;, suspend_count);</span>
+<span class="lineNum">     310 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;RESUME&quot;, info, raw_state, cur_state, 0);</span>
+<span class="lineNum">     311 </span><span class="lineNoCov">          0 :                 return ResumeError; //Resume failed because thread was not blocked</span>
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span>            :         case STATE_BLOCKING: //Blocking, might have a suspend count, we decrease if it's &gt; 0
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :                 if (suspend_count == 0) {</span>
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :                         trace_state_change (&quot;RESUME&quot;, info, raw_state, cur_state, 0);</span>
+<span class="lineNum">     316 </span><span class="lineNoCov">          0 :                         return ResumeError;</span>
+<span class="lineNum">     317 </span>            :                 } else {
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (cur_state, suspend_count - 1), raw_state) != raw_state)</span>
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :                                         goto retry_state_change;</span>
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                         trace_state_change (&quot;RESUME&quot;, info, raw_state, cur_state, -1);</span>
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :                         return ResumeOk; //Resume worked and there's nothing for the caller to do.</span>
+<span class="lineNum">     322 </span>            :                 }
+<span class="lineNum">     323 </span>            :                 break;
+<span class="lineNum">     324 </span>            :         case STATE_ASYNC_SUSPENDED:
+<span class="lineNum">     325 </span>            :         case STATE_SELF_SUSPENDED:
+<span class="lineNum">     326 </span>            :         case STATE_BLOCKING_AND_SUSPENDED: //Decrease the suspend_count and maybe resume
+<span class="lineNum">     327 </span><span class="lineCov">     547886 :                 if (!(suspend_count &gt; 0))</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be &gt; 0&quot;, suspend_count);</span>
+<span class="lineNum">     329 </span><span class="lineCov">     547886 :                 if (suspend_count &gt; 1) {</span>
+<span class="lineNum">     330 </span><span class="lineCov">      78718 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (cur_state, suspend_count - 1), raw_state) != raw_state)</span>
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :                                         goto retry_state_change;</span>
+<span class="lineNum">     332 </span><span class="lineCov">      78718 :                         trace_state_change (&quot;RESUME&quot;, info, raw_state, cur_state, -1);</span>
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span><span class="lineCov">      78718 :                         return ResumeOk; //Resume worked and there's nothing for the caller to do.</span>
+<span class="lineNum">     335 </span>            :                 } else {
+<span class="lineNum">     336 </span><span class="lineCov">     469168 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, STATE_RUNNING, raw_state) != raw_state)</span>
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :                                 goto retry_state_change;</span>
+<span class="lineNum">     338 </span><span class="lineCov">     469168 :                         trace_state_change (&quot;RESUME&quot;, info, raw_state, STATE_RUNNING, -1);</span>
+<span class="lineNum">     339 </span>            : 
+<span class="lineNum">     340 </span><span class="lineCov">     469168 :                         if (cur_state == STATE_ASYNC_SUSPENDED)</span>
+<span class="lineNum">     341 </span><span class="lineCov">     469168 :                                 return ResumeInitAsyncResume; //Resume worked and caller must do async resume</span>
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :                         else if (cur_state == STATE_SELF_SUSPENDED)</span>
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :                                 return ResumeInitSelfResume; //Resume worked and caller must do self resume</span>
+<span class="lineNum">     344 </span>            :                         else
+<span class="lineNum">     345 </span><span class="lineNoCov">          0 :                                 return ResumeInitBlockingResume; //Resume worked and caller must do blocking resume</span>
+<span class="lineNum">     346 </span>            :                 }
+<span class="lineNum">     347 </span>            : 
+<span class="lineNum">     348 </span>            :         case STATE_SELF_SUSPEND_REQUESTED: //Self suspend was requested but another thread decided to resume it.
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                 if (!(suspend_count &gt; 0))</span>
+<span class="lineNum">     350 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be &gt; 0&quot;, suspend_count);</span>
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                 if (suspend_count &gt; 1) {</span>
+<span class="lineNum">     352 </span><span class="lineNoCov">          0 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (cur_state, suspend_count - 1), raw_state) != raw_state)</span>
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :                                         goto retry_state_change;</span>
+<span class="lineNum">     354 </span><span class="lineNoCov">          0 :                         trace_state_change (&quot;RESUME&quot;, info, raw_state, cur_state, -1);</span>
+<span class="lineNum">     355 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, STATE_RUNNING, raw_state) != raw_state)</span>
+<span class="lineNum">     357 </span><span class="lineNoCov">          0 :                                 goto retry_state_change;</span>
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :                         trace_state_change (&quot;RESUME&quot;, info, raw_state, STATE_RUNNING, -1);</span>
+<span class="lineNum">     359 </span>            :                 }
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 :                 return ResumeOk; //Resume worked and there's nothing for the caller to do (the target never actually suspend).</span>
+<span class="lineNum">     361 </span>            : /*
+<span class="lineNum">     362 </span>            : 
+<span class="lineNum">     363 </span>            : STATE_ASYNC_SUSPEND_REQUESTED: Only one async suspend/resume operation can be in flight, so a resume cannot witness an internal state of suspend
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span>            : [3] A self-resume makes no sense given it requires the thread to be running, which means its suspend count must be zero. A self resume would make
+<span class="lineNum">     366 </span>            : sense as a suspend permit, but as explained in [2] we don't support it so this is a bug.
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span>            : [4] It's questionable on whether a resume (an async operation) should be able to cancel a self suspend. The scenario where this would happen
+<span class="lineNum">     369 </span>            : is similar to the one described in [2] when this is used for as a synchronization primitive.
+<span class="lineNum">     370 </span>            : 
+<span class="lineNum">     371 </span>            : If this turns to be a problem we should either implement [2] or make this an invalid transition.
+<span class="lineNum">     372 </span>            : 
+<span class="lineNum">     373 </span>            : */
+<span class="lineNum">     374 </span>            :         default:
+<span class="lineNum">     375 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition thread %p from %s with REQUEST_RESUME&quot;, mono_thread_info_get_tid (info), state_name (cur_state));</span>
+<span class="lineNum">     376 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     377 </span><span class="lineCov">     547886 : }</span>
+<span class="lineNum">     378 </span>            : 
+<span class="lineNum">     379 </span>            : /*
+<span class="lineNum">     380 </span>            : This performs the last step of async suspend.
+<span class="lineNum">     381 </span>            : 
+<span class="lineNum">     382 </span>            : Returns TRUE if the caller should wait for resume.
+<a name="383"><span class="lineNum">     383 </span>            : */</a>
+<span class="lineNum">     384 </span>            : gboolean
+<span class="lineNum">     385 </span>            : mono_threads_transition_finish_async_suspend (MonoThreadInfo* info)
+<span class="lineNum">     386 </span>            : {
+<span class="lineNum">     387 </span><span class="lineCov">     469168 :         int raw_state, cur_state, suspend_count;</span>
+<span class="lineNum">     388 </span>            : 
+<span class="lineNum">     389 </span>            : retry_state_change:
+<span class="lineNum">     390 </span><span class="lineCov">     938336 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     391 </span><span class="lineCov">     469168 :         switch (cur_state) {</span>
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span>            :         case STATE_SELF_SUSPENDED: //async suspend raced with self suspend and lost
+<span class="lineNum">     394 </span>            :         case STATE_BLOCKING_AND_SUSPENDED: //async suspend raced with blocking and lost
+<span class="lineNum">     395 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;FINISH_ASYNC_SUSPEND&quot;, info, raw_state, cur_state, 0);</span>
+<span class="lineNum">     396 </span><span class="lineNoCov">          0 :                 return FALSE; //let self suspend wait</span>
+<span class="lineNum">     397 </span>            : 
+<span class="lineNum">     398 </span>            :         case STATE_ASYNC_SUSPEND_REQUESTED:
+<span class="lineNum">     399 </span><span class="lineCov">     469168 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_ASYNC_SUSPENDED, suspend_count), raw_state) != raw_state)</span>
+<span class="lineNum">     400 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     401 </span><span class="lineCov">     469168 :                 trace_state_change (&quot;FINISH_ASYNC_SUSPEND&quot;, info, raw_state, STATE_ASYNC_SUSPENDED, 0);</span>
+<span class="lineNum">     402 </span><span class="lineCov">     469168 :                 return TRUE; //Async suspend worked, now wait for resume</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span>            : /*
+<span class="lineNum">     405 </span>            : STATE_RUNNING: A thread cannot escape suspension once requested.
+<span class="lineNum">     406 </span>            : STATE_ASYNC_SUSPENDED: There can be only one suspend initiator at a given time, meaning this state should have been visible on the first stage of suspend.
+<span class="lineNum">     407 </span>            : STATE_SELF_SUSPEND_REQUESTED: When self suspend and async suspend happen together, they converge to async suspend so this state should not be visible.
+<span class="lineNum">     408 </span>            : STATE_BLOCKING: Async suspend only begins if a transition to async suspend requested happened. Blocking would have put us into blocking with positive suspend count if it raced with async finish.
+<span class="lineNum">     409 </span>            : */
+<span class="lineNum">     410 </span>            :         default:
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition thread %p from %s with FINISH_ASYNC_SUSPEND&quot;, mono_thread_info_get_tid (info), state_name (cur_state));</span>
+<span class="lineNum">     412 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     413 </span><span class="lineCov">     469168 : }</span>
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span>            : /*
+<span class="lineNum">     416 </span>            : This transitions the thread into a cooperative state where it's assumed to be suspended but can continue.
+<span class="lineNum">     417 </span>            : 
+<span class="lineNum">     418 </span>            : Native runtime code might want to put itself into a state where the thread is considered suspended but can keep running.
+<span class="lineNum">     419 </span>            : That state only works as long as the only managed state touched is blitable and was pinned before the transition.
+<span class="lineNum">     420 </span>            : 
+<span class="lineNum">     421 </span>            : It returns the action the caller must perform:
+<span class="lineNum">     422 </span>            : 
+<span class="lineNum">     423 </span>            : - Continue: Entered blocking state sucessfully;
+<span class="lineNum">     424 </span>            : - PollAndRetry: Async suspend raced and won, try to suspend and then retry;
+<span class="lineNum">     425 </span>            : 
+<a name="426"><span class="lineNum">     426 </span>            : */</a>
+<span class="lineNum">     427 </span>            : MonoDoBlockingResult
+<span class="lineNum">     428 </span>            : mono_threads_transition_do_blocking (MonoThreadInfo* info)
+<span class="lineNum">     429 </span>            : {
+<span class="lineNum">     430 </span><span class="lineNoCov">          0 :         int raw_state, cur_state, suspend_count;</span>
+<span class="lineNum">     431 </span>            : 
+<span class="lineNum">     432 </span>            : retry_state_change:
+<span class="lineNum">     433 </span><span class="lineNoCov">          0 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     434 </span><span class="lineNoCov">          0 :         switch (cur_state) {</span>
+<span class="lineNum">     435 </span>            : 
+<span class="lineNum">     436 </span>            :         case STATE_RUNNING: //transition to blocked
+<span class="lineNum">     437 </span><span class="lineNoCov">          0 :                 if (!(suspend_count == 0))</span>
+<span class="lineNum">     438 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be == 0&quot;, suspend_count);</span>
+<span class="lineNum">     439 </span><span class="lineNoCov">          0 :                 if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_BLOCKING, suspend_count), raw_state) != raw_state)</span>
+<span class="lineNum">     440 </span><span class="lineNoCov">          0 :                         goto retry_state_change;</span>
+<span class="lineNum">     441 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;DO_BLOCKING&quot;, info, raw_state, STATE_BLOCKING, 0);</span>
+<span class="lineNum">     442 </span><span class="lineNoCov">          0 :                 return DoBlockingContinue;</span>
+<span class="lineNum">     443 </span>            : 
+<span class="lineNum">     444 </span>            :         case STATE_ASYNC_SUSPEND_REQUESTED:
+<span class="lineNum">     445 </span><span class="lineNoCov">          0 :                 if (!(suspend_count &gt; 0))</span>
+<span class="lineNum">     446 </span><span class="lineNoCov">          0 :                         mono_fatal_with_history (&quot;suspend_count = %d, but should be &gt; 0&quot;, suspend_count);</span>
+<span class="lineNum">     447 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;DO_BLOCKING&quot;, info, raw_state, cur_state, 0);</span>
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :                 return DoBlockingPollAndRetry;</span>
+<span class="lineNum">     449 </span>            : /*
+<span class="lineNum">     450 </span>            : STATE_ASYNC_SUSPENDED
+<span class="lineNum">     451 </span>            : STATE_SELF_SUSPENDED: Code should not be running while suspended.
+<span class="lineNum">     452 </span>            : STATE_SELF_SUSPEND_REQUESTED: A blocking operation must not be done while trying to self suspend
+<span class="lineNum">     453 </span>            : STATE_BLOCKING:
+<span class="lineNum">     454 </span>            : STATE_BLOCKING_AND_SUSPENDED: Blocking is not nestabled
+<span class="lineNum">     455 </span>            : */
+<span class="lineNum">     456 </span>            :         default:
+<span class="lineNum">     457 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition thread %p from %s with DO_BLOCKING&quot;, mono_thread_info_get_tid (info), state_name (cur_state));</span>
+<span class="lineNum">     458 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span>            : /*
+<span class="lineNum">     462 </span>            : This is the exit transition from the blocking state. If this thread is logically async suspended it will have to wait
+<span class="lineNum">     463 </span>            : until its resumed before continuing.
+<span class="lineNum">     464 </span>            : 
+<span class="lineNum">     465 </span>            : It returns one of:
+<span class="lineNum">     466 </span>            : -Aborted: The blocking operation was aborted and not properly restored. Aborts can happen due to lazy loading and some n2m transitions;
+<span class="lineNum">     467 </span>            : -Ok: Done with blocking, just move on;
+<span class="lineNum">     468 </span>            : -Wait: This thread was async suspended, wait for resume
+<span class="lineNum">     469 </span>            : 
+<a name="470"><span class="lineNum">     470 </span>            : */</a>
+<span class="lineNum">     471 </span>            : MonoDoneBlockingResult
+<span class="lineNum">     472 </span>            : mono_threads_transition_done_blocking (MonoThreadInfo* info)
+<span class="lineNum">     473 </span>            : {
+<span class="lineNum">     474 </span><span class="lineNoCov">          0 :         int raw_state, cur_state, suspend_count;</span>
+<span class="lineNum">     475 </span>            : 
+<span class="lineNum">     476 </span>            : retry_state_change:
+<span class="lineNum">     477 </span><span class="lineNoCov">          0 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     478 </span><span class="lineNoCov">          0 :         switch (cur_state) {</span>
+<span class="lineNum">     479 </span>            :         case STATE_BLOCKING:
+<span class="lineNum">     480 </span><span class="lineNoCov">          0 :                 if (suspend_count == 0) {</span>
+<span class="lineNum">     481 </span><span class="lineNoCov">          0 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_RUNNING, suspend_count), raw_state) != raw_state)</span>
+<span class="lineNum">     482 </span><span class="lineNoCov">          0 :                                 goto retry_state_change;</span>
+<span class="lineNum">     483 </span><span class="lineNoCov">          0 :                         trace_state_change (&quot;DONE_BLOCKING&quot;, info, raw_state, STATE_RUNNING, 0);</span>
+<span class="lineNum">     484 </span><span class="lineNoCov">          0 :                         return DoneBlockingOk;</span>
+<span class="lineNum">     485 </span>            :                 } else {
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :                         if (!(suspend_count &gt;= 0))</span>
+<span class="lineNum">     487 </span><span class="lineNoCov">          0 :                                 mono_fatal_with_history (&quot;suspend_count = %d, but should be &gt;= 0&quot;, suspend_count);</span>
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_BLOCKING_AND_SUSPENDED, suspend_count), raw_state) != raw_state)</span>
+<span class="lineNum">     489 </span><span class="lineNoCov">          0 :                                 goto retry_state_change;</span>
+<span class="lineNum">     490 </span><span class="lineNoCov">          0 :                         trace_state_change (&quot;DONE_BLOCKING&quot;, info, raw_state, STATE_BLOCKING_AND_SUSPENDED, 0);</span>
+<span class="lineNum">     491 </span><span class="lineNoCov">          0 :                         return DoneBlockingWait;</span>
+<span class="lineNum">     492 </span>            :                 }
+<span class="lineNum">     493 </span>            : 
+<span class="lineNum">     494 </span>            : /*
+<span class="lineNum">     495 </span>            : STATE_RUNNING: //Blocking was aborted and not properly restored
+<span class="lineNum">     496 </span>            : STATE_ASYNC_SUSPEND_REQUESTED: //Blocking was aborted, not properly restored and now there's a pending suspend
+<span class="lineNum">     497 </span>            : STATE_ASYNC_SUSPENDED
+<span class="lineNum">     498 </span>            : STATE_SELF_SUSPENDED: Code should not be running while suspended.
+<span class="lineNum">     499 </span>            : STATE_SELF_SUSPEND_REQUESTED: A blocking operation must not be done while trying to self suspend
+<span class="lineNum">     500 </span>            : STATE_BLOCKING_AND_SUSPENDED: This an exit state of done blocking
+<span class="lineNum">     501 </span>            : */
+<span class="lineNum">     502 </span>            :         default:
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition thread %p from %s with DONE_BLOCKING&quot;, mono_thread_info_get_tid (info), state_name (cur_state));</span>
+<span class="lineNum">     504 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     505 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     506 </span>            : 
+<span class="lineNum">     507 </span>            : /*
+<span class="lineNum">     508 </span>            : Transition a thread in what should be a blocking state back to running state.
+<span class="lineNum">     509 </span>            : This is different that done blocking because the goal is to get back to blocking once we're done.
+<span class="lineNum">     510 </span>            : This is required to be able to bail out of blocking in case we're back to inside the runtime.
+<span class="lineNum">     511 </span>            : 
+<span class="lineNum">     512 </span>            : It returns one of:
+<span class="lineNum">     513 </span>            : -Ignore: Thread was not in blocking, nothing to do;
+<span class="lineNum">     514 </span>            : -IgnoreAndPool: Thread was not blocking and there's a pending suspend that needs to be processed;
+<span class="lineNum">     515 </span>            : -Ok: Blocking state successfully aborted;
+<span class="lineNum">     516 </span>            : -Wait: Blocking state successfully aborted, there's a pending suspend to be processed though
+<a name="517"><span class="lineNum">     517 </span>            : */</a>
+<span class="lineNum">     518 </span>            : MonoAbortBlockingResult
+<span class="lineNum">     519 </span>            : mono_threads_transition_abort_blocking (THREAD_INFO_TYPE* info)
+<span class="lineNum">     520 </span>            : {
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 :         int raw_state, cur_state, suspend_count;</span>
+<span class="lineNum">     522 </span>            : 
+<span class="lineNum">     523 </span>            : retry_state_change:
+<span class="lineNum">     524 </span><span class="lineNoCov">          0 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :         switch (cur_state) {</span>
+<span class="lineNum">     526 </span>            :         case STATE_RUNNING: //thread already in runnable state
+<span class="lineNum">     527 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;ABORT_BLOCKING&quot;, info, raw_state, cur_state, 0);</span>
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :                 return AbortBlockingIgnore;</span>
+<span class="lineNum">     529 </span>            : 
+<span class="lineNum">     530 </span>            :         case STATE_ASYNC_SUSPEND_REQUESTED: //thread is runnable and have a pending suspend
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :                 trace_state_change (&quot;ABORT_BLOCKING&quot;, info, raw_state, cur_state, 0);</span>
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :                 return AbortBlockingIgnoreAndPoll;</span>
+<span class="lineNum">     533 </span>            : 
+<span class="lineNum">     534 </span>            :         case STATE_BLOCKING:
+<span class="lineNum">     535 </span><span class="lineNoCov">          0 :                 if (suspend_count == 0) {</span>
+<span class="lineNum">     536 </span><span class="lineNoCov">          0 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_RUNNING, suspend_count), raw_state) != raw_state)</span>
+<span class="lineNum">     537 </span><span class="lineNoCov">          0 :                                 goto retry_state_change;</span>
+<span class="lineNum">     538 </span><span class="lineNoCov">          0 :                         trace_state_change (&quot;ABORT_BLOCKING&quot;, info, raw_state, STATE_RUNNING, 0);</span>
+<span class="lineNum">     539 </span><span class="lineNoCov">          0 :                         return AbortBlockingOk;</span>
+<span class="lineNum">     540 </span>            :                 } else {
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :                         if (!(suspend_count &gt; 0))</span>
+<span class="lineNum">     542 </span><span class="lineNoCov">          0 :                                 mono_fatal_with_history (&quot;suspend_count = %d, but should be &gt; 0&quot;, suspend_count);</span>
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :                         if (InterlockedCompareExchange (&amp;info-&gt;thread_state, build_thread_state (STATE_BLOCKING_AND_SUSPENDED, suspend_count), raw_state) != raw_state)</span>
+<span class="lineNum">     544 </span><span class="lineNoCov">          0 :                                 goto retry_state_change;</span>
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 :                         trace_state_change (&quot;ABORT_BLOCKING&quot;, info, raw_state, STATE_BLOCKING_AND_SUSPENDED, 0);</span>
+<span class="lineNum">     546 </span><span class="lineNoCov">          0 :                         return AbortBlockingWait;</span>
+<span class="lineNum">     547 </span>            :                 }
+<span class="lineNum">     548 </span>            : /*
+<span class="lineNum">     549 </span>            : STATE_ASYNC_SUSPENDED:
+<span class="lineNum">     550 </span>            : STATE_SELF_SUSPENDED: Code should not be running while suspended.
+<span class="lineNum">     551 </span>            : STATE_SELF_SUSPEND_REQUESTED: A blocking operation must not be done while trying to self suspend.
+<span class="lineNum">     552 </span>            : STATE_BLOCKING_AND_SUSPENDED: This is an exit state of done blocking, can't happen here.
+<span class="lineNum">     553 </span>            : */
+<span class="lineNum">     554 </span>            :         default:
+<span class="lineNum">     555 </span><span class="lineNoCov">          0 :                 mono_fatal_with_history (&quot;Cannot transition thread %p from %s with DONE_BLOCKING&quot;, mono_thread_info_get_tid (info), state_name (cur_state));</span>
+<span class="lineNum">     556 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     557 </span><span class="lineNoCov">          0 : }</span>
+<a name="558"><span class="lineNum">     558 </span>            : </a>
+<span class="lineNum">     559 </span>            : MonoThreadUnwindState*
+<span class="lineNum">     560 </span>            : mono_thread_info_get_suspend_state (MonoThreadInfo *info)
+<span class="lineNum">     561 </span>            : {
+<span class="lineNum">     562 </span>            :         int raw_state, cur_state, suspend_count;
+<span class="lineNum">     563 </span><span class="lineCov">    2361778 :         UNWRAP_THREAD_STATE (raw_state, cur_state, suspend_count, info);</span>
+<span class="lineNum">     564 </span><span class="lineCov">    1180889 :         switch (cur_state) {</span>
+<span class="lineNum">     565 </span>            :         case STATE_ASYNC_SUSPENDED:
+<span class="lineNum">     566 </span><span class="lineCov">    1180889 :                 return &amp;info-&gt;thread_saved_state [ASYNC_SUSPEND_STATE_INDEX];</span>
+<span class="lineNum">     567 </span>            :         case STATE_SELF_SUSPENDED:
+<span class="lineNum">     568 </span>            :         case STATE_BLOCKING_AND_SUSPENDED:
+<span class="lineNum">     569 </span><span class="lineNoCov">          0 :                 return &amp;info-&gt;thread_saved_state [SELF_SUSPEND_STATE_INDEX];</span>
+<span class="lineNum">     570 </span>            :         case STATE_BLOCKING:
+<span class="lineNum">     571 </span><span class="lineNoCov">          0 :                 if (suspend_count &gt; 0)</span>
+<span class="lineNum">     572 </span><span class="lineNoCov">          0 :                         return &amp;info-&gt;thread_saved_state [SELF_SUSPEND_STATE_INDEX];</span>
+<span class="lineNum">     573 </span>            :         default:
+<span class="lineNum">     574 </span>            : /*
+<span class="lineNum">     575 </span>            : STATE_RUNNING
+<span class="lineNum">     576 </span>            : STATE_SELF_SUSPENDED
+<span class="lineNum">     577 </span>            : STATE_ASYNC_SUSPEND_REQUESTED
+<span class="lineNum">     578 </span>            : STATE_BLOCKING: All those are invalid suspend states.
+<span class="lineNum">     579 </span>            : */
+<span class="lineNum">     580 </span><span class="lineNoCov">          0 :                 g_error (&quot;Cannot read suspend state when target %p is in the %s state&quot;, mono_thread_info_get_tid (info), state_name (cur_state));</span>
+<span class="lineNum">     581 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     582 </span><span class="lineCov">    1180889 : }</span>
+<span class="lineNum">     583 </span>            : 
+<span class="lineNum">     584 </span>            : // State checking code
+<span class="lineNum">     585 </span>            : /**
+<span class="lineNum">     586 </span>            :  * Return TRUE is the thread is in a runnable state.
+<a name="587"><span class="lineNum">     587 </span>            : */</a>
+<span class="lineNum">     588 </span>            : gboolean
+<span class="lineNum">     589 </span>            : mono_thread_info_is_running (MonoThreadInfo *info)
+<span class="lineNum">     590 </span>            : {
+<span class="lineNum">     591 </span><span class="lineCov">       1261 :         switch (get_thread_state (info-&gt;thread_state)) {</span>
+<span class="lineNum">     592 </span>            :         case STATE_RUNNING:
+<span class="lineNum">     593 </span>            :         case STATE_ASYNC_SUSPEND_REQUESTED:
+<span class="lineNum">     594 </span>            :         case STATE_SELF_SUSPEND_REQUESTED:
+<span class="lineNum">     595 </span>            :         case STATE_BLOCKING:
+<span class="lineNum">     596 </span><span class="lineCov">       1261 :                 return TRUE;</span>
+<span class="lineNum">     597 </span>            :         }
+<span class="lineNum">     598 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     599 </span><span class="lineCov">       1261 : }</span>
+<span class="lineNum">     600 </span>            : 
+<span class="lineNum">     601 </span>            : /**
+<span class="lineNum">     602 </span>            :  * Return TRUE is the thread is in an usable (suspendable) state
+<a name="603"><span class="lineNum">     603 </span>            :  */</a>
+<span class="lineNum">     604 </span>            : gboolean
+<span class="lineNum">     605 </span>            : mono_thread_info_is_live (MonoThreadInfo *info)
+<span class="lineNum">     606 </span>            : {
+<span class="lineNum">     607 </span><span class="lineCov">    3559597 :         switch (get_thread_state (info-&gt;thread_state)) {</span>
+<span class="lineNum">     608 </span>            :         case STATE_STARTING:
+<span class="lineNum">     609 </span>            :         case STATE_DETACHED:
+<span class="lineNum">     610 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     611 </span>            :         }
+<span class="lineNum">     612 </span><span class="lineCov">    3559614 :         return TRUE;</span>
+<span class="lineNum">     613 </span><span class="lineCov">    3559618 : }</span>
+<a name="614"><span class="lineNum">     614 </span>            : </a>
+<span class="lineNum">     615 </span>            : int
+<span class="lineNum">     616 </span>            : mono_thread_info_suspend_count (MonoThreadInfo *info)
+<span class="lineNum">     617 </span>            : {
+<span class="lineNum">     618 </span><span class="lineCov">       1261 :         return get_thread_suspend_count (info-&gt;thread_state);</span>
+<span class="lineNum">     619 </span>            : }
+<a name="620"><span class="lineNum">     620 </span>            : </a>
+<span class="lineNum">     621 </span>            : int
+<span class="lineNum">     622 </span>            : mono_thread_info_current_state (MonoThreadInfo *info)
+<span class="lineNum">     623 </span>            : {
+<span class="lineNum">     624 </span><span class="lineNoCov">          0 :         return get_thread_state (info-&gt;thread_state);</span>
+<span class="lineNum">     625 </span>            : }
+<a name="626"><span class="lineNum">     626 </span>            : </a>
+<span class="lineNum">     627 </span>            : const char*
+<span class="lineNum">     628 </span>            : mono_thread_state_name (int state)
+<span class="lineNum">     629 </span>            : {
+<span class="lineNum">     630 </span><span class="lineNoCov">          0 :         return state_name (state);</span>
+<span class="lineNum">     631 </span>            : }
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

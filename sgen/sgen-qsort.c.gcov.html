@@ -1,0 +1,204 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-qsort.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-qsort.c<span style="font-size: 80%;"> (source / <a href="sgen-qsort.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">56</td>
+            <td class="headerCovTableEntry">56</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-qsort.c: Quicksort.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright (C) 2013 Xamarin Inc
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &quot;sgen/sgen-gc.h&quot;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #define ELEM(i) \
+<span class="lineNum">      16 </span>            :         (((unsigned char*)array) + ((i) * element_size))
+<span class="lineNum">      17 </span>            : #define SET(i,j) \
+<span class="lineNum">      18 </span>            :         do memcpy ((i), (j), element_size); while (0)
+<span class="lineNum">      19 </span>            : #define SWAP(i,j) \
+<span class="lineNum">      20 </span>            :         do { \
+<span class="lineNum">      21 </span>            :                 size_t __i = (i), __j = (j); \
+<span class="lineNum">      22 </span>            :                 if (__i != __j) { \
+<span class="lineNum">      23 </span>            :                         SET (swap_tmp, ELEM (__i)); \
+<span class="lineNum">      24 </span>            :                         SET (ELEM (__i), ELEM (__j)); \
+<span class="lineNum">      25 </span>            :                         SET (ELEM (__j), swap_tmp); \
+<span class="lineNum">      26 </span>            :                 } \
+<span class="lineNum">      27 </span>            :         } while (0)
+<a name="28"><span class="lineNum">      28 </span>            : </a>
+<span class="lineNum">      29 </span>            : static void
+<span class="lineNum">      30 </span>            : sgen_qsort_rec (
+<span class="lineNum">      31 </span>            :         void *const array,
+<span class="lineNum">      32 </span>            :         const size_t element_size,
+<span class="lineNum">      33 </span>            :         int (*compare) (const void *, const void *),
+<span class="lineNum">      34 </span>            :         ssize_t begin,
+<span class="lineNum">      35 </span>            :         ssize_t end,
+<span class="lineNum">      36 </span>            :         unsigned char *const pivot_tmp,
+<span class="lineNum">      37 </span>            :         unsigned char *const swap_tmp)
+<span class="lineNum">      38 </span>            : {
+<span class="lineNum">      39 </span>            :         ssize_t left, right, mid, pivot;
+<span class="lineNum">      40 </span><span class="lineCov">   40087764 :         while (begin &lt; end) {</span>
+<span class="lineNum">      41 </span><span class="lineCov">   10014937 :                 left = begin;</span>
+<span class="lineNum">      42 </span><span class="lineCov">   10014937 :                 right = end;</span>
+<span class="lineNum">      43 </span><span class="lineCov">   10014937 :                 mid = begin + (end - begin) / 2;</span>
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            :                 /* Choose median of 3 as pivot and pre-sort to avoid O(n^2) case.
+<span class="lineNum">      46 </span>            :                  *
+<span class="lineNum">      47 </span>            :                  * L --o--o-----&gt;
+<span class="lineNum">      48 </span>            :                  *     |  |
+<span class="lineNum">      49 </span>            :                  * M --o--|--o--&gt;
+<span class="lineNum">      50 </span>            :                  *        |  |
+<span class="lineNum">      51 </span>            :                  * R -----o--o--&gt;
+<span class="lineNum">      52 </span>            :                  */
+<span class="lineNum">      53 </span><span class="lineCov">   10014937 :                 if (compare (ELEM (mid), ELEM (left)) &lt; 0)</span>
+<span class="lineNum">      54 </span><span class="lineCov">    2564430 :                         SWAP (mid, left);</span>
+<span class="lineNum">      55 </span><span class="lineCov">   10014937 :                 if (compare (ELEM (right), ELEM (left)) &lt; 0)</span>
+<span class="lineNum">      56 </span><span class="lineCov">    2570645 :                         SWAP (right, left);</span>
+<span class="lineNum">      57 </span><span class="lineCov">   10014937 :                 if (compare (ELEM (right), ELEM (mid)) &lt; 0)</span>
+<span class="lineNum">      58 </span><span class="lineCov">    3394941 :                         SWAP (right, mid);</span>
+<span class="lineNum">      59 </span><span class="lineCov">   10014937 :                 pivot = mid;</span>
+<span class="lineNum">      60 </span><span class="lineCov">   20029874 :                 SET (pivot_tmp, ELEM (pivot));</span>
+<span class="lineNum">      61 </span>            : 
+<span class="lineNum">      62 </span>            :                 /* Partition. */
+<span class="lineNum">      63 </span><span class="lineCov">   19478836 :                 for (;;) {</span>
+<span class="lineNum">      64 </span><span class="lineCov">  383276345 :                         while (left &lt;= right &amp;&amp; compare (ELEM (left), pivot_tmp) &lt;= 0)</span>
+<span class="lineNum">      65 </span><span class="lineCov">   76380678 :                                 ++left;</span>
+<span class="lineNum">      66 </span><span class="lineCov">  355756811 :                         while (left &lt;= right &amp;&amp; compare (ELEM (right), pivot_tmp) &gt; 0)</span>
+<span class="lineNum">      67 </span><span class="lineCov">   71964101 :                                 --right;</span>
+<span class="lineNum">      68 </span><span class="lineCov">   19478836 :                         if (left &gt; right)</span>
+<span class="lineNum">      69 </span><span class="lineCov">   10014937 :                                 break;</span>
+<span class="lineNum">      70 </span><span class="lineCov">   94638990 :                         SWAP (left, right);</span>
+<span class="lineNum">      71 </span><span class="lineCov">    9463899 :                         if (pivot == right)</span>
+<span class="lineNum">      72 </span><span class="lineCov">     109286 :                                 pivot = left;</span>
+<span class="lineNum">      73 </span><span class="lineCov">    9463899 :                         ++left;</span>
+<span class="lineNum">      74 </span><span class="lineCov">    9463899 :                         --right;</span>
+<span class="lineNum">      75 </span>            :                 }
+<span class="lineNum">      76 </span><span class="lineCov">   20029874 :                 SET (ELEM (pivot), ELEM (right));</span>
+<span class="lineNum">      77 </span><span class="lineCov">   20029874 :                 SET (ELEM (right), pivot_tmp);</span>
+<span class="lineNum">      78 </span><span class="lineCov">   10014937 :                 --right;</span>
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span>            :                 /* Recursively sort shorter partition, loop on longer partition. */
+<span class="lineNum">      81 </span><span class="lineCov">   10014937 :                 if (right - begin &lt; end - left) {</span>
+<span class="lineNum">      82 </span><span class="lineCov">    5862796 :                         sgen_qsort_rec (</span>
+<span class="lineNum">      83 </span><span class="lineCov">    5862796 :                                 array,</span>
+<span class="lineNum">      84 </span><span class="lineCov">    5862796 :                                 element_size,</span>
+<span class="lineNum">      85 </span><span class="lineCov">    5862796 :                                 compare,</span>
+<span class="lineNum">      86 </span><span class="lineCov">    5862796 :                                 begin,</span>
+<span class="lineNum">      87 </span><span class="lineCov">    5862796 :                                 right,</span>
+<span class="lineNum">      88 </span><span class="lineCov">    5862796 :                                 pivot_tmp,</span>
+<span class="lineNum">      89 </span><span class="lineCov">    5862796 :                                 swap_tmp);</span>
+<span class="lineNum">      90 </span><span class="lineCov">    5862796 :                         begin = left;</span>
+<span class="lineNum">      91 </span><span class="lineCov">    5862796 :                 } else {</span>
+<span class="lineNum">      92 </span><span class="lineCov">    4152141 :                         sgen_qsort_rec (</span>
+<span class="lineNum">      93 </span><span class="lineCov">    4152141 :                                 array,</span>
+<span class="lineNum">      94 </span><span class="lineCov">    4152141 :                                 element_size,</span>
+<span class="lineNum">      95 </span><span class="lineCov">    4152141 :                                 compare,</span>
+<span class="lineNum">      96 </span><span class="lineCov">    4152141 :                                 left,</span>
+<span class="lineNum">      97 </span><span class="lineCov">    4152141 :                                 end,</span>
+<span class="lineNum">      98 </span><span class="lineCov">    4152141 :                                 pivot_tmp,</span>
+<span class="lineNum">      99 </span><span class="lineCov">    4152141 :                                 swap_tmp);</span>
+<span class="lineNum">     100 </span><span class="lineCov">    4152141 :                         end = right;</span>
+<span class="lineNum">     101 </span>            :                 }
+<span class="lineNum">     102 </span>            :         }
+<a name="103"><span class="lineNum">     103 </span><span class="lineCov">   10028945 : }</span></a>
+<span class="lineNum">     104 </span>            : 
+<span class="lineNum">     105 </span>            : void sgen_qsort (
+<span class="lineNum">     106 </span>            :         void *const array,
+<span class="lineNum">     107 </span>            :         const size_t count,
+<span class="lineNum">     108 </span>            :         const size_t element_size,
+<span class="lineNum">     109 </span>            :         int (*compare) (const void *, const void *))
+<span class="lineNum">     110 </span>            : {
+<span class="lineNum">     111 </span>            : #ifndef _MSC_VER
+<span class="lineNum">     112 </span><span class="lineCov">      14008 :         unsigned char pivot_tmp [element_size];</span>
+<span class="lineNum">     113 </span><span class="lineCov">      14008 :         unsigned char swap_tmp [element_size];</span>
+<span class="lineNum">     114 </span>            : #else
+<span class="lineNum">     115 </span>            :         unsigned char *pivot_tmp = (unsigned char *)alloca (element_size);
+<span class="lineNum">     116 </span>            :         unsigned char *swap_tmp = (unsigned char *)alloca (element_size);
+<span class="lineNum">     117 </span>            : #endif
+<span class="lineNum">     118 </span><span class="lineCov">      14008 :         sgen_qsort_rec (</span>
+<span class="lineNum">     119 </span><span class="lineCov">      14008 :                 array,</span>
+<span class="lineNum">     120 </span><span class="lineCov">      14008 :                 element_size,</span>
+<span class="lineNum">     121 </span><span class="lineCov">      14008 :                 compare,</span>
+<span class="lineNum">     122 </span>            :                 0,
+<span class="lineNum">     123 </span><span class="lineCov">      14008 :                 (ssize_t)count - 1,</span>
+<span class="lineNum">     124 </span>            :                 pivot_tmp,
+<span class="lineNum">     125 </span>            :                 swap_tmp);
+<span class="lineNum">     126 </span><span class="lineCov">      14008 : }</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,1403 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/profiler.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - profiler.c<span style="font-size: 80%;"> (source / <a href="profiler.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">365</td>
+            <td class="headerCovTableEntry">596</td>
+            <td class="headerCovTableEntryLo">61.2 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">70</td>
+            <td class="headerCovTableEntry">89</td>
+            <td class="headerCovTableEntryMed">78.7 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * profiler.c: Profiler interface for Mono
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *   Alex Rønne Petersen (alexrp@xamarin.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright 2001-2003 Ximian, Inc (http://www.ximian.com)
+<span class="lineNum">       9 </span>            :  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">      10 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com).
+<span class="lineNum">      11 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      12 </span>            :  */
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;mono/metadata/profiler-private.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;mono/metadata/assembly.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/metadata/debug-helpers.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;mono/metadata/mono-debug.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;mono/metadata/debug-mono-symfile.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;mono/metadata/metadata-internals.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;mono/metadata/class-internals.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;mono/metadata/domain-internals.h&quot;
+<span class="lineNum">      23 </span>            : #include &quot;mono/metadata/gc-internals.h&quot;
+<span class="lineNum">      24 </span>            : #include &quot;mono/metadata/mono-config-dirs.h&quot;
+<span class="lineNum">      25 </span>            : #include &quot;mono/io-layer/io-layer.h&quot;
+<span class="lineNum">      26 </span>            : #include &quot;mono/utils/mono-dl.h&quot;
+<span class="lineNum">      27 </span>            : #include &lt;mono/utils/mono-logger-internals.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      29 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">      30 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      31 </span>            : #endif
+<span class="lineNum">      32 </span>            : #ifdef HAVE_SYS_TIME_H
+<span class="lineNum">      33 </span>            : #include &lt;sys/time.h&gt;
+<span class="lineNum">      34 </span>            : #endif
+<span class="lineNum">      35 </span>            : #ifdef HAVE_BACKTRACE_SYMBOLS
+<span class="lineNum">      36 </span>            : #include &lt;execinfo.h&gt;
+<span class="lineNum">      37 </span>            : #endif
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : typedef struct _ProfilerDesc ProfilerDesc;
+<span class="lineNum">      40 </span>            : struct _ProfilerDesc {
+<span class="lineNum">      41 </span>            :         ProfilerDesc *next;
+<span class="lineNum">      42 </span>            :         MonoProfiler *profiler;
+<span class="lineNum">      43 </span>            :         MonoProfileFlags events;
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            :         MonoProfileAppDomainFunc   domain_start_load;
+<span class="lineNum">      46 </span>            :         MonoProfileAppDomainResult domain_end_load;
+<span class="lineNum">      47 </span>            :         MonoProfileAppDomainFunc   domain_start_unload;
+<span class="lineNum">      48 </span>            :         MonoProfileAppDomainFunc   domain_end_unload;
+<span class="lineNum">      49 </span>            :         MonoProfileAppDomainFriendlyNameFunc   domain_name;
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            :         MonoProfileContextFunc context_load;
+<span class="lineNum">      52 </span>            :         MonoProfileContextFunc context_unload;
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span>            :         MonoProfileAssemblyFunc   assembly_start_load;
+<span class="lineNum">      55 </span>            :         MonoProfileAssemblyResult assembly_end_load;
+<span class="lineNum">      56 </span>            :         MonoProfileAssemblyFunc   assembly_start_unload;
+<span class="lineNum">      57 </span>            :         MonoProfileAssemblyFunc   assembly_end_unload;
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span>            :         MonoProfileModuleFunc   module_start_load;
+<span class="lineNum">      60 </span>            :         MonoProfileModuleResult module_end_load;
+<span class="lineNum">      61 </span>            :         MonoProfileModuleFunc   module_start_unload;
+<span class="lineNum">      62 </span>            :         MonoProfileModuleFunc   module_end_unload;
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            :         MonoProfileClassFunc   class_start_load;
+<span class="lineNum">      65 </span>            :         MonoProfileClassResult class_end_load;
+<span class="lineNum">      66 </span>            :         MonoProfileClassFunc   class_start_unload;
+<span class="lineNum">      67 </span>            :         MonoProfileClassFunc   class_end_unload;
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span>            :         MonoProfileMethodFunc   jit_start;
+<span class="lineNum">      70 </span>            :         MonoProfileMethodResult jit_end;
+<span class="lineNum">      71 </span>            :         MonoProfileJitResult    jit_end2;
+<span class="lineNum">      72 </span>            :         MonoProfileMethodFunc   method_free;
+<span class="lineNum">      73 </span>            :         MonoProfileMethodFunc   method_start_invoke;
+<span class="lineNum">      74 </span>            :         MonoProfileMethodFunc   method_end_invoke;
+<span class="lineNum">      75 </span>            :         MonoProfileMethodResult man_unman_transition;
+<span class="lineNum">      76 </span>            :         MonoProfileAllocFunc    allocation_cb;
+<span class="lineNum">      77 </span>            :         MonoProfileMonitorFunc  monitor_event_cb;
+<span class="lineNum">      78 </span>            :         MonoProfileStatFunc     statistical_cb;
+<span class="lineNum">      79 </span>            :         MonoProfileStatCallChainFunc statistical_call_chain_cb;
+<span class="lineNum">      80 </span>            :         int                     statistical_call_chain_depth;
+<span class="lineNum">      81 </span>            :         MonoProfilerCallChainStrategy  statistical_call_chain_strategy;
+<span class="lineNum">      82 </span>            :         MonoProfileMethodFunc   method_enter;
+<span class="lineNum">      83 </span>            :         MonoProfileMethodFunc   method_leave;
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span>            :         MonoProfileExceptionFunc        exception_throw_cb;
+<span class="lineNum">      86 </span>            :         MonoProfileMethodFunc exception_method_leave_cb;
+<span class="lineNum">      87 </span>            :         MonoProfileExceptionClauseFunc exception_clause_cb;
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            :         MonoProfileIomapFunc iomap_cb;
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span>            :         MonoProfileThreadFunc   thread_start;
+<span class="lineNum">      92 </span>            :         MonoProfileThreadFunc   thread_end;
+<span class="lineNum">      93 </span>            :         MonoProfileThreadNameFunc   thread_name;
+<span class="lineNum">      94 </span>            : 
+<span class="lineNum">      95 </span>            :         MonoProfileCoverageFilterFunc coverage_filter_cb;
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span>            :         MonoProfileFunc shutdown_callback;
+<span class="lineNum">      98 </span>            : 
+<span class="lineNum">      99 </span>            :         MonoProfileGCFunc        gc_event;
+<span class="lineNum">     100 </span>            :         MonoProfileGCResizeFunc  gc_heap_resize;
+<span class="lineNum">     101 </span>            :         MonoProfileGCMoveFunc    gc_moves;
+<span class="lineNum">     102 </span>            :         MonoProfileGCHandleFunc  gc_handle;
+<span class="lineNum">     103 </span>            :         MonoProfileGCRootFunc    gc_roots;
+<span class="lineNum">     104 </span>            : 
+<span class="lineNum">     105 </span>            :         MonoProfileGCFinalizeFunc gc_finalize_begin;
+<span class="lineNum">     106 </span>            :         MonoProfileGCFinalizeObjectFunc gc_finalize_object_begin;
+<span class="lineNum">     107 </span>            :         MonoProfileGCFinalizeObjectFunc gc_finalize_object_end;
+<span class="lineNum">     108 </span>            :         MonoProfileGCFinalizeFunc gc_finalize_end;
+<span class="lineNum">     109 </span>            : 
+<span class="lineNum">     110 </span>            :         MonoProfileFunc          runtime_initialized_event;
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span>            :         MonoProfilerCodeChunkNew code_chunk_new;
+<span class="lineNum">     113 </span>            :         MonoProfilerCodeChunkDestroy code_chunk_destroy;
+<span class="lineNum">     114 </span>            :         MonoProfilerCodeBufferNew code_buffer_new;
+<span class="lineNum">     115 </span>            : };
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span>            : static ProfilerDesc *prof_list = NULL;
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span>            : #define mono_profiler_coverage_lock() mono_os_mutex_lock (&amp;profiler_coverage_mutex)
+<span class="lineNum">     120 </span>            : #define mono_profiler_coverage_unlock() mono_os_mutex_unlock (&amp;profiler_coverage_mutex)
+<span class="lineNum">     121 </span>            : static mono_mutex_t profiler_coverage_mutex;
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span>            : /* this is directly accessible to other mono libs.
+<span class="lineNum">     124 </span>            :  * It is the ORed value of all the profiler's events.
+<span class="lineNum">     125 </span>            :  */
+<span class="lineNum">     126 </span>            : MonoProfileFlags mono_profiler_events;
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            : /**
+<span class="lineNum">     129 </span>            :  * mono_profiler_install:
+<span class="lineNum">     130 </span>            :  * @prof: a MonoProfiler structure pointer, or a pointer to a derived structure.
+<span class="lineNum">     131 </span>            :  * @callback: the function to invoke at shutdown
+<span class="lineNum">     132 </span>            :  *
+<span class="lineNum">     133 </span>            :  * Use mono_profiler_install to activate profiling in the Mono runtime.
+<span class="lineNum">     134 </span>            :  * Typically developers of new profilers will create a new structure whose
+<span class="lineNum">     135 </span>            :  * first field is a MonoProfiler and put any extra information that they need
+<span class="lineNum">     136 </span>            :  * to access from the various profiling callbacks there.
+<span class="lineNum">     137 </span>            :  *
+<a name="138"><span class="lineNum">     138 </span>            :  */</a>
+<span class="lineNum">     139 </span>            : void
+<span class="lineNum">     140 </span>            : mono_profiler_install (MonoProfiler *prof, MonoProfileFunc callback)
+<span class="lineNum">     141 </span>            : {
+<span class="lineNum">     142 </span><span class="lineCov">         18 :         ProfilerDesc *desc = g_new0 (ProfilerDesc, 1);</span>
+<span class="lineNum">     143 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     144 </span><span class="lineCov">         18 :                 mono_os_mutex_init_recursive (&amp;profiler_coverage_mutex);</span>
+<span class="lineNum">     145 </span><span class="lineCov">         18 :         desc-&gt;profiler = prof;</span>
+<span class="lineNum">     146 </span><span class="lineCov">         18 :         desc-&gt;shutdown_callback = callback;</span>
+<span class="lineNum">     147 </span><span class="lineCov">         18 :         desc-&gt;next = prof_list;</span>
+<span class="lineNum">     148 </span><span class="lineCov">         18 :         prof_list = desc;</span>
+<span class="lineNum">     149 </span><span class="lineCov">         18 : }</span>
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span>            : /**
+<span class="lineNum">     152 </span>            :  * mono_profiler_set_events:
+<span class="lineNum">     153 </span>            :  * @events: an ORed set of values made up of MONO_PROFILER_ flags
+<span class="lineNum">     154 </span>            :  *
+<span class="lineNum">     155 </span>            :  * The events descriped in the @events argument is a set of flags
+<span class="lineNum">     156 </span>            :  * that represent which profiling events must be triggered.  For
+<span class="lineNum">     157 </span>            :  * example if you have registered a set of methods for tracking
+<span class="lineNum">     158 </span>            :  * JIT compilation start and end with mono_profiler_install_jit_compile,
+<span class="lineNum">     159 </span>            :  * you will want to pass the MONO_PROFILE_JIT_COMPILATION flag to
+<span class="lineNum">     160 </span>            :  * this routine.
+<span class="lineNum">     161 </span>            :  *
+<span class="lineNum">     162 </span>            :  * You can call mono_profile_set_events more than once and you can
+<span class="lineNum">     163 </span>            :  * do this at runtime to modify which methods are invoked.
+<a name="164"><span class="lineNum">     164 </span>            :  */</a>
+<span class="lineNum">     165 </span>            : void
+<span class="lineNum">     166 </span>            : mono_profiler_set_events (MonoProfileFlags events)
+<span class="lineNum">     167 </span>            : {
+<span class="lineNum">     168 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     169 </span><span class="lineCov">       3290 :         MonoProfileFlags value = (MonoProfileFlags)0;</span>
+<span class="lineNum">     170 </span><span class="lineCov">       3290 :         if (prof_list)</span>
+<span class="lineNum">     171 </span><span class="lineCov">         36 :                 prof_list-&gt;events = events;</span>
+<span class="lineNum">     172 </span><span class="lineCov">       6652 :         for (prof = prof_list; prof; prof = prof-&gt;next)</span>
+<span class="lineNum">     173 </span><span class="lineCov">         36 :                 value = (MonoProfileFlags)(value | prof-&gt;events);</span>
+<span class="lineNum">     174 </span><span class="lineCov">       3290 :         mono_profiler_events = value;</span>
+<span class="lineNum">     175 </span><span class="lineCov">       3290 : }</span>
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span>            : /**
+<span class="lineNum">     178 </span>            :  * mono_profiler_get_events:
+<span class="lineNum">     179 </span>            :  *
+<span class="lineNum">     180 </span>            :  * Returns a list of active events that will be intercepted. 
+<a name="181"><span class="lineNum">     181 </span>            :  */</a>
+<span class="lineNum">     182 </span>            : MonoProfileFlags
+<span class="lineNum">     183 </span>            : mono_profiler_get_events (void)
+<span class="lineNum">     184 </span>            : {
+<span class="lineNum">     185 </span><span class="lineCov">   45302609 :         return mono_profiler_events;</span>
+<span class="lineNum">     186 </span>            : }
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span>            : /**
+<span class="lineNum">     189 </span>            :  * mono_profiler_install_enter_leave:
+<span class="lineNum">     190 </span>            :  * @enter: the routine to be called on each method entry
+<span class="lineNum">     191 </span>            :  * @fleave: the routine to be called each time a method returns
+<span class="lineNum">     192 </span>            :  *
+<span class="lineNum">     193 </span>            :  * Use this routine to install routines that will be called everytime
+<span class="lineNum">     194 </span>            :  * a method enters and leaves.   The routines will receive as an argument
+<span class="lineNum">     195 </span>            :  * the MonoMethod representing the method that is entering or leaving.
+<a name="196"><span class="lineNum">     196 </span>            :  */</a>
+<span class="lineNum">     197 </span>            : void
+<span class="lineNum">     198 </span>            : mono_profiler_install_enter_leave (MonoProfileMethodFunc enter, MonoProfileMethodFunc fleave)
+<span class="lineNum">     199 </span>            : {
+<span class="lineNum">     200 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     202 </span><span class="lineCov">         18 :         prof_list-&gt;method_enter = enter;</span>
+<span class="lineNum">     203 </span><span class="lineCov">         18 :         prof_list-&gt;method_leave = fleave;</span>
+<span class="lineNum">     204 </span><span class="lineCov">         36 : }</span>
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span>            : /**
+<span class="lineNum">     207 </span>            :  * mono_profiler_install_jit_compile:
+<span class="lineNum">     208 </span>            :  * @start: the routine to be called when the JIT process starts.
+<span class="lineNum">     209 </span>            :  * @end: the routine to be called when the JIT process ends.
+<span class="lineNum">     210 </span>            :  *
+<span class="lineNum">     211 </span>            :  * Use this routine to install routines that will be called when JIT 
+<span class="lineNum">     212 </span>            :  * compilation of a method starts and completes.
+<a name="213"><span class="lineNum">     213 </span>            :  */</a>
+<span class="lineNum">     214 </span>            : void 
+<span class="lineNum">     215 </span>            : mono_profiler_install_jit_compile (MonoProfileMethodFunc start, MonoProfileMethodResult end)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :         prof_list-&gt;jit_start = start;</span>
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :         prof_list-&gt;jit_end = end;</span>
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 : }</span>
+<a name="222"><span class="lineNum">     222 </span>            : </a>
+<span class="lineNum">     223 </span>            : void 
+<span class="lineNum">     224 </span>            : mono_profiler_install_jit_end (MonoProfileJitResult end)
+<span class="lineNum">     225 </span>            : {
+<span class="lineNum">     226 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     228 </span><span class="lineCov">         18 :         prof_list-&gt;jit_end2 = end;</span>
+<span class="lineNum">     229 </span><span class="lineCov">         36 : }</span>
+<a name="230"><span class="lineNum">     230 </span>            : </a>
+<span class="lineNum">     231 </span>            : void 
+<span class="lineNum">     232 </span>            : mono_profiler_install_method_free (MonoProfileMethodFunc callback)
+<span class="lineNum">     233 </span>            : {
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 :         prof_list-&gt;method_free = callback;</span>
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 : }</span>
+<a name="238"><span class="lineNum">     238 </span>            : </a>
+<span class="lineNum">     239 </span>            : void
+<span class="lineNum">     240 </span>            : mono_profiler_install_method_invoke (MonoProfileMethodFunc start, MonoProfileMethodFunc end)
+<span class="lineNum">     241 </span>            : {
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :         prof_list-&gt;method_start_invoke = start;</span>
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :         prof_list-&gt;method_end_invoke = end;</span>
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 : }</span>
+<a name="247"><span class="lineNum">     247 </span>            : </a>
+<span class="lineNum">     248 </span>            : void 
+<span class="lineNum">     249 </span>            : mono_profiler_install_thread (MonoProfileThreadFunc start, MonoProfileThreadFunc end)
+<span class="lineNum">     250 </span>            : {
+<span class="lineNum">     251 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     253 </span><span class="lineCov">         18 :         prof_list-&gt;thread_start = start;</span>
+<span class="lineNum">     254 </span><span class="lineCov">         18 :         prof_list-&gt;thread_end = end;</span>
+<span class="lineNum">     255 </span><span class="lineCov">         36 : }</span>
+<a name="256"><span class="lineNum">     256 </span>            : </a>
+<span class="lineNum">     257 </span>            : void 
+<span class="lineNum">     258 </span>            : mono_profiler_install_thread_name (MonoProfileThreadNameFunc thread_name_cb)
+<span class="lineNum">     259 </span>            : {
+<span class="lineNum">     260 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     262 </span><span class="lineCov">         18 :         prof_list-&gt;thread_name = thread_name_cb;</span>
+<span class="lineNum">     263 </span><span class="lineCov">         36 : }</span>
+<a name="264"><span class="lineNum">     264 </span>            : </a>
+<span class="lineNum">     265 </span>            : void 
+<span class="lineNum">     266 </span>            : mono_profiler_install_transition (MonoProfileMethodResult callback)
+<span class="lineNum">     267 </span>            : {
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">     269 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :         prof_list-&gt;man_unman_transition = callback;</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 : }</span>
+<a name="272"><span class="lineNum">     272 </span>            : </a>
+<span class="lineNum">     273 </span>            : void 
+<span class="lineNum">     274 </span>            : mono_profiler_install_allocation (MonoProfileAllocFunc callback)
+<span class="lineNum">     275 </span>            : {
+<span class="lineNum">     276 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     278 </span><span class="lineCov">         18 :         prof_list-&gt;allocation_cb = callback;</span>
+<span class="lineNum">     279 </span><span class="lineCov">         36 : }</span>
+<a name="280"><span class="lineNum">     280 </span>            : </a>
+<span class="lineNum">     281 </span>            : void
+<span class="lineNum">     282 </span>            : mono_profiler_install_monitor  (MonoProfileMonitorFunc callback)
+<span class="lineNum">     283 </span>            : {
+<span class="lineNum">     284 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     285 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     286 </span><span class="lineCov">         18 :         prof_list-&gt;monitor_event_cb = callback;</span>
+<span class="lineNum">     287 </span><span class="lineCov">         36 : }</span>
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span>            : static MonoProfileSamplingMode sampling_mode = MONO_PROFILER_STAT_MODE_PROCESS;
+<span class="lineNum">     290 </span>            : static int64_t sampling_frequency = 100; // Hz
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span>            : /**
+<span class="lineNum">     293 </span>            :  * mono_profiler_set_statistical_mode:
+<span class="lineNum">     294 </span>            :  * @mode the sampling mode used.
+<span class="lineNum">     295 </span>            :  * @sample_frequency_is_us the sampling frequency in microseconds.
+<span class="lineNum">     296 </span>            :  *
+<span class="lineNum">     297 </span>            :  * Set the sampling parameters for the profiler. Sampling mode affects the effective sampling rate as in samples/s you'll witness.
+<span class="lineNum">     298 </span>            :  * The default sampling mode is process mode, which only reports samples when there's activity in the process.
+<span class="lineNum">     299 </span>            :  *
+<span class="lineNum">     300 </span>            :  * Sampling frequency should be interpreted as a suggestion that can't always be honored due to how most kernels expose alarms.
+<span class="lineNum">     301 </span>            :  *
+<span class="lineNum">     302 </span>            :  * Said that, when using statistical sampling, always assume variable rate sampling as all sort of external factors can interfere.
+<a name="303"><span class="lineNum">     303 </span>            :  */</a>
+<span class="lineNum">     304 </span>            : void
+<span class="lineNum">     305 </span>            : mono_profiler_set_statistical_mode (MonoProfileSamplingMode mode, int64_t sampling_frequency_hz)
+<span class="lineNum">     306 </span>            : {
+<span class="lineNum">     307 </span><span class="lineCov">          2 :         sampling_mode = mode;</span>
+<span class="lineNum">     308 </span><span class="lineCov">          2 :         sampling_frequency = sampling_frequency_hz;</span>
+<span class="lineNum">     309 </span><span class="lineCov">          2 : }</span>
+<a name="310"><span class="lineNum">     310 </span>            : </a>
+<span class="lineNum">     311 </span>            : void 
+<span class="lineNum">     312 </span>            : mono_profiler_install_statistical (MonoProfileStatFunc callback)
+<span class="lineNum">     313 </span>            : {
+<span class="lineNum">     314 </span><span class="lineCov">          2 :         if (!prof_list)</span>
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     316 </span><span class="lineCov">          2 :         prof_list-&gt;statistical_cb = callback;</span>
+<span class="lineNum">     317 </span><span class="lineCov">          4 : }</span>
+<a name="318"><span class="lineNum">     318 </span>            : </a>
+<span class="lineNum">     319 </span>            : int64_t
+<span class="lineNum">     320 </span>            : mono_profiler_get_sampling_rate (void)
+<span class="lineNum">     321 </span>            : {
+<span class="lineNum">     322 </span><span class="lineCov">          2 :         return sampling_frequency;</span>
+<span class="lineNum">     323 </span>            : }
+<a name="324"><span class="lineNum">     324 </span>            : </a>
+<span class="lineNum">     325 </span>            : MonoProfileSamplingMode
+<span class="lineNum">     326 </span>            : mono_profiler_get_sampling_mode (void)
+<span class="lineNum">     327 </span>            : {
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :         return sampling_mode;</span>
+<span class="lineNum">     329 </span>            : }
+<a name="330"><span class="lineNum">     330 </span>            : </a>
+<span class="lineNum">     331 </span>            : void 
+<span class="lineNum">     332 </span>            : mono_profiler_install_statistical_call_chain (MonoProfileStatCallChainFunc callback, int call_chain_depth, MonoProfilerCallChainStrategy call_chain_strategy) {
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">     334 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     335 </span><span class="lineNoCov">          0 :         if (call_chain_depth &gt; MONO_PROFILER_MAX_STAT_CALL_CHAIN_DEPTH) {</span>
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :                 call_chain_depth = MONO_PROFILER_MAX_STAT_CALL_CHAIN_DEPTH;</span>
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     338 </span><span class="lineNoCov">          0 :         if ((call_chain_strategy &gt;= MONO_PROFILER_CALL_CHAIN_INVALID) || (call_chain_strategy &lt; MONO_PROFILER_CALL_CHAIN_NONE)) {</span>
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                 call_chain_strategy = MONO_PROFILER_CALL_CHAIN_NONE;</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :         prof_list-&gt;statistical_call_chain_cb = callback;</span>
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :         prof_list-&gt;statistical_call_chain_depth = call_chain_depth;</span>
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :         prof_list-&gt;statistical_call_chain_strategy = call_chain_strategy;</span>
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 : }</span>
+<a name="345"><span class="lineNum">     345 </span>            : </a>
+<span class="lineNum">     346 </span>            : int
+<span class="lineNum">     347 </span>            : mono_profiler_stat_get_call_chain_depth (void) {
+<span class="lineNum">     348 </span><span class="lineCov">        938 :         if (prof_list &amp;&amp; prof_list-&gt;statistical_call_chain_cb != NULL) {</span>
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                 return prof_list-&gt;statistical_call_chain_depth;</span>
+<span class="lineNum">     350 </span>            :         } else {
+<span class="lineNum">     351 </span><span class="lineCov">        469 :                 return 0;</span>
+<span class="lineNum">     352 </span>            :         }
+<span class="lineNum">     353 </span><span class="lineCov">        469 : }</span>
+<a name="354"><span class="lineNum">     354 </span>            : </a>
+<span class="lineNum">     355 </span>            : MonoProfilerCallChainStrategy
+<span class="lineNum">     356 </span>            : mono_profiler_stat_get_call_chain_strategy (void) {
+<span class="lineNum">     357 </span><span class="lineCov">        939 :         if (prof_list &amp;&amp; prof_list-&gt;statistical_call_chain_cb != NULL) {</span>
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :                 return prof_list-&gt;statistical_call_chain_strategy;</span>
+<span class="lineNum">     359 </span>            :         } else {
+<span class="lineNum">     360 </span><span class="lineCov">        470 :                 return MONO_PROFILER_CALL_CHAIN_NONE;</span>
+<span class="lineNum">     361 </span>            :         }
+<a name="362"><span class="lineNum">     362 </span><span class="lineCov">        470 : }</span></a>
+<span class="lineNum">     363 </span>            : 
+<span class="lineNum">     364 </span>            : void mono_profiler_install_exception (MonoProfileExceptionFunc throw_callback, MonoProfileMethodFunc exc_method_leave, MonoProfileExceptionClauseFunc clause_callback)
+<span class="lineNum">     365 </span>            : {
+<span class="lineNum">     366 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     368 </span><span class="lineCov">         18 :         prof_list-&gt;exception_throw_cb = throw_callback;</span>
+<span class="lineNum">     369 </span><span class="lineCov">         18 :         prof_list-&gt;exception_method_leave_cb = exc_method_leave;</span>
+<span class="lineNum">     370 </span><span class="lineCov">         18 :         prof_list-&gt;exception_clause_cb = clause_callback;</span>
+<span class="lineNum">     371 </span><span class="lineCov">         36 : }</span>
+<a name="372"><span class="lineNum">     372 </span>            : </a>
+<span class="lineNum">     373 </span>            : void 
+<span class="lineNum">     374 </span>            : mono_profiler_install_coverage_filter (MonoProfileCoverageFilterFunc callback)
+<span class="lineNum">     375 </span>            : {
+<span class="lineNum">     376 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     378 </span><span class="lineNoCov">          0 :         prof_list-&gt;coverage_filter_cb = callback;</span>
+<span class="lineNum">     379 </span><span class="lineNoCov">          0 : }</span>
+<a name="380"><span class="lineNum">     380 </span>            : </a>
+<span class="lineNum">     381 </span>            : void 
+<span class="lineNum">     382 </span>            : mono_profiler_install_appdomain   (MonoProfileAppDomainFunc start_load, MonoProfileAppDomainResult end_load,
+<span class="lineNum">     383 </span>            :                                    MonoProfileAppDomainFunc start_unload, MonoProfileAppDomainFunc end_unload)
+<span class="lineNum">     384 </span>            : 
+<span class="lineNum">     385 </span>            : {
+<span class="lineNum">     386 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     388 </span><span class="lineCov">         18 :         prof_list-&gt;domain_start_load = start_load;</span>
+<span class="lineNum">     389 </span><span class="lineCov">         18 :         prof_list-&gt;domain_end_load = end_load;</span>
+<span class="lineNum">     390 </span><span class="lineCov">         18 :         prof_list-&gt;domain_start_unload = start_unload;</span>
+<span class="lineNum">     391 </span><span class="lineCov">         18 :         prof_list-&gt;domain_end_unload = end_unload;</span>
+<span class="lineNum">     392 </span><span class="lineCov">         36 : }</span>
+<a name="393"><span class="lineNum">     393 </span>            : </a>
+<span class="lineNum">     394 </span>            : void
+<span class="lineNum">     395 </span>            : mono_profiler_install_appdomain_name (MonoProfileAppDomainFriendlyNameFunc domain_name_cb)
+<span class="lineNum">     396 </span>            : {
+<span class="lineNum">     397 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     398 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     399 </span>            : 
+<span class="lineNum">     400 </span><span class="lineCov">         18 :         prof_list-&gt;domain_name = domain_name_cb;</span>
+<span class="lineNum">     401 </span><span class="lineCov">         36 : }</span>
+<a name="402"><span class="lineNum">     402 </span>            : </a>
+<span class="lineNum">     403 </span>            : void
+<span class="lineNum">     404 </span>            : mono_profiler_install_context (MonoProfileContextFunc load, MonoProfileContextFunc unload)
+<span class="lineNum">     405 </span>            : {
+<span class="lineNum">     406 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span><span class="lineCov">         18 :         prof_list-&gt;context_load = load;</span>
+<span class="lineNum">     410 </span><span class="lineCov">         18 :         prof_list-&gt;context_unload = unload;</span>
+<span class="lineNum">     411 </span><span class="lineCov">         36 : }</span>
+<a name="412"><span class="lineNum">     412 </span>            : </a>
+<span class="lineNum">     413 </span>            : void 
+<span class="lineNum">     414 </span>            : mono_profiler_install_assembly    (MonoProfileAssemblyFunc start_load, MonoProfileAssemblyResult end_load,
+<span class="lineNum">     415 </span>            :                                    MonoProfileAssemblyFunc start_unload, MonoProfileAssemblyFunc end_unload)
+<span class="lineNum">     416 </span>            : {
+<span class="lineNum">     417 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     418 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     419 </span><span class="lineCov">         18 :         prof_list-&gt;assembly_start_load = start_load;</span>
+<span class="lineNum">     420 </span><span class="lineCov">         18 :         prof_list-&gt;assembly_end_load = end_load;</span>
+<span class="lineNum">     421 </span><span class="lineCov">         18 :         prof_list-&gt;assembly_start_unload = start_unload;</span>
+<span class="lineNum">     422 </span><span class="lineCov">         18 :         prof_list-&gt;assembly_end_unload = end_unload;</span>
+<span class="lineNum">     423 </span><span class="lineCov">         36 : }</span>
+<a name="424"><span class="lineNum">     424 </span>            : </a>
+<span class="lineNum">     425 </span>            : void 
+<span class="lineNum">     426 </span>            : mono_profiler_install_module      (MonoProfileModuleFunc start_load, MonoProfileModuleResult end_load,
+<span class="lineNum">     427 </span>            :                                    MonoProfileModuleFunc start_unload, MonoProfileModuleFunc end_unload)
+<span class="lineNum">     428 </span>            : {
+<span class="lineNum">     429 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     430 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     431 </span><span class="lineCov">         18 :         prof_list-&gt;module_start_load = start_load;</span>
+<span class="lineNum">     432 </span><span class="lineCov">         18 :         prof_list-&gt;module_end_load = end_load;</span>
+<span class="lineNum">     433 </span><span class="lineCov">         18 :         prof_list-&gt;module_start_unload = start_unload;</span>
+<span class="lineNum">     434 </span><span class="lineCov">         18 :         prof_list-&gt;module_end_unload = end_unload;</span>
+<span class="lineNum">     435 </span><span class="lineCov">         36 : }</span>
+<a name="436"><span class="lineNum">     436 </span>            : </a>
+<span class="lineNum">     437 </span>            : void
+<span class="lineNum">     438 </span>            : mono_profiler_install_class       (MonoProfileClassFunc start_load, MonoProfileClassResult end_load,
+<span class="lineNum">     439 </span>            :                                    MonoProfileClassFunc start_unload, MonoProfileClassFunc end_unload)
+<span class="lineNum">     440 </span>            : {
+<span class="lineNum">     441 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     442 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     443 </span><span class="lineCov">         18 :         prof_list-&gt;class_start_load = start_load;</span>
+<span class="lineNum">     444 </span><span class="lineCov">         18 :         prof_list-&gt;class_end_load = end_load;</span>
+<span class="lineNum">     445 </span><span class="lineCov">         18 :         prof_list-&gt;class_start_unload = start_unload;</span>
+<span class="lineNum">     446 </span><span class="lineCov">         18 :         prof_list-&gt;class_end_unload = end_unload;</span>
+<span class="lineNum">     447 </span><span class="lineCov">         36 : }</span>
+<a name="448"><span class="lineNum">     448 </span>            : </a>
+<span class="lineNum">     449 </span>            : void
+<span class="lineNum">     450 </span>            : mono_profiler_method_enter (MonoMethod *method)
+<span class="lineNum">     451 </span>            : {
+<span class="lineNum">     452 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     453 </span><span class="lineCov">   19074264 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     454 </span><span class="lineCov">    9537041 :                 if ((prof-&gt;events &amp; MONO_PROFILE_ENTER_LEAVE) &amp;&amp; prof-&gt;method_enter)</span>
+<span class="lineNum">     455 </span><span class="lineCov">    4768521 :                         prof-&gt;method_enter (prof-&gt;profiler, method);</span>
+<span class="lineNum">     456 </span><span class="lineCov">    4768615 :         }</span>
+<span class="lineNum">     457 </span><span class="lineCov">    4768614 : }</span>
+<a name="458"><span class="lineNum">     458 </span>            : </a>
+<span class="lineNum">     459 </span>            : void
+<span class="lineNum">     460 </span>            : mono_profiler_method_leave (MonoMethod *method)
+<span class="lineNum">     461 </span>            : {
+<span class="lineNum">     462 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     463 </span><span class="lineCov">   19034155 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     464 </span><span class="lineCov">    9517074 :                 if ((prof-&gt;events &amp; MONO_PROFILE_ENTER_LEAVE) &amp;&amp; prof-&gt;method_leave)</span>
+<span class="lineNum">     465 </span><span class="lineCov">    4758538 :                         prof-&gt;method_leave (prof-&gt;profiler, method);</span>
+<span class="lineNum">     466 </span><span class="lineCov">    4758539 :         }</span>
+<span class="lineNum">     467 </span><span class="lineCov">    4758540 : }</span>
+<a name="468"><span class="lineNum">     468 </span>            : </a>
+<span class="lineNum">     469 </span>            : void 
+<span class="lineNum">     470 </span>            : mono_profiler_method_jit (MonoMethod *method)
+<span class="lineNum">     471 </span>            : {
+<span class="lineNum">     472 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     473 </span><span class="lineCov">       6068 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     474 </span><span class="lineCov">       3034 :                 if ((prof-&gt;events &amp; MONO_PROFILE_JIT_COMPILATION) &amp;&amp; prof-&gt;jit_start)</span>
+<span class="lineNum">     475 </span><span class="lineNoCov">          0 :                         prof-&gt;jit_start (prof-&gt;profiler, method);</span>
+<span class="lineNum">     476 </span><span class="lineCov">       1517 :         }</span>
+<span class="lineNum">     477 </span><span class="lineCov">       1517 : }</span>
+<a name="478"><span class="lineNum">     478 </span>            : </a>
+<span class="lineNum">     479 </span>            : void 
+<span class="lineNum">     480 </span>            : mono_profiler_method_end_jit (MonoMethod *method, MonoJitInfo* jinfo, int result)
+<span class="lineNum">     481 </span>            : {
+<span class="lineNum">     482 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     483 </span><span class="lineCov">     895005 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     484 </span><span class="lineCov">       2027 :                 if ((prof-&gt;events &amp; MONO_PROFILE_JIT_COMPILATION)) {</span>
+<span class="lineNum">     485 </span><span class="lineCov">       2027 :                         if (prof-&gt;jit_end)</span>
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :                                 prof-&gt;jit_end (prof-&gt;profiler, method, result);</span>
+<span class="lineNum">     487 </span><span class="lineCov">       2027 :                         if (prof-&gt;jit_end2)</span>
+<span class="lineNum">     488 </span><span class="lineCov">       2027 :                                 prof-&gt;jit_end2 (prof-&gt;profiler, method, jinfo, result);</span>
+<span class="lineNum">     489 </span><span class="lineCov">       2027 :                 }</span>
+<span class="lineNum">     490 </span><span class="lineCov">       2027 :         }</span>
+<span class="lineNum">     491 </span><span class="lineCov">     445471 : }</span>
+<a name="492"><span class="lineNum">     492 </span>            : </a>
+<span class="lineNum">     493 </span>            : void 
+<span class="lineNum">     494 </span>            : mono_profiler_method_free (MonoMethod *method)
+<span class="lineNum">     495 </span>            : {
+<span class="lineNum">     496 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :                 if ((prof-&gt;events &amp; MONO_PROFILE_METHOD_EVENTS) &amp;&amp; prof-&gt;method_free)</span>
+<span class="lineNum">     499 </span><span class="lineNoCov">          0 :                         prof-&gt;method_free (prof-&gt;profiler, method);</span>
+<span class="lineNum">     500 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 : }</span>
+<a name="502"><span class="lineNum">     502 </span>            : </a>
+<span class="lineNum">     503 </span>            : void
+<span class="lineNum">     504 </span>            : mono_profiler_method_start_invoke (MonoMethod *method)
+<span class="lineNum">     505 </span>            : {
+<span class="lineNum">     506 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     507 </span><span class="lineNoCov">          0 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     508 </span><span class="lineNoCov">          0 :                 if ((prof-&gt;events &amp; MONO_PROFILE_METHOD_EVENTS) &amp;&amp; prof-&gt;method_start_invoke)</span>
+<span class="lineNum">     509 </span><span class="lineNoCov">          0 :                         prof-&gt;method_start_invoke (prof-&gt;profiler, method);</span>
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     511 </span><span class="lineNoCov">          0 : }</span>
+<a name="512"><span class="lineNum">     512 </span>            : </a>
+<span class="lineNum">     513 </span>            : void
+<span class="lineNum">     514 </span>            : mono_profiler_method_end_invoke (MonoMethod *method)
+<span class="lineNum">     515 </span>            : {
+<span class="lineNum">     516 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :                 if ((prof-&gt;events &amp; MONO_PROFILE_METHOD_EVENTS) &amp;&amp; prof-&gt;method_end_invoke)</span>
+<span class="lineNum">     519 </span><span class="lineNoCov">          0 :                         prof-&gt;method_end_invoke (prof-&gt;profiler, method);</span>
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 : }</span>
+<a name="522"><span class="lineNum">     522 </span>            : </a>
+<span class="lineNum">     523 </span>            : void 
+<span class="lineNum">     524 </span>            : mono_profiler_code_transition (MonoMethod *method, int result)
+<span class="lineNum">     525 </span>            : {
+<span class="lineNum">     526 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     527 </span><span class="lineNoCov">          0 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :                 if ((prof-&gt;events &amp; MONO_PROFILE_TRANSITIONS) &amp;&amp; prof-&gt;man_unman_transition)</span>
+<span class="lineNum">     529 </span><span class="lineNoCov">          0 :                         prof-&gt;man_unman_transition (prof-&gt;profiler, method, result);</span>
+<span class="lineNum">     530 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 : }</span>
+<a name="532"><span class="lineNum">     532 </span>            : </a>
+<span class="lineNum">     533 </span>            : void 
+<span class="lineNum">     534 </span>            : mono_profiler_allocation (MonoObject *obj)
+<span class="lineNum">     535 </span>            : {
+<span class="lineNum">     536 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     537 </span><span class="lineCov">    8095852 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     538 </span><span class="lineCov">    4047926 :                 if ((prof-&gt;events &amp; MONO_PROFILE_ALLOCATIONS) &amp;&amp; prof-&gt;allocation_cb)</span>
+<span class="lineNum">     539 </span><span class="lineCov">    2023963 :                         prof-&gt;allocation_cb (prof-&gt;profiler, obj, obj-&gt;vtable-&gt;klass);</span>
+<span class="lineNum">     540 </span><span class="lineCov">    2023963 :         }</span>
+<span class="lineNum">     541 </span><span class="lineCov">    2023963 : }</span>
+<a name="542"><span class="lineNum">     542 </span>            : </a>
+<span class="lineNum">     543 </span>            : void
+<span class="lineNum">     544 </span>            : mono_profiler_monitor_event      (MonoObject *obj, MonoProfilerMonitorEvent event) {
+<span class="lineNum">     545 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     546 </span><span class="lineCov">    5936145 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     547 </span><span class="lineCov">    2899535 :                 if ((prof-&gt;events &amp; MONO_PROFILE_MONITOR_EVENTS) &amp;&amp; prof-&gt;monitor_event_cb)</span>
+<span class="lineNum">     548 </span><span class="lineCov">    1449769 :                         prof-&gt;monitor_event_cb (prof-&gt;profiler, obj, event);</span>
+<span class="lineNum">     549 </span><span class="lineCov">    1449764 :         }</span>
+<span class="lineNum">     550 </span><span class="lineCov">    1518294 : }</span>
+<a name="551"><span class="lineNum">     551 </span>            : </a>
+<span class="lineNum">     552 </span>            : void
+<span class="lineNum">     553 </span>            : mono_profiler_stat_hit (guchar *ip, void *context)
+<span class="lineNum">     554 </span>            : {
+<span class="lineNum">     555 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     556 </span><span class="lineCov">       1878 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     557 </span><span class="lineCov">        940 :                 if ((prof-&gt;events &amp; MONO_PROFILE_STATISTICAL) &amp;&amp; prof-&gt;statistical_cb)</span>
+<span class="lineNum">     558 </span><span class="lineCov">        470 :                         prof-&gt;statistical_cb (prof-&gt;profiler, ip, context);</span>
+<span class="lineNum">     559 </span><span class="lineCov">        469 :         }</span>
+<span class="lineNum">     560 </span><span class="lineCov">        469 : }</span>
+<a name="561"><span class="lineNum">     561 </span>            : </a>
+<span class="lineNum">     562 </span>            : void
+<span class="lineNum">     563 </span>            : mono_profiler_stat_call_chain (int call_chain_depth, guchar **ips, void *context)
+<span class="lineNum">     564 </span>            : {
+<span class="lineNum">     565 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     566 </span><span class="lineNoCov">          0 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     567 </span><span class="lineNoCov">          0 :                 if ((prof-&gt;events &amp; MONO_PROFILE_STATISTICAL) &amp;&amp; prof-&gt;statistical_call_chain_cb)</span>
+<span class="lineNum">     568 </span><span class="lineNoCov">          0 :                         prof-&gt;statistical_call_chain_cb (prof-&gt;profiler, call_chain_depth, ips, context);</span>
+<span class="lineNum">     569 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     570 </span><span class="lineNoCov">          0 : }</span>
+<a name="571"><span class="lineNum">     571 </span>            : </a>
+<span class="lineNum">     572 </span>            : void
+<span class="lineNum">     573 </span>            : mono_profiler_exception_thrown (MonoObject *exception)
+<span class="lineNum">     574 </span>            : {
+<span class="lineNum">     575 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     576 </span><span class="lineCov">     768034 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     577 </span><span class="lineCov">      12080 :                 if ((prof-&gt;events &amp; MONO_PROFILE_EXCEPTIONS) &amp;&amp; prof-&gt;exception_throw_cb)</span>
+<span class="lineNum">     578 </span><span class="lineCov">       6040 :                         prof-&gt;exception_throw_cb (prof-&gt;profiler, exception);</span>
+<span class="lineNum">     579 </span><span class="lineCov">       6040 :         }</span>
+<span class="lineNum">     580 </span><span class="lineCov">     377977 : }</span>
+<a name="581"><span class="lineNum">     581 </span>            : </a>
+<span class="lineNum">     582 </span>            : void
+<span class="lineNum">     583 </span>            : mono_profiler_exception_method_leave (MonoMethod *method)
+<span class="lineNum">     584 </span>            : {
+<span class="lineNum">     585 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     586 </span><span class="lineCov">    1323431 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     587 </span><span class="lineCov">      36320 :                 if ((prof-&gt;events &amp; MONO_PROFILE_EXCEPTIONS) &amp;&amp; prof-&gt;exception_method_leave_cb)</span>
+<span class="lineNum">     588 </span><span class="lineCov">      18160 :                         prof-&gt;exception_method_leave_cb (prof-&gt;profiler, method);</span>
+<span class="lineNum">     589 </span><span class="lineCov">      18160 :         }</span>
+<span class="lineNum">     590 </span><span class="lineCov">     643556 : }</span>
+<a name="591"><span class="lineNum">     591 </span>            : </a>
+<span class="lineNum">     592 </span>            : void
+<span class="lineNum">     593 </span>            : mono_profiler_exception_clause_handler (MonoMethod *method, int clause_type, int clause_num)
+<span class="lineNum">     594 </span>            : {
+<span class="lineNum">     595 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     596 </span><span class="lineCov">    1178178 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     597 </span><span class="lineCov">      16080 :                 if ((prof-&gt;events &amp; MONO_PROFILE_EXCEPTIONS) &amp;&amp; prof-&gt;exception_clause_cb)</span>
+<span class="lineNum">     598 </span><span class="lineCov">       8040 :                         prof-&gt;exception_clause_cb (prof-&gt;profiler, method, clause_type, clause_num);</span>
+<span class="lineNum">     599 </span><span class="lineCov">       8040 :         }</span>
+<span class="lineNum">     600 </span><span class="lineCov">     581048 : }</span>
+<a name="601"><span class="lineNum">     601 </span>            : </a>
+<span class="lineNum">     602 </span>            : void
+<span class="lineNum">     603 </span>            : mono_profiler_thread_start (gsize tid)
+<span class="lineNum">     604 </span>            : {
+<span class="lineNum">     605 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     606 </span><span class="lineCov">      42282 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     607 </span><span class="lineCov">         84 :                 if ((prof-&gt;events &amp; MONO_PROFILE_THREADS) &amp;&amp; prof-&gt;thread_start)</span>
+<span class="lineNum">     608 </span><span class="lineCov">         42 :                         prof-&gt;thread_start (prof-&gt;profiler, tid);</span>
+<span class="lineNum">     609 </span><span class="lineCov">         42 :         }</span>
+<span class="lineNum">     610 </span><span class="lineCov">      21099 : }</span>
+<a name="611"><span class="lineNum">     611 </span>            : </a>
+<span class="lineNum">     612 </span>            : void 
+<span class="lineNum">     613 </span>            : mono_profiler_thread_end (gsize tid)
+<span class="lineNum">     614 </span>            : {
+<span class="lineNum">     615 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     616 </span><span class="lineCov">      33409 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     617 </span><span class="lineCov">         48 :                 if ((prof-&gt;events &amp; MONO_PROFILE_THREADS) &amp;&amp; prof-&gt;thread_end)</span>
+<span class="lineNum">     618 </span><span class="lineCov">         24 :                         prof-&gt;thread_end (prof-&gt;profiler, tid);</span>
+<span class="lineNum">     619 </span><span class="lineCov">         24 :         }</span>
+<span class="lineNum">     620 </span><span class="lineCov">      16681 : }</span>
+<a name="621"><span class="lineNum">     621 </span>            : </a>
+<span class="lineNum">     622 </span>            : void
+<span class="lineNum">     623 </span>            : mono_profiler_thread_name (gsize tid, const char *name)
+<span class="lineNum">     624 </span>            : {
+<span class="lineNum">     625 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     626 </span><span class="lineCov">      25750 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     627 </span><span class="lineCov">         80 :                 if ((prof-&gt;events &amp; MONO_PROFILE_THREADS) &amp;&amp; prof-&gt;thread_name)</span>
+<span class="lineNum">     628 </span><span class="lineCov">         40 :                         prof-&gt;thread_name (prof-&gt;profiler, tid, name);</span>
+<span class="lineNum">     629 </span><span class="lineCov">         40 :         }</span>
+<span class="lineNum">     630 </span><span class="lineCov">      12835 : }</span>
+<a name="631"><span class="lineNum">     631 </span>            : </a>
+<span class="lineNum">     632 </span>            : void 
+<span class="lineNum">     633 </span>            : mono_profiler_assembly_event  (MonoAssembly *assembly, int code)
+<span class="lineNum">     634 </span>            : {
+<span class="lineNum">     635 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     636 </span><span class="lineCov">     262906 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     637 </span><span class="lineCov">        108 :                 if (!(prof-&gt;events &amp; MONO_PROFILE_ASSEMBLY_EVENTS))</span>
+<span class="lineNum">     638 </span><span class="lineCov">         72 :                         continue;</span>
+<span class="lineNum">     639 </span>            : 
+<span class="lineNum">     640 </span><span class="lineCov">         36 :                 switch (code) {</span>
+<span class="lineNum">     641 </span>            :                 case MONO_PROFILE_START_LOAD:
+<span class="lineNum">     642 </span><span class="lineCov">         36 :                         if (prof-&gt;assembly_start_load)</span>
+<span class="lineNum">     643 </span><span class="lineNoCov">          0 :                                 prof-&gt;assembly_start_load (prof-&gt;profiler, assembly);</span>
+<span class="lineNum">     644 </span><span class="lineCov">         36 :                         break;</span>
+<span class="lineNum">     645 </span>            :                 case MONO_PROFILE_START_UNLOAD:
+<span class="lineNum">     646 </span><span class="lineNoCov">          0 :                         if (prof-&gt;assembly_start_unload)</span>
+<span class="lineNum">     647 </span><span class="lineNoCov">          0 :                                 prof-&gt;assembly_start_unload (prof-&gt;profiler, assembly);</span>
+<span class="lineNum">     648 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     649 </span>            :                 case MONO_PROFILE_END_UNLOAD:
+<span class="lineNum">     650 </span><span class="lineNoCov">          0 :                         if (prof-&gt;assembly_end_unload)</span>
+<span class="lineNum">     651 </span><span class="lineNoCov">          0 :                                 prof-&gt;assembly_end_unload (prof-&gt;profiler, assembly);</span>
+<span class="lineNum">     652 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     653 </span>            :                 default:
+<span class="lineNum">     654 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">     655 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     656 </span><span class="lineCov">         36 :         }</span>
+<span class="lineNum">     657 </span><span class="lineCov">     131345 : }</span>
+<a name="658"><span class="lineNum">     658 </span>            : </a>
+<span class="lineNum">     659 </span>            : void 
+<span class="lineNum">     660 </span>            : mono_profiler_assembly_loaded (MonoAssembly *assembly, int result)
+<span class="lineNum">     661 </span>            : {
+<span class="lineNum">     662 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     663 </span><span class="lineCov">      87940 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     664 </span><span class="lineCov">         72 :                 if ((prof-&gt;events &amp; MONO_PROFILE_ASSEMBLY_EVENTS) &amp;&amp; prof-&gt;assembly_end_load)</span>
+<span class="lineNum">     665 </span><span class="lineCov">         36 :                         prof-&gt;assembly_end_load (prof-&gt;profiler, assembly, result);</span>
+<span class="lineNum">     666 </span><span class="lineCov">         36 :         }</span>
+<a name="667"><span class="lineNum">     667 </span><span class="lineCov">      43934 : }</span></a>
+<span class="lineNum">     668 </span>            : 
+<span class="lineNum">     669 </span>            : void mono_profiler_iomap (char *report, const char *pathname, const char *new_pathname)
+<span class="lineNum">     670 </span>            : {
+<span class="lineNum">     671 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     672 </span><span class="lineNoCov">          0 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     673 </span><span class="lineNoCov">          0 :                 if ((prof-&gt;events &amp; MONO_PROFILE_IOMAP_EVENTS) &amp;&amp; prof-&gt;iomap_cb)</span>
+<span class="lineNum">     674 </span><span class="lineNoCov">          0 :                         prof-&gt;iomap_cb (prof-&gt;profiler, report, pathname, new_pathname);</span>
+<span class="lineNum">     675 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     676 </span><span class="lineNoCov">          0 : }</span>
+<a name="677"><span class="lineNum">     677 </span>            : </a>
+<span class="lineNum">     678 </span>            : void 
+<span class="lineNum">     679 </span>            : mono_profiler_module_event  (MonoImage *module, int code)
+<span class="lineNum">     680 </span>            : {
+<span class="lineNum">     681 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     682 </span><span class="lineCov">     272957 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     683 </span><span class="lineCov">        108 :                 if (!(prof-&gt;events &amp; MONO_PROFILE_MODULE_EVENTS))</span>
+<span class="lineNum">     684 </span><span class="lineCov">         72 :                         continue;</span>
+<span class="lineNum">     685 </span>            : 
+<span class="lineNum">     686 </span><span class="lineCov">         36 :                 switch (code) {</span>
+<span class="lineNum">     687 </span>            :                 case MONO_PROFILE_START_LOAD:
+<span class="lineNum">     688 </span><span class="lineCov">         36 :                         if (prof-&gt;module_start_load)</span>
+<span class="lineNum">     689 </span><span class="lineNoCov">          0 :                                 prof-&gt;module_start_load (prof-&gt;profiler, module);</span>
+<span class="lineNum">     690 </span><span class="lineCov">         36 :                         break;</span>
+<span class="lineNum">     691 </span>            :                 case MONO_PROFILE_START_UNLOAD:
+<span class="lineNum">     692 </span><span class="lineNoCov">          0 :                         if (prof-&gt;module_start_unload)</span>
+<span class="lineNum">     693 </span><span class="lineNoCov">          0 :                                 prof-&gt;module_start_unload (prof-&gt;profiler, module);</span>
+<span class="lineNum">     694 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     695 </span>            :                 case MONO_PROFILE_END_UNLOAD:
+<span class="lineNum">     696 </span><span class="lineNoCov">          0 :                         if (prof-&gt;module_end_unload)</span>
+<span class="lineNum">     697 </span><span class="lineNoCov">          0 :                                 prof-&gt;module_end_unload (prof-&gt;profiler, module);</span>
+<span class="lineNum">     698 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     699 </span>            :                 default:
+<span class="lineNum">     700 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">     701 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     702 </span><span class="lineCov">         36 :         }</span>
+<span class="lineNum">     703 </span><span class="lineCov">     136367 : }</span>
+<a name="704"><span class="lineNum">     704 </span>            : </a>
+<span class="lineNum">     705 </span>            : void 
+<span class="lineNum">     706 </span>            : mono_profiler_module_loaded (MonoImage *module, int result)
+<span class="lineNum">     707 </span>            : {
+<span class="lineNum">     708 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     709 </span><span class="lineCov">      91320 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     710 </span><span class="lineCov">         72 :                 if ((prof-&gt;events &amp; MONO_PROFILE_MODULE_EVENTS) &amp;&amp; prof-&gt;module_end_load)</span>
+<span class="lineNum">     711 </span><span class="lineCov">         36 :                         prof-&gt;module_end_load (prof-&gt;profiler, module, result);</span>
+<span class="lineNum">     712 </span><span class="lineCov">         36 :         }</span>
+<span class="lineNum">     713 </span><span class="lineCov">      45616 : }</span>
+<a name="714"><span class="lineNum">     714 </span>            : </a>
+<span class="lineNum">     715 </span>            : void 
+<span class="lineNum">     716 </span>            : mono_profiler_class_event  (MonoClass *klass, int code)
+<span class="lineNum">     717 </span>            : {
+<span class="lineNum">     718 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     719 </span><span class="lineCov">   38481924 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     720 </span><span class="lineCov">       9219 :                 if (!(prof-&gt;events &amp; MONO_PROFILE_CLASS_EVENTS))</span>
+<span class="lineNum">     721 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     722 </span>            : 
+<span class="lineNum">     723 </span><span class="lineCov">       9219 :                 switch (code) {</span>
+<span class="lineNum">     724 </span>            :                 case MONO_PROFILE_START_LOAD:
+<span class="lineNum">     725 </span><span class="lineCov">       9219 :                         if (prof-&gt;class_start_load)</span>
+<span class="lineNum">     726 </span><span class="lineNoCov">          0 :                                 prof-&gt;class_start_load (prof-&gt;profiler, klass);</span>
+<span class="lineNum">     727 </span><span class="lineCov">       9219 :                         break;</span>
+<span class="lineNum">     728 </span>            :                 case MONO_PROFILE_START_UNLOAD:
+<span class="lineNum">     729 </span><span class="lineNoCov">          0 :                         if (prof-&gt;class_start_unload)</span>
+<span class="lineNum">     730 </span><span class="lineNoCov">          0 :                                 prof-&gt;class_start_unload (prof-&gt;profiler, klass);</span>
+<span class="lineNum">     731 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     732 </span>            :                 case MONO_PROFILE_END_UNLOAD:
+<span class="lineNum">     733 </span><span class="lineNoCov">          0 :                         if (prof-&gt;class_end_unload)</span>
+<span class="lineNum">     734 </span><span class="lineNoCov">          0 :                                 prof-&gt;class_end_unload (prof-&gt;profiler, klass);</span>
+<span class="lineNum">     735 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     736 </span>            :                 default:
+<span class="lineNum">     737 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">     738 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     739 </span><span class="lineCov">       9219 :         }</span>
+<span class="lineNum">     740 </span><span class="lineCov">   19231742 : }</span>
+<a name="741"><span class="lineNum">     741 </span>            : </a>
+<span class="lineNum">     742 </span>            : void 
+<span class="lineNum">     743 </span>            : mono_profiler_class_loaded (MonoClass *klass, int result)
+<span class="lineNum">     744 </span>            : {
+<span class="lineNum">     745 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     746 </span><span class="lineCov">   38481923 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     747 </span><span class="lineCov">      18438 :                 if ((prof-&gt;events &amp; MONO_PROFILE_CLASS_EVENTS) &amp;&amp; prof-&gt;class_end_load)</span>
+<span class="lineNum">     748 </span><span class="lineCov">       9219 :                         prof-&gt;class_end_load (prof-&gt;profiler, klass, result);</span>
+<span class="lineNum">     749 </span><span class="lineCov">       9219 :         }</span>
+<span class="lineNum">     750 </span><span class="lineCov">   19231741 : }</span>
+<a name="751"><span class="lineNum">     751 </span>            : </a>
+<span class="lineNum">     752 </span>            : void 
+<span class="lineNum">     753 </span>            : mono_profiler_appdomain_event  (MonoDomain *domain, int code)
+<span class="lineNum">     754 </span>            : {
+<span class="lineNum">     755 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     756 </span><span class="lineCov">      21124 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     757 </span><span class="lineCov">         54 :                 if (!(prof-&gt;events &amp; MONO_PROFILE_APPDOMAIN_EVENTS))</span>
+<span class="lineNum">     758 </span><span class="lineCov">         36 :                         continue;</span>
+<span class="lineNum">     759 </span>            : 
+<span class="lineNum">     760 </span><span class="lineCov">         18 :                 switch (code) {</span>
+<span class="lineNum">     761 </span>            :                 case MONO_PROFILE_START_LOAD:
+<span class="lineNum">     762 </span><span class="lineCov">         18 :                         if (prof-&gt;domain_start_load)</span>
+<span class="lineNum">     763 </span><span class="lineNoCov">          0 :                                 prof-&gt;domain_start_load (prof-&gt;profiler, domain);</span>
+<span class="lineNum">     764 </span><span class="lineCov">         18 :                         break;</span>
+<span class="lineNum">     765 </span>            :                 case MONO_PROFILE_START_UNLOAD:
+<span class="lineNum">     766 </span><span class="lineNoCov">          0 :                         if (prof-&gt;domain_start_unload)</span>
+<span class="lineNum">     767 </span><span class="lineNoCov">          0 :                                 prof-&gt;domain_start_unload (prof-&gt;profiler, domain);</span>
+<span class="lineNum">     768 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     769 </span>            :                 case MONO_PROFILE_END_UNLOAD:
+<span class="lineNum">     770 </span><span class="lineNoCov">          0 :                         if (prof-&gt;domain_end_unload)</span>
+<span class="lineNum">     771 </span><span class="lineNoCov">          0 :                                 prof-&gt;domain_end_unload (prof-&gt;profiler, domain);</span>
+<span class="lineNum">     772 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     773 </span>            :                 default:
+<span class="lineNum">     774 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">     775 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     776 </span><span class="lineCov">         18 :         }</span>
+<span class="lineNum">     777 </span><span class="lineCov">      10508 : }</span>
+<a name="778"><span class="lineNum">     778 </span>            : </a>
+<span class="lineNum">     779 </span>            : void 
+<span class="lineNum">     780 </span>            : mono_profiler_appdomain_loaded (MonoDomain *domain, int result)
+<span class="lineNum">     781 </span>            : {
+<span class="lineNum">     782 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     783 </span><span class="lineCov">       7112 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     784 </span><span class="lineCov">         36 :                 if ((prof-&gt;events &amp; MONO_PROFILE_APPDOMAIN_EVENTS) &amp;&amp; prof-&gt;domain_end_load)</span>
+<span class="lineNum">     785 </span><span class="lineCov">         18 :                         prof-&gt;domain_end_load (prof-&gt;profiler, domain, result);</span>
+<span class="lineNum">     786 </span><span class="lineCov">         18 :         }</span>
+<span class="lineNum">     787 </span><span class="lineCov">       3538 : }</span>
+<a name="788"><span class="lineNum">     788 </span>            : </a>
+<span class="lineNum">     789 </span>            : void
+<span class="lineNum">     790 </span>            : mono_profiler_appdomain_name (MonoDomain *domain, const char *name)
+<span class="lineNum">     791 </span>            : {
+<span class="lineNum">     792 </span><span class="lineCov">       7112 :         for (ProfilerDesc *prof = prof_list; prof; prof = prof-&gt;next)</span>
+<span class="lineNum">     793 </span><span class="lineCov">         54 :                 if ((prof-&gt;events &amp; MONO_PROFILE_APPDOMAIN_EVENTS) &amp;&amp; prof-&gt;domain_name)</span>
+<span class="lineNum">     794 </span><span class="lineCov">         18 :                         prof-&gt;domain_name (prof-&gt;profiler, domain, name);</span>
+<span class="lineNum">     795 </span><span class="lineCov">       3538 : }</span>
+<a name="796"><span class="lineNum">     796 </span>            : </a>
+<span class="lineNum">     797 </span>            : void
+<span class="lineNum">     798 </span>            : mono_profiler_context_loaded (MonoAppContext *context)
+<span class="lineNum">     799 </span>            : {
+<span class="lineNum">     800 </span><span class="lineCov">       7120 :         for (ProfilerDesc *prof = prof_list; prof; prof = prof-&gt;next)</span>
+<span class="lineNum">     801 </span><span class="lineCov">         54 :                 if ((prof-&gt;events &amp; MONO_PROFILE_CONTEXT_EVENTS) &amp;&amp; prof-&gt;context_load)</span>
+<span class="lineNum">     802 </span><span class="lineCov">         18 :                         prof-&gt;context_load (prof-&gt;profiler, context);</span>
+<span class="lineNum">     803 </span><span class="lineCov">       3542 : }</span>
+<a name="804"><span class="lineNum">     804 </span>            : </a>
+<span class="lineNum">     805 </span>            : void
+<span class="lineNum">     806 </span>            : mono_profiler_context_unloaded (MonoAppContext *context)
+<span class="lineNum">     807 </span>            : {
+<span class="lineNum">     808 </span><span class="lineCov">       6984 :         for (ProfilerDesc *prof = prof_list; prof; prof = prof-&gt;next)</span>
+<span class="lineNum">     809 </span><span class="lineCov">         54 :                 if ((prof-&gt;events &amp; MONO_PROFILE_CONTEXT_EVENTS) &amp;&amp; prof-&gt;context_unload)</span>
+<span class="lineNum">     810 </span><span class="lineCov">         18 :                         prof-&gt;context_unload (prof-&gt;profiler, context);</span>
+<span class="lineNum">     811 </span><span class="lineCov">       3474 : }</span>
+<a name="812"><span class="lineNum">     812 </span>            : </a>
+<span class="lineNum">     813 </span>            : void 
+<span class="lineNum">     814 </span>            : mono_profiler_shutdown (void)
+<span class="lineNum">     815 </span>            : {
+<span class="lineNum">     816 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     817 </span><span class="lineCov">       6580 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     818 </span><span class="lineCov">         18 :                 if (prof-&gt;shutdown_callback)</span>
+<span class="lineNum">     819 </span><span class="lineCov">         18 :                         prof-&gt;shutdown_callback (prof-&gt;profiler);</span>
+<span class="lineNum">     820 </span><span class="lineCov">         18 :         }</span>
+<span class="lineNum">     821 </span>            : 
+<span class="lineNum">     822 </span><span class="lineCov">       3272 :         mono_profiler_set_events ((MonoProfileFlags)0);</span>
+<span class="lineNum">     823 </span><span class="lineCov">       3272 : }</span>
+<a name="824"><span class="lineNum">     824 </span>            : </a>
+<span class="lineNum">     825 </span>            : void
+<span class="lineNum">     826 </span>            : mono_profiler_gc_heap_resize (gint64 new_size)
+<span class="lineNum">     827 </span>            : {
+<span class="lineNum">     828 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     829 </span><span class="lineNoCov">          0 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     830 </span><span class="lineNoCov">          0 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC) &amp;&amp; prof-&gt;gc_heap_resize)</span>
+<span class="lineNum">     831 </span><span class="lineNoCov">          0 :                         prof-&gt;gc_heap_resize (prof-&gt;profiler, new_size);</span>
+<span class="lineNum">     832 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     833 </span><span class="lineNoCov">          0 : }</span>
+<a name="834"><span class="lineNum">     834 </span>            : </a>
+<span class="lineNum">     835 </span>            : void
+<span class="lineNum">     836 </span>            : mono_profiler_gc_event (MonoGCEvent event, int generation)
+<span class="lineNum">     837 </span>            : {
+<span class="lineNum">     838 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     839 </span><span class="lineCov">    3157620 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     840 </span><span class="lineCov">        668 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC) &amp;&amp; prof-&gt;gc_event)</span>
+<span class="lineNum">     841 </span><span class="lineCov">        280 :                         prof-&gt;gc_event (prof-&gt;profiler, event, generation);</span>
+<span class="lineNum">     842 </span><span class="lineCov">        388 :         }</span>
+<span class="lineNum">     843 </span><span class="lineCov">    1578422 : }</span>
+<a name="844"><span class="lineNum">     844 </span>            : </a>
+<span class="lineNum">     845 </span>            : void
+<span class="lineNum">     846 </span>            : mono_profiler_gc_moves (void **objects, int num)
+<span class="lineNum">     847 </span>            : {
+<span class="lineNum">     848 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     849 </span><span class="lineCov">         48 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     850 </span><span class="lineCov">         24 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC_MOVES) &amp;&amp; prof-&gt;gc_moves)</span>
+<span class="lineNum">     851 </span><span class="lineCov">         12 :                         prof-&gt;gc_moves (prof-&gt;profiler, objects, num);</span>
+<span class="lineNum">     852 </span><span class="lineCov">         12 :         }</span>
+<span class="lineNum">     853 </span><span class="lineCov">         12 : }</span>
+<a name="854"><span class="lineNum">     854 </span>            : </a>
+<span class="lineNum">     855 </span>            : void
+<span class="lineNum">     856 </span>            : mono_profiler_gc_handle (int op, int type, uintptr_t handle, MonoObject *obj)
+<span class="lineNum">     857 </span>            : {
+<span class="lineNum">     858 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     859 </span><span class="lineCov">    8505573 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     860 </span><span class="lineCov">        150 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC_ROOTS) &amp;&amp; prof-&gt;gc_handle)</span>
+<span class="lineNum">     861 </span><span class="lineCov">         74 :                         prof-&gt;gc_handle (prof-&gt;profiler, op, type, handle, obj);</span>
+<span class="lineNum">     862 </span><span class="lineCov">         76 :         }</span>
+<span class="lineNum">     863 </span><span class="lineCov">    4252711 : }</span>
+<a name="864"><span class="lineNum">     864 </span>            : </a>
+<span class="lineNum">     865 </span>            : void
+<span class="lineNum">     866 </span>            : mono_profiler_gc_roots (int num, void **objects, int *root_types, uintptr_t *extra_info)
+<span class="lineNum">     867 </span>            : {
+<span class="lineNum">     868 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     869 </span><span class="lineCov">        336 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     870 </span><span class="lineCov">        168 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC_ROOTS) &amp;&amp; prof-&gt;gc_roots)</span>
+<span class="lineNum">     871 </span><span class="lineCov">         84 :                         prof-&gt;gc_roots (prof-&gt;profiler, num, objects, root_types, extra_info);</span>
+<span class="lineNum">     872 </span><span class="lineCov">         84 :         }</span>
+<span class="lineNum">     873 </span><span class="lineCov">         84 : }</span>
+<a name="874"><span class="lineNum">     874 </span>            : </a>
+<span class="lineNum">     875 </span>            : void
+<span class="lineNum">     876 </span>            : mono_profiler_install_gc (MonoProfileGCFunc callback, MonoProfileGCResizeFunc heap_resize_callback)
+<span class="lineNum">     877 </span>            : {
+<span class="lineNum">     878 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     879 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     880 </span><span class="lineCov">         18 :         prof_list-&gt;gc_event = callback;</span>
+<span class="lineNum">     881 </span><span class="lineCov">         18 :         prof_list-&gt;gc_heap_resize = heap_resize_callback;</span>
+<span class="lineNum">     882 </span><span class="lineCov">         36 : }</span>
+<span class="lineNum">     883 </span>            : 
+<span class="lineNum">     884 </span>            : /**
+<span class="lineNum">     885 </span>            :  * mono_profiler_install_gc_moves:
+<span class="lineNum">     886 </span>            :  * @callback: callback function
+<span class="lineNum">     887 </span>            :  *
+<span class="lineNum">     888 </span>            :  * Install the @callback function that the GC will call when moving objects.
+<span class="lineNum">     889 </span>            :  * The callback receives an array of pointers and the number of elements
+<span class="lineNum">     890 </span>            :  * in the array. Every even element in the array is the original object location
+<span class="lineNum">     891 </span>            :  * and the following odd element is the new location of the object in memory.
+<span class="lineNum">     892 </span>            :  * So the number of elements argument will always be a multiple of 2.
+<span class="lineNum">     893 </span>            :  * Since this callback happens during the GC, it is a restricted environment:
+<span class="lineNum">     894 </span>            :  * no locks can be taken and the object pointers can be inspected only once
+<span class="lineNum">     895 </span>            :  * the GC is finished (of course the original location pointers will not
+<span class="lineNum">     896 </span>            :  * point to valid objects anymore).
+<a name="897"><span class="lineNum">     897 </span>            :  */</a>
+<span class="lineNum">     898 </span>            : void
+<span class="lineNum">     899 </span>            : mono_profiler_install_gc_moves (MonoProfileGCMoveFunc callback)
+<span class="lineNum">     900 </span>            : {
+<span class="lineNum">     901 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     902 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     903 </span><span class="lineCov">         18 :         prof_list-&gt;gc_moves = callback;</span>
+<span class="lineNum">     904 </span><span class="lineCov">         36 : }</span>
+<span class="lineNum">     905 </span>            : 
+<span class="lineNum">     906 </span>            : /**
+<span class="lineNum">     907 </span>            :  * mono_profiler_install_gc_roots:
+<span class="lineNum">     908 </span>            :  * @handle_callback: callback function
+<span class="lineNum">     909 </span>            :  * @roots_callback: callback function
+<span class="lineNum">     910 </span>            :  *
+<span class="lineNum">     911 </span>            :  * Install the @handle_callback function that the GC will call when GC
+<span class="lineNum">     912 </span>            :  * handles are created or destroyed.
+<span class="lineNum">     913 </span>            :  * The callback receives an operation, which is either #MONO_PROFILER_GC_HANDLE_CREATED
+<span class="lineNum">     914 </span>            :  * or #MONO_PROFILER_GC_HANDLE_DESTROYED, the handle type, the handle value and the
+<span class="lineNum">     915 </span>            :  * object pointer, if present.
+<span class="lineNum">     916 </span>            :  * Install the @roots_callback function that the GC will call when tracing
+<span class="lineNum">     917 </span>            :  * the roots for a collection.
+<span class="lineNum">     918 </span>            :  * The callback receives the number of elements and three arrays: an array
+<span class="lineNum">     919 </span>            :  * of objects, an array of root types and flags and an array of extra info.
+<span class="lineNum">     920 </span>            :  * The size of each array is given by the first argument.
+<a name="921"><span class="lineNum">     921 </span>            :  */</a>
+<span class="lineNum">     922 </span>            : void
+<span class="lineNum">     923 </span>            : mono_profiler_install_gc_roots (MonoProfileGCHandleFunc handle_callback, MonoProfileGCRootFunc roots_callback)
+<span class="lineNum">     924 </span>            : {
+<span class="lineNum">     925 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     926 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     927 </span><span class="lineCov">         18 :         prof_list-&gt;gc_handle = handle_callback;</span>
+<span class="lineNum">     928 </span><span class="lineCov">         18 :         prof_list-&gt;gc_roots = roots_callback;</span>
+<span class="lineNum">     929 </span><span class="lineCov">         36 : }</span>
+<a name="930"><span class="lineNum">     930 </span>            : </a>
+<span class="lineNum">     931 </span>            : void
+<span class="lineNum">     932 </span>            : mono_profiler_gc_finalize_begin (void)
+<span class="lineNum">     933 </span>            : {
+<span class="lineNum">     934 </span><span class="lineCov">      56750 :         for (ProfilerDesc *prof = prof_list; prof; prof = prof-&gt;next)</span>
+<span class="lineNum">     935 </span><span class="lineCov">        615 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC_FINALIZATION) &amp;&amp; prof-&gt;gc_finalize_begin)</span>
+<span class="lineNum">     936 </span><span class="lineCov">        205 :                         prof-&gt;gc_finalize_begin (prof-&gt;profiler);</span>
+<span class="lineNum">     937 </span><span class="lineCov">      28170 : }</span>
+<a name="938"><span class="lineNum">     938 </span>            : </a>
+<span class="lineNum">     939 </span>            : void
+<span class="lineNum">     940 </span>            : mono_profiler_gc_finalize_object_begin (MonoObject *obj)
+<span class="lineNum">     941 </span>            : {
+<span class="lineNum">     942 </span><span class="lineCov">    3717126 :         for (ProfilerDesc *prof = prof_list; prof; prof = prof-&gt;next)</span>
+<span class="lineNum">     943 </span><span class="lineCov">        252 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC_FINALIZATION) &amp;&amp; prof-&gt;gc_finalize_object_begin)</span>
+<span class="lineNum">     944 </span><span class="lineCov">         84 :                         prof-&gt;gc_finalize_object_begin (prof-&gt;profiler, obj);</span>
+<span class="lineNum">     945 </span><span class="lineCov">    1858479 : }</span>
+<a name="946"><span class="lineNum">     946 </span>            : </a>
+<span class="lineNum">     947 </span>            : void
+<span class="lineNum">     948 </span>            : mono_profiler_gc_finalize_object_end (MonoObject *obj)
+<span class="lineNum">     949 </span>            : {
+<span class="lineNum">     950 </span><span class="lineCov">    3717114 :         for (ProfilerDesc *prof = prof_list; prof; prof = prof-&gt;next)</span>
+<span class="lineNum">     951 </span><span class="lineCov">        252 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC_FINALIZATION) &amp;&amp; prof-&gt;gc_finalize_object_end)</span>
+<span class="lineNum">     952 </span><span class="lineCov">         84 :                         prof-&gt;gc_finalize_object_end (prof-&gt;profiler, obj);</span>
+<span class="lineNum">     953 </span><span class="lineCov">    1858473 : }</span>
+<a name="954"><span class="lineNum">     954 </span>            : </a>
+<span class="lineNum">     955 </span>            : void
+<span class="lineNum">     956 </span>            : mono_profiler_gc_finalize_end (void)
+<span class="lineNum">     957 </span>            : {
+<span class="lineNum">     958 </span><span class="lineCov">      56730 :         for (ProfilerDesc *prof = prof_list; prof; prof = prof-&gt;next)</span>
+<span class="lineNum">     959 </span><span class="lineCov">        615 :                 if ((prof-&gt;events &amp; MONO_PROFILE_GC_FINALIZATION) &amp;&amp; prof-&gt;gc_finalize_end)</span>
+<span class="lineNum">     960 </span><span class="lineCov">        205 :                         prof-&gt;gc_finalize_end (prof-&gt;profiler);</span>
+<span class="lineNum">     961 </span><span class="lineCov">      28160 : }</span>
+<a name="962"><span class="lineNum">     962 </span>            : </a>
+<span class="lineNum">     963 </span>            : void
+<span class="lineNum">     964 </span>            : mono_profiler_install_gc_finalize (MonoProfileGCFinalizeFunc begin, MonoProfileGCFinalizeObjectFunc begin_obj, MonoProfileGCFinalizeObjectFunc end_obj, MonoProfileGCFinalizeFunc end)
+<span class="lineNum">     965 </span>            : {
+<span class="lineNum">     966 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     967 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     968 </span>            : 
+<span class="lineNum">     969 </span><span class="lineCov">         18 :         prof_list-&gt;gc_finalize_begin = begin;</span>
+<span class="lineNum">     970 </span><span class="lineCov">         18 :         prof_list-&gt;gc_finalize_object_begin = begin_obj;</span>
+<span class="lineNum">     971 </span><span class="lineCov">         18 :         prof_list-&gt;gc_finalize_object_end = end_obj;</span>
+<span class="lineNum">     972 </span><span class="lineCov">         18 :         prof_list-&gt;gc_finalize_end = end;</span>
+<span class="lineNum">     973 </span><span class="lineCov">         36 : }</span>
+<a name="974"><span class="lineNum">     974 </span>            : </a>
+<span class="lineNum">     975 </span>            : void
+<span class="lineNum">     976 </span>            : mono_profiler_install_runtime_initialized (MonoProfileFunc runtime_initialized_callback)
+<span class="lineNum">     977 </span>            : {
+<span class="lineNum">     978 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">     979 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     980 </span><span class="lineCov">         18 :         prof_list-&gt;runtime_initialized_event = runtime_initialized_callback;</span>
+<span class="lineNum">     981 </span><span class="lineCov">         36 : }</span>
+<a name="982"><span class="lineNum">     982 </span>            : </a>
+<span class="lineNum">     983 </span>            : void
+<span class="lineNum">     984 </span>            : mono_profiler_runtime_initialized (void) {
+<span class="lineNum">     985 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">     986 </span><span class="lineCov">       6606 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">     987 </span><span class="lineCov">         18 :                 if (prof-&gt;runtime_initialized_event)</span>
+<span class="lineNum">     988 </span><span class="lineCov">         18 :                         prof-&gt;runtime_initialized_event (prof-&gt;profiler);</span>
+<span class="lineNum">     989 </span><span class="lineCov">         18 :         }</span>
+<span class="lineNum">     990 </span><span class="lineCov">       3285 : }</span>
+<a name="991"><span class="lineNum">     991 </span>            : </a>
+<span class="lineNum">     992 </span>            : void
+<span class="lineNum">     993 </span>            : mono_profiler_install_code_chunk_new (MonoProfilerCodeChunkNew callback) {
+<span class="lineNum">     994 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">     995 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     996 </span><span class="lineNoCov">          0 :         prof_list-&gt;code_chunk_new = callback;</span>
+<a name="997"><span class="lineNum">     997 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">     998 </span>            : void
+<span class="lineNum">     999 </span>            : mono_profiler_code_chunk_new (gpointer chunk, int size) {
+<span class="lineNum">    1000 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">    1001 </span><span class="lineCov">     192094 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">    1002 </span><span class="lineCov">         18 :                 if (prof-&gt;code_chunk_new)</span>
+<span class="lineNum">    1003 </span><span class="lineNoCov">          0 :                         prof-&gt;code_chunk_new (prof-&gt;profiler, chunk, size);</span>
+<span class="lineNum">    1004 </span><span class="lineCov">         18 :         }</span>
+<span class="lineNum">    1005 </span><span class="lineCov">      96029 : }</span>
+<a name="1006"><span class="lineNum">    1006 </span>            : </a>
+<span class="lineNum">    1007 </span>            : void
+<span class="lineNum">    1008 </span>            : mono_profiler_install_code_chunk_destroy (MonoProfilerCodeChunkDestroy callback) {
+<span class="lineNum">    1009 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">    1010 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1011 </span><span class="lineNoCov">          0 :         prof_list-&gt;code_chunk_destroy = callback;</span>
+<a name="1012"><span class="lineNum">    1012 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">    1013 </span>            : void
+<span class="lineNum">    1014 </span>            : mono_profiler_code_chunk_destroy (gpointer chunk) {
+<span class="lineNum">    1015 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">    1016 </span><span class="lineCov">     191010 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">    1017 </span><span class="lineCov">         36 :                 if (prof-&gt;code_chunk_destroy)</span>
+<span class="lineNum">    1018 </span><span class="lineNoCov">          0 :                         prof-&gt;code_chunk_destroy (prof-&gt;profiler, chunk);</span>
+<span class="lineNum">    1019 </span><span class="lineCov">         36 :         }</span>
+<span class="lineNum">    1020 </span><span class="lineCov">      95469 : }</span>
+<a name="1021"><span class="lineNum">    1021 </span>            : </a>
+<span class="lineNum">    1022 </span>            : void
+<span class="lineNum">    1023 </span>            : mono_profiler_install_code_buffer_new (MonoProfilerCodeBufferNew callback) {
+<span class="lineNum">    1024 </span><span class="lineCov">         18 :         if (!prof_list)</span>
+<span class="lineNum">    1025 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1026 </span><span class="lineCov">         18 :         prof_list-&gt;code_buffer_new = callback;</span>
+<span class="lineNum">    1027 </span><span class="lineCov">         36 : }</span>
+<a name="1028"><span class="lineNum">    1028 </span>            : </a>
+<span class="lineNum">    1029 </span>            : void
+<span class="lineNum">    1030 </span>            : mono_profiler_install_iomap (MonoProfileIomapFunc callback)
+<span class="lineNum">    1031 </span>            : {
+<span class="lineNum">    1032 </span><span class="lineNoCov">          0 :         if (!prof_list)</span>
+<span class="lineNum">    1033 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1034 </span><span class="lineNoCov">          0 :         prof_list-&gt;iomap_cb = callback;</span>
+<span class="lineNum">    1035 </span><span class="lineNoCov">          0 : }</span>
+<a name="1036"><span class="lineNum">    1036 </span>            : </a>
+<span class="lineNum">    1037 </span>            : void
+<span class="lineNum">    1038 </span>            : mono_profiler_code_buffer_new (gpointer buffer, int size, MonoProfilerCodeBufferType type, gconstpointer data) {
+<span class="lineNum">    1039 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">    1040 </span><span class="lineCov">   63038829 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">    1041 </span><span class="lineCov">       7656 :                 if (prof-&gt;code_buffer_new)</span>
+<span class="lineNum">    1042 </span><span class="lineCov">       7656 :                         prof-&gt;code_buffer_new (prof-&gt;profiler, buffer, size, type, (void*)data);</span>
+<span class="lineNum">    1043 </span><span class="lineCov">       7656 :         }</span>
+<span class="lineNum">    1044 </span><span class="lineCov">   31511774 : }</span>
+<span class="lineNum">    1045 </span>            : 
+<span class="lineNum">    1046 </span>            : static GHashTable *coverage_hash = NULL;
+<a name="1047"><span class="lineNum">    1047 </span>            : </a>
+<span class="lineNum">    1048 </span>            : MonoProfileCoverageInfo* 
+<span class="lineNum">    1049 </span>            : mono_profiler_coverage_alloc (MonoMethod *method, int entries)
+<span class="lineNum">    1050 </span>            : {
+<span class="lineNum">    1051 </span>            :         MonoProfileCoverageInfo *res;
+<span class="lineNum">    1052 </span><span class="lineCov">       1161 :         int instrument = FALSE;</span>
+<span class="lineNum">    1053 </span>            :         ProfilerDesc *prof;
+<span class="lineNum">    1054 </span>            : 
+<span class="lineNum">    1055 </span><span class="lineCov">       4644 :         for (prof = prof_list; prof; prof = prof-&gt;next) {</span>
+<span class="lineNum">    1056 </span>            :                 /* note that we call the filter on all the profilers even if just
+<span class="lineNum">    1057 </span>            :                  * a single one would be enough to instrument a method
+<span class="lineNum">    1058 </span>            :                  */
+<span class="lineNum">    1059 </span><span class="lineCov">       1161 :                 if (prof-&gt;coverage_filter_cb)</span>
+<span class="lineNum">    1060 </span><span class="lineNoCov">          0 :                         if (prof-&gt;coverage_filter_cb (prof-&gt;profiler, method))</span>
+<span class="lineNum">    1061 </span><span class="lineNoCov">          0 :                                 instrument = TRUE;</span>
+<span class="lineNum">    1062 </span><span class="lineCov">       1161 :         }</span>
+<span class="lineNum">    1063 </span><span class="lineCov">       1161 :         if (!instrument)</span>
+<span class="lineNum">    1064 </span><span class="lineCov">       1161 :                 return NULL;</span>
+<span class="lineNum">    1065 </span>            : 
+<span class="lineNum">    1066 </span><span class="lineNoCov">          0 :         mono_profiler_coverage_lock ();</span>
+<span class="lineNum">    1067 </span><span class="lineNoCov">          0 :         if (!coverage_hash)</span>
+<span class="lineNum">    1068 </span><span class="lineNoCov">          0 :                 coverage_hash = g_hash_table_new (NULL, NULL);</span>
+<span class="lineNum">    1069 </span>            : 
+<span class="lineNum">    1070 </span><span class="lineNoCov">          0 :         res = (MonoProfileCoverageInfo *)g_malloc0 (sizeof (MonoProfileCoverageInfo) + sizeof (void*) * 2 * entries);</span>
+<span class="lineNum">    1071 </span>            : 
+<span class="lineNum">    1072 </span><span class="lineNoCov">          0 :         res-&gt;entries = entries;</span>
+<span class="lineNum">    1073 </span>            : 
+<span class="lineNum">    1074 </span><span class="lineNoCov">          0 :         g_hash_table_insert (coverage_hash, method, res);</span>
+<span class="lineNum">    1075 </span><span class="lineNoCov">          0 :         mono_profiler_coverage_unlock ();</span>
+<span class="lineNum">    1076 </span>            : 
+<span class="lineNum">    1077 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">    1078 </span><span class="lineCov">       1161 : }</span>
+<span class="lineNum">    1079 </span>            : 
+<a name="1080"><span class="lineNum">    1080 </span>            : /* safe only when the method antive code has been unloaded */</a>
+<span class="lineNum">    1081 </span>            : void
+<span class="lineNum">    1082 </span>            : mono_profiler_coverage_free (MonoMethod *method)
+<span class="lineNum">    1083 </span>            : {
+<span class="lineNum">    1084 </span>            :         MonoProfileCoverageInfo* info;
+<span class="lineNum">    1085 </span>            : 
+<span class="lineNum">    1086 </span><span class="lineNoCov">          0 :         mono_profiler_coverage_lock ();</span>
+<span class="lineNum">    1087 </span><span class="lineNoCov">          0 :         if (!coverage_hash) {</span>
+<span class="lineNum">    1088 </span><span class="lineNoCov">          0 :                 mono_profiler_coverage_unlock ();</span>
+<span class="lineNum">    1089 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1090 </span>            :         }
+<span class="lineNum">    1091 </span>            : 
+<span class="lineNum">    1092 </span><span class="lineNoCov">          0 :         info = (MonoProfileCoverageInfo *)g_hash_table_lookup (coverage_hash, method);</span>
+<span class="lineNum">    1093 </span><span class="lineNoCov">          0 :         if (info) {</span>
+<span class="lineNum">    1094 </span><span class="lineNoCov">          0 :                 g_free (info);</span>
+<span class="lineNum">    1095 </span><span class="lineNoCov">          0 :                 g_hash_table_remove (coverage_hash, method);</span>
+<span class="lineNum">    1096 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1097 </span><span class="lineNoCov">          0 :         mono_profiler_coverage_unlock ();</span>
+<span class="lineNum">    1098 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1099 </span>            : 
+<span class="lineNum">    1100 </span>            : /**
+<span class="lineNum">    1101 </span>            :  * mono_profiler_coverage_get:
+<span class="lineNum">    1102 </span>            :  * @prof: The profiler handle, installed with mono_profiler_install
+<span class="lineNum">    1103 </span>            :  * @method: the method to gather information from.
+<span class="lineNum">    1104 </span>            :  * @func: A routine that will be called back with the results
+<span class="lineNum">    1105 </span>            :  *
+<span class="lineNum">    1106 </span>            :  * If the MONO_PROFILER_INS_COVERAGE flag was active during JIT compilation
+<span class="lineNum">    1107 </span>            :  * it is posisble to obtain coverage information about a give method.
+<span class="lineNum">    1108 </span>            :  *
+<span class="lineNum">    1109 </span>            :  * The function @func will be invoked repeatedly with instances of the
+<span class="lineNum">    1110 </span>            :  * MonoProfileCoverageEntry structure.
+<a name="1111"><span class="lineNum">    1111 </span>            :  */</a>
+<span class="lineNum">    1112 </span>            : void 
+<span class="lineNum">    1113 </span>            : mono_profiler_coverage_get (MonoProfiler *prof, MonoMethod *method, MonoProfileCoverageFunc func)
+<span class="lineNum">    1114 </span>            : {
+<span class="lineNum">    1115 </span>            :         MonoError error;
+<span class="lineNum">    1116 </span><span class="lineNoCov">          0 :         MonoProfileCoverageInfo* info = NULL;</span>
+<span class="lineNum">    1117 </span>            :         int i, offset;
+<span class="lineNum">    1118 </span>            :         guint32 code_size;
+<span class="lineNum">    1119 </span>            :         const unsigned char *start, *end, *cil_code;
+<span class="lineNum">    1120 </span>            :         MonoMethodHeader *header;
+<span class="lineNum">    1121 </span>            :         MonoProfileCoverageEntry entry;
+<span class="lineNum">    1122 </span>            :         MonoDebugMethodInfo *debug_minfo;
+<span class="lineNum">    1123 </span>            : 
+<span class="lineNum">    1124 </span><span class="lineNoCov">          0 :         mono_profiler_coverage_lock ();</span>
+<span class="lineNum">    1125 </span><span class="lineNoCov">          0 :         if (coverage_hash)</span>
+<span class="lineNum">    1126 </span><span class="lineNoCov">          0 :                 info = (MonoProfileCoverageInfo *)g_hash_table_lookup (coverage_hash, method);</span>
+<span class="lineNum">    1127 </span><span class="lineNoCov">          0 :         mono_profiler_coverage_unlock ();</span>
+<span class="lineNum">    1128 </span>            : 
+<span class="lineNum">    1129 </span><span class="lineNoCov">          0 :         if (!info)</span>
+<span class="lineNum">    1130 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1131 </span>            : 
+<span class="lineNum">    1132 </span><span class="lineNoCov">          0 :         header = mono_method_get_header_checked (method, &amp;error);</span>
+<span class="lineNum">    1133 </span><span class="lineNoCov">          0 :         mono_error_assert_ok (&amp;error);</span>
+<span class="lineNum">    1134 </span><span class="lineNoCov">          0 :         start = mono_method_header_get_code (header, &amp;code_size, NULL);</span>
+<span class="lineNum">    1135 </span><span class="lineNoCov">          0 :         debug_minfo = mono_debug_lookup_method (method);</span>
+<span class="lineNum">    1136 </span>            : 
+<span class="lineNum">    1137 </span><span class="lineNoCov">          0 :         end = start + code_size;</span>
+<span class="lineNum">    1138 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; info-&gt;entries; ++i) {</span>
+<span class="lineNum">    1139 </span><span class="lineNoCov">          0 :                 cil_code = info-&gt;data [i].cil_code;</span>
+<span class="lineNum">    1140 </span><span class="lineNoCov">          0 :                 if (cil_code &amp;&amp; cil_code &gt;= start &amp;&amp; cil_code &lt; end) {</span>
+<span class="lineNum">    1141 </span><span class="lineNoCov">          0 :                         char *fname = NULL;</span>
+<span class="lineNum">    1142 </span><span class="lineNoCov">          0 :                         offset = cil_code - start;</span>
+<span class="lineNum">    1143 </span><span class="lineNoCov">          0 :                         entry.iloffset = offset;</span>
+<span class="lineNum">    1144 </span><span class="lineNoCov">          0 :                         entry.method = method;</span>
+<span class="lineNum">    1145 </span><span class="lineNoCov">          0 :                         entry.counter = info-&gt;data [i].count;</span>
+<span class="lineNum">    1146 </span><span class="lineNoCov">          0 :                         entry.line = entry.col = 1;</span>
+<span class="lineNum">    1147 </span><span class="lineNoCov">          0 :                         entry.filename = NULL;</span>
+<span class="lineNum">    1148 </span><span class="lineNoCov">          0 :                         if (debug_minfo) {</span>
+<span class="lineNum">    1149 </span>            :                                 MonoDebugSourceLocation *location;
+<span class="lineNum">    1150 </span>            : 
+<span class="lineNum">    1151 </span><span class="lineNoCov">          0 :                                 location = mono_debug_symfile_lookup_location (debug_minfo, offset);</span>
+<span class="lineNum">    1152 </span><span class="lineNoCov">          0 :                                 if (location) {</span>
+<span class="lineNum">    1153 </span><span class="lineNoCov">          0 :                                         entry.line = location-&gt;row;</span>
+<span class="lineNum">    1154 </span><span class="lineNoCov">          0 :                                         entry.col = location-&gt;column;</span>
+<span class="lineNum">    1155 </span><span class="lineNoCov">          0 :                                         entry.filename = fname = g_strdup (location-&gt;source_file);</span>
+<span class="lineNum">    1156 </span><span class="lineNoCov">          0 :                                         mono_debug_free_source_location (location);</span>
+<span class="lineNum">    1157 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">    1158 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1159 </span>            : 
+<span class="lineNum">    1160 </span><span class="lineNoCov">          0 :                         func (prof, &amp;entry);</span>
+<span class="lineNum">    1161 </span><span class="lineNoCov">          0 :                         g_free (fname);</span>
+<span class="lineNum">    1162 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1163 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1164 </span><span class="lineNoCov">          0 :         mono_metadata_free_mh (header);</span>
+<span class="lineNum">    1165 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1166 </span>            : 
+<span class="lineNum">    1167 </span>            : typedef void (*ProfilerInitializer) (const char*);
+<span class="lineNum">    1168 </span>            : #define INITIALIZER_NAME &quot;mono_profiler_startup&quot;
+<span class="lineNum">    1169 </span>            : 
+<a name="1170"><span class="lineNum">    1170 </span>            : </a>
+<span class="lineNum">    1171 </span>            : static gboolean
+<span class="lineNum">    1172 </span>            : load_profiler (MonoDl *pmodule, const char *desc, const char *symbol)
+<span class="lineNum">    1173 </span>            : {
+<span class="lineNum">    1174 </span>            :         char *err;
+<span class="lineNum">    1175 </span>            :         ProfilerInitializer func;
+<span class="lineNum">    1176 </span>            : 
+<span class="lineNum">    1177 </span><span class="lineCov">         37 :         if (!pmodule)</span>
+<span class="lineNum">    1178 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">    1179 </span>            : 
+<span class="lineNum">    1180 </span><span class="lineCov">         37 :         if ((err = mono_dl_symbol (pmodule, symbol, (gpointer *) &amp;func))) {</span>
+<span class="lineNum">    1181 </span><span class="lineCov">         19 :                 g_free (err);</span>
+<span class="lineNum">    1182 </span><span class="lineCov">         19 :                 return FALSE;</span>
+<span class="lineNum">    1183 </span>            :         } else {
+<span class="lineNum">    1184 </span><span class="lineCov">         18 :                 func (desc);</span>
+<span class="lineNum">    1185 </span>            :         }
+<span class="lineNum">    1186 </span><span class="lineCov">         18 :         return TRUE;</span>
+<span class="lineNum">    1187 </span><span class="lineCov">         37 : }</span>
+<a name="1188"><span class="lineNum">    1188 </span>            : </a>
+<span class="lineNum">    1189 </span>            : static gboolean
+<span class="lineNum">    1190 </span>            : load_embedded_profiler (const char *desc, const char *name)
+<span class="lineNum">    1191 </span>            : {
+<span class="lineNum">    1192 </span><span class="lineCov">         19 :         char *err = NULL;</span>
+<span class="lineNum">    1193 </span>            :         char *symbol;
+<span class="lineNum">    1194 </span><span class="lineCov">         19 :         MonoDl *pmodule = NULL;</span>
+<span class="lineNum">    1195 </span>            :         gboolean result;
+<span class="lineNum">    1196 </span>            : 
+<span class="lineNum">    1197 </span>            :         /*
+<span class="lineNum">    1198 </span>            :          * Some profilers (such as ours) may need to call back into the runtime
+<span class="lineNum">    1199 </span>            :          * from their sampling callback (which is called in async-signal context).
+<span class="lineNum">    1200 </span>            :          * They need to be able to know that all references back to the runtime
+<span class="lineNum">    1201 </span>            :          * have been resolved; otherwise, calling runtime functions may result in
+<span class="lineNum">    1202 </span>            :          * invoking the dynamic linker which is not async-signal-safe. Passing
+<span class="lineNum">    1203 </span>            :          * MONO_DL_EAGER will ask the dynamic linker to resolve everything upfront.
+<span class="lineNum">    1204 </span>            :          */
+<span class="lineNum">    1205 </span><span class="lineCov">         19 :         pmodule = mono_dl_open (NULL, MONO_DL_EAGER, &amp;err);</span>
+<span class="lineNum">    1206 </span><span class="lineCov">         19 :         if (!pmodule) {</span>
+<span class="lineNum">    1207 </span><span class="lineNoCov">          0 :                 g_warning (&quot;Could not open main executable (%s)&quot;, err);</span>
+<span class="lineNum">    1208 </span><span class="lineNoCov">          0 :                 g_free (err);</span>
+<span class="lineNum">    1209 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">    1210 </span>            :         }
+<span class="lineNum">    1211 </span>            : 
+<span class="lineNum">    1212 </span><span class="lineCov">         19 :         symbol = g_strdup_printf (INITIALIZER_NAME &quot;_%s&quot;, name);</span>
+<span class="lineNum">    1213 </span><span class="lineCov">         19 :         result = load_profiler (pmodule, desc, symbol);</span>
+<span class="lineNum">    1214 </span><span class="lineCov">         19 :         g_free (symbol);</span>
+<span class="lineNum">    1215 </span>            : 
+<span class="lineNum">    1216 </span><span class="lineCov">         19 :         return result;</span>
+<span class="lineNum">    1217 </span><span class="lineCov">         19 : }</span>
+<span class="lineNum">    1218 </span>            : 
+<a name="1219"><span class="lineNum">    1219 </span>            : // TODO: Much of the library loading code here is custom. It would be better to merge this with mono-dl</a>
+<span class="lineNum">    1220 </span>            : static gboolean
+<span class="lineNum">    1221 </span>            : load_profiler_from_directory (const char *directory, const char *libname, const char *desc)
+<span class="lineNum">    1222 </span>            : {
+<span class="lineNum">    1223 </span><span class="lineCov">          2 :         MonoDl *pmodule = NULL;</span>
+<span class="lineNum">    1224 </span>            :         char* path;
+<span class="lineNum">    1225 </span>            :         char *err;
+<span class="lineNum">    1226 </span>            :         void *iter;
+<span class="lineNum">    1227 </span>            : 
+<span class="lineNum">    1228 </span><span class="lineCov">          2 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_DLLIMPORT, &quot;Attempting to load profiler %s from %s (desc %s)&quot;, libname, directory, desc);</span>
+<span class="lineNum">    1229 </span>            : 
+<span class="lineNum">    1230 </span><span class="lineCov">          2 :         iter = NULL;</span>
+<span class="lineNum">    1231 </span><span class="lineCov">          2 :         err = NULL;</span>
+<span class="lineNum">    1232 </span><span class="lineCov">         20 :         while ((path = mono_dl_build_path (directory, libname, &amp;iter))) {</span>
+<span class="lineNum">    1233 </span><span class="lineCov">          8 :                 pmodule = mono_dl_open (path, MONO_DL_EAGER, &amp;err);</span>
+<span class="lineNum">    1234 </span><span class="lineCov">          8 :                 mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_DLLIMPORT, &quot;Attempting to load profiler: %s, %ssuccessful, err: %s&quot;, path, pmodule?&quot;&quot;:&quot;not &quot;, err);</span>
+<span class="lineNum">    1235 </span><span class="lineCov">          8 :                 g_free (path);</span>
+<span class="lineNum">    1236 </span><span class="lineCov">          8 :                 g_free (err);</span>
+<span class="lineNum">    1237 </span><span class="lineCov">          8 :                 if (pmodule)</span>
+<span class="lineNum">    1238 </span><span class="lineNoCov">          0 :                         return load_profiler (pmodule, desc, INITIALIZER_NAME);</span>
+<span class="lineNum">    1239 </span>            :         }
+<span class="lineNum">    1240 </span>            :                 
+<span class="lineNum">    1241 </span><span class="lineCov">          2 :         return FALSE;</span>
+<span class="lineNum">    1242 </span><span class="lineCov">          2 : }</span>
+<a name="1243"><span class="lineNum">    1243 </span>            : </a>
+<span class="lineNum">    1244 </span>            : static gboolean
+<span class="lineNum">    1245 </span>            : load_profiler_from_mono_installation (const char *libname, const char *desc)
+<span class="lineNum">    1246 </span>            : {
+<span class="lineNum">    1247 </span><span class="lineCov">         19 :         char *err = NULL;</span>
+<span class="lineNum">    1248 </span><span class="lineCov">         19 :         MonoDl *pmodule = mono_dl_open_runtime_lib (libname, MONO_DL_EAGER, &amp;err);</span>
+<span class="lineNum">    1249 </span><span class="lineCov">         19 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_DLLIMPORT, &quot;Attempting to load profiler from runtime libs: %s, %ssuccessful, err: %s&quot;, libname, pmodule?&quot;&quot;:&quot;not &quot;, err);</span>
+<span class="lineNum">    1250 </span><span class="lineCov">         19 :         g_free (err);</span>
+<span class="lineNum">    1251 </span><span class="lineCov">         19 :         if (pmodule)</span>
+<span class="lineNum">    1252 </span><span class="lineCov">         18 :                 return load_profiler (pmodule, desc, INITIALIZER_NAME);</span>
+<span class="lineNum">    1253 </span><span class="lineCov">          1 :         return FALSE;</span>
+<span class="lineNum">    1254 </span><span class="lineCov">         19 : }</span>
+<span class="lineNum">    1255 </span>            : 
+<span class="lineNum">    1256 </span>            : /**
+<span class="lineNum">    1257 </span>            :  * mono_profiler_load:
+<span class="lineNum">    1258 </span>            :  * @desc: arguments to configure the profiler
+<span class="lineNum">    1259 </span>            :  *
+<span class="lineNum">    1260 </span>            :  * Invoke this method to initialize the profiler.   This will drive the
+<span class="lineNum">    1261 </span>            :  * loading of the internal (&quot;default&quot;) or any external profilers.
+<span class="lineNum">    1262 </span>            :  *
+<span class="lineNum">    1263 </span>            :  * This routine is invoked by Mono's driver, but must be called manually
+<span class="lineNum">    1264 </span>            :  * if you embed Mono into your application.
+<a name="1265"><span class="lineNum">    1265 </span>            :  */</a>
+<span class="lineNum">    1266 </span>            : void 
+<span class="lineNum">    1267 </span>            : mono_profiler_load (const char *desc)
+<span class="lineNum">    1268 </span>            : {
+<span class="lineNum">    1269 </span><span class="lineCov">         19 :         char *cdesc = NULL;</span>
+<span class="lineNum">    1270 </span><span class="lineCov">         19 :         mono_gc_base_init ();</span>
+<span class="lineNum">    1271 </span>            : 
+<span class="lineNum">    1272 </span><span class="lineCov">         38 :         if (!desc || (strcmp (&quot;default&quot;, desc) == 0)) {</span>
+<span class="lineNum">    1273 </span><span class="lineNoCov">          0 :                 desc = &quot;log:report&quot;;</span>
+<span class="lineNum">    1274 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1275 </span>            :         /* we keep command-line compat with the old version here */
+<span class="lineNum">    1276 </span><span class="lineCov">         19 :         if (strncmp (desc, &quot;default:&quot;, 8) == 0) {</span>
+<span class="lineNum">    1277 </span>            :                 gchar **args, **ptr;
+<span class="lineNum">    1278 </span><span class="lineNoCov">          0 :                 GString *str = g_string_new (&quot;log:report&quot;);</span>
+<span class="lineNum">    1279 </span><span class="lineNoCov">          0 :                 args = g_strsplit (desc + 8, &quot;,&quot;, -1);</span>
+<span class="lineNum">    1280 </span><span class="lineNoCov">          0 :                 for (ptr = args; ptr &amp;&amp; *ptr; ptr++) {</span>
+<span class="lineNum">    1281 </span><span class="lineNoCov">          0 :                         const char *arg = *ptr;</span>
+<span class="lineNum">    1282 </span>            : 
+<span class="lineNum">    1283 </span><span class="lineNoCov">          0 :                         if (!strcmp (arg, &quot;time&quot;))</span>
+<span class="lineNum">    1284 </span><span class="lineNoCov">          0 :                                 g_string_append (str, &quot;,calls&quot;);</span>
+<span class="lineNum">    1285 </span><span class="lineNoCov">          0 :                         else if (!strcmp (arg, &quot;alloc&quot;))</span>
+<span class="lineNum">    1286 </span><span class="lineNoCov">          0 :                                 g_string_append (str, &quot;,alloc&quot;);</span>
+<span class="lineNum">    1287 </span><span class="lineNoCov">          0 :                         else if (!strcmp (arg, &quot;stat&quot;))</span>
+<span class="lineNum">    1288 </span><span class="lineNoCov">          0 :                                 g_string_append (str, &quot;,sample&quot;);</span>
+<span class="lineNum">    1289 </span><span class="lineNoCov">          0 :                         else if (!strcmp (arg, &quot;jit&quot;))</span>
+<span class="lineNum">    1290 </span><span class="lineNoCov">          0 :                                 continue; /* accept and do nothing */</span>
+<span class="lineNum">    1291 </span><span class="lineNoCov">          0 :                         else if (strncmp (arg, &quot;file=&quot;, 5) == 0) {</span>
+<span class="lineNum">    1292 </span><span class="lineNoCov">          0 :                                 g_string_append_printf (str, &quot;,output=%s&quot;, arg + 5);</span>
+<span class="lineNum">    1293 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">    1294 </span><span class="lineNoCov">          0 :                                 fprintf (stderr, &quot;profiler : Unknown argument '%s'.\n&quot;, arg);</span>
+<span class="lineNum">    1295 </span><span class="lineNoCov">          0 :                                 return;</span>
+<span class="lineNum">    1296 </span>            :                         }
+<span class="lineNum">    1297 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1298 </span><span class="lineNoCov">          0 :                 desc = cdesc = g_string_free (str, FALSE);</span>
+<span class="lineNum">    1299 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1300 </span>            :         {
+<span class="lineNum">    1301 </span><span class="lineCov">         19 :                 const char* col = strchr (desc, ':');</span>
+<span class="lineNum">    1302 </span>            :                 char* libname;
+<span class="lineNum">    1303 </span>            :                 char *mname;
+<span class="lineNum">    1304 </span><span class="lineCov">         19 :                 gboolean res = FALSE;</span>
+<span class="lineNum">    1305 </span>            : 
+<span class="lineNum">    1306 </span><span class="lineCov">         19 :                 if (col != NULL) {</span>
+<span class="lineNum">    1307 </span><span class="lineCov">         19 :                         mname = (char *)g_memdup (desc, col - desc + 1);</span>
+<span class="lineNum">    1308 </span><span class="lineCov">         19 :                         mname [col - desc] = 0;</span>
+<span class="lineNum">    1309 </span><span class="lineCov">         19 :                 } else {</span>
+<span class="lineNum">    1310 </span><span class="lineNoCov">          0 :                         mname = g_strdup (desc);</span>
+<span class="lineNum">    1311 </span>            :                 }
+<span class="lineNum">    1312 </span><span class="lineCov">         19 :                 if (!load_embedded_profiler (desc, mname)) {</span>
+<span class="lineNum">    1313 </span><span class="lineCov">         19 :                         libname = g_strdup_printf (&quot;mono-profiler-%s&quot;, mname);</span>
+<span class="lineNum">    1314 </span><span class="lineCov">         19 :                         res = load_profiler_from_mono_installation (libname, desc);</span>
+<span class="lineNum">    1315 </span><span class="lineCov">         20 :                         if (!res &amp;&amp; mono_config_get_assemblies_dir ())</span>
+<span class="lineNum">    1316 </span><span class="lineCov">          1 :                                 res = load_profiler_from_directory (mono_assembly_getrootdir (), libname, desc);</span>
+<span class="lineNum">    1317 </span><span class="lineCov">         19 :                         if (!res)</span>
+<span class="lineNum">    1318 </span><span class="lineCov">          1 :                                 res = load_profiler_from_directory (NULL, libname, desc);</span>
+<span class="lineNum">    1319 </span><span class="lineCov">         19 :                         if (!res)</span>
+<span class="lineNum">    1320 </span><span class="lineCov">          1 :                                 g_warning (&quot;The '%s' profiler wasn't found in the main executable nor could it be loaded from '%s'.&quot;, mname, libname);</span>
+<span class="lineNum">    1321 </span><span class="lineCov">         19 :                         g_free (libname);</span>
+<span class="lineNum">    1322 </span><span class="lineCov">         19 :                 }</span>
+<span class="lineNum">    1323 </span><span class="lineCov">         19 :                 g_free (mname);</span>
+<span class="lineNum">    1324 </span>            :         }
+<span class="lineNum">    1325 </span><span class="lineCov">         19 :         g_free (cdesc);</span>
+<span class="lineNum">    1326 </span><span class="lineCov">         38 : }</span>
+<span class="lineNum">    1327 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

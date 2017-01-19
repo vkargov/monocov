@@ -1,0 +1,652 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-codeman.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-codeman.c<span style="font-size: 80%;"> (source / <a href="mono-codeman.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">163</td>
+            <td class="headerCovTableEntry">194</td>
+            <td class="headerCovTableEntryMed">84.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">15</td>
+            <td class="headerCovTableEntry">18</td>
+            <td class="headerCovTableEntryMed">83.3 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : #include &quot;config.h&quot;</a>
+<span class="lineNum">       2 </span>            : 
+<span class="lineNum">       3 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">       4 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">       5 </span>            : #endif
+<span class="lineNum">       6 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">       7 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">       8 </span>            : #include &lt;assert.h&gt;
+<span class="lineNum">       9 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : /* For dlmalloc.h */
+<span class="lineNum">      12 </span>            : #define USE_DL_PREFIX 1
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &quot;mono-codeman.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;mono-mmap.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;mono-counters.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;dlmalloc.h&quot;
+<span class="lineNum">      18 </span>            : #include &lt;mono/io-layer/io-layer.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/profiler-private.h&gt;
+<span class="lineNum">      20 </span>            : #ifdef HAVE_VALGRIND_MEMCHECK_H
+<span class="lineNum">      21 </span>            : #include &lt;valgrind/memcheck.h&gt;
+<span class="lineNum">      22 </span>            : #endif
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #include &lt;mono/utils/mono-os-mutex.h&gt;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : static uintptr_t code_memory_used = 0;
+<span class="lineNum">      28 </span>            : static size_t dynamic_code_alloc_count;
+<span class="lineNum">      29 </span>            : static size_t dynamic_code_bytes_count;
+<span class="lineNum">      30 </span>            : static size_t dynamic_code_frees_count;
+<span class="lineNum">      31 </span>            : static MonoCodeManagerCallbacks code_manager_callbacks;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : /*
+<span class="lineNum">      34 </span>            :  * AMD64 processors maintain icache coherency only for pages which are 
+<span class="lineNum">      35 </span>            :  * marked executable. Also, windows DEP requires us to obtain executable memory from
+<span class="lineNum">      36 </span>            :  * malloc when using dynamic code managers. The system malloc can't do this so we use a 
+<span class="lineNum">      37 </span>            :  * slighly modified version of Doug Lea's Malloc package for this purpose:
+<span class="lineNum">      38 </span>            :  * http://g.oswego.edu/dl/html/malloc.html
+<span class="lineNum">      39 </span>            :  */
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span>            : #define MIN_PAGES 16
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : #if defined(__ia64__) || defined(__x86_64__) || defined (_WIN64)
+<span class="lineNum">      44 </span>            : /*
+<span class="lineNum">      45 </span>            :  * We require 16 byte alignment on amd64 so the fp literals embedded in the code are 
+<span class="lineNum">      46 </span>            :  * properly aligned for SSE2.
+<span class="lineNum">      47 </span>            :  */
+<span class="lineNum">      48 </span>            : #define MIN_ALIGN 16
+<span class="lineNum">      49 </span>            : #else
+<span class="lineNum">      50 </span>            : #define MIN_ALIGN 8
+<span class="lineNum">      51 </span>            : #endif
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : /* if a chunk has less than this amount of free space it's considered full */
+<span class="lineNum">      54 </span>            : #define MAX_WASTAGE 32
+<span class="lineNum">      55 </span>            : #define MIN_BSIZE 32
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : #ifdef __x86_64__
+<span class="lineNum">      58 </span>            : #define ARCH_MAP_FLAGS MONO_MMAP_32BIT
+<span class="lineNum">      59 </span>            : #else
+<span class="lineNum">      60 </span>            : #define ARCH_MAP_FLAGS 0
+<span class="lineNum">      61 </span>            : #endif
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span>            : #define MONO_PROT_RWX (MONO_MMAP_READ|MONO_MMAP_WRITE|MONO_MMAP_EXEC)
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : typedef struct _CodeChunck CodeChunk;
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            : enum {
+<span class="lineNum">      68 </span>            :         CODE_FLAG_MMAP,
+<span class="lineNum">      69 </span>            :         CODE_FLAG_MALLOC
+<span class="lineNum">      70 </span>            : };
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            : struct _CodeChunck {
+<span class="lineNum">      73 </span>            :         char *data;
+<span class="lineNum">      74 </span>            :         int pos;
+<span class="lineNum">      75 </span>            :         int size;
+<span class="lineNum">      76 </span>            :         CodeChunk *next;
+<span class="lineNum">      77 </span>            :         unsigned int flags: 8;
+<span class="lineNum">      78 </span>            :         /* this number of bytes is available to resolve addresses far in memory */
+<span class="lineNum">      79 </span>            :         unsigned int bsize: 24;
+<span class="lineNum">      80 </span>            : };
+<span class="lineNum">      81 </span>            : 
+<span class="lineNum">      82 </span>            : struct _MonoCodeManager {
+<span class="lineNum">      83 </span>            :         int dynamic;
+<span class="lineNum">      84 </span>            :         int read_only;
+<span class="lineNum">      85 </span>            :         CodeChunk *current;
+<span class="lineNum">      86 </span>            :         CodeChunk *full;
+<span class="lineNum">      87 </span>            :         CodeChunk *last;
+<span class="lineNum">      88 </span>            : };
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span>            : #define ALIGN_INT(val,alignment) (((val) + (alignment - 1)) &amp; ~(alignment - 1))
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span>            : #define VALLOC_FREELIST_SIZE 16
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span>            : static mono_mutex_t valloc_mutex;
+<span class="lineNum">      95 </span>            : static GHashTable *valloc_freelists;
+<a name="96"><span class="lineNum">      96 </span>            : </a>
+<span class="lineNum">      97 </span>            : static void*
+<span class="lineNum">      98 </span>            : codechunk_valloc (void *preferred, guint32 size)
+<span class="lineNum">      99 </span>            : {
+<span class="lineNum">     100 </span>            :         void *ptr;
+<span class="lineNum">     101 </span>            :         GSList *freelist;
+<span class="lineNum">     102 </span>            : 
+<span class="lineNum">     103 </span><span class="lineCov">      86000 :         if (!valloc_freelists) {</span>
+<span class="lineNum">     104 </span><span class="lineCov">       3285 :                 mono_os_mutex_init_recursive (&amp;valloc_mutex);</span>
+<span class="lineNum">     105 </span><span class="lineCov">       3285 :                 valloc_freelists = g_hash_table_new (NULL, NULL);</span>
+<span class="lineNum">     106 </span><span class="lineCov">       3285 :         }</span>
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span>            :         /*
+<span class="lineNum">     109 </span>            :          * Keep a small freelist of memory blocks to decrease pressure on the kernel memory subsystem to avoid #3321.
+<span class="lineNum">     110 </span>            :          */
+<span class="lineNum">     111 </span><span class="lineCov">      86001 :         mono_os_mutex_lock (&amp;valloc_mutex);</span>
+<span class="lineNum">     112 </span><span class="lineCov">      86001 :         freelist = (GSList *) g_hash_table_lookup (valloc_freelists, GUINT_TO_POINTER (size));</span>
+<span class="lineNum">     113 </span><span class="lineCov">      86001 :         if (freelist) {</span>
+<span class="lineNum">     114 </span><span class="lineCov">       1435 :                 ptr = freelist-&gt;data;</span>
+<span class="lineNum">     115 </span><span class="lineCov">       1435 :                 memset (ptr, 0, size);</span>
+<span class="lineNum">     116 </span><span class="lineCov">       1435 :                 freelist = g_slist_delete_link (freelist, freelist);</span>
+<span class="lineNum">     117 </span><span class="lineCov">       1435 :                 g_hash_table_insert (valloc_freelists, GUINT_TO_POINTER (size), freelist);</span>
+<span class="lineNum">     118 </span><span class="lineCov">       1435 :         } else {</span>
+<span class="lineNum">     119 </span><span class="lineCov">      84566 :                 ptr = mono_valloc (preferred, size, MONO_PROT_RWX | ARCH_MAP_FLAGS, MONO_MEM_ACCOUNT_CODE);</span>
+<span class="lineNum">     120 </span><span class="lineCov">      84566 :                 if (!ptr &amp;&amp; preferred)</span>
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :                         ptr = mono_valloc (NULL, size, MONO_PROT_RWX | ARCH_MAP_FLAGS, MONO_MEM_ACCOUNT_CODE);</span>
+<span class="lineNum">     122 </span>            :         }
+<span class="lineNum">     123 </span><span class="lineCov">      86001 :         mono_os_mutex_unlock (&amp;valloc_mutex);</span>
+<span class="lineNum">     124 </span><span class="lineCov">      86001 :         return ptr;</span>
+<span class="lineNum">     125 </span>            : }
+<a name="126"><span class="lineNum">     126 </span>            : </a>
+<span class="lineNum">     127 </span>            : static void
+<span class="lineNum">     128 </span>            : codechunk_vfree (void *ptr, guint32 size)
+<span class="lineNum">     129 </span>            : {
+<span class="lineNum">     130 </span>            :         GSList *freelist;
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineCov">      85441 :         mono_os_mutex_lock (&amp;valloc_mutex);</span>
+<span class="lineNum">     133 </span><span class="lineCov">      85441 :         freelist = (GSList *) g_hash_table_lookup (valloc_freelists, GUINT_TO_POINTER (size));</span>
+<span class="lineNum">     134 </span><span class="lineCov">     166298 :         if (!freelist || g_slist_length (freelist) &lt; VALLOC_FREELIST_SIZE) {</span>
+<span class="lineNum">     135 </span><span class="lineCov">      27827 :                 freelist = g_slist_prepend (freelist, ptr);</span>
+<span class="lineNum">     136 </span><span class="lineCov">      27827 :                 g_hash_table_insert (valloc_freelists, GUINT_TO_POINTER (size), freelist);</span>
+<span class="lineNum">     137 </span><span class="lineCov">      27827 :         } else {</span>
+<span class="lineNum">     138 </span><span class="lineCov">      57614 :                 mono_vfree (ptr, size, MONO_MEM_ACCOUNT_CODE);</span>
+<span class="lineNum">     139 </span>            :         }
+<span class="lineNum">     140 </span><span class="lineCov">      85441 :         mono_os_mutex_unlock (&amp;valloc_mutex);</span>
+<span class="lineNum">     141 </span><span class="lineCov">      85441 : }               </span>
+<a name="142"><span class="lineNum">     142 </span>            : </a>
+<span class="lineNum">     143 </span>            : static void
+<span class="lineNum">     144 </span>            : codechunk_cleanup (void)
+<span class="lineNum">     145 </span>            : {
+<span class="lineNum">     146 </span>            :         GHashTableIter iter;
+<span class="lineNum">     147 </span>            :         gpointer key, value;
+<span class="lineNum">     148 </span>            : 
+<span class="lineNum">     149 </span><span class="lineCov">       3272 :         if (!valloc_freelists)</span>
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     151 </span><span class="lineCov">       3272 :         g_hash_table_iter_init (&amp;iter, valloc_freelists);</span>
+<span class="lineNum">     152 </span><span class="lineCov">      15504 :         while (g_hash_table_iter_next (&amp;iter, &amp;key, &amp;value)) {</span>
+<span class="lineNum">     153 </span><span class="lineCov">       4480 :                 GSList *freelist = (GSList *) value;</span>
+<span class="lineNum">     154 </span>            :                 GSList *l;
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineCov">      61744 :                 for (l = freelist; l; l = l-&gt;next) {</span>
+<span class="lineNum">     157 </span><span class="lineCov">      26392 :                         mono_vfree (l-&gt;data, GPOINTER_TO_UINT (key), MONO_MEM_ACCOUNT_CODE);</span>
+<span class="lineNum">     158 </span><span class="lineCov">      26392 :                 }</span>
+<span class="lineNum">     159 </span><span class="lineCov">       4480 :                 g_slist_free (freelist);</span>
+<span class="lineNum">     160 </span>            :         }
+<span class="lineNum">     161 </span><span class="lineCov">       3272 :         g_hash_table_destroy (valloc_freelists);</span>
+<span class="lineNum">     162 </span><span class="lineCov">       6544 : }</span>
+<a name="163"><span class="lineNum">     163 </span>            : </a>
+<span class="lineNum">     164 </span>            : void
+<span class="lineNum">     165 </span>            : mono_code_manager_init (void)
+<span class="lineNum">     166 </span>            : {
+<span class="lineNum">     167 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;Dynamic code allocs&quot;, MONO_COUNTER_JIT | MONO_COUNTER_ULONG, &amp;dynamic_code_alloc_count);</span>
+<span class="lineNum">     168 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;Dynamic code bytes&quot;, MONO_COUNTER_JIT | MONO_COUNTER_ULONG, &amp;dynamic_code_bytes_count);</span>
+<span class="lineNum">     169 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;Dynamic code frees&quot;, MONO_COUNTER_JIT | MONO_COUNTER_ULONG, &amp;dynamic_code_frees_count);</span>
+<span class="lineNum">     170 </span><span class="lineCov">       3285 : }</span>
+<a name="171"><span class="lineNum">     171 </span>            : </a>
+<span class="lineNum">     172 </span>            : void
+<span class="lineNum">     173 </span>            : mono_code_manager_cleanup (void)
+<span class="lineNum">     174 </span>            : {
+<span class="lineNum">     175 </span><span class="lineCov">       3272 :         codechunk_cleanup ();</span>
+<span class="lineNum">     176 </span><span class="lineCov">       3272 : }</span>
+<a name="177"><span class="lineNum">     177 </span>            : </a>
+<span class="lineNum">     178 </span>            : void
+<span class="lineNum">     179 </span>            : mono_code_manager_install_callbacks (MonoCodeManagerCallbacks* callbacks)
+<span class="lineNum">     180 </span>            : {
+<span class="lineNum">     181 </span><span class="lineCov">       3285 :         code_manager_callbacks = *callbacks;</span>
+<span class="lineNum">     182 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     183 </span>            : 
+<span class="lineNum">     184 </span>            : /**
+<span class="lineNum">     185 </span>            :  * mono_code_manager_new:
+<span class="lineNum">     186 </span>            :  *
+<span class="lineNum">     187 </span>            :  * Creates a new code manager. A code manager can be used to allocate memory
+<span class="lineNum">     188 </span>            :  * suitable for storing native code that can be later executed.
+<span class="lineNum">     189 </span>            :  * A code manager allocates memory from the operating system in large chunks
+<span class="lineNum">     190 </span>            :  * (typically 64KB in size) so that many methods can be allocated inside them
+<span class="lineNum">     191 </span>            :  * close together, improving cache locality.
+<span class="lineNum">     192 </span>            :  *
+<span class="lineNum">     193 </span>            :  * Returns: the new code manager
+<a name="194"><span class="lineNum">     194 </span>            :  */</a>
+<span class="lineNum">     195 </span>            : MonoCodeManager* 
+<span class="lineNum">     196 </span>            : mono_code_manager_new (void)
+<span class="lineNum">     197 </span>            : {
+<span class="lineNum">     198 </span><span class="lineCov">      16851 :         return (MonoCodeManager *) g_malloc0 (sizeof (MonoCodeManager));</span>
+<span class="lineNum">     199 </span>            : }
+<span class="lineNum">     200 </span>            : 
+<span class="lineNum">     201 </span>            : /**
+<span class="lineNum">     202 </span>            :  * mono_code_manager_new_dynamic:
+<span class="lineNum">     203 </span>            :  *
+<span class="lineNum">     204 </span>            :  * Creates a new code manager suitable for holding native code that can be
+<span class="lineNum">     205 </span>            :  * used for single or small methods that need to be deallocated independently
+<span class="lineNum">     206 </span>            :  * of other native code.
+<span class="lineNum">     207 </span>            :  *
+<span class="lineNum">     208 </span>            :  * Returns: the new code manager
+<a name="209"><span class="lineNum">     209 </span>            :  */</a>
+<span class="lineNum">     210 </span>            : MonoCodeManager* 
+<span class="lineNum">     211 </span>            : mono_code_manager_new_dynamic (void)
+<span class="lineNum">     212 </span>            : {
+<span class="lineNum">     213 </span><span class="lineCov">      10028 :         MonoCodeManager *cman = mono_code_manager_new ();</span>
+<span class="lineNum">     214 </span><span class="lineCov">      10028 :         cman-&gt;dynamic = 1;</span>
+<span class="lineNum">     215 </span><span class="lineCov">      10028 :         return cman;</span>
+<span class="lineNum">     216 </span>            : }
+<span class="lineNum">     217 </span>            : 
+<a name="218"><span class="lineNum">     218 </span>            : </a>
+<span class="lineNum">     219 </span>            : static void
+<span class="lineNum">     220 </span>            : free_chunklist (CodeChunk *chunk)
+<span class="lineNum">     221 </span>            : {
+<span class="lineNum">     222 </span>            :         CodeChunk *dead;
+<span class="lineNum">     223 </span>            :         
+<span class="lineNum">     224 </span>            : #if defined(HAVE_VALGRIND_MEMCHECK_H) &amp;&amp; defined (VALGRIND_JIT_UNREGISTER_MAP)
+<span class="lineNum">     225 </span>            :         int valgrind_unregister = 0;
+<span class="lineNum">     226 </span>            :         if (RUNNING_ON_VALGRIND)
+<span class="lineNum">     227 </span>            :                 valgrind_unregister = 1;
+<span class="lineNum">     228 </span>            : #define valgrind_unregister(x) do { if (valgrind_unregister) { VALGRIND_JIT_UNREGISTER_MAP(NULL,x); } } while (0) 
+<span class="lineNum">     229 </span>            : #else
+<span class="lineNum">     230 </span>            : #define valgrind_unregister(x)
+<span class="lineNum">     231 </span>            : #endif
+<span class="lineNum">     232 </span>            : 
+<span class="lineNum">     233 </span><span class="lineCov">     258078 :         for (; chunk; ) {</span>
+<span class="lineNum">     234 </span><span class="lineCov">      95469 :                 dead = chunk;</span>
+<span class="lineNum">     235 </span><span class="lineCov">      95469 :                 mono_profiler_code_chunk_destroy ((gpointer) dead-&gt;data);</span>
+<span class="lineNum">     236 </span><span class="lineCov">      95469 :                 if (code_manager_callbacks.chunk_destroy)</span>
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :                         code_manager_callbacks.chunk_destroy ((gpointer)dead-&gt;data);</span>
+<span class="lineNum">     238 </span><span class="lineCov">      95469 :                 chunk = chunk-&gt;next;</span>
+<span class="lineNum">     239 </span><span class="lineCov">      95469 :                 if (dead-&gt;flags == CODE_FLAG_MMAP) {</span>
+<span class="lineNum">     240 </span><span class="lineCov">      85441 :                         codechunk_vfree (dead-&gt;data, dead-&gt;size);</span>
+<span class="lineNum">     241 </span>            :                         /* valgrind_unregister(dead-&gt;data); */
+<span class="lineNum">     242 </span><span class="lineCov">      95469 :                 } else if (dead-&gt;flags == CODE_FLAG_MALLOC) {</span>
+<span class="lineNum">     243 </span><span class="lineCov">      10028 :                         dlfree (dead-&gt;data);</span>
+<span class="lineNum">     244 </span><span class="lineCov">      10028 :                 }</span>
+<span class="lineNum">     245 </span><span class="lineCov">      95469 :                 code_memory_used -= dead-&gt;size;</span>
+<span class="lineNum">     246 </span><span class="lineCov">      95469 :                 g_free (dead);</span>
+<span class="lineNum">     247 </span>            :         }
+<span class="lineNum">     248 </span><span class="lineCov">      33570 : }</span>
+<span class="lineNum">     249 </span>            : 
+<span class="lineNum">     250 </span>            : /**
+<span class="lineNum">     251 </span>            :  * mono_code_manager_destroy:
+<span class="lineNum">     252 </span>            :  * @cman: a code manager
+<span class="lineNum">     253 </span>            :  *
+<span class="lineNum">     254 </span>            :  * Free all the memory associated with the code manager @cman.
+<a name="255"><span class="lineNum">     255 </span>            :  */</a>
+<span class="lineNum">     256 </span>            : void
+<span class="lineNum">     257 </span>            : mono_code_manager_destroy (MonoCodeManager *cman)
+<span class="lineNum">     258 </span>            : {
+<span class="lineNum">     259 </span><span class="lineCov">      16785 :         free_chunklist (cman-&gt;full);</span>
+<span class="lineNum">     260 </span><span class="lineCov">      16785 :         free_chunklist (cman-&gt;current);</span>
+<span class="lineNum">     261 </span><span class="lineCov">      16785 :         g_free (cman);</span>
+<span class="lineNum">     262 </span><span class="lineCov">      16785 : }</span>
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span>            : /**
+<span class="lineNum">     265 </span>            :  * mono_code_manager_invalidate:
+<span class="lineNum">     266 </span>            :  * @cman: a code manager
+<span class="lineNum">     267 </span>            :  *
+<span class="lineNum">     268 </span>            :  * Fill all the memory with an invalid native code value
+<span class="lineNum">     269 </span>            :  * so that any attempt to execute code allocated in the code
+<span class="lineNum">     270 </span>            :  * manager @cman will fail. This is used for debugging purposes.
+<a name="271"><span class="lineNum">     271 </span>            :  */</a>
+<span class="lineNum">     272 </span>            : void             
+<span class="lineNum">     273 </span>            : mono_code_manager_invalidate (MonoCodeManager *cman)
+<span class="lineNum">     274 </span>            : {
+<span class="lineNum">     275 </span>            :         CodeChunk *chunk;
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span>            : #if defined(__i386__) || defined(__x86_64__)
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :         int fill_value = 0xcc; /* x86 break */</span>
+<span class="lineNum">     279 </span>            : #else
+<span class="lineNum">     280 </span>            :         int fill_value = 0x2a;
+<span class="lineNum">     281 </span>            : #endif
+<span class="lineNum">     282 </span>            : 
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :         for (chunk = cman-&gt;current; chunk; chunk = chunk-&gt;next)</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                 memset (chunk-&gt;data, fill_value, chunk-&gt;size);</span>
+<span class="lineNum">     285 </span><span class="lineNoCov">          0 :         for (chunk = cman-&gt;full; chunk; chunk = chunk-&gt;next)</span>
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :                 memset (chunk-&gt;data, fill_value, chunk-&gt;size);</span>
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span>            : /**
+<span class="lineNum">     290 </span>            :  * mono_code_manager_set_read_only:
+<span class="lineNum">     291 </span>            :  * @cman: a code manager
+<span class="lineNum">     292 </span>            :  *
+<span class="lineNum">     293 </span>            :  * Make the code manager read only, so further allocation requests cause an assert.
+<a name="294"><span class="lineNum">     294 </span>            :  */</a>
+<span class="lineNum">     295 </span>            : void             
+<span class="lineNum">     296 </span>            : mono_code_manager_set_read_only (MonoCodeManager *cman)
+<span class="lineNum">     297 </span>            : {
+<span class="lineNum">     298 </span><span class="lineNoCov">          0 :         cman-&gt;read_only = TRUE;</span>
+<span class="lineNum">     299 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     300 </span>            : 
+<span class="lineNum">     301 </span>            : /**
+<span class="lineNum">     302 </span>            :  * mono_code_manager_foreach:
+<span class="lineNum">     303 </span>            :  * @cman: a code manager
+<span class="lineNum">     304 </span>            :  * @func: a callback function pointer
+<span class="lineNum">     305 </span>            :  * @user_data: additional data to pass to @func
+<span class="lineNum">     306 </span>            :  *
+<span class="lineNum">     307 </span>            :  * Invokes the callback @func for each different chunk of memory allocated
+<span class="lineNum">     308 </span>            :  * in the code manager @cman.
+<a name="309"><span class="lineNum">     309 </span>            :  */</a>
+<span class="lineNum">     310 </span>            : void
+<span class="lineNum">     311 </span>            : mono_code_manager_foreach (MonoCodeManager *cman, MonoCodeManagerFunc func, void *user_data)
+<span class="lineNum">     312 </span>            : {
+<span class="lineNum">     313 </span>            :         CodeChunk *chunk;
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :         for (chunk = cman-&gt;current; chunk; chunk = chunk-&gt;next) {</span>
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :                 if (func (chunk-&gt;data, chunk-&gt;size, chunk-&gt;bsize, user_data))</span>
+<span class="lineNum">     316 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :         for (chunk = cman-&gt;full; chunk; chunk = chunk-&gt;next) {</span>
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :                 if (func (chunk-&gt;data, chunk-&gt;size, chunk-&gt;bsize, user_data))</span>
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     322 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     323 </span>            : 
+<span class="lineNum">     324 </span>            : /* BIND_ROOM is the divisor for the chunck of code size dedicated
+<span class="lineNum">     325 </span>            :  * to binding branches (branches not reachable with the immediate displacement)
+<span class="lineNum">     326 </span>            :  * bind_size = size/BIND_ROOM;
+<span class="lineNum">     327 </span>            :  * we should reduce it and make MIN_PAGES bigger for such systems
+<span class="lineNum">     328 </span>            :  */
+<span class="lineNum">     329 </span>            : #if defined(__ppc__) || defined(__powerpc__)
+<span class="lineNum">     330 </span>            : #define BIND_ROOM 4
+<span class="lineNum">     331 </span>            : #endif
+<span class="lineNum">     332 </span>            : #if defined(TARGET_ARM64)
+<span class="lineNum">     333 </span>            : #define BIND_ROOM 4
+<span class="lineNum">     334 </span>            : #endif
+<a name="335"><span class="lineNum">     335 </span>            : </a>
+<span class="lineNum">     336 </span>            : static CodeChunk*
+<span class="lineNum">     337 </span>            : new_codechunk (CodeChunk *last, int dynamic, int size)
+<span class="lineNum">     338 </span>            : {
+<span class="lineNum">     339 </span><span class="lineCov">      96029 :         int minsize, flags = CODE_FLAG_MMAP;</span>
+<span class="lineNum">     340 </span><span class="lineCov">      96029 :         int chunk_size, bsize = 0;</span>
+<span class="lineNum">     341 </span>            :         int pagesize, valloc_granule;
+<span class="lineNum">     342 </span>            :         CodeChunk *chunk;
+<span class="lineNum">     343 </span>            :         void *ptr;
+<span class="lineNum">     344 </span>            : 
+<span class="lineNum">     345 </span>            : #ifdef FORCE_MALLOC
+<span class="lineNum">     346 </span>            :         flags = CODE_FLAG_MALLOC;
+<span class="lineNum">     347 </span>            : #endif
+<span class="lineNum">     348 </span>            : 
+<span class="lineNum">     349 </span><span class="lineCov">      96029 :         pagesize = mono_pagesize ();</span>
+<span class="lineNum">     350 </span><span class="lineCov">      96029 :         valloc_granule = mono_valloc_granule ();</span>
+<span class="lineNum">     351 </span>            : 
+<span class="lineNum">     352 </span><span class="lineCov">      96029 :         if (dynamic) {</span>
+<span class="lineNum">     353 </span><span class="lineCov">      10028 :                 chunk_size = size;</span>
+<span class="lineNum">     354 </span><span class="lineCov">      10028 :                 flags = CODE_FLAG_MALLOC;</span>
+<span class="lineNum">     355 </span><span class="lineCov">      10028 :         } else {</span>
+<span class="lineNum">     356 </span><span class="lineCov">     258003 :                 minsize = MAX (pagesize * MIN_PAGES, valloc_granule);</span>
+<span class="lineNum">     357 </span><span class="lineCov">      86001 :                 if (size &lt; minsize)</span>
+<span class="lineNum">     358 </span><span class="lineCov">      84779 :                         chunk_size = minsize;</span>
+<span class="lineNum">     359 </span>            :                 else {
+<span class="lineNum">     360 </span>            :                         /* Allocate MIN_ALIGN-1 more than we need so we can still */
+<span class="lineNum">     361 </span>            :                         /* guarantee MIN_ALIGN alignment for individual allocs    */
+<span class="lineNum">     362 </span>            :                         /* from mono_code_manager_reserve_align.                  */
+<span class="lineNum">     363 </span><span class="lineCov">       1222 :                         size += MIN_ALIGN - 1;</span>
+<span class="lineNum">     364 </span><span class="lineCov">       1222 :                         size &amp;= ~(MIN_ALIGN - 1);</span>
+<span class="lineNum">     365 </span><span class="lineCov">       1222 :                         chunk_size = size;</span>
+<span class="lineNum">     366 </span><span class="lineCov">       1222 :                         chunk_size += valloc_granule - 1;</span>
+<span class="lineNum">     367 </span><span class="lineCov">       1222 :                         chunk_size &amp;= ~ (valloc_granule - 1);</span>
+<span class="lineNum">     368 </span>            :                 }
+<span class="lineNum">     369 </span>            :         }
+<span class="lineNum">     370 </span>            : #ifdef BIND_ROOM
+<span class="lineNum">     371 </span>            :         if (dynamic)
+<span class="lineNum">     372 </span>            :                 /* Reserve more space since there are no other chunks we might use if this one gets full */
+<span class="lineNum">     373 </span>            :                 bsize = (chunk_size * 2) / BIND_ROOM;
+<span class="lineNum">     374 </span>            :         else
+<span class="lineNum">     375 </span>            :                 bsize = chunk_size / BIND_ROOM;
+<span class="lineNum">     376 </span>            :         if (bsize &lt; MIN_BSIZE)
+<span class="lineNum">     377 </span>            :                 bsize = MIN_BSIZE;
+<span class="lineNum">     378 </span>            :         bsize += MIN_ALIGN -1;
+<span class="lineNum">     379 </span>            :         bsize &amp;= ~ (MIN_ALIGN - 1);
+<span class="lineNum">     380 </span>            :         if (chunk_size - size &lt; bsize) {
+<span class="lineNum">     381 </span>            :                 chunk_size = size + bsize;
+<span class="lineNum">     382 </span>            :                 if (!dynamic) {
+<span class="lineNum">     383 </span>            :                         chunk_size += valloc_granule - 1;
+<span class="lineNum">     384 </span>            :                         chunk_size &amp;= ~ (valloc_granule - 1);
+<span class="lineNum">     385 </span>            :                 }
+<span class="lineNum">     386 </span>            :         }
+<span class="lineNum">     387 </span>            : #endif
+<span class="lineNum">     388 </span>            : 
+<span class="lineNum">     389 </span><span class="lineCov">      96029 :         if (flags == CODE_FLAG_MALLOC) {</span>
+<span class="lineNum">     390 </span><span class="lineCov">      10028 :                 ptr = dlmemalign (MIN_ALIGN, chunk_size + MIN_ALIGN - 1);</span>
+<span class="lineNum">     391 </span><span class="lineCov">      10028 :                 if (!ptr)</span>
+<span class="lineNum">     392 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     393 </span><span class="lineCov">      10028 :         } else {</span>
+<span class="lineNum">     394 </span>            :                 /* Try to allocate code chunks next to each other to help the VM */
+<span class="lineNum">     395 </span><span class="lineCov">      86001 :                 ptr = NULL;</span>
+<span class="lineNum">     396 </span><span class="lineCov">      86001 :                 if (last)</span>
+<span class="lineNum">     397 </span><span class="lineCov">      79178 :                         ptr = codechunk_valloc ((guint8*)last-&gt;data + last-&gt;size, chunk_size);</span>
+<span class="lineNum">     398 </span><span class="lineCov">      86000 :                 if (!ptr)</span>
+<span class="lineNum">     399 </span><span class="lineCov">       6822 :                         ptr = codechunk_valloc (NULL, chunk_size);</span>
+<span class="lineNum">     400 </span><span class="lineCov">      86001 :                 if (!ptr)</span>
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     402 </span>            :         }
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineCov">      96029 :         if (flags == CODE_FLAG_MALLOC) {</span>
+<span class="lineNum">     405 </span>            : #ifdef BIND_ROOM
+<span class="lineNum">     406 </span>            :                 /* Make sure the thunks area is zeroed */
+<span class="lineNum">     407 </span>            :                 memset (ptr, 0, bsize);
+<span class="lineNum">     408 </span>            : #endif
+<span class="lineNum">     409 </span><span class="lineCov">      10028 :         }</span>
+<span class="lineNum">     410 </span>            : 
+<span class="lineNum">     411 </span><span class="lineCov">      96029 :         chunk = (CodeChunk *) g_malloc (sizeof (CodeChunk));</span>
+<span class="lineNum">     412 </span><span class="lineCov">      96029 :         if (!chunk) {</span>
+<span class="lineNum">     413 </span><span class="lineNoCov">          0 :                 if (flags == CODE_FLAG_MALLOC)</span>
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :                         dlfree (ptr);</span>
+<span class="lineNum">     415 </span>            :                 else
+<span class="lineNum">     416 </span><span class="lineNoCov">          0 :                         mono_vfree (ptr, chunk_size, MONO_MEM_ACCOUNT_CODE);</span>
+<span class="lineNum">     417 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     418 </span>            :         }
+<span class="lineNum">     419 </span><span class="lineCov">      96029 :         chunk-&gt;next = NULL;</span>
+<span class="lineNum">     420 </span><span class="lineCov">      96029 :         chunk-&gt;size = chunk_size;</span>
+<span class="lineNum">     421 </span><span class="lineCov">      96029 :         chunk-&gt;data = (char *) ptr;</span>
+<span class="lineNum">     422 </span><span class="lineCov">      96029 :         chunk-&gt;flags = flags;</span>
+<span class="lineNum">     423 </span><span class="lineCov">      96029 :         chunk-&gt;pos = bsize;</span>
+<span class="lineNum">     424 </span><span class="lineCov">      96029 :         chunk-&gt;bsize = bsize;</span>
+<span class="lineNum">     425 </span><span class="lineCov">      96029 :         if (code_manager_callbacks.chunk_new)</span>
+<span class="lineNum">     426 </span><span class="lineNoCov">          0 :                 code_manager_callbacks.chunk_new ((gpointer)chunk-&gt;data, chunk-&gt;size);</span>
+<span class="lineNum">     427 </span><span class="lineCov">      96029 :         mono_profiler_code_chunk_new((gpointer) chunk-&gt;data, chunk-&gt;size);</span>
+<span class="lineNum">     428 </span>            : 
+<span class="lineNum">     429 </span><span class="lineCov">      96029 :         code_memory_used += chunk_size;</span>
+<span class="lineNum">     430 </span><span class="lineCov">      96029 :         mono_runtime_resource_check_limit (MONO_RESOURCE_JIT_CODE, code_memory_used);</span>
+<span class="lineNum">     431 </span>            :         /*printf (&quot;code chunk at: %p\n&quot;, ptr);*/
+<span class="lineNum">     432 </span><span class="lineCov">      96029 :         return chunk;</span>
+<span class="lineNum">     433 </span><span class="lineCov">      96029 : }</span>
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span>            : /**
+<span class="lineNum">     436 </span>            :  * mono_code_manager_reserve:
+<span class="lineNum">     437 </span>            :  * @cman: a code manager
+<span class="lineNum">     438 </span>            :  * @size: size of memory to allocate
+<span class="lineNum">     439 </span>            :  * @alignment: power of two alignment value
+<span class="lineNum">     440 </span>            :  *
+<span class="lineNum">     441 </span>            :  * Allocates at least @size bytes of memory inside the code manager @cman.
+<span class="lineNum">     442 </span>            :  *
+<span class="lineNum">     443 </span>            :  * Returns: the pointer to the allocated memory or #NULL on failure
+<a name="444"><span class="lineNum">     444 </span>            :  */</a>
+<span class="lineNum">     445 </span>            : void*
+<span class="lineNum">     446 </span>            : mono_code_manager_reserve_align (MonoCodeManager *cman, int size, int alignment)
+<span class="lineNum">     447 </span>            : {
+<span class="lineNum">     448 </span>            :         CodeChunk *chunk, *prev;
+<span class="lineNum">     449 </span>            :         void *ptr;
+<span class="lineNum">     450 </span><span class="lineCov">   33098494 :         guint32 align_mask = alignment - 1;</span>
+<span class="lineNum">     451 </span>            : 
+<span class="lineNum">     452 </span><span class="lineCov">   99295573 :         g_assert (!cman-&gt;read_only);</span>
+<span class="lineNum">     453 </span>            : 
+<span class="lineNum">     454 </span>            :         /* eventually allow bigger alignments, but we need to fix the dynamic alloc code to
+<span class="lineNum">     455 </span>            :          * handle this before
+<span class="lineNum">     456 </span>            :          */
+<span class="lineNum">     457 </span><span class="lineCov">   99295634 :         g_assert (alignment &lt;= MIN_ALIGN);</span>
+<span class="lineNum">     458 </span>            : 
+<span class="lineNum">     459 </span><span class="lineCov">   33098537 :         if (cman-&gt;dynamic) {</span>
+<span class="lineNum">     460 </span><span class="lineCov">      10028 :                 ++dynamic_code_alloc_count;</span>
+<span class="lineNum">     461 </span><span class="lineCov">      10028 :                 dynamic_code_bytes_count += size;</span>
+<span class="lineNum">     462 </span><span class="lineCov">      10028 :         }</span>
+<span class="lineNum">     463 </span>            : 
+<span class="lineNum">     464 </span><span class="lineCov">   33098546 :         if (!cman-&gt;current) {</span>
+<span class="lineNum">     465 </span><span class="lineCov">      16851 :                 cman-&gt;current = new_codechunk (cman-&gt;last, cman-&gt;dynamic, size);</span>
+<span class="lineNum">     466 </span><span class="lineCov">      16851 :                 if (!cman-&gt;current)</span>
+<span class="lineNum">     467 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     468 </span><span class="lineCov">      16851 :                 cman-&gt;last = cman-&gt;current;</span>
+<span class="lineNum">     469 </span><span class="lineCov">      16851 :         }</span>
+<span class="lineNum">     470 </span>            : 
+<span class="lineNum">     471 </span><span class="lineCov">   72406610 :         for (chunk = cman-&gt;current; chunk; chunk = chunk-&gt;next) {</span>
+<span class="lineNum">     472 </span><span class="lineCov">   36124145 :                 if (ALIGN_INT (chunk-&gt;pos, alignment) + size &lt;= chunk-&gt;size) {</span>
+<span class="lineNum">     473 </span><span class="lineCov">   33019412 :                         chunk-&gt;pos = ALIGN_INT (chunk-&gt;pos, alignment);</span>
+<span class="lineNum">     474 </span>            :                         /* Align the chunk-&gt;data we add to chunk-&gt;pos */
+<span class="lineNum">     475 </span>            :                         /* or we can't guarantee proper alignment     */
+<span class="lineNum">     476 </span><span class="lineCov">   33019412 :                         ptr = (void*)((((uintptr_t)chunk-&gt;data + align_mask) &amp; ~(uintptr_t)align_mask) + chunk-&gt;pos);</span>
+<span class="lineNum">     477 </span><span class="lineCov">   33019412 :                         chunk-&gt;pos = ((char*)ptr - chunk-&gt;data) + size;</span>
+<span class="lineNum">     478 </span><span class="lineCov">   33019412 :                         return ptr;</span>
+<span class="lineNum">     479 </span>            :                 }
+<span class="lineNum">     480 </span><span class="lineCov">    3104753 :         }</span>
+<span class="lineNum">     481 </span>            :         /* 
+<span class="lineNum">     482 </span>            :          * no room found, move one filled chunk to cman-&gt;full 
+<span class="lineNum">     483 </span>            :          * to keep cman-&gt;current from growing too much
+<span class="lineNum">     484 </span>            :          */
+<span class="lineNum">     485 </span><span class="lineCov">      79178 :         prev = NULL;</span>
+<span class="lineNum">     486 </span><span class="lineCov">     883396 :         for (chunk = cman-&gt;current; chunk; prev = chunk, chunk = chunk-&gt;next) {</span>
+<span class="lineNum">     487 </span><span class="lineCov">     422691 :                 if (chunk-&gt;pos + MIN_ALIGN * 4 &lt;= chunk-&gt;size)</span>
+<span class="lineNum">     488 </span><span class="lineCov">     362520 :                         continue;</span>
+<span class="lineNum">     489 </span><span class="lineCov">      60171 :                 if (prev) {</span>
+<span class="lineNum">     490 </span><span class="lineCov">      29432 :                         prev-&gt;next = chunk-&gt;next;</span>
+<span class="lineNum">     491 </span><span class="lineCov">      29432 :                 } else {</span>
+<span class="lineNum">     492 </span><span class="lineCov">      30739 :                         cman-&gt;current = chunk-&gt;next;</span>
+<span class="lineNum">     493 </span>            :                 }
+<span class="lineNum">     494 </span><span class="lineCov">      60171 :                 chunk-&gt;next = cman-&gt;full;</span>
+<span class="lineNum">     495 </span><span class="lineCov">      60171 :                 cman-&gt;full = chunk;</span>
+<span class="lineNum">     496 </span><span class="lineCov">      60171 :                 break;</span>
+<span class="lineNum">     497 </span>            :         }
+<span class="lineNum">     498 </span><span class="lineCov">      79178 :         chunk = new_codechunk (cman-&gt;last, cman-&gt;dynamic, size);</span>
+<span class="lineNum">     499 </span><span class="lineCov">      79178 :         if (!chunk)</span>
+<span class="lineNum">     500 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     501 </span><span class="lineCov">      79178 :         chunk-&gt;next = cman-&gt;current;</span>
+<span class="lineNum">     502 </span><span class="lineCov">      79178 :         cman-&gt;current = chunk;</span>
+<span class="lineNum">     503 </span><span class="lineCov">      79178 :         cman-&gt;last = cman-&gt;current;</span>
+<span class="lineNum">     504 </span><span class="lineCov">      79178 :         chunk-&gt;pos = ALIGN_INT (chunk-&gt;pos, alignment);</span>
+<span class="lineNum">     505 </span>            :         /* Align the chunk-&gt;data we add to chunk-&gt;pos */
+<span class="lineNum">     506 </span>            :         /* or we can't guarantee proper alignment     */
+<span class="lineNum">     507 </span><span class="lineCov">      79178 :         ptr = (void*)((((uintptr_t)chunk-&gt;data + align_mask) &amp; ~(uintptr_t)align_mask) + chunk-&gt;pos);</span>
+<span class="lineNum">     508 </span><span class="lineCov">      79178 :         chunk-&gt;pos = ((char*)ptr - chunk-&gt;data) + size;</span>
+<span class="lineNum">     509 </span><span class="lineCov">      79178 :         return ptr;</span>
+<span class="lineNum">     510 </span><span class="lineCov">   33098580 : }</span>
+<span class="lineNum">     511 </span>            : 
+<span class="lineNum">     512 </span>            : /**
+<span class="lineNum">     513 </span>            :  * mono_code_manager_reserve:
+<span class="lineNum">     514 </span>            :  * @cman: a code manager
+<span class="lineNum">     515 </span>            :  * @size: size of memory to allocate
+<span class="lineNum">     516 </span>            :  *
+<span class="lineNum">     517 </span>            :  * Allocates at least @size bytes of memory inside the code manager @cman.
+<span class="lineNum">     518 </span>            :  *
+<span class="lineNum">     519 </span>            :  * Returns: the pointer to the allocated memory or #NULL on failure
+<a name="520"><span class="lineNum">     520 </span>            :  */</a>
+<span class="lineNum">     521 </span>            : void*
+<span class="lineNum">     522 </span>            : mono_code_manager_reserve (MonoCodeManager *cman, int size)
+<span class="lineNum">     523 </span>            : {
+<span class="lineNum">     524 </span><span class="lineCov">   17635444 :         return mono_code_manager_reserve_align (cman, size, MIN_ALIGN);</span>
+<span class="lineNum">     525 </span>            : }
+<span class="lineNum">     526 </span>            : 
+<span class="lineNum">     527 </span>            : /**
+<span class="lineNum">     528 </span>            :  * mono_code_manager_commit:
+<span class="lineNum">     529 </span>            :  * @cman: a code manager
+<span class="lineNum">     530 </span>            :  * @data: the pointer returned by mono_code_manager_reserve ()
+<span class="lineNum">     531 </span>            :  * @size: the size requested in the call to mono_code_manager_reserve ()
+<span class="lineNum">     532 </span>            :  * @newsize: the new size to reserve
+<span class="lineNum">     533 </span>            :  *
+<span class="lineNum">     534 </span>            :  * If we reserved too much room for a method and we didn't allocate
+<span class="lineNum">     535 </span>            :  * already from the code manager, we can get back the excess allocation
+<span class="lineNum">     536 </span>            :  * for later use in the code manager.
+<a name="537"><span class="lineNum">     537 </span>            :  */</a>
+<span class="lineNum">     538 </span>            : void
+<span class="lineNum">     539 </span>            : mono_code_manager_commit (MonoCodeManager *cman, void *data, int size, int newsize)
+<span class="lineNum">     540 </span>            : {
+<span class="lineNum">     541 </span><span class="lineCov">   42854169 :         g_assert (newsize &lt;= size);</span>
+<span class="lineNum">     542 </span>            : 
+<span class="lineNum">     543 </span><span class="lineCov">   28569452 :         if (cman-&gt;current &amp;&amp; (size != newsize) &amp;&amp; (data == cman-&gt;current-&gt;data + cman-&gt;current-&gt;pos - size)) {</span>
+<span class="lineNum">     544 </span><span class="lineNoCov">          0 :                 cman-&gt;current-&gt;pos -= size - newsize;</span>
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     546 </span><span class="lineCov">   14284698 : }</span>
+<span class="lineNum">     547 </span>            : 
+<span class="lineNum">     548 </span>            : /**
+<span class="lineNum">     549 </span>            :  * mono_code_manager_size:
+<span class="lineNum">     550 </span>            :  * @cman: a code manager
+<span class="lineNum">     551 </span>            :  * @used_size: pointer to an integer for the result
+<span class="lineNum">     552 </span>            :  *
+<span class="lineNum">     553 </span>            :  * This function can be used to get statistics about a code manager:
+<span class="lineNum">     554 </span>            :  * the integer pointed to by @used_size will contain how much
+<span class="lineNum">     555 </span>            :  * memory is actually used inside the code managed @cman.
+<span class="lineNum">     556 </span>            :  *
+<span class="lineNum">     557 </span>            :  * Returns: the amount of memory allocated in @cman
+<a name="558"><span class="lineNum">     558 </span>            :  */</a>
+<span class="lineNum">     559 </span>            : int
+<span class="lineNum">     560 </span>            : mono_code_manager_size (MonoCodeManager *cman, int *used_size)
+<span class="lineNum">     561 </span>            : {
+<span class="lineNum">     562 </span>            :         CodeChunk *chunk;
+<span class="lineNum">     563 </span><span class="lineCov">       3485 :         guint32 size = 0;</span>
+<span class="lineNum">     564 </span><span class="lineCov">       3485 :         guint32 used = 0;</span>
+<span class="lineNum">     565 </span><span class="lineCov">      51540 :         for (chunk = cman-&gt;current; chunk; chunk = chunk-&gt;next) {</span>
+<span class="lineNum">     566 </span><span class="lineCov">      22285 :                 size += chunk-&gt;size;</span>
+<span class="lineNum">     567 </span><span class="lineCov">      22285 :                 used += chunk-&gt;pos;</span>
+<span class="lineNum">     568 </span><span class="lineCov">      22285 :         }</span>
+<span class="lineNum">     569 </span><span class="lineCov">     126738 :         for (chunk = cman-&gt;full; chunk; chunk = chunk-&gt;next) {</span>
+<span class="lineNum">     570 </span><span class="lineCov">      59884 :                 size += chunk-&gt;size;</span>
+<span class="lineNum">     571 </span><span class="lineCov">      59884 :                 used += chunk-&gt;pos;</span>
+<span class="lineNum">     572 </span><span class="lineCov">      59884 :         }</span>
+<span class="lineNum">     573 </span><span class="lineCov">       3485 :         if (used_size)</span>
+<span class="lineNum">     574 </span><span class="lineCov">       3485 :                 *used_size = used;</span>
+<span class="lineNum">     575 </span><span class="lineCov">       3485 :         return size;</span>
+<span class="lineNum">     576 </span>            : }
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

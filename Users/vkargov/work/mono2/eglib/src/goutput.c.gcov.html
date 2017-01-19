@@ -1,0 +1,353 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - /Users/vkargov/work/mono2/eglib/src/goutput.c</title>
+  <link rel="stylesheet" type="text/css" href="../../../../../../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../../../../../../index.html">top level</a> - <a href="index.html">Users/vkargov/work/mono2/eglib/src</a> - goutput.c<span style="font-size: 80%;"> (source / <a href="goutput.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">45</td>
+            <td class="headerCovTableEntry">64</td>
+            <td class="headerCovTableEntryLo">70.3 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntry">13</td>
+            <td class="headerCovTableEntryMed">76.9 %</td>
+          </tr>
+          <tr><td><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * Output and debugging functions
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Miguel de Icaza (miguel@novell.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2006 Novell, Inc.
+<span class="lineNum">       8 </span>            :  * Copyright 2011 Xamarin Inc.
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * Permission is hereby granted, free of charge, to any person obtaining
+<span class="lineNum">      11 </span>            :  * a copy of this software and associated documentation files (the
+<span class="lineNum">      12 </span>            :  * &quot;Software&quot;), to deal in the Software without restriction, including
+<span class="lineNum">      13 </span>            :  * without limitation the rights to use, copy, modify, merge, publish,
+<span class="lineNum">      14 </span>            :  * distribute, sublicense, and/or sell copies of the Software, and to
+<span class="lineNum">      15 </span>            :  * permit persons to whom the Software is furnished to do so, subject to
+<span class="lineNum">      16 </span>            :  * the following conditions:
+<span class="lineNum">      17 </span>            :  *
+<span class="lineNum">      18 </span>            :  * The above copyright notice and this permission notice shall be
+<span class="lineNum">      19 </span>            :  * included in all copies or substantial portions of the Software.
+<span class="lineNum">      20 </span>            :  *
+<span class="lineNum">      21 </span>            :  * THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND,
+<span class="lineNum">      22 </span>            :  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+<span class="lineNum">      23 </span>            :  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+<span class="lineNum">      24 </span>            :  * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+<span class="lineNum">      25 </span>            :  * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+<span class="lineNum">      26 </span>            :  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+<span class="lineNum">      27 </span>            :  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+<span class="lineNum">      28 </span>            :  */
+<span class="lineNum">      29 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      31 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      32 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : /* The current fatal levels, error is always fatal */
+<span class="lineNum">      35 </span>            : static GLogLevelFlags fatal = G_LOG_LEVEL_ERROR;
+<span class="lineNum">      36 </span>            : static GLogFunc default_log_func;
+<span class="lineNum">      37 </span>            : static gpointer default_log_func_user_data;
+<span class="lineNum">      38 </span>            : static GPrintFunc stdout_handler, stderr_handler;
+<span class="lineNum">      39 </span>            : 
+<span class="lineNum">      40 </span>            : static void default_stdout_handler (const gchar *string);
+<span class="lineNum">      41 </span>            : static void default_stderr_handler (const gchar *string);
+<a name="42"><span class="lineNum">      42 </span>            : </a>
+<span class="lineNum">      43 </span>            : void
+<span class="lineNum">      44 </span>            : g_print (const gchar *format, ...)
+<span class="lineNum">      45 </span>            : {
+<span class="lineNum">      46 </span>            :         char *msg;
+<span class="lineNum">      47 </span>            :         va_list args;
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span><span class="lineCov">   40035323 :         va_start (args, format);</span>
+<span class="lineNum">      50 </span><span class="lineCov">   40035323 :         if (g_vasprintf (&amp;msg, format, args) &lt; 0) {</span>
+<span class="lineNum">      51 </span><span class="lineNoCov">          0 :                 va_end (args);</span>
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      53 </span>            :         }
+<span class="lineNum">      54 </span><span class="lineCov">   40035342 :         va_end (args);</span>
+<span class="lineNum">      55 </span>            : 
+<span class="lineNum">      56 </span><span class="lineCov">   40035342 :         if (!stdout_handler)</span>
+<span class="lineNum">      57 </span><span class="lineCov">         23 :                 stdout_handler = default_stdout_handler;</span>
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span><span class="lineCov">   40035358 :         stdout_handler (msg);</span>
+<span class="lineNum">      60 </span><span class="lineCov">   40035358 :         g_free (msg);</span>
+<span class="lineNum">      61 </span><span class="lineCov">   80070840 : }</span>
+<a name="62"><span class="lineNum">      62 </span>            : </a>
+<span class="lineNum">      63 </span>            : void
+<span class="lineNum">      64 </span>            : g_printerr (const gchar *format, ...)
+<span class="lineNum">      65 </span>            : {
+<span class="lineNum">      66 </span>            :         char *msg;
+<span class="lineNum">      67 </span>            :         va_list args;
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span><span class="lineCov">          6 :         va_start (args, format);</span>
+<span class="lineNum">      70 </span><span class="lineCov">          6 :         if (g_vasprintf (&amp;msg, format, args) &lt; 0) {</span>
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :                 va_end (args);</span>
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      73 </span>            :         }
+<span class="lineNum">      74 </span><span class="lineCov">          6 :         va_end (args);</span>
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span><span class="lineCov">          6 :         if (!stderr_handler)</span>
+<span class="lineNum">      77 </span><span class="lineCov">          6 :                 stderr_handler = default_stderr_handler;</span>
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span><span class="lineCov">          6 :         stderr_handler (msg);</span>
+<span class="lineNum">      80 </span><span class="lineCov">          6 :         g_free (msg);</span>
+<span class="lineNum">      81 </span><span class="lineCov">         12 : }</span>
+<a name="82"><span class="lineNum">      82 </span>            : </a>
+<span class="lineNum">      83 </span>            : GLogLevelFlags
+<span class="lineNum">      84 </span>            : g_log_set_always_fatal (GLogLevelFlags fatal_mask)
+<span class="lineNum">      85 </span>            : {
+<span class="lineNum">      86 </span><span class="lineCov">       3308 :         GLogLevelFlags old_fatal = fatal;</span>
+<span class="lineNum">      87 </span>            : 
+<span class="lineNum">      88 </span><span class="lineCov">       3308 :         fatal |= fatal_mask;</span>
+<span class="lineNum">      89 </span>            :         
+<span class="lineNum">      90 </span><span class="lineCov">       3308 :         return old_fatal;</span>
+<span class="lineNum">      91 </span>            : }
+<a name="92"><span class="lineNum">      92 </span>            : </a>
+<span class="lineNum">      93 </span>            : GLogLevelFlags
+<span class="lineNum">      94 </span>            : g_log_set_fatal_mask (const gchar *log_domain, GLogLevelFlags fatal_mask)
+<span class="lineNum">      95 </span>            : {
+<span class="lineNum">      96 </span>            :         /*
+<span class="lineNum">      97 </span>            :          * Mono does not use a G_LOG_DOMAIN currently, so we just assume things are fatal
+<span class="lineNum">      98 </span>            :          * if we decide to set G_LOG_DOMAIN (we probably should) we should implement
+<span class="lineNum">      99 </span>            :          * this.
+<span class="lineNum">     100 </span>            :          */
+<span class="lineNum">     101 </span><span class="lineCov">       3308 :         return fatal_mask;</span>
+<span class="lineNum">     102 </span>            : }
+<a name="103"><span class="lineNum">     103 </span>            : </a>
+<span class="lineNum">     104 </span>            : void
+<span class="lineNum">     105 </span>            : g_logv (const gchar *log_domain, GLogLevelFlags log_level, const gchar *format, va_list args)
+<span class="lineNum">     106 </span>            : {
+<span class="lineNum">     107 </span>            :         char *msg;
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span><span class="lineCov">         10 :         if (!default_log_func)</span>
+<span class="lineNum">     110 </span><span class="lineCov">          4 :                 default_log_func = g_log_default_handler;</span>
+<span class="lineNum">     111 </span>            :         
+<span class="lineNum">     112 </span><span class="lineCov">         10 :         if (g_vasprintf (&amp;msg, format, args) &lt; 0)</span>
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span><span class="lineCov">         10 :         default_log_func (log_domain, log_level, msg, default_log_func_user_data);</span>
+<span class="lineNum">     116 </span><span class="lineCov">         10 :         g_free (msg);</span>
+<span class="lineNum">     117 </span><span class="lineCov">         20 : }</span>
+<a name="118"><span class="lineNum">     118 </span>            : </a>
+<span class="lineNum">     119 </span>            : void
+<span class="lineNum">     120 </span>            : g_log (const gchar *log_domain, GLogLevelFlags log_level, const gchar *format, ...)
+<span class="lineNum">     121 </span>            : {
+<span class="lineNum">     122 </span>            :         va_list args;
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span><span class="lineCov">         10 :         va_start (args, format);</span>
+<span class="lineNum">     125 </span><span class="lineCov">         10 :         g_logv (log_domain, log_level, format, args);</span>
+<span class="lineNum">     126 </span><span class="lineCov">         10 :         va_end (args);</span>
+<span class="lineNum">     127 </span><span class="lineCov">         10 : }</span>
+<a name="128"><span class="lineNum">     128 </span>            : </a>
+<span class="lineNum">     129 </span>            : void
+<span class="lineNum">     130 </span>            : g_assertion_message (const gchar *format, ...)
+<span class="lineNum">     131 </span>            : {
+<span class="lineNum">     132 </span>            :         va_list args;
+<span class="lineNum">     133 </span>            : 
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :         va_start (args, format);</span>
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :         g_logv (G_LOG_DOMAIN, G_LOG_LEVEL_ERROR, format, args);</span>
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         va_end (args);</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :         exit (0);</span>
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     139 </span>            : 
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span>            : #if PLATFORM_ANDROID
+<span class="lineNum">     142 </span>            : #include &lt;android/log.h&gt;
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span>            : static android_LogPriority
+<span class="lineNum">     145 </span>            : to_android_priority (GLogLevelFlags log_level)
+<span class="lineNum">     146 </span>            : {
+<span class="lineNum">     147 </span>            :         switch (log_level &amp; G_LOG_LEVEL_MASK)
+<span class="lineNum">     148 </span>            :         {
+<span class="lineNum">     149 </span>            :                 case G_LOG_LEVEL_ERROR:     return ANDROID_LOG_FATAL;
+<span class="lineNum">     150 </span>            :                 case G_LOG_LEVEL_CRITICAL:  return ANDROID_LOG_ERROR;
+<span class="lineNum">     151 </span>            :                 case G_LOG_LEVEL_WARNING:   return ANDROID_LOG_WARN;
+<span class="lineNum">     152 </span>            :                 case G_LOG_LEVEL_MESSAGE:   return ANDROID_LOG_INFO;
+<span class="lineNum">     153 </span>            :                 case G_LOG_LEVEL_INFO:      return ANDROID_LOG_DEBUG;
+<span class="lineNum">     154 </span>            :                 case G_LOG_LEVEL_DEBUG:     return ANDROID_LOG_VERBOSE;
+<span class="lineNum">     155 </span>            :         }
+<span class="lineNum">     156 </span>            :         return ANDROID_LOG_UNKNOWN;
+<span class="lineNum">     157 </span>            : }
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span>            : void
+<span class="lineNum">     160 </span>            : g_log_default_handler (const gchar *log_domain, GLogLevelFlags log_level, const gchar *message, gpointer unused_data)
+<span class="lineNum">     161 </span>            : {
+<span class="lineNum">     162 </span>            :         __android_log_write (to_android_priority (log_level), log_domain, message);
+<span class="lineNum">     163 </span>            :         if (log_level &amp; fatal)
+<span class="lineNum">     164 </span>            :                 abort ();
+<span class="lineNum">     165 </span>            : }
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span>            : static void
+<span class="lineNum">     168 </span>            : default_stdout_handler (const gchar *message)
+<span class="lineNum">     169 </span>            : {
+<span class="lineNum">     170 </span>            :         /* TODO: provide a proper app name */
+<span class="lineNum">     171 </span>            :         __android_log_write (ANDROID_LOG_ERROR, &quot;mono&quot;, message);
+<span class="lineNum">     172 </span>            : }
+<span class="lineNum">     173 </span>            : 
+<span class="lineNum">     174 </span>            : static void
+<span class="lineNum">     175 </span>            : default_stderr_handler (const gchar *message)
+<span class="lineNum">     176 </span>            : {
+<span class="lineNum">     177 </span>            :         /* TODO: provide a proper app name */
+<span class="lineNum">     178 </span>            :         __android_log_write (ANDROID_LOG_ERROR, &quot;mono&quot;, message);
+<span class="lineNum">     179 </span>            : }
+<span class="lineNum">     180 </span>            : 
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span>            : #elif defined(HOST_IOS)
+<span class="lineNum">     183 </span>            : #include &lt;asl.h&gt;
+<span class="lineNum">     184 </span>            : 
+<span class="lineNum">     185 </span>            : static int
+<span class="lineNum">     186 </span>            : to_asl_priority (GLogLevelFlags log_level)
+<span class="lineNum">     187 </span>            : {
+<span class="lineNum">     188 </span>            :         switch (log_level &amp; G_LOG_LEVEL_MASK)
+<span class="lineNum">     189 </span>            :         {
+<span class="lineNum">     190 </span>            :                 case G_LOG_LEVEL_ERROR:     return ASL_LEVEL_CRIT;
+<span class="lineNum">     191 </span>            :                 case G_LOG_LEVEL_CRITICAL:  return ASL_LEVEL_ERR;
+<span class="lineNum">     192 </span>            :                 case G_LOG_LEVEL_WARNING:   return ASL_LEVEL_WARNING;
+<span class="lineNum">     193 </span>            :                 case G_LOG_LEVEL_MESSAGE:   return ASL_LEVEL_NOTICE;
+<span class="lineNum">     194 </span>            :                 case G_LOG_LEVEL_INFO:      return ASL_LEVEL_INFO;
+<span class="lineNum">     195 </span>            :                 case G_LOG_LEVEL_DEBUG:     return ASL_LEVEL_DEBUG;
+<span class="lineNum">     196 </span>            :         }
+<span class="lineNum">     197 </span>            :         return ASL_LEVEL_ERR;
+<span class="lineNum">     198 </span>            : }
+<span class="lineNum">     199 </span>            : 
+<span class="lineNum">     200 </span>            : void
+<span class="lineNum">     201 </span>            : g_log_default_handler (const gchar *log_domain, GLogLevelFlags log_level, const gchar *message, gpointer unused_data)
+<span class="lineNum">     202 </span>            : {
+<span class="lineNum">     203 </span>            :         asl_log (NULL, NULL, to_asl_priority (log_level), &quot;%s&quot;, message);
+<span class="lineNum">     204 </span>            :         if (log_level &amp; fatal)
+<span class="lineNum">     205 </span>            :                 abort ();
+<span class="lineNum">     206 </span>            : }
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span>            : static void
+<span class="lineNum">     209 </span>            : default_stdout_handler (const gchar *message)
+<span class="lineNum">     210 </span>            : {
+<span class="lineNum">     211 </span>            :         asl_log (NULL, NULL, ASL_LEVEL_WARNING, &quot;%s&quot;, message);
+<span class="lineNum">     212 </span>            : }
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span>            : static void
+<span class="lineNum">     215 </span>            : default_stderr_handler (const gchar *message)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span>            :         asl_log (NULL, NULL, ASL_LEVEL_WARNING, &quot;%s&quot;, message);
+<span class="lineNum">     218 </span>            : }
+<span class="lineNum">     219 </span>            : 
+<span class="lineNum">     220 </span>            : #else
+<a name="221"><span class="lineNum">     221 </span>            : </a>
+<span class="lineNum">     222 </span>            : void
+<span class="lineNum">     223 </span>            : g_log_default_handler (const gchar *log_domain, GLogLevelFlags log_level, const gchar *message, gpointer unused_data)
+<span class="lineNum">     224 </span>            : {
+<span class="lineNum">     225 </span><span class="lineCov">          4 :         FILE *target = stdout;</span>
+<span class="lineNum">     226 </span>            : 
+<span class="lineNum">     227 </span><span class="lineCov">          8 :         fprintf (target, &quot;%s%s%s\n&quot;,</span>
+<span class="lineNum">     228 </span><span class="lineCov">         12 :                 log_domain != NULL ? log_domain : &quot;&quot;,</span>
+<span class="lineNum">     229 </span><span class="lineCov">          4 :                 log_domain != NULL ? &quot;: &quot; : &quot;&quot;,</span>
+<span class="lineNum">     230 </span><span class="lineCov">          4 :                 message);</span>
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span><span class="lineCov">          4 :         if (log_level &amp; fatal) {</span>
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :                 fflush (stdout);</span>
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :                 fflush (stderr);</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                 abort ();</span>
+<span class="lineNum">     236 </span>            :         }
+<span class="lineNum">     237 </span><span class="lineCov">          4 : }</span>
+<a name="238"><span class="lineNum">     238 </span>            : </a>
+<span class="lineNum">     239 </span>            : static void
+<span class="lineNum">     240 </span>            : default_stdout_handler (const gchar *string)
+<span class="lineNum">     241 </span>            : {
+<span class="lineNum">     242 </span><span class="lineCov">   40035336 :         fprintf (stdout, &quot;%s&quot;, string);</span>
+<span class="lineNum">     243 </span><span class="lineCov">   40035336 : }</span>
+<a name="244"><span class="lineNum">     244 </span>            : </a>
+<span class="lineNum">     245 </span>            : static void
+<span class="lineNum">     246 </span>            : default_stderr_handler (const gchar *string)
+<span class="lineNum">     247 </span>            : {
+<span class="lineNum">     248 </span><span class="lineCov">          6 :         fprintf (stderr, &quot;%s&quot;, string);</span>
+<span class="lineNum">     249 </span><span class="lineCov">          6 : }</span>
+<span class="lineNum">     250 </span>            : 
+<span class="lineNum">     251 </span>            : #endif
+<a name="252"><span class="lineNum">     252 </span>            : </a>
+<span class="lineNum">     253 </span>            : GLogFunc
+<span class="lineNum">     254 </span>            : g_log_set_default_handler (GLogFunc log_func, gpointer user_data)
+<span class="lineNum">     255 </span>            : {
+<span class="lineNum">     256 </span><span class="lineCov">       3285 :         GLogFunc old = default_log_func;</span>
+<span class="lineNum">     257 </span><span class="lineCov">       3285 :         default_log_func = log_func;</span>
+<span class="lineNum">     258 </span><span class="lineCov">       3285 :         default_log_func_user_data = user_data;</span>
+<span class="lineNum">     259 </span><span class="lineCov">       3285 :         return old;</span>
+<span class="lineNum">     260 </span>            : }
+<a name="261"><span class="lineNum">     261 </span>            : </a>
+<span class="lineNum">     262 </span>            : GPrintFunc
+<span class="lineNum">     263 </span>            : g_set_print_handler (GPrintFunc func)
+<span class="lineNum">     264 </span>            : {
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :         GPrintFunc old = stdout_handler;</span>
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :         stdout_handler = func;</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :         return old;</span>
+<span class="lineNum">     268 </span>            : }
+<a name="269"><span class="lineNum">     269 </span>            : </a>
+<span class="lineNum">     270 </span>            : GPrintFunc
+<span class="lineNum">     271 </span>            : g_set_printerr_handler (GPrintFunc func)
+<span class="lineNum">     272 </span>            : {
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :         GPrintFunc old = stderr_handler;</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :         stderr_handler = func;</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :         return old;</span>
+<span class="lineNum">     276 </span>            : }
+<span class="lineNum">     277 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../../../../../../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

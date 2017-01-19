@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-dl-darwin.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-dl-darwin.c<span style="font-size: 80%;"> (source / <a href="mono-dl-darwin.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">7</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntryMed">87.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-dl.c: Interface to the dynamic linker
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *    Mono Team (http://www.mono-project.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2001-2004 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  * Copyright 2004-2009 Novell, Inc.
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #if defined (TARGET_MACH)
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &quot;mono/utils/mono-dl.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;mono/utils/mono-embed.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/utils/mono-path.h&quot;
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;ctype.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;dlfcn.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mach-o/dyld.h&gt;
+<a name="27"><span class="lineNum">      27 </span>            : </a>
+<span class="lineNum">      28 </span>            : const char *
+<span class="lineNum">      29 </span>            : mono_dl_get_so_prefix (void)
+<span class="lineNum">      30 </span>            : {
+<span class="lineNum">      31 </span><span class="lineCov">     277288 :         return &quot;lib&quot;;</span>
+<a name="32"><span class="lineNum">      32 </span>            : }</a>
+<span class="lineNum">      33 </span>            : const char **
+<span class="lineNum">      34 </span>            : mono_dl_get_so_suffixes (void)
+<span class="lineNum">      35 </span>            : {
+<span class="lineNum">      36 </span>            :         static const char *suffixes[] = {
+<span class="lineNum">      37 </span>            :                 &quot;.dylib&quot;,
+<span class="lineNum">      38 </span>            :                 &quot;.so&quot;,
+<span class="lineNum">      39 </span>            :                 &quot;.bundle&quot;,
+<span class="lineNum">      40 </span>            :                 &quot;&quot;,
+<span class="lineNum">      41 </span>            :         };
+<span class="lineNum">      42 </span><span class="lineCov">     183310 :         return suffixes;</span>
+<span class="lineNum">      43 </span>            : }
+<a name="44"><span class="lineNum">      44 </span>            : </a>
+<span class="lineNum">      45 </span>            : int
+<span class="lineNum">      46 </span>            : mono_dl_get_executable_path (char *buf, int buflen)
+<span class="lineNum">      47 </span>            : {
+<span class="lineNum">      48 </span><span class="lineCov">      13261 :         uint32_t bsize = buflen;</span>
+<span class="lineNum">      49 </span><span class="lineCov">      13261 :         if (_NSGetExecutablePath (buf, &amp;bsize) == 0)</span>
+<span class="lineNum">      50 </span><span class="lineCov">      13261 :                 return strlen (buf);</span>
+<span class="lineNum">      51 </span><span class="lineNoCov">          0 :         return -1;</span>
+<span class="lineNum">      52 </span><span class="lineCov">      13261 : }</span>
+<a name="53"><span class="lineNum">      53 </span>            : </a>
+<span class="lineNum">      54 </span>            : const char*
+<span class="lineNum">      55 </span>            : mono_dl_get_system_dir (void)
+<span class="lineNum">      56 </span>            : {
+<span class="lineNum">      57 </span>            : #ifdef TARGET_IOS
+<span class="lineNum">      58 </span>            :         /* IOS9 can't load system libraries using relative paths, i.e. 'libc' doesn't work, but '/usr/lib/libc' does. */
+<span class="lineNum">      59 </span>            :         return &quot;/usr/lib&quot;;
+<span class="lineNum">      60 </span>            : #else
+<span class="lineNum">      61 </span><span class="lineCov">       2090 :         return NULL;</span>
+<span class="lineNum">      62 </span>            : #endif
+<span class="lineNum">      63 </span>            : }
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

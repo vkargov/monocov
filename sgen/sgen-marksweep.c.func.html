@@ -1,0 +1,404 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-marksweep.c - functions</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-marksweep.c<span style="font-size: 80%;"> (<a href="sgen-marksweep.c.gcov.html">source</a> / functions)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">822</td>
+            <td class="headerCovTableEntry">1038</td>
+            <td class="headerCovTableEntryMed">79.2 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">68</td>
+            <td class="headerCovTableEntry">83</td>
+            <td class="headerCovTableEntryMed">81.9 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <center>
+  <table width="60%" cellpadding=1 cellspacing=1 border=0>
+    <tr><td><br></td></tr>
+    <tr>
+      <td width="80%" class="tableHead">Function Name <span class="tableHeadSort"><img src="../glass.png" width=10 height=14 alt="Sort by function name" title="Sort by function name" border=0></span></td>
+      <td width="20%" class="tableHead">Hit count <span class="tableHeadSort"><a href="sgen-marksweep.c.func-sort-c.html"><img src="../updown.png" width=10 height=14 alt="Sort by hit count" title="Sort by hit count" border=0></a></span></td>
+    </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#493">add_free_block</a></td>
+              <td class="coverFnHi">7647533</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#656">alloc_obj</a></td>
+              <td class="coverFnHi">140822075</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1377">bitcount</a></td>
+              <td class="coverFnHi">237942159</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#411">block_is_swept_or_marking</a></td>
+              <td class="coverFnHi">9590306</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1810">block_usage_comparer</a></td>
+              <td class="coverFnHi">4093</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1941">compare_pointers</a></td>
+              <td class="coverFnHi">3921790</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1190">drain_gray_stack</a></td>
+              <td class="coverFnHi">1259839</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1199">drain_gray_stack_concurrent</a></td>
+              <td class="coverFnHi">3378219</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1432">ensure_block_is_checked_for_sweeping</a></td>
+              <td class="coverFnHi">14866780</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#598">ensure_can_access_block_free_list</a></td>
+              <td class="coverFnHi">193291666</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#691">free_object</a></td>
+              <td class="coverFnHi">52469591</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#743">free_pinned_object</a></td>
+              <td class="coverFnHi">7334549</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2162">get_bytes_survived_last_sweep</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1023">get_cardtable_mod_union_for_block</a></td>
+              <td class="coverFnHi">9369482</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2151">get_num_major_sections</a></td>
+              <td class="coverFnHi">594457</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2250">initial_skip_card</a></td>
+              <td class="coverFnHi">1357142</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#752">major_alloc_degraded</a></td>
+              <td class="coverFnHi">39830</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#292">major_alloc_heap</a></td>
+              <td class="coverFnHi">3285</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#678">major_alloc_object</a></td>
+              <td class="coverFnHi">133401742</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#727">major_alloc_small_pinned_obj</a></td>
+              <td class="coverFnHi">7380503</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1069">major_block_is_evacuating</a></td>
+              <td class="coverFnHi">282108774</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#966">major_check_scan_starts</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1208">major_copy_or_mark_object_canonical</a></td>
+              <td class="coverFnHi">81040884</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1214">major_copy_or_mark_object_concurrent_canonical</a></td>
+              <td class="coverFnHi">973566</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1220">major_copy_or_mark_object_concurrent_finish_canonical</a></td>
+              <td class="coverFnHi">1655535</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2483">major_count_cards</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#918">major_describe_pointer</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#971">major_dump_heap</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1926">major_finish_major_collection</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1802">major_finish_nursery_collection</a></td>
+              <td class="coverFnHi">9946</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#821">major_finish_sweep_checking</a></td>
+              <td class="coverFnHi">373248</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#720">major_free_non_pinned_object</a></td>
+              <td class="coverFnHi">45135042</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1954">major_free_swept_blocks</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1107">major_get_and_reset_num_major_objects_marked</a></td>
+              <td class="coverFnHi">360373</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1042">major_get_cardtable_mod_union_for_reference</a></td>
+              <td class="coverFnHi">9040253</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2127">major_get_used_size</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2169">major_handle_gc_param</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1697">major_have_swept</a></td>
+              <td class="coverFnHi">398616</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2116">major_init_to_space</a></td>
+              <td class="coverFnHi">180019</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1177">major_is_evacuating</a></td>
+              <td class="coverFnHi">4638058</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#770">major_is_object_live</a></td>
+              <td class="coverFnHi">13303539</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#895">major_is_valid_object</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2212">major_iterate_block_ranges</a></td>
+              <td class="coverFnHi">199662</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2224">major_iterate_live_block_ranges</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#864">major_iterate_objects</a></td>
+              <td class="coverFnHi">10467</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2102">major_pin_objects</a></td>
+              <td class="coverFnHi">180019</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2198">major_print_gc_param_usage</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#793">major_ptr_is_in_non_pinned_space</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2121">major_report_pinned_memory_usage</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2419">major_scan_card_table</a></td>
+              <td class="coverFnHi">10424</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1871">major_start_major_collection</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1792">major_start_nursery_collection</a></td>
+              <td class="coverFnHi">9946</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1676">major_sweep</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1055">mark_mod_union_card</a></td>
+              <td class="coverFnHi">10006476</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1226">mark_pinned_objects_in_block</a></td>
+              <td class="coverFnHi">8141213</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#504">ms_alloc_block</a></td>
+              <td class="coverFnHi">649245</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1751">ms_calculate_block_obj_sizes</a></td>
+              <td class="coverFnHi">6570</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#272">ms_find_block_obj_size_index</a></td>
+              <td class="coverFnHi">2093673</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#381">ms_free_block</a></td>
+              <td class="coverFnHi">276374</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#313">ms_get_empty_block</a></td>
+              <td class="coverFnHi">649245</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1092">pin_major_object</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2541">post_param_init</a></td>
+              <td class="coverFnHi">3285</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#589">ptr_is_from_pinned_alloc</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#562">ptr_is_in_major_block</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2284">scan_card_table_for_block</a></td>
+              <td class="coverFnHi">1745494</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1300">set_block_state</a></td>
+              <td class="coverFnHi">30034189</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#809">set_sweep_state</a></td>
+              <td class="coverFnHi">718618</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1819">sgen_evacuation_freelist_blocks</a></td>
+              <td class="coverFnHi">408</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2693">sgen_marksweep_conc_init</a></td>
+              <td class="coverFnHi">3285</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2687">sgen_marksweep_init</a></td>
+              <td class="coverFnLo">0</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2548">sgen_marksweep_init_internal</a></td>
+              <td class="coverFnHi">3285</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1314">sweep_block</a></td>
+              <td class="coverFnHi">7466432</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1260">sweep_block_for_size</a></td>
+              <td class="coverFnHi">7460931</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1577">sweep_blocks_job_func</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1648">sweep_finish</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#402">sweep_in_progress</a></td>
+              <td class="coverFnHi">15713679</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1594">sweep_job_func</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1404">sweep_start</a></td>
+              <td class="coverFnHi">179770</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#1290">try_set_block_state</a></td>
+              <td class="coverFnHi">7460851</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#802">try_set_sweep_state</a></td>
+              <td class="coverFnHi">1078801</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#625">unlink_slot_from_free_list_uncontested</a></td>
+              <td class="coverFnHi">140822075</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#2515">update_cardtable_mod_union</a></td>
+              <td class="coverFnHi">833</td>
+            </tr>
+    <tr>
+              <td class="coverFn"><a href="sgen-marksweep.c.gcov.html#304">update_heap_boundaries_for_block</a></td>
+              <td class="coverFnHi">8103221</td>
+            </tr>
+  </table>
+  <br>
+  </center>
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

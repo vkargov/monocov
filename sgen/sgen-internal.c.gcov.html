@@ -1,0 +1,378 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-internal.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-internal.c<span style="font-size: 80%;"> (source / <a href="sgen-internal.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">65</td>
+            <td class="headerCovTableEntry">115</td>
+            <td class="headerCovTableEntryLo">56.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntry">11</td>
+            <td class="headerCovTableEntryLo">72.7 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-internal.c: Internal lock-free memory allocator.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &quot;mono/sgen/sgen-gc.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;mono/utils/lock-free-alloc.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/sgen/sgen-memory-governor.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;mono/sgen/sgen-client.h&quot;
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : /*
+<span class="lineNum">      21 </span>            :  * When allocating sgen memory we choose the allocator with the smallest slot size
+<span class="lineNum">      22 </span>            :  * that can fit our requested size. These slots are allocated within a block that
+<span class="lineNum">      23 </span>            :  * can contain at least 2 slots of the specific size.
+<span class="lineNum">      24 </span>            :  *
+<span class="lineNum">      25 </span>            :  * Currently, slots from 8 to 2044/2040 are allocated inside 4096 sized blocks,
+<span class="lineNum">      26 </span>            :  * 2728 to 4092/4088 inside 8192 sized blocks, and higher inside 16384 sized
+<span class="lineNum">      27 </span>            :  * blocks. We also need to make sure the slots are pointer size aligned so we
+<span class="lineNum">      28 </span>            :  * don't allocate unaligned memory.
+<span class="lineNum">      29 </span>            :  *
+<span class="lineNum">      30 </span>            :  * The computation of these sizes spawns from two basic rules :
+<span class="lineNum">      31 </span>            :  *      - if we use slots of size s1 that fit n times in a block, it is illogical
+<span class="lineNum">      32 </span>            :  * to use another slot of size s2 which also fits the same n times in a block.
+<span class="lineNum">      33 </span>            :  *      - if we use slots of size s1 that fit n times in a block, there is no
+<span class="lineNum">      34 </span>            :  * s2 &gt; s1 that can fit n times in the block. That would mean we are wasting memory
+<span class="lineNum">      35 </span>            :  * when allocating size S where s1 &lt; S &lt;= s2.
+<span class="lineNum">      36 </span>            :  */
+<span class="lineNum">      37 </span>            : #if SIZEOF_VOID_P == 4
+<span class="lineNum">      38 </span>            : static const int allocator_sizes [] = {
+<span class="lineNum">      39 </span>            :            8,   16,   24,   32,   40,   48,   64,   80,
+<span class="lineNum">      40 </span>            :           96,  124,  160,  192,  224,  252,  292,  340,
+<span class="lineNum">      41 </span>            :          408,  452,  508,  584,  680,  816, 1020,
+<span class="lineNum">      42 </span>            :         1364, 2044, 2728, 4092, 5460, 8188 };
+<span class="lineNum">      43 </span>            : #else
+<span class="lineNum">      44 </span>            : static const int allocator_sizes [] = {
+<span class="lineNum">      45 </span>            :            8,   16,   24,   32,   40,   48,   64,   80,
+<span class="lineNum">      46 </span>            :           96,  128,  160,  192,  224,  248,  288,  336,
+<span class="lineNum">      47 </span>            :          368,  448,  504,  584,  680,  816, 1016,
+<span class="lineNum">      48 </span>            :         1360, 2040, 2728, 4088, 5456, 8184 };
+<span class="lineNum">      49 </span>            : #endif
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : #define NUM_ALLOCATORS  (sizeof (allocator_sizes) / sizeof (int))
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : static int allocator_block_sizes [NUM_ALLOCATORS];
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : static MonoLockFreeAllocSizeClass size_classes [NUM_ALLOCATORS];
+<span class="lineNum">      56 </span>            : static MonoLockFreeAllocator allocators [NUM_ALLOCATORS];
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">      59 </span>            : static int allocator_sizes_stats [NUM_ALLOCATORS];
+<span class="lineNum">      60 </span>            : #endif
+<a name="61"><span class="lineNum">      61 </span>            : </a>
+<span class="lineNum">      62 </span>            : static size_t
+<span class="lineNum">      63 </span>            : block_size (size_t slot_size)
+<span class="lineNum">      64 </span>            : {
+<span class="lineNum">      65 </span>            :         static int pagesize = -1;
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            :         int size;
+<span class="lineNum">      68 </span><span class="lineCov">    1494651 :         size_t aligned_slot_size = SGEN_ALIGN_UP_TO (slot_size, SIZEOF_VOID_P);</span>
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span><span class="lineCov">    1494651 :         if (pagesize == -1)</span>
+<span class="lineNum">      71 </span><span class="lineCov">       3285 :                 pagesize = mono_pagesize ();</span>
+<span class="lineNum">      72 </span>            : 
+<span class="lineNum">      73 </span><span class="lineCov">    3070298 :         for (size = pagesize; size &lt; LOCK_FREE_ALLOC_SB_MAX_SIZE; size &lt;&lt;= 1) {</span>
+<span class="lineNum">      74 </span><span class="lineCov">    1521687 :                 if (aligned_slot_size * 2 &lt;= LOCK_FREE_ALLOC_SB_USABLE_SIZE (size))</span>
+<span class="lineNum">      75 </span><span class="lineCov">    1481189 :                         return size;</span>
+<span class="lineNum">      76 </span><span class="lineCov">      40497 :         }</span>
+<span class="lineNum">      77 </span><span class="lineCov">      13461 :         return LOCK_FREE_ALLOC_SB_MAX_SIZE;</span>
+<span class="lineNum">      78 </span><span class="lineCov">    1494649 : }</span>
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span>            : /*
+<span class="lineNum">      81 </span>            :  * Find the allocator index for memory chunks that can contain @size
+<span class="lineNum">      82 </span>            :  * objects.
+<a name="83"><span class="lineNum">      83 </span>            :  */</a>
+<span class="lineNum">      84 </span>            : static int
+<span class="lineNum">      85 </span>            : index_for_size (size_t size)
+<span class="lineNum">      86 </span>            : {
+<span class="lineNum">      87 </span>            :         int slot;
+<span class="lineNum">      88 </span>            :         /* do a binary search or lookup table later. */
+<span class="lineNum">      89 </span><span class="lineCov">   20970772 :         for (slot = 0; slot &lt; NUM_ALLOCATORS; ++slot) {</span>
+<span class="lineNum">      90 </span><span class="lineCov">   10485384 :                 if (allocator_sizes [slot] &gt;= size)</span>
+<span class="lineNum">      91 </span><span class="lineCov">    1532629 :                         return slot;</span>
+<span class="lineNum">      92 </span><span class="lineCov">    8952755 :         }</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :         g_assert_not_reached ();</span>
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 :         return -1;</span>
+<span class="lineNum">      95 </span><span class="lineCov">    1532629 : }</span>
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span>            : /*
+<span class="lineNum">      98 </span>            :  * Allocator indexes for the fixed INTERNAL_MEM_XXX types.  -1 if that
+<span class="lineNum">      99 </span>            :  * type is dynamic.
+<span class="lineNum">     100 </span>            :  */
+<span class="lineNum">     101 </span>            : static int fixed_type_allocator_indexes [INTERNAL_MEM_MAX];
+<a name="102"><span class="lineNum">     102 </span>            : </a>
+<span class="lineNum">     103 </span>            : void
+<span class="lineNum">     104 </span>            : sgen_register_fixed_internal_mem_type (int type, size_t size)
+<span class="lineNum">     105 </span>            : {
+<span class="lineNum">     106 </span>            :         int slot;
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span><span class="lineCov">     176580 :         g_assert (type &gt;= 0 &amp;&amp; type &lt; INTERNAL_MEM_MAX);</span>
+<span class="lineNum">     109 </span><span class="lineCov">     105948 :         g_assert (size &lt;= allocator_sizes [NUM_ALLOCATORS - 1]);</span>
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span><span class="lineCov">      35316 :         slot = index_for_size (size);</span>
+<span class="lineNum">     112 </span><span class="lineCov">     105948 :         g_assert (slot &gt;= 0);</span>
+<span class="lineNum">     113 </span>            : 
+<span class="lineNum">     114 </span><span class="lineCov">      35316 :         if (fixed_type_allocator_indexes [type] == -1)</span>
+<span class="lineNum">     115 </span><span class="lineCov">      26269 :                 fixed_type_allocator_indexes [type] = slot;</span>
+<span class="lineNum">     116 </span>            :         else {
+<span class="lineNum">     117 </span><span class="lineCov">       9047 :                 if (fixed_type_allocator_indexes [type] != slot)</span>
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :                         g_error (&quot;Invalid double registration of type %d old slot %d new slot %d&quot;, type, fixed_type_allocator_indexes [type], slot);</span>
+<span class="lineNum">     119 </span>            :         }
+<span class="lineNum">     120 </span><span class="lineCov">      35316 : }</span>
+<a name="121"><span class="lineNum">     121 </span>            : </a>
+<span class="lineNum">     122 </span>            : static const char*
+<span class="lineNum">     123 </span>            : description_for_type (int type)
+<span class="lineNum">     124 </span>            : {
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :         switch (type) {</span>
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_PIN_QUEUE: return &quot;pin-queue&quot;;</span>
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_FRAGMENT: return &quot;fragment&quot;;</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_SECTION: return &quot;section&quot;;</span>
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_SCAN_STARTS: return &quot;scan-starts&quot;;</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_FIN_TABLE: return &quot;fin-table&quot;;</span>
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_FINALIZE_ENTRY: return &quot;finalize-entry&quot;;</span>
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_FINALIZE_READY: return &quot;finalize-ready&quot;;</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_DISLINK_TABLE: return &quot;dislink-table&quot;;</span>
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_DISLINK: return &quot;dislink&quot;;</span>
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_ROOTS_TABLE: return &quot;roots-table&quot;;</span>
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_ROOT_RECORD: return &quot;root-record&quot;;</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_STATISTICS: return &quot;statistics&quot;;</span>
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_STAT_PINNED_CLASS: return &quot;pinned-class&quot;;</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_STAT_REMSET_CLASS: return &quot;remset-class&quot;;</span>
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_GRAY_QUEUE: return &quot;gray-queue&quot;;</span>
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_MS_TABLES: return &quot;marksweep-tables&quot;;</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_MS_BLOCK_INFO: return &quot;marksweep-block-info&quot;;</span>
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_MS_BLOCK_INFO_SORT: return &quot;marksweep-block-info-sort&quot;;</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_WORKER_DATA: return &quot;worker-data&quot;;</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_THREAD_POOL_JOB: return &quot;thread-pool-job&quot;;</span>
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_BRIDGE_DATA: return &quot;bridge-data&quot;;</span>
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_OLD_BRIDGE_HASH_TABLE: return &quot;old-bridge-hash-table&quot;;</span>
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_OLD_BRIDGE_HASH_TABLE_ENTRY: return &quot;old-bridge-hash-table-entry&quot;;</span>
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_BRIDGE_HASH_TABLE: return &quot;bridge-hash-table&quot;;</span>
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_BRIDGE_HASH_TABLE_ENTRY: return &quot;bridge-hash-table-entry&quot;;</span>
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_TARJAN_BRIDGE_HASH_TABLE: return &quot;tarjan-bridge-hash-table&quot;;</span>
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_TARJAN_BRIDGE_HASH_TABLE_ENTRY: return &quot;tarjan-bridge-hash-table-entry&quot;;</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_TARJAN_OBJ_BUCKET: return &quot;tarjan-bridge-object-buckets&quot;;</span>
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_BRIDGE_ALIVE_HASH_TABLE: return &quot;bridge-alive-hash-table&quot;;</span>
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_BRIDGE_ALIVE_HASH_TABLE_ENTRY: return &quot;bridge-alive-hash-table-entry&quot;;</span>
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_BRIDGE_DEBUG: return &quot;bridge-debug&quot;;</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_TOGGLEREF_DATA: return &quot;toggleref-data&quot;;</span>
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_CARDTABLE_MOD_UNION: return &quot;cardtable-mod-union&quot;;</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_BINARY_PROTOCOL: return &quot;binary-protocol&quot;;</span>
+<span class="lineNum">     160 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_TEMPORARY: return &quot;temporary&quot;;</span>
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_LOG_ENTRY: return &quot;log-entry&quot;;</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         case INTERNAL_MEM_COMPLEX_DESCRIPTORS: return &quot;complex-descriptors&quot;;</span>
+<span class="lineNum">     163 </span>            :         default: {
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :                 const char *description = sgen_client_description_for_internal_mem_type (type);</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :                 SGEN_ASSERT (0, description, &quot;Unknown internal mem type&quot;);</span>
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :                 return description;</span>
+<span class="lineNum">     167 </span>            :         }
+<span class="lineNum">     168 </span>            :         }
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 : }</span>
+<a name="170"><span class="lineNum">     170 </span>            : </a>
+<span class="lineNum">     171 </span>            : void*
+<span class="lineNum">     172 </span>            : sgen_alloc_internal_dynamic (size_t size, int type, gboolean assert_on_failure)
+<span class="lineNum">     173 </span>            : {
+<span class="lineNum">     174 </span>            :         int index;
+<span class="lineNum">     175 </span>            :         void *p;
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineCov">    1502882 :         if (size &gt; allocator_sizes [NUM_ALLOCATORS - 1]) {</span>
+<span class="lineNum">     178 </span><span class="lineCov">      15420 :                 p = sgen_alloc_os_memory (size, (SgenAllocFlags)(SGEN_ALLOC_INTERNAL | SGEN_ALLOC_ACTIVATE), NULL, MONO_MEM_ACCOUNT_SGEN_INTERNAL);</span>
+<span class="lineNum">     179 </span><span class="lineCov">      15420 :                 if (!p)</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :                         sgen_assert_memory_alloc (NULL, size, description_for_type (type));</span>
+<span class="lineNum">     181 </span><span class="lineCov">      15420 :         } else {</span>
+<span class="lineNum">     182 </span><span class="lineCov">    1487464 :                 index = index_for_size (size);</span>
+<span class="lineNum">     183 </span>            : 
+<span class="lineNum">     184 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     185 </span>            :                 ++ allocator_sizes_stats [index];
+<span class="lineNum">     186 </span>            : #endif
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span><span class="lineCov">    1487464 :                 p = mono_lock_free_alloc (&amp;allocators [index]);</span>
+<span class="lineNum">     189 </span><span class="lineCov">    1487464 :                 if (!p)</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 :                         sgen_assert_memory_alloc (NULL, size, description_for_type (type));</span>
+<span class="lineNum">     191 </span><span class="lineCov">    1487464 :                 memset (p, 0, size);</span>
+<span class="lineNum">     192 </span>            :         }
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span><span class="lineCov">    4508649 :         SGEN_ASSERT (0, !(((mword)p) &amp; (sizeof(gpointer) - 1)), &quot;Why do we allocate unaligned addresses ?&quot;);</span>
+<span class="lineNum">     195 </span><span class="lineCov">    1502883 :         return p;</span>
+<span class="lineNum">     196 </span>            : }
+<a name="197"><span class="lineNum">     197 </span>            : </a>
+<span class="lineNum">     198 </span>            : void
+<span class="lineNum">     199 </span>            : sgen_free_internal_dynamic (void *addr, size_t size, int type)
+<span class="lineNum">     200 </span>            : {
+<span class="lineNum">     201 </span><span class="lineCov">    1782444 :         if (!addr)</span>
+<span class="lineNum">     202 </span><span class="lineCov">     398208 :                 return;</span>
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span><span class="lineCov">    1384236 :         if (size &gt; allocator_sizes [NUM_ALLOCATORS - 1])</span>
+<span class="lineNum">     205 </span><span class="lineCov">       1270 :                 sgen_free_os_memory (addr, size, SGEN_ALLOC_INTERNAL, MONO_MEM_ACCOUNT_SGEN_INTERNAL);</span>
+<span class="lineNum">     206 </span>            :         else
+<span class="lineNum">     207 </span><span class="lineCov">    1382966 :                 mono_lock_free_free (addr, block_size (size));</span>
+<span class="lineNum">     208 </span><span class="lineCov">    1782439 : }</span>
+<a name="209"><span class="lineNum">     209 </span>            : </a>
+<span class="lineNum">     210 </span>            : void*
+<span class="lineNum">     211 </span>            : sgen_alloc_internal (int type)
+<span class="lineNum">     212 </span>            : {
+<span class="lineNum">     213 </span>            :         int index, size;
+<span class="lineNum">     214 </span>            :         void *p;
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span><span class="lineCov">    7523099 :         index = fixed_type_allocator_indexes [type];</span>
+<span class="lineNum">     217 </span><span class="lineCov">   37615503 :         g_assert (index &gt;= 0 &amp;&amp; index &lt; NUM_ALLOCATORS);</span>
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     220 </span>            :         ++ allocator_sizes_stats [index];
+<span class="lineNum">     221 </span>            : #endif
+<span class="lineNum">     222 </span>            : 
+<span class="lineNum">     223 </span><span class="lineCov">    7523101 :         size = allocator_sizes [index];</span>
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span><span class="lineCov">    7523101 :         p = mono_lock_free_alloc (&amp;allocators [index]);</span>
+<span class="lineNum">     226 </span><span class="lineCov">    7523101 :         memset (p, 0, size);</span>
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span><span class="lineCov">   22569317 :         SGEN_ASSERT (0, !(((mword)p) &amp; (sizeof(gpointer) - 1)), &quot;Why do we allocate unaligned addresses ?&quot;);</span>
+<span class="lineNum">     229 </span>            : 
+<span class="lineNum">     230 </span><span class="lineCov">    7523108 :         return p;</span>
+<span class="lineNum">     231 </span>            : }
+<a name="232"><span class="lineNum">     232 </span>            : </a>
+<span class="lineNum">     233 </span>            : void
+<span class="lineNum">     234 </span>            : sgen_free_internal (void *addr, int type)
+<span class="lineNum">     235 </span>            : {
+<span class="lineNum">     236 </span>            :         int index;
+<span class="lineNum">     237 </span>            : 
+<span class="lineNum">     238 </span><span class="lineCov">    6318782 :         if (!addr)</span>
+<span class="lineNum">     239 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     240 </span>            : 
+<span class="lineNum">     241 </span><span class="lineCov">    6318782 :         index = fixed_type_allocator_indexes [type];</span>
+<span class="lineNum">     242 </span><span class="lineCov">   31593910 :         g_assert (index &gt;= 0 &amp;&amp; index &lt; NUM_ALLOCATORS);</span>
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span><span class="lineCov">    6318782 :         mono_lock_free_free (addr, allocator_block_sizes [index]);</span>
+<span class="lineNum">     245 </span><span class="lineCov">   12637564 : }</span>
+<a name="246"><span class="lineNum">     246 </span>            : </a>
+<span class="lineNum">     247 </span>            : void
+<span class="lineNum">     248 </span>            : sgen_dump_internal_mem_usage (FILE *heap_dump_file)
+<span class="lineNum">     249 </span>            : {
+<span class="lineNum">     250 </span>            :         /*
+<span class="lineNum">     251 </span>            :         int i;
+<span class="lineNum">     252 </span>            : 
+<span class="lineNum">     253 </span>            :         fprintf (heap_dump_file, &quot;&lt;other-mem-usage type=\&quot;large-internal\&quot; size=\&quot;%lld\&quot;/&gt;\n&quot;, large_internal_bytes_alloced);
+<span class="lineNum">     254 </span>            :         fprintf (heap_dump_file, &quot;&lt;other-mem-usage type=\&quot;pinned-chunks\&quot; size=\&quot;%lld\&quot;/&gt;\n&quot;, pinned_chunk_bytes_alloced);
+<span class="lineNum">     255 </span>            :         for (i = 0; i &lt; INTERNAL_MEM_MAX; ++i) {
+<span class="lineNum">     256 </span>            :                 fprintf (heap_dump_file, &quot;&lt;other-mem-usage type=\&quot;%s\&quot; size=\&quot;%ld\&quot;/&gt;\n&quot;,
+<span class="lineNum">     257 </span>            :                                 description_for_type (i), unmanaged_allocator.small_internal_mem_bytes [i]);
+<span class="lineNum">     258 </span>            :         }
+<span class="lineNum">     259 </span>            :         */
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 : }</span>
+<a name="261"><span class="lineNum">     261 </span>            : </a>
+<span class="lineNum">     262 </span>            : void
+<span class="lineNum">     263 </span>            : sgen_report_internal_mem_usage (void)
+<span class="lineNum">     264 </span>            : {
+<span class="lineNum">     265 </span>            :         int i G_GNUC_UNUSED;
+<span class="lineNum">     266 </span>            : #ifdef HEAVY_STATISTICS
+<span class="lineNum">     267 </span>            :         printf (&quot;size -&gt; # allocations\n&quot;);
+<span class="lineNum">     268 </span>            :         for (i = 0; i &lt; NUM_ALLOCATORS; ++i)
+<span class="lineNum">     269 </span>            :                 printf (&quot;%d -&gt; %d\n&quot;, allocator_sizes [i], allocator_sizes_stats [i]);
+<span class="lineNum">     270 </span>            : #endif
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 : }</span>
+<a name="272"><span class="lineNum">     272 </span>            : </a>
+<span class="lineNum">     273 </span>            : void
+<span class="lineNum">     274 </span>            : sgen_init_internal_allocator (void)
+<span class="lineNum">     275 </span>            : {
+<span class="lineNum">     276 </span>            :         int i, size;
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span><span class="lineCov">     262800 :         for (i = 0; i &lt; INTERNAL_MEM_MAX; ++i)</span>
+<span class="lineNum">     279 </span><span class="lineCov">     128115 :                 fixed_type_allocator_indexes [i] = -1;</span>
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span><span class="lineCov">     197100 :         for (i = 0; i &lt; NUM_ALLOCATORS; ++i) {</span>
+<span class="lineNum">     282 </span><span class="lineCov">      95265 :                 allocator_block_sizes [i] = block_size (allocator_sizes [i]);</span>
+<span class="lineNum">     283 </span><span class="lineCov">      95265 :                 mono_lock_free_allocator_init_size_class (&amp;size_classes [i], allocator_sizes [i], allocator_block_sizes [i]);</span>
+<span class="lineNum">     284 </span><span class="lineCov">      95265 :                 mono_lock_free_allocator_init_allocator (&amp;allocators [i], &amp;size_classes [i], MONO_MEM_ACCOUNT_SGEN_INTERNAL);</span>
+<span class="lineNum">     285 </span><span class="lineCov">      95265 :         }</span>
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span><span class="lineCov">      26280 :         for (size = mono_pagesize (); size &lt;= LOCK_FREE_ALLOC_SB_MAX_SIZE; size &lt;&lt;= 1) {</span>
+<span class="lineNum">     288 </span><span class="lineCov">       9855 :                 int max_size = (LOCK_FREE_ALLOC_SB_USABLE_SIZE (size) / 2) &amp; ~(SIZEOF_VOID_P - 1);</span>
+<span class="lineNum">     289 </span>            :                 /*
+<span class="lineNum">     290 </span>            :                  * we assert that allocator_sizes contains the biggest possible object size
+<span class="lineNum">     291 </span>            :                  * per block which has to be an aligned address.
+<span class="lineNum">     292 </span>            :                  * (4K =&gt; 2040, 8k =&gt; 4088, 16k =&gt; 8184 on 64bits),
+<span class="lineNum">     293 </span>            :                  * so that we do not get different block sizes for sizes that should go to the same one
+<span class="lineNum">     294 </span>            :                  */
+<span class="lineNum">     295 </span><span class="lineCov">      29565 :                 g_assert (allocator_sizes [index_for_size (max_size)] == max_size);</span>
+<span class="lineNum">     296 </span><span class="lineCov">      29565 :                 g_assert (block_size (max_size) == size);</span>
+<span class="lineNum">     297 </span><span class="lineCov">       9855 :                 if (size &lt; LOCK_FREE_ALLOC_SB_MAX_SIZE)</span>
+<span class="lineNum">     298 </span><span class="lineCov">      26280 :                         g_assert (block_size (max_size + 1) == size &lt;&lt; 1);</span>
+<span class="lineNum">     299 </span><span class="lineCov">       9855 :         }</span>
+<span class="lineNum">     300 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

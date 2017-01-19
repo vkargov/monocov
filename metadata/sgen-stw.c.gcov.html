@@ -1,0 +1,473 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/sgen-stw.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - sgen-stw.c<span style="font-size: 80%;"> (source / <a href="sgen-stw.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">136</td>
+            <td class="headerCovTableEntry">156</td>
+            <td class="headerCovTableEntryMed">87.2 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntry">11</td>
+            <td class="headerCovTableEntryHi">90.9 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-stw.c: Stop the world functionality
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *  Rodrigo Kumpera (kumpera@gmail.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright 2005-2011 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       9 </span>            :  * Copyright 2011 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">      10 </span>            :  * Copyright 2011 Xamarin, Inc.
+<span class="lineNum">      11 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">      12 </span>            :  *
+<span class="lineNum">      13 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      14 </span>            :  */
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      17 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #include &quot;sgen/sgen-gc.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;sgen/sgen-protocol.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;sgen/sgen-memory-governor.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;sgen/sgen-thread-pool.h&quot;
+<span class="lineNum">      23 </span>            : #include &quot;metadata/profiler-private.h&quot;
+<span class="lineNum">      24 </span>            : #include &quot;sgen/sgen-client.h&quot;
+<span class="lineNum">      25 </span>            : #include &quot;metadata/sgen-bridge-internals.h&quot;
+<span class="lineNum">      26 </span>            : #include &quot;metadata/gc-internals.h&quot;
+<span class="lineNum">      27 </span>            : #include &quot;utils/mono-threads.h&quot;
+<span class="lineNum">      28 </span>            : #include &quot;utils/mono-threads-debug.h&quot;
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : #define TV_DECLARE SGEN_TV_DECLARE
+<span class="lineNum">      31 </span>            : #define TV_GETTIME SGEN_TV_GETTIME
+<span class="lineNum">      32 </span>            : #define TV_ELAPSED SGEN_TV_ELAPSED
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : static void sgen_unified_suspend_restart_world (void);
+<span class="lineNum">      35 </span>            : static void sgen_unified_suspend_stop_world (void);
+<span class="lineNum">      36 </span>            : 
+<a name="37"><span class="lineNum">      37 </span>            : static TV_DECLARE (end_of_last_stw);</a>
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : guint64 mono_time_since_last_stw ()
+<span class="lineNum">      40 </span>            : {
+<span class="lineNum">      41 </span><span class="lineNoCov">          0 :         if (end_of_last_stw == 0)</span>
+<span class="lineNum">      42 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span>            :         TV_DECLARE (current_time);
+<span class="lineNum">      45 </span><span class="lineNoCov">          0 :         TV_GETTIME (current_time);</span>
+<span class="lineNum">      46 </span><span class="lineNoCov">          0 :         return TV_ELAPSED (end_of_last_stw, current_time);</span>
+<span class="lineNum">      47 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span>            : unsigned int sgen_global_stop_count = 0;
+<a name="50"><span class="lineNum">      50 </span>            : </a>
+<span class="lineNum">      51 </span>            : inline static void*
+<span class="lineNum">      52 </span>            : align_pointer (void *ptr)
+<span class="lineNum">      53 </span>            : {
+<span class="lineNum">      54 </span><span class="lineCov">     193201 :         mword p = (mword)ptr;</span>
+<span class="lineNum">      55 </span><span class="lineCov">     193201 :         p += sizeof (gpointer) - 1;</span>
+<span class="lineNum">      56 </span><span class="lineCov">     193201 :         p &amp;= ~ (sizeof (gpointer) - 1);</span>
+<span class="lineNum">      57 </span><span class="lineCov">     193201 :         return (void*)p;</span>
+<span class="lineNum">      58 </span>            : }
+<a name="59"><span class="lineNum">      59 </span>            : </a>
+<span class="lineNum">      60 </span>            : static void
+<span class="lineNum">      61 </span>            : update_current_thread_stack (void *start)
+<span class="lineNum">      62 </span>            : {
+<span class="lineNum">      63 </span><span class="lineCov">     193201 :         int stack_guard = 0;</span>
+<span class="lineNum">      64 </span><span class="lineCov">     193201 :         SgenThreadInfo *info = mono_thread_info_current ();</span>
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span><span class="lineCov">     193201 :         info-&gt;client_info.stack_start = align_pointer (&amp;stack_guard);</span>
+<span class="lineNum">      67 </span><span class="lineCov">     579603 :         g_assert (info-&gt;client_info.stack_start);</span>
+<span class="lineNum">      68 </span><span class="lineCov">     966005 :         g_assert (info-&gt;client_info.stack_start &gt;= info-&gt;client_info.stack_start_limit &amp;&amp; info-&gt;client_info.stack_start &lt; info-&gt;client_info.stack_end);</span>
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span>            : #if !defined(MONO_CROSS_COMPILE) &amp;&amp; MONO_ARCH_HAS_MONO_CONTEXT
+<span class="lineNum">      71 </span><span class="lineCov">    1159206 :         MONO_CONTEXT_GET_CURRENT (info-&gt;client_info.ctx);</span>
+<span class="lineNum">      72 </span>            : #else
+<span class="lineNum">      73 </span>            :         g_error (&quot;Sgen STW requires a working mono-context&quot;);
+<span class="lineNum">      74 </span>            : #endif
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span><span class="lineCov">     193201 :         if (mono_gc_get_gc_callbacks ()-&gt;thread_suspend_func)</span>
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :                 mono_gc_get_gc_callbacks ()-&gt;thread_suspend_func (info-&gt;client_info.runtime_data, NULL, &amp;info-&gt;client_info.ctx);</span>
+<span class="lineNum">      78 </span><span class="lineCov">     193201 : }</span>
+<a name="79"><span class="lineNum">      79 </span>            : </a>
+<span class="lineNum">      80 </span>            : static void
+<span class="lineNum">      81 </span>            : acquire_gc_locks (void)
+<span class="lineNum">      82 </span>            : {
+<span class="lineNum">      83 </span><span class="lineCov">     193201 :         LOCK_INTERRUPTION;</span>
+<span class="lineNum">      84 </span><span class="lineCov">     193201 :         mono_thread_info_suspend_lock ();</span>
+<span class="lineNum">      85 </span><span class="lineCov">     193201 : }</span>
+<a name="86"><span class="lineNum">      86 </span>            : </a>
+<span class="lineNum">      87 </span>            : static void
+<span class="lineNum">      88 </span>            : release_gc_locks (void)
+<span class="lineNum">      89 </span>            : {
+<span class="lineNum">      90 </span><span class="lineCov">     193201 :         mono_thread_info_suspend_unlock ();</span>
+<span class="lineNum">      91 </span><span class="lineCov">     193201 :         UNLOCK_INTERRUPTION;</span>
+<span class="lineNum">      92 </span><span class="lineCov">     193201 : }</span>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span>            : static TV_DECLARE (stop_world_time);
+<span class="lineNum">      95 </span>            : static unsigned long max_pause_usec = 0;
+<span class="lineNum">      96 </span>            : 
+<span class="lineNum">      97 </span>            : static guint64 time_stop_world;
+<span class="lineNum">      98 </span>            : static guint64 time_restart_world;
+<span class="lineNum">      99 </span>            : 
+<a name="100"><span class="lineNum">     100 </span>            : /* LOCKING: assumes the GC lock is held */</a>
+<span class="lineNum">     101 </span>            : void
+<span class="lineNum">     102 </span>            : sgen_client_stop_world (int generation)
+<span class="lineNum">     103 </span>            : {
+<span class="lineNum">     104 </span>            :         TV_DECLARE (end_handshake);
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span>            :         /* notify the profiler of the leftovers */
+<span class="lineNum">     107 </span>            :         /* FIXME this is the wrong spot at we can STW for non collection reasons. */
+<span class="lineNum">     108 </span><span class="lineCov">     193201 :         if (G_UNLIKELY (mono_profiler_events &amp; MONO_PROFILE_GC_MOVES))</span>
+<span class="lineNum">     109 </span><span class="lineCov">         18 :                 mono_sgen_gc_event_moves ();</span>
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span><span class="lineCov">     193201 :         acquire_gc_locks ();</span>
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span><span class="lineCov">     193201 :         mono_profiler_gc_event (MONO_GC_EVENT_PRE_STOP_WORLD_LOCKED, generation);</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span>            :         /* We start to scan after locks are taking, this ensures we won't be interrupted. */
+<span class="lineNum">     116 </span><span class="lineCov">     193201 :         sgen_process_togglerefs ();</span>
+<span class="lineNum">     117 </span>            : 
+<span class="lineNum">     118 </span><span class="lineCov">     193201 :         update_current_thread_stack (&amp;generation);</span>
+<span class="lineNum">     119 </span>            : 
+<span class="lineNum">     120 </span><span class="lineCov">     193201 :         sgen_global_stop_count++;</span>
+<span class="lineNum">     121 </span><span class="lineCov">     386402 :         SGEN_LOG (3, &quot;stopping world n %d from %p %p&quot;, sgen_global_stop_count, mono_thread_info_current (), (gpointer) (gsize) mono_native_thread_id_get ());</span>
+<span class="lineNum">     122 </span><span class="lineCov">     193201 :         TV_GETTIME (stop_world_time);</span>
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span><span class="lineCov">     193201 :         sgen_unified_suspend_stop_world ();</span>
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span><span class="lineCov">     386402 :         SGEN_LOG (3, &quot;world stopped&quot;);</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span><span class="lineCov">     193201 :         TV_GETTIME (end_handshake);</span>
+<span class="lineNum">     129 </span><span class="lineCov">     193201 :         time_stop_world += TV_ELAPSED (stop_world_time, end_handshake);</span>
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span><span class="lineCov">     193201 :         sgen_memgov_collection_start (generation);</span>
+<span class="lineNum">     132 </span><span class="lineCov">     193201 :         if (sgen_need_bridge_processing ())</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :                 sgen_bridge_reset_data ();</span>
+<span class="lineNum">     134 </span><span class="lineCov">     193201 : }</span>
+<span class="lineNum">     135 </span>            : 
+<a name="136"><span class="lineNum">     136 </span>            : /* LOCKING: assumes the GC lock is held */</a>
+<span class="lineNum">     137 </span>            : void
+<span class="lineNum">     138 </span>            : sgen_client_restart_world (int generation, gint64 *stw_time)
+<span class="lineNum">     139 </span>            : {
+<span class="lineNum">     140 </span>            :         TV_DECLARE (end_sw);
+<span class="lineNum">     141 </span>            :         TV_DECLARE (start_handshake);
+<span class="lineNum">     142 </span>            :         unsigned long usec;
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span>            :         /* notify the profiler of the leftovers */
+<span class="lineNum">     145 </span>            :         /* FIXME this is the wrong spot at we can STW for non collection reasons. */
+<span class="lineNum">     146 </span><span class="lineCov">     193201 :         if (G_UNLIKELY (mono_profiler_events &amp; MONO_PROFILE_GC_MOVES))</span>
+<span class="lineNum">     147 </span><span class="lineCov">         18 :                 mono_sgen_gc_event_moves ();</span>
+<span class="lineNum">     148 </span>            : 
+<span class="lineNum">     149 </span><span class="lineCov">    3938147 :         FOREACH_THREAD (info) {</span>
+<span class="lineNum">     150 </span><span class="lineCov">     839540 :                 info-&gt;client_info.stack_start = NULL;</span>
+<span class="lineNum">     151 </span><span class="lineCov">     839540 :                 memset (&amp;info-&gt;client_info.ctx, 0, sizeof (MonoContext));</span>
+<span class="lineNum">     152 </span><span class="lineCov">    2712013 :         } FOREACH_THREAD_END</span>
+<span class="lineNum">     153 </span>            : 
+<span class="lineNum">     154 </span><span class="lineCov">     193201 :         TV_GETTIME (start_handshake);</span>
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineCov">     193201 :         sgen_unified_suspend_restart_world ();</span>
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span><span class="lineCov">     193201 :         TV_GETTIME (end_sw);</span>
+<span class="lineNum">     159 </span><span class="lineCov">     193201 :         time_restart_world += TV_ELAPSED (start_handshake, end_sw);</span>
+<span class="lineNum">     160 </span><span class="lineCov">     193201 :         usec = TV_ELAPSED (stop_world_time, end_sw);</span>
+<span class="lineNum">     161 </span><span class="lineCov">     579603 :         max_pause_usec = MAX (usec, max_pause_usec);</span>
+<span class="lineNum">     162 </span><span class="lineCov">     193201 :         end_of_last_stw = end_sw;</span>
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span><span class="lineCov">     579603 :         SGEN_LOG (2, &quot;restarted (pause time: %d usec, max: %d)&quot;, (int)usec, (int)max_pause_usec);</span>
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span>            :         /*
+<span class="lineNum">     167 </span>            :          * We must release the thread info suspend lock after doing
+<span class="lineNum">     168 </span>            :          * the thread handshake.  Otherwise, if the GC stops the world
+<span class="lineNum">     169 </span>            :          * and a thread is in the process of starting up, but has not
+<span class="lineNum">     170 </span>            :          * yet registered (it's not in the thread_list), it is
+<span class="lineNum">     171 </span>            :          * possible that the thread does register while the world is
+<span class="lineNum">     172 </span>            :          * stopped.  When restarting the GC will then try to restart
+<span class="lineNum">     173 </span>            :          * said thread, but since it never got the suspend signal, it
+<span class="lineNum">     174 </span>            :          * cannot answer the restart signal, so a deadlock results.
+<span class="lineNum">     175 </span>            :          */
+<span class="lineNum">     176 </span><span class="lineCov">     193201 :         release_gc_locks ();</span>
+<span class="lineNum">     177 </span>            : 
+<span class="lineNum">     178 </span><span class="lineCov">     193201 :         mono_profiler_gc_event (MONO_GC_EVENT_POST_START_WORLD_UNLOCKED, generation);</span>
+<span class="lineNum">     179 </span>            : 
+<span class="lineNum">     180 </span><span class="lineCov">     193201 :         *stw_time = usec;</span>
+<span class="lineNum">     181 </span><span class="lineCov">     193201 : }</span>
+<a name="182"><span class="lineNum">     182 </span>            : </a>
+<span class="lineNum">     183 </span>            : void
+<span class="lineNum">     184 </span>            : mono_sgen_init_stw (void)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;World stop&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG | MONO_COUNTER_TIME, &amp;time_stop_world);</span>
+<span class="lineNum">     187 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;World restart&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG | MONO_COUNTER_TIME, &amp;time_restart_world);</span>
+<span class="lineNum">     188 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     189 </span>            : 
+<span class="lineNum">     190 </span>            : /* Unified suspend code */
+<a name="191"><span class="lineNum">     191 </span>            : </a>
+<span class="lineNum">     192 </span>            : static gboolean
+<span class="lineNum">     193 </span>            : sgen_is_thread_in_current_stw (SgenThreadInfo *info, int *reason)
+<span class="lineNum">     194 </span>            : {
+<span class="lineNum">     195 </span>            :         /*
+<span class="lineNum">     196 </span>            :         A thread explicitly asked to be skiped because it holds no managed state.
+<span class="lineNum">     197 </span>            :         This is used by TP and finalizer threads.
+<span class="lineNum">     198 </span>            :         FIXME Use an atomic variable for this to avoid everyone taking the GC LOCK.
+<span class="lineNum">     199 </span>            :         */
+<span class="lineNum">     200 </span><span class="lineCov">    3169033 :         if (info-&gt;client_info.gc_disabled) {</span>
+<span class="lineNum">     201 </span><span class="lineCov">     745584 :                 if (reason)</span>
+<span class="lineNum">     202 </span><span class="lineCov">     745584 :                         *reason = 1;</span>
+<span class="lineNum">     203 </span><span class="lineCov">     745584 :                 return FALSE;</span>
+<span class="lineNum">     204 </span>            :         }
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span>            :         /*
+<span class="lineNum">     207 </span>            :         We have detected that this thread is failing/dying, ignore it.
+<span class="lineNum">     208 </span>            :         FIXME: can't we merge this with thread_is_dying?
+<span class="lineNum">     209 </span>            :         */
+<span class="lineNum">     210 </span><span class="lineCov">    2423449 :         if (info-&gt;client_info.skip) {</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :                 if (reason)</span>
+<span class="lineNum">     212 </span><span class="lineNoCov">          0 :                         *reason = 2;</span>
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     214 </span>            :         }
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span>            :         /*
+<span class="lineNum">     217 </span>            :         Suspending the current thread will deadlock us, bad idea.
+<span class="lineNum">     218 </span>            :         */
+<span class="lineNum">     219 </span><span class="lineCov">    2423449 :         if (info == mono_thread_info_current ()) {</span>
+<span class="lineNum">     220 </span><span class="lineCov">     579603 :                 if (reason)</span>
+<span class="lineNum">     221 </span><span class="lineCov">     579603 :                         *reason = 3;</span>
+<span class="lineNum">     222 </span><span class="lineCov">     579603 :                 return FALSE;</span>
+<span class="lineNum">     223 </span>            :         }
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span>            :         /*
+<span class="lineNum">     226 </span>            :         We can't suspend the workers that will do all the heavy lifting.
+<span class="lineNum">     227 </span>            :         FIXME Use some state bit in SgenThreadInfo for this.
+<span class="lineNum">     228 </span>            :         */
+<span class="lineNum">     229 </span><span class="lineCov">    1843846 :         if (sgen_thread_pool_is_thread_pool_thread (mono_thread_info_get_tid (info))) {</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :                 if (reason)</span>
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :                         *reason = 4;</span>
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     233 </span>            :         }
+<span class="lineNum">     234 </span>            : 
+<span class="lineNum">     235 </span>            :         /*
+<span class="lineNum">     236 </span>            :         The thread has signaled that it started to detach, ignore it.
+<span class="lineNum">     237 </span>            :         FIXME: can't we merge this with skip
+<span class="lineNum">     238 </span>            :         */
+<span class="lineNum">     239 </span><span class="lineCov">    1843846 :         if (!mono_thread_info_is_live (info)) {</span>
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :                 if (reason)</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                         *reason = 5;</span>
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     243 </span>            :         }
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span><span class="lineCov">    1843846 :         return TRUE;</span>
+<span class="lineNum">     246 </span><span class="lineCov">    3169033 : }</span>
+<a name="247"><span class="lineNum">     247 </span>            : </a>
+<span class="lineNum">     248 </span>            : static void
+<span class="lineNum">     249 </span>            : sgen_unified_suspend_stop_world (void)
+<span class="lineNum">     250 </span>            : {
+<span class="lineNum">     251 </span><span class="lineCov">     193201 :         int sleep_duration = -1;</span>
+<span class="lineNum">     252 </span>            : 
+<span class="lineNum">     253 </span><span class="lineCov">     193201 :         mono_threads_begin_global_suspend ();</span>
+<span class="lineNum">     254 </span>            :         THREADS_STW_DEBUG (&quot;[GC-STW-BEGIN][%p] *** BEGIN SUSPEND *** \n&quot;, mono_thread_info_get_tid (mono_thread_info_current ()));
+<span class="lineNum">     255 </span>            : 
+<span class="lineNum">     256 </span><span class="lineCov">    3938147 :         FOREACH_THREAD (info) {</span>
+<span class="lineNum">     257 </span><span class="lineCov">     839540 :                 info-&gt;client_info.skip = FALSE;</span>
+<span class="lineNum">     258 </span><span class="lineCov">     839540 :                 info-&gt;client_info.suspend_done = FALSE;</span>
+<span class="lineNum">     259 </span>            : 
+<span class="lineNum">     260 </span>            :                 int reason;
+<span class="lineNum">     261 </span><span class="lineCov">     839540 :                 if (!sgen_is_thread_in_current_stw (info, &amp;reason)) {</span>
+<span class="lineNum">     262 </span>            :                         THREADS_STW_DEBUG (&quot;[GC-STW-BEGIN-SUSPEND] IGNORE thread %p skip %s reason %d\n&quot;, mono_thread_info_get_tid (info), info-&gt;client_info.skip ? &quot;true&quot; : &quot;false&quot;, reason);
+<span class="lineNum">     263 </span><span class="lineCov">     379209 :                         continue;</span>
+<span class="lineNum">     264 </span>            :                 }
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span><span class="lineCov">     460331 :                 info-&gt;client_info.skip = !mono_thread_info_begin_suspend (info);</span>
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span>            :                 THREADS_STW_DEBUG (&quot;[GC-STW-BEGIN-SUSPEND] SUSPEND thread %p skip %s\n&quot;, mono_thread_info_get_tid (info), info-&gt;client_info.skip ? &quot;true&quot; : &quot;false&quot;);
+<span class="lineNum">     269 </span><span class="lineCov">    1574386 :         } FOREACH_THREAD_END</span>
+<span class="lineNum">     270 </span>            : 
+<span class="lineNum">     271 </span><span class="lineCov">     193201 :         mono_thread_info_current ()-&gt;client_info.suspend_done = TRUE;</span>
+<span class="lineNum">     272 </span><span class="lineCov">     193201 :         mono_threads_wait_pending_operations ();</span>
+<span class="lineNum">     273 </span>            : 
+<span class="lineNum">     274 </span><span class="lineCov">     194445 :         for (;;) {</span>
+<span class="lineNum">     275 </span><span class="lineCov">     194445 :                 gint restart_counter = 0;</span>
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span><span class="lineCov">    3965607 :                 FOREACH_THREAD (info) {</span>
+<span class="lineNum">     278 </span>            :                         gint suspend_count;
+<span class="lineNum">     279 </span>            : 
+<span class="lineNum">     280 </span><span class="lineCov">     845472 :                         int reason = 0;</span>
+<span class="lineNum">     281 </span><span class="lineCov">    1493848 :                         if (info-&gt;client_info.suspend_done || !sgen_is_thread_in_current_stw (info, &amp;reason)) {</span>
+<span class="lineNum">     282 </span>            :                                 THREADS_STW_DEBUG (&quot;[GC-STW-RESTART] IGNORE RESUME thread %p not been processed done %d current %d reason %d\n&quot;, mono_thread_info_get_tid (info), info-&gt;client_info.suspend_done, !sgen_is_thread_in_current_stw (info, NULL), reason);
+<span class="lineNum">     283 </span><span class="lineCov">     383880 :                                 continue;</span>
+<span class="lineNum">     284 </span>            :                         }
+<span class="lineNum">     285 </span>            : 
+<span class="lineNum">     286 </span>            :                         /*
+<span class="lineNum">     287 </span>            :                         All threads that reach here are pristine suspended. This means the following:
+<span class="lineNum">     288 </span>            : 
+<span class="lineNum">     289 </span>            :                         - We haven't accepted the previous suspend as good.
+<span class="lineNum">     290 </span>            :                         - We haven't gave up on it for this STW (it's either bad or asked not to)
+<span class="lineNum">     291 </span>            :                         */
+<span class="lineNum">     292 </span><span class="lineCov">     461592 :                         if (!mono_thread_info_in_critical_location (info)) {</span>
+<span class="lineNum">     293 </span><span class="lineCov">     460331 :                                 info-&gt;client_info.suspend_done = TRUE;</span>
+<span class="lineNum">     294 </span>            : 
+<span class="lineNum">     295 </span>            :                                 THREADS_STW_DEBUG (&quot;[GC-STW-RESTART] DONE thread %p deemed fully suspended\n&quot;, mono_thread_info_get_tid (info));
+<span class="lineNum">     296 </span><span class="lineCov">     460331 :                                 continue;</span>
+<span class="lineNum">     297 </span>            :                         }
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span><span class="lineCov">       1261 :                         suspend_count = mono_thread_info_suspend_count (info);</span>
+<span class="lineNum">     300 </span><span class="lineCov">       1261 :                         if (!(suspend_count == 1))</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :                                 g_error (&quot;[%p] suspend_count = %d, but should be 1&quot;, mono_thread_info_get_tid (info), suspend_count);</span>
+<span class="lineNum">     302 </span>            : 
+<span class="lineNum">     303 </span><span class="lineCov">       1261 :                         info-&gt;client_info.skip = !mono_thread_info_begin_resume (info);</span>
+<span class="lineNum">     304 </span><span class="lineCov">       1261 :                         if (!info-&gt;client_info.skip)</span>
+<span class="lineNum">     305 </span><span class="lineCov">       1261 :                                 restart_counter += 1;</span>
+<span class="lineNum">     306 </span>            : 
+<span class="lineNum">     307 </span>            :                         THREADS_STW_DEBUG (&quot;[GC-STW-RESTART] RESTART thread %p skip %s\n&quot;, mono_thread_info_get_tid (info), info-&gt;client_info.skip ? &quot;true&quot; : &quot;false&quot;);
+<span class="lineNum">     308 </span><span class="lineCov">     198420 :                 } FOREACH_THREAD_END</span>
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span><span class="lineCov">     194445 :                 mono_threads_wait_pending_operations ();</span>
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span><span class="lineCov">     194445 :                 if (restart_counter == 0)</span>
+<span class="lineNum">     313 </span><span class="lineCov">     193201 :                         break;</span>
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span><span class="lineCov">       1244 :                 if (sleep_duration &lt; 0) {</span>
+<span class="lineNum">     316 </span><span class="lineCov">        678 :                         mono_thread_info_yield ();</span>
+<span class="lineNum">     317 </span><span class="lineCov">        678 :                         sleep_duration = 0;</span>
+<span class="lineNum">     318 </span><span class="lineCov">        678 :                 } else {</span>
+<span class="lineNum">     319 </span><span class="lineCov">        566 :                         g_usleep (sleep_duration);</span>
+<span class="lineNum">     320 </span><span class="lineCov">        566 :                         sleep_duration += 10;</span>
+<span class="lineNum">     321 </span>            :                 }
+<span class="lineNum">     322 </span>            : 
+<span class="lineNum">     323 </span><span class="lineCov">      27460 :                 FOREACH_THREAD (info) {</span>
+<span class="lineNum">     324 </span><span class="lineCov">       5932 :                         int reason = 0;</span>
+<span class="lineNum">     325 </span><span class="lineCov">       7969 :                         if (info-&gt;client_info.suspend_done || !sgen_is_thread_in_current_stw (info, &amp;reason)) {</span>
+<span class="lineNum">     326 </span>            :                                 THREADS_STW_DEBUG (&quot;[GC-STW-RESTART] IGNORE SUSPEND thread %p not been processed done %d current %d reason %d\n&quot;, mono_thread_info_get_tid (info), info-&gt;client_info.suspend_done, !sgen_is_thread_in_current_stw (info, NULL), reason);
+<span class="lineNum">     327 </span><span class="lineCov">       4671 :                                 continue;</span>
+<span class="lineNum">     328 </span>            :                         }
+<span class="lineNum">     329 </span>            : 
+<span class="lineNum">     330 </span><span class="lineCov">       1261 :                         if (!mono_thread_info_is_running (info)) {</span>
+<span class="lineNum">     331 </span>            :                                 THREADS_STW_DEBUG (&quot;[GC-STW-RESTART] IGNORE SUSPEND thread %p not running\n&quot;, mono_thread_info_get_tid (info));
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">     333 </span>            :                         }
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span><span class="lineCov">       1261 :                         info-&gt;client_info.skip = !mono_thread_info_begin_suspend (info);</span>
+<span class="lineNum">     336 </span>            : 
+<span class="lineNum">     337 </span>            :                         THREADS_STW_DEBUG (&quot;[GC-STW-RESTART] SUSPEND thread %p skip %s\n&quot;, mono_thread_info_get_tid (info), info-&gt;client_info.skip ? &quot;true&quot; : &quot;false&quot;);
+<span class="lineNum">     338 </span><span class="lineCov">       5027 :                 } FOREACH_THREAD_END</span>
+<span class="lineNum">     339 </span>            : 
+<span class="lineNum">     340 </span><span class="lineCov">       1244 :                 mono_threads_wait_pending_operations ();</span>
+<span class="lineNum">     341 </span>            :         }
+<span class="lineNum">     342 </span>            : 
+<span class="lineNum">     343 </span><span class="lineCov">    3938147 :         FOREACH_THREAD (info) {</span>
+<span class="lineNum">     344 </span>            :                 gpointer stopped_ip;
+<span class="lineNum">     345 </span>            : 
+<span class="lineNum">     346 </span><span class="lineCov">     839540 :                 int reason = 0;</span>
+<span class="lineNum">     347 </span><span class="lineCov">     839540 :                 if (!sgen_is_thread_in_current_stw (info, &amp;reason)) {</span>
+<span class="lineNum">     348 </span><span class="lineCov">    1710037 :                         g_assert (!info-&gt;client_info.suspend_done || info == mono_thread_info_current ());</span>
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span>            :                         THREADS_STW_DEBUG (&quot;[GC-STW-SUSPEND-END] thread %p is NOT suspended, reason %d\n&quot;, mono_thread_info_get_tid (info), reason);
+<span class="lineNum">     351 </span><span class="lineCov">     379209 :                         continue;</span>
+<span class="lineNum">     352 </span>            :                 }
+<span class="lineNum">     353 </span>            : 
+<span class="lineNum">     354 </span><span class="lineCov">    1380993 :                 g_assert (info-&gt;client_info.suspend_done);</span>
+<span class="lineNum">     355 </span>            : 
+<span class="lineNum">     356 </span><span class="lineCov">     460331 :                 info-&gt;client_info.ctx = mono_thread_info_get_suspend_state (info)-&gt;ctx;</span>
+<span class="lineNum">     357 </span>            : 
+<span class="lineNum">     358 </span>            :                 /* Once we remove the old suspend code, we should move sgen to directly access the state in MonoThread */
+<span class="lineNum">     359 </span><span class="lineCov">     460331 :                 info-&gt;client_info.stack_start = (gpointer) ((char*)MONO_CONTEXT_GET_SP (&amp;info-&gt;client_info.ctx) - REDZONE_SIZE);</span>
+<span class="lineNum">     360 </span>            : 
+<span class="lineNum">     361 </span>            :                 /* altstack signal handler, sgen can't handle them, mono-threads should have handled this. */
+<span class="lineNum">     362 </span><span class="lineCov">     920662 :                 if (!info-&gt;client_info.stack_start</span>
+<span class="lineNum">     363 </span><span class="lineCov">     920662 :                          || info-&gt;client_info.stack_start &lt; info-&gt;client_info.stack_start_limit</span>
+<span class="lineNum">     364 </span><span class="lineCov">     920662 :                          || info-&gt;client_info.stack_start &gt;= info-&gt;client_info.stack_end) {</span>
+<span class="lineNum">     365 </span><span class="lineNoCov">          0 :                         g_error (&quot;BAD STACK: stack_start = %p, stack_start_limit = %p, stack_end = %p&quot;,</span>
+<span class="lineNum">     366 </span>            :                                 info-&gt;client_info.stack_start, info-&gt;client_info.stack_start_limit, info-&gt;client_info.stack_end);
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     368 </span>            : 
+<span class="lineNum">     369 </span><span class="lineCov">     460331 :                 stopped_ip = (gpointer) (MONO_CONTEXT_GET_IP (&amp;info-&gt;client_info.ctx));</span>
+<span class="lineNum">     370 </span>            : 
+<span class="lineNum">     371 </span><span class="lineCov">     460331 :                 binary_protocol_thread_suspend ((gpointer) mono_thread_info_get_tid (info), stopped_ip);</span>
+<span class="lineNum">     372 </span>            : 
+<span class="lineNum">     373 </span>            :                 THREADS_STW_DEBUG (&quot;[GC-STW-SUSPEND-END] thread %p is suspended, stopped_ip = %p, stack = %p -&gt; %p\n&quot;,
+<span class="lineNum">     374 </span>            :                         mono_thread_info_get_tid (info), stopped_ip, info-&gt;client_info.stack_start, info-&gt;client_info.stack_start ? info-&gt;client_info.stack_end : NULL);
+<span class="lineNum">     375 </span><span class="lineCov">    1574386 :         } FOREACH_THREAD_END</span>
+<span class="lineNum">     376 </span><span class="lineCov">     193201 : }</span>
+<a name="377"><span class="lineNum">     377 </span>            : </a>
+<span class="lineNum">     378 </span>            : static void
+<span class="lineNum">     379 </span>            : sgen_unified_suspend_restart_world (void)
+<span class="lineNum">     380 </span>            : {
+<span class="lineNum">     381 </span>            :         THREADS_STW_DEBUG (&quot;[GC-STW-END] *** BEGIN RESUME ***\n&quot;);
+<span class="lineNum">     382 </span><span class="lineCov">    3938147 :         FOREACH_THREAD (info) {</span>
+<span class="lineNum">     383 </span><span class="lineCov">     839540 :                 int reason = 0;</span>
+<span class="lineNum">     384 </span><span class="lineCov">     839540 :                 if (sgen_is_thread_in_current_stw (info, &amp;reason)) {</span>
+<span class="lineNum">     385 </span><span class="lineCov">    1380993 :                         g_assert (mono_thread_info_begin_resume (info));</span>
+<span class="lineNum">     386 </span>            :                         THREADS_STW_DEBUG (&quot;[GC-STW-RESUME-WORLD] RESUME thread %p\n&quot;, mono_thread_info_get_tid (info));
+<span class="lineNum">     387 </span>            : 
+<span class="lineNum">     388 </span><span class="lineCov">     460331 :                         binary_protocol_thread_restart ((gpointer) mono_thread_info_get_tid (info));</span>
+<span class="lineNum">     389 </span><span class="lineCov">     460331 :                 } else {</span>
+<span class="lineNum">     390 </span>            :                         THREADS_STW_DEBUG (&quot;[GC-STW-RESUME-WORLD] IGNORE thread %p, reason %d\n&quot;, mono_thread_info_get_tid (info), reason);
+<span class="lineNum">     391 </span>            :                 }
+<span class="lineNum">     392 </span><span class="lineCov">    2712013 :         } FOREACH_THREAD_END</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span><span class="lineCov">     193201 :         mono_threads_wait_pending_operations ();</span>
+<span class="lineNum">     395 </span><span class="lineCov">     193201 :         mono_threads_end_global_suspend ();</span>
+<span class="lineNum">     396 </span><span class="lineCov">     193201 : }</span>
+<span class="lineNum">     397 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

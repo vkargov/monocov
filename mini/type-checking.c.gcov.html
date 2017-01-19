@@ -1,0 +1,881 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/type-checking.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - type-checking.c<span style="font-size: 80%;"> (source / <a href="type-checking.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">411</td>
+            <td class="headerCovTableEntry">413</td>
+            <td class="headerCovTableEntryHi">99.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">26</td>
+            <td class="headerCovTableEntry">26</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : #include &lt;config.h&gt;</a>
+<span class="lineNum">       2 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">       3 </span>            : 
+<span class="lineNum">       4 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">       5 </span>            : 
+<span class="lineNum">       6 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">       7 </span>            : #include &quot;ir-emit.h&quot;
+<span class="lineNum">       8 </span>            : #include &lt;mono/metadata/abi-details.h&gt;
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : //XXX maybe move to mini.h / mini.c?
+<a name="12"><span class="lineNum">      12 </span>            : </a>
+<span class="lineNum">      13 </span>            : static int
+<span class="lineNum">      14 </span>            : mini_class_check_context_used (MonoCompile *cfg, MonoClass *klass)
+<span class="lineNum">      15 </span>            : {
+<span class="lineNum">      16 </span><span class="lineCov">    3373966 :         if (cfg-&gt;gshared)</span>
+<span class="lineNum">      17 </span><span class="lineCov">     197132 :                 return mono_class_check_context_used (klass);</span>
+<span class="lineNum">      18 </span>            :         else
+<span class="lineNum">      19 </span><span class="lineCov">    3176938 :                 return 0;</span>
+<span class="lineNum">      20 </span><span class="lineCov">    3374025 : }</span>
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : 
+<span class="lineNum">      23 </span>            : #define is_complex_isinst(klass) (mono_class_is_interface (klass) || klass-&gt;rank || mono_class_is_nullable (klass) || mono_class_is_marshalbyref (klass) || mono_class_is_sealed (klass) || klass-&gt;byval_arg.type == MONO_TYPE_VAR || klass-&gt;byval_arg.type == MONO_TYPE_MVAR)
+<a name="24"><span class="lineNum">      24 </span>            : </a>
+<span class="lineNum">      25 </span>            : static int
+<span class="lineNum">      26 </span>            : get_castclass_cache_idx (MonoCompile *cfg)
+<span class="lineNum">      27 </span>            : {
+<span class="lineNum">      28 </span>            :         /* Each CASTCLASS_CACHE patch needs a unique index which identifies the call site */
+<span class="lineNum">      29 </span><span class="lineCov">      27315 :         cfg-&gt;castclass_cache_index ++;</span>
+<span class="lineNum">      30 </span><span class="lineCov">      27315 :         return (cfg-&gt;method_index &lt;&lt; 16) | cfg-&gt;castclass_cache_index;</span>
+<span class="lineNum">      31 </span>            : }
+<a name="32"><span class="lineNum">      32 </span>            : </a>
+<span class="lineNum">      33 </span>            : static void
+<span class="lineNum">      34 </span>            : emit_cached_check_args (MonoCompile *cfg, MonoInst *obj, MonoClass *klass, int context_used, MonoInst *args[3])
+<span class="lineNum">      35 </span>            : {
+<span class="lineNum">      36 </span><span class="lineCov">     115912 :         args [0] = obj;</span>
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span><span class="lineCov">     115912 :         if (context_used) {</span>
+<span class="lineNum">      39 </span>            :                 MonoInst *cache_ins;
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span><span class="lineCov">      88611 :                 cache_ins = mini_emit_get_rgctx_klass (cfg, context_used, klass, MONO_RGCTX_INFO_CAST_CACHE);</span>
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            :                 /* klass - it's the second element of the cache entry*/
+<span class="lineNum">      44 </span><span class="lineCov">    1063798 :                 EMIT_NEW_LOAD_MEMBASE (cfg, args [1], OP_LOAD_MEMBASE, alloc_preg (cfg), cache_ins-&gt;dreg, sizeof (gpointer));</span>
+<span class="lineNum">      45 </span>            : 
+<span class="lineNum">      46 </span><span class="lineCov">      88664 :                 args [2] = cache_ins; /* cache */</span>
+<span class="lineNum">      47 </span><span class="lineCov">      88664 :         } else {</span>
+<span class="lineNum">      48 </span>            :                 int idx;
+<span class="lineNum">      49 </span>            : 
+<span class="lineNum">      50 </span><span class="lineCov">     327731 :                 EMIT_NEW_CLASSCONST (cfg, args [1], klass); /* klass */</span>
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span><span class="lineCov">      27314 :                 idx = get_castclass_cache_idx (cfg); /* inline cache*/</span>
+<span class="lineNum">      53 </span><span class="lineCov">      27314 :                 args [2] = mini_emit_runtime_constant (cfg, MONO_PATCH_INFO_CASTCLASS_CACHE, GINT_TO_POINTER (idx));</span>
+<span class="lineNum">      54 </span>            :         }
+<span class="lineNum">      55 </span><span class="lineCov">     115964 : }</span>
+<a name="56"><span class="lineNum">      56 </span>            : </a>
+<span class="lineNum">      57 </span>            : static MonoInst*
+<span class="lineNum">      58 </span>            : emit_isinst_with_cache (MonoCompile *cfg, MonoInst *obj, MonoClass *klass, int context_used)
+<span class="lineNum">      59 </span>            : {
+<span class="lineNum">      60 </span>            :         MonoInst *args [3];
+<span class="lineNum">      61 </span><span class="lineCov">      70486 :         MonoMethod *mono_isinst = mono_marshal_get_isinst_with_cache ();</span>
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span><span class="lineCov">      70486 :         emit_cached_check_args (cfg, obj, klass, context_used, args);</span>
+<span class="lineNum">      64 </span><span class="lineCov">      70486 :         return mono_emit_method_call (cfg, mono_isinst, args, NULL);</span>
+<span class="lineNum">      65 </span>            : }
+<a name="66"><span class="lineNum">      66 </span>            : </a>
+<span class="lineNum">      67 </span>            : static MonoInst*
+<span class="lineNum">      68 </span>            : emit_castclass_with_cache_no_details (MonoCompile *cfg, MonoInst *obj, MonoClass *klass, int context_used)
+<span class="lineNum">      69 </span>            : {
+<span class="lineNum">      70 </span>            :         MonoInst *args [3];
+<span class="lineNum">      71 </span><span class="lineCov">        121 :         MonoMethod *mono_castclass = mono_marshal_get_castclass_with_cache ();</span>
+<span class="lineNum">      72 </span>            :         MonoInst *res;
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span><span class="lineCov">        121 :         emit_cached_check_args (cfg, obj, klass, context_used, args);</span>
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span><span class="lineCov">        121 :         res = mono_emit_method_call (cfg, mono_castclass, args, NULL);</span>
+<span class="lineNum">      77 </span>            : 
+<span class="lineNum">      78 </span><span class="lineCov">        121 :         return res;</span>
+<span class="lineNum">      79 </span>            : }
+<a name="80"><span class="lineNum">      80 </span>            : </a>
+<span class="lineNum">      81 </span>            : static MonoInst*
+<span class="lineNum">      82 </span>            : emit_castclass_with_cache (MonoCompile *cfg, MonoInst *obj, MonoClass *klass, int context_used)
+<span class="lineNum">      83 </span>            : {
+<span class="lineNum">      84 </span>            :         MonoInst *args [3];
+<span class="lineNum">      85 </span><span class="lineCov">      45360 :         MonoMethod *mono_castclass = mono_marshal_get_castclass_with_cache ();</span>
+<span class="lineNum">      86 </span>            :         MonoInst *res;
+<span class="lineNum">      87 </span>            : 
+<span class="lineNum">      88 </span><span class="lineCov">      45360 :         emit_cached_check_args (cfg, obj, klass, context_used, args);</span>
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span><span class="lineCov">      45360 :         mini_save_cast_details (cfg, klass, args [0]-&gt;dreg, TRUE);</span>
+<span class="lineNum">      91 </span><span class="lineCov">      45360 :         res = mono_emit_method_call (cfg, mono_castclass, args, NULL);</span>
+<span class="lineNum">      92 </span><span class="lineCov">      45360 :         mini_reset_cast_details (cfg);</span>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineCov">      45360 :         return res;</span>
+<span class="lineNum">      95 </span>            : }
+<a name="96"><span class="lineNum">      96 </span>            : </a>
+<span class="lineNum">      97 </span>            : static inline void
+<span class="lineNum">      98 </span>            : mini_emit_class_check_inst (MonoCompile *cfg, int klass_reg, MonoClass *klass, MonoInst *klass_inst)
+<span class="lineNum">      99 </span>            : {
+<span class="lineNum">     100 </span><span class="lineCov">    1761776 :         if (klass_inst) {</span>
+<span class="lineNum">     101 </span><span class="lineCov">     149620 :                 MONO_EMIT_NEW_BIALU (cfg, OP_COMPARE, -1, klass_reg, klass_inst-&gt;dreg);</span>
+<span class="lineNum">     102 </span><span class="lineCov">      14962 :         } else {</span>
+<span class="lineNum">     103 </span><span class="lineCov">    1746270 :                 MonoInst *ins = mini_emit_runtime_constant (cfg, MONO_PATCH_INFO_CLASS, klass);</span>
+<span class="lineNum">     104 </span><span class="lineCov">   17461735 :                 MONO_EMIT_NEW_BIALU (cfg, OP_COMPARE, -1, klass_reg, ins-&gt;dreg);</span>
+<span class="lineNum">     105 </span>            :         }
+<span class="lineNum">     106 </span><span class="lineCov">   17617233 :         MONO_EMIT_NEW_COND_EXC (cfg, NE_UN, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     107 </span><span class="lineCov">    1761829 : }</span>
+<span class="lineNum">     108 </span>            : 
+<a name="109"><span class="lineNum">     109 </span>            : </a>
+<span class="lineNum">     110 </span>            : static void
+<span class="lineNum">     111 </span>            : mini_emit_isninst_cast_inst (MonoCompile *cfg, int klass_reg, MonoClass *klass, MonoInst *klass_ins, MonoBasicBlock *false_target, MonoBasicBlock *true_target)
+<span class="lineNum">     112 </span>            : {
+<span class="lineNum">     113 </span><span class="lineCov">     483832 :         int idepth_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     114 </span><span class="lineCov">     483832 :         int stypes_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     115 </span><span class="lineCov">     483832 :         int stype = alloc_preg (cfg);</span>
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span><span class="lineCov">     483832 :         mono_class_setup_supertypes (klass);</span>
+<span class="lineNum">     118 </span>            : 
+<span class="lineNum">     119 </span><span class="lineCov">     483832 :         if (klass-&gt;idepth &gt; MONO_DEFAULT_SUPERTABLE_SIZE) {</span>
+<span class="lineNum">     120 </span><span class="lineCov">     258360 :                 MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU2_MEMBASE, idepth_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, idepth));</span>
+<span class="lineNum">     121 </span><span class="lineCov">     258399 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, idepth_reg, klass-&gt;idepth);</span>
+<span class="lineNum">     122 </span><span class="lineCov">     723422 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBLT_UN, false_target);</span>
+<span class="lineNum">     123 </span><span class="lineCov">      25832 :         }</span>
+<span class="lineNum">     124 </span><span class="lineCov">    4837623 :         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, stypes_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, supertypes));</span>
+<span class="lineNum">     125 </span><span class="lineCov">    4838633 :         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, stype, stypes_reg, ((klass-&gt;idepth - 1) * SIZEOF_VOID_P));</span>
+<span class="lineNum">     126 </span><span class="lineCov">     483847 :         if (klass_ins) {</span>
+<span class="lineNum">     127 </span><span class="lineCov">     115442 :                 MONO_EMIT_NEW_BIALU (cfg, OP_COMPARE, -1, stype, klass_ins-&gt;dreg);</span>
+<span class="lineNum">     128 </span><span class="lineCov">     483320 :         } else if (cfg-&gt;compile_aot) {</span>
+<span class="lineNum">     129 </span><span class="lineCov">       2259 :                 int const_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     130 </span><span class="lineCov">      22590 :                 MONO_EMIT_NEW_CLASSCONST (cfg, const_reg, klass);</span>
+<span class="lineNum">     131 </span><span class="lineCov">      22590 :                 MONO_EMIT_NEW_BIALU (cfg, OP_COMPARE, -1, stype, const_reg);</span>
+<span class="lineNum">     132 </span><span class="lineCov">       2259 :         } else {</span>
+<span class="lineNum">     133 </span><span class="lineCov">    4696452 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, stype, klass);</span>
+<span class="lineNum">     134 </span>            :         }
+<span class="lineNum">     135 </span><span class="lineCov">   13547715 :         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBEQ, true_target);</span>
+<span class="lineNum">     136 </span><span class="lineCov">     483853 : }</span>
+<span class="lineNum">     137 </span>            : 
+<a name="138"><span class="lineNum">     138 </span>            : </a>
+<span class="lineNum">     139 </span>            : static void
+<span class="lineNum">     140 </span>            : mini_emit_interface_bitmap_check (MonoCompile *cfg, int intf_bit_reg, int base_reg, int offset, MonoClass *klass)
+<span class="lineNum">     141 </span>            : {
+<span class="lineNum">     142 </span><span class="lineCov">     204221 :         int ibitmap_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     143 </span>            : #ifdef COMPRESSED_INTERFACE_BITMAP
+<span class="lineNum">     144 </span>            :         MonoInst *args [2];
+<span class="lineNum">     145 </span>            :         MonoInst *res, *ins;
+<span class="lineNum">     146 </span>            :         NEW_LOAD_MEMBASE (cfg, ins, OP_LOAD_MEMBASE, ibitmap_reg, base_reg, offset);
+<span class="lineNum">     147 </span>            :         MONO_ADD_INS (cfg-&gt;cbb, ins);
+<span class="lineNum">     148 </span>            :         args [0] = ins;
+<span class="lineNum">     149 </span>            :         args [1] = mini_emit_runtime_constant (cfg, MONO_PATCH_INFO_IID, klass);
+<span class="lineNum">     150 </span>            :         res = mono_emit_jit_icall (cfg, mono_class_interface_match, args);
+<span class="lineNum">     151 </span>            :         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, intf_bit_reg, res-&gt;dreg);
+<span class="lineNum">     152 </span>            : #else
+<span class="lineNum">     153 </span><span class="lineCov">     204221 :         int ibitmap_byte_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span><span class="lineCov">    2041906 :         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, ibitmap_reg, base_reg, offset);</span>
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span><span class="lineCov">     204180 :         if (cfg-&gt;compile_aot) {</span>
+<span class="lineNum">     158 </span><span class="lineCov">        779 :                 int iid_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     159 </span><span class="lineCov">        779 :                 int shifted_iid_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     160 </span><span class="lineCov">        779 :                 int ibitmap_byte_address_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     161 </span><span class="lineCov">        779 :                 int masked_iid_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     162 </span><span class="lineCov">        779 :                 int iid_one_bit_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     163 </span><span class="lineCov">        779 :                 int iid_bit_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     164 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_AOTCONST (cfg, iid_reg, klass, MONO_PATCH_INFO_IID);</span>
+<span class="lineNum">     165 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_SHR_IMM, shifted_iid_reg, iid_reg, 3);</span>
+<span class="lineNum">     166 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_BIALU (cfg, OP_PADD, ibitmap_byte_address_reg, ibitmap_reg, shifted_iid_reg);</span>
+<span class="lineNum">     167 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU1_MEMBASE, ibitmap_byte_reg, ibitmap_byte_address_reg, 0);</span>
+<span class="lineNum">     168 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_IAND_IMM, masked_iid_reg, iid_reg, 7);</span>
+<span class="lineNum">     169 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_ICONST (cfg, iid_one_bit_reg, 1);</span>
+<span class="lineNum">     170 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_BIALU (cfg, OP_ISHL, iid_bit_reg, iid_one_bit_reg, masked_iid_reg);</span>
+<span class="lineNum">     171 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_BIALU (cfg, OP_IAND, intf_bit_reg, ibitmap_byte_reg, iid_bit_reg);</span>
+<span class="lineNum">     172 </span><span class="lineCov">        779 :         } else {</span>
+<span class="lineNum">     173 </span><span class="lineCov">    2033700 :                 MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADI1_MEMBASE, ibitmap_byte_reg, ibitmap_reg, klass-&gt;interface_id &gt;&gt; 3);</span>
+<span class="lineNum">     174 </span><span class="lineCov">    2033912 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_AND_IMM, intf_bit_reg, ibitmap_byte_reg, 1 &lt;&lt; (klass-&gt;interface_id &amp; 7));</span>
+<span class="lineNum">     175 </span>            :         }
+<span class="lineNum">     176 </span>            : #endif
+<span class="lineNum">     177 </span><span class="lineCov">     204222 : }</span>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span>            : /* 
+<span class="lineNum">     180 </span>            :  * Emit code which loads into &quot;intf_bit_reg&quot; a nonzero value if the MonoClass
+<span class="lineNum">     181 </span>            :  * stored in &quot;klass_reg&quot; implements the interface &quot;klass&quot;.
+<a name="182"><span class="lineNum">     182 </span>            :  */</a>
+<span class="lineNum">     183 </span>            : static void
+<span class="lineNum">     184 </span>            : mini_emit_load_intf_bit_reg_class (MonoCompile *cfg, int intf_bit_reg, int klass_reg, MonoClass *klass)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span><span class="lineCov">        764 :         mini_emit_interface_bitmap_check (cfg, intf_bit_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, interface_bitmap), klass);</span>
+<span class="lineNum">     187 </span><span class="lineCov">        764 : }</span>
+<span class="lineNum">     188 </span>            : 
+<span class="lineNum">     189 </span>            : /* 
+<span class="lineNum">     190 </span>            :  * Emit code which loads into &quot;intf_bit_reg&quot; a nonzero value if the MonoVTable
+<span class="lineNum">     191 </span>            :  * stored in &quot;vtable_reg&quot; implements the interface &quot;klass&quot;.
+<a name="192"><span class="lineNum">     192 </span>            :  */</a>
+<span class="lineNum">     193 </span>            : static void
+<span class="lineNum">     194 </span>            : mini_emit_load_intf_bit_reg_vtable (MonoCompile *cfg, int intf_bit_reg, int vtable_reg, MonoClass *klass)
+<span class="lineNum">     195 </span>            : {
+<span class="lineNum">     196 </span><span class="lineCov">     203440 :         mini_emit_interface_bitmap_check (cfg, intf_bit_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, interface_bitmap), klass);</span>
+<span class="lineNum">     197 </span><span class="lineCov">     203440 : }</span>
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span>            : /* 
+<span class="lineNum">     200 </span>            :  * Emit code which checks whenever the interface id of @klass is smaller than
+<span class="lineNum">     201 </span>            :  * than the value given by max_iid_reg.
+<a name="202"><span class="lineNum">     202 </span>            : */</a>
+<span class="lineNum">     203 </span>            : static void
+<span class="lineNum">     204 </span>            : mini_emit_max_iid_check (MonoCompile *cfg, int max_iid_reg, MonoClass *klass,
+<span class="lineNum">     205 </span>            :                                                  MonoBasicBlock *false_target)
+<span class="lineNum">     206 </span>            : {
+<span class="lineNum">     207 </span><span class="lineCov">     204200 :         if (cfg-&gt;compile_aot) {</span>
+<span class="lineNum">     208 </span><span class="lineCov">        779 :                 int iid_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     209 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_AOTCONST (cfg, iid_reg, klass, MONO_PATCH_INFO_IID);</span>
+<span class="lineNum">     210 </span><span class="lineCov">       7790 :                 MONO_EMIT_NEW_BIALU (cfg, OP_COMPARE, -1, max_iid_reg, iid_reg);</span>
+<span class="lineNum">     211 </span><span class="lineCov">        779 :         }</span>
+<span class="lineNum">     212 </span>            :         else
+<span class="lineNum">     213 </span><span class="lineCov">    2033984 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, max_iid_reg, klass-&gt;interface_id);</span>
+<span class="lineNum">     214 </span><span class="lineCov">     204244 :         if (false_target)</span>
+<span class="lineNum">     215 </span><span class="lineCov">    5906516 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBLT_UN, false_target);</span>
+<span class="lineNum">     216 </span>            :         else
+<span class="lineNum">     217 </span><span class="lineCov">       5640 :                 MONO_EMIT_NEW_COND_EXC (cfg, LT_UN, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     218 </span><span class="lineCov">     204162 : }</span>
+<span class="lineNum">     219 </span>            : 
+<a name="220"><span class="lineNum">     220 </span>            : /* Same as above, but obtains max_iid from a vtable */</a>
+<span class="lineNum">     221 </span>            : static void
+<span class="lineNum">     222 </span>            : mini_emit_max_iid_check_vtable (MonoCompile *cfg, int vtable_reg, MonoClass *klass,
+<span class="lineNum">     223 </span>            :                                                                  MonoBasicBlock *false_target)
+<span class="lineNum">     224 </span>            : {
+<span class="lineNum">     225 </span><span class="lineCov">     203370 :         int max_iid_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     226 </span>            :                 
+<span class="lineNum">     227 </span><span class="lineCov">    2034014 :         MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU4_MEMBASE, max_iid_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, max_interface_id));</span>
+<span class="lineNum">     228 </span><span class="lineCov">     203488 :         mini_emit_max_iid_check (cfg, max_iid_reg, klass, false_target);</span>
+<span class="lineNum">     229 </span><span class="lineCov">     203488 : }</span>
+<span class="lineNum">     230 </span>            : 
+<a name="231"><span class="lineNum">     231 </span>            : /* Same as above, but obtains max_iid from a klass */</a>
+<span class="lineNum">     232 </span>            : static void
+<span class="lineNum">     233 </span>            : mini_emit_max_iid_check_class (MonoCompile *cfg, int klass_reg, MonoClass *klass,
+<span class="lineNum">     234 </span>            :                                                                  MonoBasicBlock *false_target)
+<span class="lineNum">     235 </span>            : {
+<span class="lineNum">     236 </span><span class="lineCov">        764 :         int max_iid_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     237 </span>            : 
+<span class="lineNum">     238 </span><span class="lineCov">       7640 :         MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU4_MEMBASE, max_iid_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, max_interface_id));</span>
+<span class="lineNum">     239 </span><span class="lineCov">        764 :         mini_emit_max_iid_check (cfg, max_iid_reg, klass, false_target);</span>
+<span class="lineNum">     240 </span><span class="lineCov">        764 : }</span>
+<a name="241"><span class="lineNum">     241 </span>            : </a>
+<span class="lineNum">     242 </span>            : static inline void
+<span class="lineNum">     243 </span>            : mini_emit_class_check_branch (MonoCompile *cfg, int klass_reg, MonoClass *klass, int branch_op, MonoBasicBlock *target)
+<span class="lineNum">     244 </span>            : {
+<span class="lineNum">     245 </span><span class="lineCov">     173704 :         if (cfg-&gt;compile_aot) {</span>
+<span class="lineNum">     246 </span><span class="lineCov">        530 :                 int const_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     247 </span><span class="lineCov">       5300 :                 MONO_EMIT_NEW_CLASSCONST (cfg, const_reg, klass);</span>
+<span class="lineNum">     248 </span><span class="lineCov">       5300 :                 MONO_EMIT_NEW_BIALU (cfg, OP_COMPARE, -1, klass_reg, const_reg);</span>
+<span class="lineNum">     249 </span><span class="lineCov">        530 :         } else {</span>
+<span class="lineNum">     250 </span><span class="lineCov">    1731695 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, klass_reg, klass);</span>
+<span class="lineNum">     251 </span>            :         }
+<span class="lineNum">     252 </span><span class="lineCov">    5038106 :         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, branch_op, target);</span>
+<span class="lineNum">     253 </span><span class="lineCov">     173739 : }</span>
+<span class="lineNum">     254 </span>            : 
+<a name="255"><span class="lineNum">     255 </span>            : </a>
+<span class="lineNum">     256 </span>            : static void
+<span class="lineNum">     257 </span>            : mini_emit_isninst_cast (MonoCompile *cfg, int klass_reg, MonoClass *klass, MonoBasicBlock *false_target, MonoBasicBlock *true_target)
+<span class="lineNum">     258 </span>            : {
+<span class="lineNum">     259 </span><span class="lineCov">      80050 :         mini_emit_isninst_cast_inst (cfg, klass_reg, klass, NULL, false_target, true_target);</span>
+<span class="lineNum">     260 </span><span class="lineCov">      80050 : }</span>
+<a name="261"><span class="lineNum">     261 </span>            : </a>
+<span class="lineNum">     262 </span>            : static void
+<span class="lineNum">     263 </span>            : mini_emit_iface_cast (MonoCompile *cfg, int vtable_reg, MonoClass *klass, MonoBasicBlock *false_target, MonoBasicBlock *true_target)
+<span class="lineNum">     264 </span>            : {
+<span class="lineNum">     265 </span><span class="lineCov">     203475 :         int intf_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineCov">     203475 :         mini_emit_max_iid_check_vtable (cfg, vtable_reg, klass, false_target);</span>
+<span class="lineNum">     268 </span><span class="lineCov">     203475 :         mini_emit_load_intf_bit_reg_vtable (cfg, intf_reg, vtable_reg, klass);</span>
+<span class="lineNum">     269 </span><span class="lineCov">    2034212 :         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, intf_reg, 0);</span>
+<span class="lineNum">     270 </span><span class="lineCov">     203443 :         if (true_target)</span>
+<span class="lineNum">     271 </span><span class="lineCov">    5900512 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBNE_UN, true_target);</span>
+<span class="lineNum">     272 </span>            :         else
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :                 MONO_EMIT_NEW_COND_EXC (cfg, EQ, &quot;InvalidCastException&quot;);             </span>
+<span class="lineNum">     274 </span><span class="lineCov">     203370 : }</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span>            : /*
+<span class="lineNum">     277 </span>            :  * Variant of the above that takes a register to the class, not the vtable.
+<a name="278"><span class="lineNum">     278 </span>            :  */</a>
+<span class="lineNum">     279 </span>            : static void
+<span class="lineNum">     280 </span>            : mini_emit_iface_class_cast (MonoCompile *cfg, int klass_reg, MonoClass *klass, MonoBasicBlock *false_target, MonoBasicBlock *true_target)
+<span class="lineNum">     281 </span>            : {
+<span class="lineNum">     282 </span><span class="lineCov">        764 :         int intf_bit_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     283 </span>            : 
+<span class="lineNum">     284 </span><span class="lineCov">        764 :         mini_emit_max_iid_check_class (cfg, klass_reg, klass, false_target);</span>
+<span class="lineNum">     285 </span><span class="lineCov">        764 :         mini_emit_load_intf_bit_reg_class (cfg, intf_bit_reg, klass_reg, klass);</span>
+<span class="lineNum">     286 </span><span class="lineCov">       7640 :         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, intf_bit_reg, 0);</span>
+<span class="lineNum">     287 </span><span class="lineCov">        764 :         if (true_target)</span>
+<span class="lineNum">     288 </span><span class="lineCov">       5800 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBNE_UN, true_target);</span>
+<span class="lineNum">     289 </span>            :         else
+<span class="lineNum">     290 </span><span class="lineCov">       5640 :                 MONO_EMIT_NEW_COND_EXC (cfg, EQ, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     291 </span><span class="lineCov">        764 : }</span>
+<span class="lineNum">     292 </span>            : 
+<span class="lineNum">     293 </span>            : 
+<span class="lineNum">     294 </span>            : static void
+<span class="lineNum">     295 </span>            : mini_emit_castclass (MonoCompile *cfg, int obj_reg, int klass_reg, MonoClass *klass, MonoBasicBlock *object_is_null);
+<a name="296"><span class="lineNum">     296 </span>            :         </a>
+<span class="lineNum">     297 </span>            : static void
+<span class="lineNum">     298 </span>            : mini_emit_castclass_inst (MonoCompile *cfg, int obj_reg, int klass_reg, MonoClass *klass, MonoInst *klass_inst, MonoBasicBlock *object_is_null)
+<span class="lineNum">     299 </span>            : {
+<span class="lineNum">     300 </span><span class="lineCov">    1291990 :         if (klass-&gt;rank) {</span>
+<span class="lineNum">     301 </span><span class="lineCov">      49438 :                 int rank_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     302 </span><span class="lineCov">      49438 :                 int eclass_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span><span class="lineCov">     148360 :                 g_assert (!klass_inst);</span>
+<span class="lineNum">     305 </span><span class="lineCov">     494559 :                 MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU1_MEMBASE, rank_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, rank));</span>
+<span class="lineNum">     306 </span><span class="lineCov">     494567 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, rank_reg, klass-&gt;rank);</span>
+<span class="lineNum">     307 </span><span class="lineCov">     494618 :                 MONO_EMIT_NEW_COND_EXC (cfg, NE_UN, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     308 </span>            :                 //              MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));
+<span class="lineNum">     309 </span><span class="lineCov">     494596 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, eclass_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, cast_class));</span>
+<span class="lineNum">     310 </span><span class="lineCov">      49463 :                 if (klass-&gt;cast_class == mono_defaults.object_class) {</span>
+<span class="lineNum">     311 </span><span class="lineCov">       2695 :                         int parent_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     312 </span><span class="lineCov">      26950 :                         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, parent_reg, eclass_reg, MONO_STRUCT_OFFSET (MonoClass, parent));</span>
+<span class="lineNum">     313 </span><span class="lineCov">       2695 :                         mini_emit_class_check_branch (cfg, parent_reg, mono_defaults.enum_class-&gt;parent, OP_PBNE_UN, object_is_null);</span>
+<span class="lineNum">     314 </span><span class="lineCov">       2695 :                         mini_emit_class_check (cfg, eclass_reg, mono_defaults.enum_class);</span>
+<span class="lineNum">     315 </span><span class="lineCov">      49449 :                 } else if (klass-&gt;cast_class == mono_defaults.enum_class-&gt;parent) {</span>
+<span class="lineNum">     316 </span><span class="lineCov">        300 :                         mini_emit_class_check_branch (cfg, eclass_reg, mono_defaults.enum_class-&gt;parent, OP_PBEQ, object_is_null);</span>
+<span class="lineNum">     317 </span><span class="lineCov">        300 :                         mini_emit_class_check (cfg, eclass_reg, mono_defaults.enum_class);</span>
+<span class="lineNum">     318 </span><span class="lineCov">      46770 :                 } else if (klass-&gt;cast_class == mono_defaults.enum_class) {</span>
+<span class="lineNum">     319 </span><span class="lineCov">        200 :                         mini_emit_class_check (cfg, eclass_reg, mono_defaults.enum_class);</span>
+<span class="lineNum">     320 </span><span class="lineCov">      46466 :                 } else if (mono_class_is_interface (klass-&gt;cast_class)) {</span>
+<span class="lineNum">     321 </span><span class="lineCov">        564 :                         mini_emit_iface_class_cast (cfg, eclass_reg, klass-&gt;cast_class, NULL, NULL);</span>
+<span class="lineNum">     322 </span><span class="lineCov">        564 :                 } else {</span>
+<span class="lineNum">     323 </span>            :                         // Pass -1 as obj_reg to skip the check below for arrays of arrays
+<span class="lineNum">     324 </span><span class="lineCov">      45701 :                         mini_emit_castclass (cfg, -1, eclass_reg, klass-&gt;cast_class, object_is_null);</span>
+<span class="lineNum">     325 </span>            :                 }
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span><span class="lineCov">     147955 :                 if ((klass-&gt;rank == 1) &amp;&amp; (klass-&gt;byval_arg.type == MONO_TYPE_SZARRAY) &amp;&amp; (obj_reg != -1)) {</span>
+<span class="lineNum">     328 </span>            :                         /* Check that the object is a vector too */
+<span class="lineNum">     329 </span><span class="lineCov">      49147 :                         int bounds_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     330 </span><span class="lineCov">     491494 :                         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, bounds_reg, obj_reg, MONO_STRUCT_OFFSET (MonoArray, bounds));</span>
+<span class="lineNum">     331 </span><span class="lineCov">     491556 :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, bounds_reg, 0);</span>
+<span class="lineNum">     332 </span><span class="lineCov">     491494 :                         MONO_EMIT_NEW_COND_EXC (cfg, NE_UN, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     333 </span><span class="lineCov">      49152 :                 }</span>
+<span class="lineNum">     334 </span><span class="lineCov">      49458 :         } else {</span>
+<span class="lineNum">     335 </span><span class="lineCov">    1242733 :                 int idepth_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     336 </span><span class="lineCov">    1242733 :                 int stypes_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     337 </span><span class="lineCov">    1242733 :                 int stype = alloc_preg (cfg);</span>
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span><span class="lineCov">    1242733 :                 mono_class_setup_supertypes (klass);</span>
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span><span class="lineCov">    1242733 :                 if (klass-&gt;idepth &gt; MONO_DEFAULT_SUPERTABLE_SIZE) {</span>
+<span class="lineNum">     342 </span><span class="lineCov">      52207 :                         MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU2_MEMBASE, idepth_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, idepth));</span>
+<span class="lineNum">     343 </span><span class="lineCov">      52191 :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, idepth_reg, klass-&gt;idepth);</span>
+<span class="lineNum">     344 </span><span class="lineCov">      52231 :                         MONO_EMIT_NEW_COND_EXC (cfg, LT_UN, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     345 </span><span class="lineCov">       5225 :                 }</span>
+<span class="lineNum">     346 </span><span class="lineCov">   12431409 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, stypes_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, supertypes));</span>
+<span class="lineNum">     347 </span><span class="lineCov">   12433257 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, stype, stypes_reg, ((klass-&gt;idepth - 1) * SIZEOF_VOID_P));</span>
+<span class="lineNum">     348 </span><span class="lineCov">    1243465 :                 mini_emit_class_check_inst (cfg, stype, klass, klass_inst);</span>
+<span class="lineNum">     349 </span>            :         }
+<span class="lineNum">     350 </span><span class="lineCov">    1292736 : }</span>
+<a name="351"><span class="lineNum">     351 </span>            : </a>
+<span class="lineNum">     352 </span>            : static void
+<span class="lineNum">     353 </span>            : mini_emit_castclass (MonoCompile *cfg, int obj_reg, int klass_reg, MonoClass *klass, MonoBasicBlock *object_is_null)
+<span class="lineNum">     354 </span>            : {
+<span class="lineNum">     355 </span><span class="lineCov">      45686 :         mini_emit_castclass_inst (cfg, obj_reg, klass_reg, klass, NULL, object_is_null);</span>
+<span class="lineNum">     356 </span><span class="lineCov">      45686 : }</span>
+<a name="357"><span class="lineNum">     357 </span>            : </a>
+<span class="lineNum">     358 </span>            : static void
+<span class="lineNum">     359 </span>            : emit_special_array_iface_check (MonoCompile *cfg, MonoInst *src, MonoClass* klass, int vtable_reg, MonoBasicBlock *true_bb, int context_used)
+<span class="lineNum">     360 </span>            : {
+<span class="lineNum">     361 </span>            :         MonoBasicBlock *not_an_array;
+<span class="lineNum">     362 </span>            :         int rank_reg;
+<span class="lineNum">     363 </span>            : 
+<span class="lineNum">     364 </span><span class="lineCov">      58263 :         if (!klass-&gt;is_array_special_interface)</span>
+<span class="lineNum">     365 </span><span class="lineCov">      58165 :                 return;</span>
+<span class="lineNum">     366 </span>            : 
+<span class="lineNum">     367 </span><span class="lineCov">        121 :         rank_reg = alloc_ireg (cfg);</span>
+<span class="lineNum">     368 </span>            : 
+<span class="lineNum">     369 </span><span class="lineCov">        242 :         NEW_BBLOCK (cfg, not_an_array);</span>
+<span class="lineNum">     370 </span><span class="lineCov">       1210 :         MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU1_MEMBASE, rank_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, rank));</span>
+<span class="lineNum">     371 </span><span class="lineCov">       1210 :         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, rank_reg, 1);</span>
+<span class="lineNum">     372 </span><span class="lineCov">       4114 :         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_IBNE_UN, not_an_array);</span>
+<span class="lineNum">     373 </span>            : 
+<span class="lineNum">     374 </span><span class="lineCov">        121 :         emit_castclass_with_cache_no_details (cfg, src, klass, context_used);</span>
+<span class="lineNum">     375 </span><span class="lineCov">       2783 :         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, true_bb);</span>
+<span class="lineNum">     376 </span>            : 
+<span class="lineNum">     377 </span><span class="lineCov">        968 :         MONO_START_BB (cfg, not_an_array);</span>
+<span class="lineNum">     378 </span>            : 
+<span class="lineNum">     379 </span><span class="lineCov">      58259 : }</span>
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span>            : /*
+<span class="lineNum">     382 </span>            :  * Returns NULL and set the cfg exception on error.
+<a name="383"><span class="lineNum">     383 </span>            :  */</a>
+<span class="lineNum">     384 </span>            : static MonoInst*
+<span class="lineNum">     385 </span>            : handle_castclass (MonoCompile *cfg, MonoClass *klass, MonoInst *src, int context_used)
+<span class="lineNum">     386 </span>            : {
+<span class="lineNum">     387 </span>            :         MonoBasicBlock *is_null_bb;
+<span class="lineNum">     388 </span><span class="lineCov">    2471279 :         int obj_reg = src-&gt;dreg;</span>
+<span class="lineNum">     389 </span><span class="lineCov">    2471279 :         MonoInst *klass_inst = NULL;</span>
+<span class="lineNum">     390 </span>            : 
+<span class="lineNum">     391 </span><span class="lineCov">    2471279 :         if (MONO_INS_IS_PCONST_NULL (src))</span>
+<span class="lineNum">     392 </span><span class="lineNoCov">          0 :                 return src;</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span><span class="lineCov">    2471870 :         if (context_used) {</span>
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineCov">     389139 :                 if (is_complex_isinst (klass))</span>
+<span class="lineNum">     397 </span><span class="lineCov">      44002 :                         return emit_castclass_with_cache (cfg, src, klass, context_used);</span>
+<span class="lineNum">     398 </span>            : 
+<span class="lineNum">     399 </span><span class="lineCov">      14962 :                 klass_inst = mini_emit_get_rgctx_klass (cfg, context_used, klass, MONO_RGCTX_INFO_KLASS);</span>
+<span class="lineNum">     400 </span><span class="lineCov">      14962 :         }</span>
+<span class="lineNum">     401 </span>            : 
+<span class="lineNum">     402 </span><span class="lineCov">    4855738 :         NEW_BBLOCK (cfg, is_null_bb);</span>
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span><span class="lineCov">   24278952 :         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, obj_reg, 0);</span>
+<span class="lineNum">     405 </span><span class="lineCov">   68040126 :         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBEQ, is_null_bb);</span>
+<span class="lineNum">     406 </span>            : 
+<span class="lineNum">     407 </span><span class="lineCov">    2425645 :         mini_save_cast_details (cfg, klass, obj_reg, FALSE);</span>
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span><span class="lineCov">    2425645 :         if (mono_class_is_interface (klass)) {</span>
+<span class="lineNum">     410 </span><span class="lineCov">      58259 :                 int tmp_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     411 </span>            : #ifndef DISABLE_REMOTING
+<span class="lineNum">     412 </span>            :                 MonoBasicBlock *interface_fail_bb;
+<span class="lineNum">     413 </span><span class="lineCov">      58259 :                 int klass_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span><span class="lineCov">     116580 :                 NEW_BBLOCK (cfg, interface_fail_bb);</span>
+<span class="lineNum">     416 </span>            : 
+<span class="lineNum">     417 </span><span class="lineCov">     583010 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoObject, vtable));</span>
+<span class="lineNum">     418 </span><span class="lineCov">      58305 :                 mini_emit_iface_cast (cfg, tmp_reg, klass, interface_fail_bb, is_null_bb);</span>
+<span class="lineNum">     419 </span>            : 
+<span class="lineNum">     420 </span>            :                 // iface bitmap check failed
+<span class="lineNum">     421 </span><span class="lineCov">     466448 :                 MONO_START_BB (cfg, interface_fail_bb);</span>
+<span class="lineNum">     422 </span>            : 
+<span class="lineNum">     423 </span>            :                 //Check if it's a rank zero array and emit fallback casting
+<span class="lineNum">     424 </span><span class="lineCov">      58363 :                 emit_special_array_iface_check (cfg, src, klass, tmp_reg, is_null_bb, context_used);</span>
+<span class="lineNum">     425 </span>            : 
+<span class="lineNum">     426 </span><span class="lineCov">     582999 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, tmp_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     427 </span>            : 
+<span class="lineNum">     428 </span><span class="lineCov">      58331 :                 mini_emit_class_check (cfg, klass_reg, mono_defaults.transparent_proxy_class);</span>
+<span class="lineNum">     429 </span>            : 
+<span class="lineNum">     430 </span><span class="lineCov">      58331 :                 tmp_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     431 </span><span class="lineCov">     583044 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoTransparentProxy, custom_type_info));</span>
+<span class="lineNum">     432 </span><span class="lineCov">     583138 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, tmp_reg, 0);</span>
+<span class="lineNum">     433 </span><span class="lineCov">     583066 :                 MONO_EMIT_NEW_COND_EXC (cfg, EQ, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     434 </span>            : 
+<span class="lineNum">     435 </span><span class="lineCov">      58334 :                 MonoInst *args [1] = { src };</span>
+<span class="lineNum">     436 </span><span class="lineCov">      58334 :                 MonoInst *proxy_test_inst = mono_emit_method_call (cfg, mono_marshal_get_proxy_cancast (klass), args, NULL);</span>
+<span class="lineNum">     437 </span><span class="lineCov">     583608 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, proxy_test_inst-&gt;dreg, 0);</span>
+<span class="lineNum">     438 </span><span class="lineCov">     583624 :                 MONO_EMIT_NEW_COND_EXC (cfg, EQ, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     439 </span>            : 
+<span class="lineNum">     440 </span><span class="lineCov">    1342257 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, is_null_bb);</span>
+<span class="lineNum">     441 </span>            : #else
+<span class="lineNum">     442 </span>            :                 MonoBasicBlock *interface_fail_bb = NULL;
+<span class="lineNum">     443 </span>            : 
+<span class="lineNum">     444 </span>            :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoObject, vtable));
+<span class="lineNum">     445 </span>            : 
+<span class="lineNum">     446 </span>            :                 if (klass-&gt;is_array_special_interface) {
+<span class="lineNum">     447 </span>            :                         NEW_BBLOCK (cfg, interface_fail_bb);
+<span class="lineNum">     448 </span>            :                         mini_emit_iface_cast (cfg, tmp_reg, klass, interface_fail_bb, is_null_bb);
+<span class="lineNum">     449 </span>            :                         // iface bitmap check failed
+<span class="lineNum">     450 </span>            :                         MONO_START_BB (cfg, interface_fail_bb);
+<span class="lineNum">     451 </span>            : 
+<span class="lineNum">     452 </span>            :                         //Check if it's a rank zero array and emit fallback casting
+<span class="lineNum">     453 </span>            :                         emit_special_array_iface_check (cfg, src, klass, tmp_reg, is_null_bb, context_used);
+<span class="lineNum">     454 </span>            :                 } else {
+<span class="lineNum">     455 </span>            :                         mini_emit_iface_cast (cfg, tmp_reg, klass, NULL, NULL);
+<span class="lineNum">     456 </span>            :                         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, is_null_bb);
+<span class="lineNum">     457 </span>            :                 }
+<span class="lineNum">     458 </span>            : #endif
+<span class="lineNum">     459 </span><span class="lineCov">    2425533 :         } else if (mono_class_is_marshalbyref (klass)) {</span>
+<span class="lineNum">     460 </span>            : #ifndef DISABLE_REMOTING
+<span class="lineNum">     461 </span>            :                 MonoBasicBlock *no_proxy_bb, *fail_1_bb;
+<span class="lineNum">     462 </span><span class="lineCov">       3258 :                 int tmp_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     463 </span><span class="lineCov">       3258 :                 int klass_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     464 </span>            : 
+<span class="lineNum">     465 </span><span class="lineCov">       6516 :                 NEW_BBLOCK (cfg, no_proxy_bb);</span>
+<span class="lineNum">     466 </span>            : 
+<span class="lineNum">     467 </span><span class="lineCov">      32582 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoObject, vtable));</span>
+<span class="lineNum">     468 </span><span class="lineCov">      32580 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, tmp_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     469 </span><span class="lineCov">       3258 :                 mini_emit_class_check_branch (cfg, klass_reg, mono_defaults.transparent_proxy_class, OP_PBNE_UN, no_proxy_bb);</span>
+<span class="lineNum">     470 </span>            : 
+<span class="lineNum">     471 </span><span class="lineCov">       3258 :                 tmp_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     472 </span><span class="lineCov">      32577 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoTransparentProxy, remote_class));</span>
+<span class="lineNum">     473 </span><span class="lineCov">      32577 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, tmp_reg, MONO_STRUCT_OFFSET (MonoRemoteClass, proxy_class));</span>
+<span class="lineNum">     474 </span>            : 
+<span class="lineNum">     475 </span><span class="lineCov">       3258 :                 tmp_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     476 </span><span class="lineCov">      32582 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoTransparentProxy, custom_type_info));</span>
+<span class="lineNum">     477 </span><span class="lineCov">      32576 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, tmp_reg, 0);</span>
+<span class="lineNum">     478 </span><span class="lineCov">      91235 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBEQ, no_proxy_bb);</span>
+<span class="lineNum">     479 </span>            : 
+<span class="lineNum">     480 </span><span class="lineCov">       6518 :                 NEW_BBLOCK (cfg, fail_1_bb);</span>
+<span class="lineNum">     481 </span>            : 
+<span class="lineNum">     482 </span><span class="lineCov">       3259 :                 mini_emit_isninst_cast (cfg, klass_reg, klass, fail_1_bb, is_null_bb);</span>
+<span class="lineNum">     483 </span>            : 
+<span class="lineNum">     484 </span><span class="lineCov">      26067 :                 MONO_START_BB (cfg, fail_1_bb);</span>
+<span class="lineNum">     485 </span>            : 
+<span class="lineNum">     486 </span><span class="lineCov">       3259 :                 MonoInst *args [1] = { src };</span>
+<span class="lineNum">     487 </span><span class="lineCov">       3259 :                 MonoInst *proxy_test_inst = mono_emit_method_call (cfg, mono_marshal_get_proxy_cancast (klass), args, NULL);</span>
+<span class="lineNum">     488 </span><span class="lineCov">      32590 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, proxy_test_inst-&gt;dreg, 0);</span>
+<span class="lineNum">     489 </span><span class="lineCov">      32587 :                 MONO_EMIT_NEW_COND_EXC (cfg, EQ, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     490 </span>            : 
+<span class="lineNum">     491 </span><span class="lineCov">      74955 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, is_null_bb);</span>
+<span class="lineNum">     492 </span>            : 
+<span class="lineNum">     493 </span><span class="lineCov">      26072 :                 MONO_START_BB (cfg, no_proxy_bb);</span>
+<span class="lineNum">     494 </span>            : 
+<span class="lineNum">     495 </span><span class="lineCov">       3259 :                 mini_emit_castclass_inst (cfg, obj_reg, klass_reg, klass, klass_inst, is_null_bb);</span>
+<span class="lineNum">     496 </span>            : #else
+<span class="lineNum">     497 </span>            :                 g_error (&quot;Transparent proxy support is disabled while trying to JIT code that uses it&quot;);
+<span class="lineNum">     498 </span>            : #endif
+<span class="lineNum">     499 </span><span class="lineCov">       3259 :         } else {</span>
+<span class="lineNum">     500 </span><span class="lineCov">    2363917 :                 int vtable_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     501 </span><span class="lineCov">    2363917 :                 int klass_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     502 </span>            : 
+<span class="lineNum">     503 </span><span class="lineCov">   23654522 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, vtable_reg, obj_reg, MONO_STRUCT_OFFSET (MonoObject, vtable));</span>
+<span class="lineNum">     504 </span>            : 
+<span class="lineNum">     505 </span><span class="lineCov">    9319422 :                 if (!klass-&gt;rank &amp;&amp; !cfg-&gt;compile_aot &amp;&amp; !(cfg-&gt;opt &amp; MONO_OPT_SHARED) &amp;&amp; mono_class_is_sealed (klass)) {</span>
+<span class="lineNum">     506 </span>            :                         /* the remoting code is broken, access the class for now */
+<span class="lineNum">     507 </span>            :                         if (0) { /*FIXME what exactly is broken? This change refers to r39380 from 2005 and mention some remoting fixes were due.*/
+<span class="lineNum">     508 </span>            :                                 MonoVTable *vt = mono_class_vtable (cfg-&gt;domain, klass);
+<span class="lineNum">     509 </span>            :                                 if (!vt) {
+<span class="lineNum">     510 </span>            :                                         mono_cfg_set_exception (cfg, MONO_EXCEPTION_TYPE_LOAD);
+<span class="lineNum">     511 </span>            :                                         cfg-&gt;exception_ptr = klass;
+<span class="lineNum">     512 </span>            :                                         return NULL;
+<span class="lineNum">     513 </span>            :                                 }
+<span class="lineNum">     514 </span>            :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, vtable_reg, vt);
+<span class="lineNum">     515 </span>            :                         } else {
+<span class="lineNum">     516 </span><span class="lineCov">   11237828 :                                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     517 </span><span class="lineCov">   11240461 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, klass_reg, klass);</span>
+<span class="lineNum">     518 </span>            :                         }
+<span class="lineNum">     519 </span><span class="lineCov">   11240364 :                         MONO_EMIT_NEW_COND_EXC (cfg, NE_UN, &quot;InvalidCastException&quot;);</span>
+<span class="lineNum">     520 </span><span class="lineCov">    1124390 :                 } else {</span>
+<span class="lineNum">     521 </span><span class="lineCov">   12434073 :                         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     522 </span><span class="lineCov">    1243935 :                         mini_emit_castclass_inst (cfg, obj_reg, klass_reg, klass, klass_inst, is_null_bb);</span>
+<span class="lineNum">     523 </span>            :                 }
+<span class="lineNum">     524 </span>            :         }
+<span class="lineNum">     525 </span>            : 
+<span class="lineNum">     526 </span><span class="lineCov">   38414786 :         MONO_START_BB (cfg, is_null_bb);</span>
+<span class="lineNum">     527 </span>            : 
+<span class="lineNum">     528 </span><span class="lineCov">    2431055 :         mini_reset_cast_details (cfg);</span>
+<span class="lineNum">     529 </span>            : 
+<span class="lineNum">     530 </span><span class="lineCov">    2431055 :         return src;</span>
+<span class="lineNum">     531 </span><span class="lineCov">    2473155 : }</span>
+<span class="lineNum">     532 </span>            : 
+<span class="lineNum">     533 </span>            : /*
+<span class="lineNum">     534 </span>            :  * Returns NULL and set the cfg exception on error.
+<a name="535"><span class="lineNum">     535 </span>            :  */</a>
+<span class="lineNum">     536 </span>            : static MonoInst*
+<span class="lineNum">     537 </span>            : handle_isinst (MonoCompile *cfg, MonoClass *klass, MonoInst *src, int context_used)
+<span class="lineNum">     538 </span>            : {
+<span class="lineNum">     539 </span>            :         MonoInst *ins;
+<span class="lineNum">     540 </span>            :         MonoBasicBlock *is_null_bb, *false_bb, *end_bb;
+<span class="lineNum">     541 </span><span class="lineCov">     886049 :         int obj_reg = src-&gt;dreg;</span>
+<span class="lineNum">     542 </span><span class="lineCov">     886049 :         int vtable_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     543 </span><span class="lineCov">     886049 :         int res_reg = alloc_ireg_ref (cfg);</span>
+<span class="lineNum">     544 </span><span class="lineCov">     886049 :         MonoInst *klass_inst = NULL;</span>
+<span class="lineNum">     545 </span>            : 
+<span class="lineNum">     546 </span><span class="lineCov">     886049 :         if (context_used) {</span>
+<span class="lineNum">     547 </span><span class="lineCov">     165284 :                 if(is_complex_isinst (klass))</span>
+<span class="lineNum">     548 </span><span class="lineCov">      37630 :                         return emit_isinst_with_cache (cfg, src, klass, context_used);</span>
+<span class="lineNum">     549 </span>            : 
+<span class="lineNum">     550 </span><span class="lineCov">      11545 :                 klass_inst = mini_emit_get_rgctx_klass (cfg, context_used, klass, MONO_RGCTX_INFO_KLASS);</span>
+<span class="lineNum">     551 </span><span class="lineCov">      11545 :         }</span>
+<span class="lineNum">     552 </span>            : 
+<span class="lineNum">     553 </span><span class="lineCov">    1696251 :         NEW_BBLOCK (cfg, is_null_bb);</span>
+<span class="lineNum">     554 </span><span class="lineCov">    1696802 :         NEW_BBLOCK (cfg, false_bb);</span>
+<span class="lineNum">     555 </span><span class="lineCov">    1696988 :         NEW_BBLOCK (cfg, end_bb);</span>
+<span class="lineNum">     556 </span>            : 
+<span class="lineNum">     557 </span>            :         /* Do the assignment at the beginning, so the other assignment can be if converted */
+<span class="lineNum">     558 </span><span class="lineCov">   10180793 :         EMIT_NEW_UNALU (cfg, ins, OP_MOVE, res_reg, obj_reg);</span>
+<span class="lineNum">     559 </span><span class="lineCov">     848630 :         ins-&gt;type = STACK_OBJ;</span>
+<span class="lineNum">     560 </span><span class="lineCov">     848630 :         ins-&gt;klass = klass;</span>
+<span class="lineNum">     561 </span>            : 
+<span class="lineNum">     562 </span><span class="lineCov">    8485192 :         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, obj_reg, 0);</span>
+<span class="lineNum">     563 </span><span class="lineCov">   28853871 :         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_IBEQ, is_null_bb);</span>
+<span class="lineNum">     564 </span>            : 
+<span class="lineNum">     565 </span><span class="lineCov">    8485745 :         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, vtable_reg, obj_reg, MONO_STRUCT_OFFSET (MonoObject, vtable));</span>
+<span class="lineNum">     566 </span>            : 
+<span class="lineNum">     567 </span><span class="lineCov">     847962 :         if (mono_class_is_interface (klass)) {</span>
+<span class="lineNum">     568 </span>            :                 MonoBasicBlock *interface_fail_bb;
+<span class="lineNum">     569 </span>            : 
+<span class="lineNum">     570 </span><span class="lineCov">     290272 :                 NEW_BBLOCK (cfg, interface_fail_bb);</span>
+<span class="lineNum">     571 </span>            : 
+<span class="lineNum">     572 </span><span class="lineCov">     145149 :                 mini_emit_iface_cast (cfg, vtable_reg, klass, interface_fail_bb, is_null_bb);</span>
+<span class="lineNum">     573 </span><span class="lineCov">    1160591 :                 MONO_START_BB (cfg, interface_fail_bb);</span>
+<span class="lineNum">     574 </span>            : 
+<span class="lineNum">     575 </span><span class="lineCov">     145153 :                 if (klass-&gt;is_array_special_interface) {</span>
+<span class="lineNum">     576 </span>            :                         MonoBasicBlock *not_an_array;
+<span class="lineNum">     577 </span>            :                         MonoInst *move;
+<span class="lineNum">     578 </span><span class="lineCov">      21019 :                         int rank_reg = alloc_ireg (cfg);</span>
+<span class="lineNum">     579 </span>            : 
+<span class="lineNum">     580 </span><span class="lineCov">      42035 :                         NEW_BBLOCK (cfg, not_an_array);</span>
+<span class="lineNum">     581 </span><span class="lineCov">     210159 :                         MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU1_MEMBASE, rank_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, rank));</span>
+<span class="lineNum">     582 </span><span class="lineCov">     210158 :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, rank_reg, 1);</span>
+<span class="lineNum">     583 </span><span class="lineCov">     714552 :                         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_IBNE_UN, not_an_array);</span>
+<span class="lineNum">     584 </span>            : 
+<span class="lineNum">     585 </span><span class="lineCov">      21020 :                         MonoInst *res_inst = emit_isinst_with_cache (cfg, src, klass, context_used);</span>
+<span class="lineNum">     586 </span><span class="lineCov">     252240 :                         EMIT_NEW_UNALU (cfg, move, OP_MOVE, res_reg, res_inst-&gt;dreg);</span>
+<span class="lineNum">     587 </span><span class="lineCov">     483389 :                         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, end_bb);</span>
+<span class="lineNum">     588 </span>            : 
+<span class="lineNum">     589 </span><span class="lineCov">     168114 :                         MONO_START_BB (cfg, not_an_array);</span>
+<span class="lineNum">     590 </span><span class="lineCov">      21018 :                 }</span>
+<span class="lineNum">     591 </span>            : 
+<span class="lineNum">     592 </span>            : #ifndef DISABLE_REMOTING
+<span class="lineNum">     593 </span>            :                 int tmp_reg, klass_reg;
+<span class="lineNum">     594 </span>            :                 MonoBasicBlock *call_proxy_isinst;
+<span class="lineNum">     595 </span>            : 
+<span class="lineNum">     596 </span><span class="lineCov">     290210 :                 NEW_BBLOCK (cfg, call_proxy_isinst);</span>
+<span class="lineNum">     597 </span>            : 
+<span class="lineNum">     598 </span><span class="lineCov">     145115 :                 klass_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     599 </span><span class="lineCov">    1451052 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     600 </span>            : 
+<span class="lineNum">     601 </span><span class="lineCov">     145120 :                 mini_emit_class_check_branch (cfg, klass_reg, mono_defaults.transparent_proxy_class, OP_PBNE_UN, false_bb);</span>
+<span class="lineNum">     602 </span>            : 
+<span class="lineNum">     603 </span><span class="lineCov">     145120 :                 tmp_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     604 </span><span class="lineCov">    1450885 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoTransparentProxy, custom_type_info));</span>
+<span class="lineNum">     605 </span><span class="lineCov">    1450847 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, tmp_reg, 0);</span>
+<span class="lineNum">     606 </span><span class="lineCov">    4063145 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBEQ, false_bb);</span>
+<span class="lineNum">     607 </span>            : 
+<span class="lineNum">     608 </span><span class="lineCov">    1160682 :                 MONO_START_BB (cfg, call_proxy_isinst);</span>
+<span class="lineNum">     609 </span>            : 
+<span class="lineNum">     610 </span><span class="lineCov">     145138 :                 MonoInst *args [1] = { src };</span>
+<span class="lineNum">     611 </span><span class="lineCov">     145138 :                 MonoInst *proxy_test_inst = mono_emit_method_call (cfg, mono_marshal_get_proxy_cancast (klass), args, NULL);</span>
+<span class="lineNum">     612 </span><span class="lineCov">    1451630 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, proxy_test_inst-&gt;dreg, 0);</span>
+<span class="lineNum">     613 </span><span class="lineCov">    4064741 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBNE_UN, is_null_bb);</span>
+<span class="lineNum">     614 </span>            : #else
+<span class="lineNum">     615 </span>            :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, false_bb);
+<span class="lineNum">     616 </span>            : #endif
+<span class="lineNum">     617 </span>            : 
+<span class="lineNum">     618 </span><span class="lineCov">     847875 :         } else if (mono_class_is_marshalbyref (klass)) {</span>
+<span class="lineNum">     619 </span>            : 
+<span class="lineNum">     620 </span>            : #ifndef DISABLE_REMOTING
+<span class="lineNum">     621 </span>            :                 int tmp_reg, klass_reg;
+<span class="lineNum">     622 </span>            :                 MonoBasicBlock *no_proxy_bb, *call_proxy_isinst;
+<span class="lineNum">     623 </span>            : 
+<span class="lineNum">     624 </span><span class="lineCov">      25785 :                 NEW_BBLOCK (cfg, no_proxy_bb);</span>
+<span class="lineNum">     625 </span><span class="lineCov">      25830 :                 NEW_BBLOCK (cfg, call_proxy_isinst);</span>
+<span class="lineNum">     626 </span>            : 
+<span class="lineNum">     627 </span><span class="lineCov">      12916 :                 klass_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     628 </span><span class="lineCov">     129197 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     629 </span>            : 
+<span class="lineNum">     630 </span><span class="lineCov">      12926 :                 mini_emit_class_check_branch (cfg, klass_reg, mono_defaults.transparent_proxy_class, OP_PBNE_UN, no_proxy_bb);</span>
+<span class="lineNum">     631 </span>            : 
+<span class="lineNum">     632 </span><span class="lineCov">      12926 :                 tmp_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     633 </span><span class="lineCov">     129151 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoTransparentProxy, remote_class));</span>
+<span class="lineNum">     634 </span><span class="lineCov">     129238 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, tmp_reg, MONO_STRUCT_OFFSET (MonoRemoteClass, proxy_class));</span>
+<span class="lineNum">     635 </span>            : 
+<span class="lineNum">     636 </span><span class="lineCov">      12932 :                 tmp_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     637 </span><span class="lineCov">     129282 :                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, tmp_reg, obj_reg, MONO_STRUCT_OFFSET (MonoTransparentProxy, custom_type_info));</span>
+<span class="lineNum">     638 </span><span class="lineCov">     129213 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, tmp_reg, 0);</span>
+<span class="lineNum">     639 </span><span class="lineCov">     361744 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBEQ, false_bb);</span>
+<span class="lineNum">     640 </span>            : 
+<span class="lineNum">     641 </span><span class="lineCov">      12930 :                 mini_emit_isninst_cast (cfg, klass_reg, klass, call_proxy_isinst, is_null_bb);</span>
+<span class="lineNum">     642 </span>            : 
+<span class="lineNum">     643 </span><span class="lineCov">     103275 :                 MONO_START_BB (cfg, call_proxy_isinst);</span>
+<span class="lineNum">     644 </span>            : 
+<span class="lineNum">     645 </span><span class="lineCov">      12919 :                 MonoInst *args [1] = { src };</span>
+<span class="lineNum">     646 </span><span class="lineCov">      12919 :                 MonoInst *proxy_test_inst = mono_emit_method_call (cfg, mono_marshal_get_proxy_cancast (klass), args, NULL);</span>
+<span class="lineNum">     647 </span><span class="lineCov">     129383 :                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, proxy_test_inst-&gt;dreg, 0);</span>
+<span class="lineNum">     648 </span><span class="lineCov">     362424 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBNE_UN, is_null_bb);</span>
+<span class="lineNum">     649 </span><span class="lineCov">     297686 :                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, false_bb);</span>
+<span class="lineNum">     650 </span>            : 
+<span class="lineNum">     651 </span><span class="lineCov">     103508 :                 MONO_START_BB (cfg, no_proxy_bb);</span>
+<span class="lineNum">     652 </span>            : 
+<span class="lineNum">     653 </span><span class="lineCov">      12950 :                 mini_emit_isninst_cast (cfg, klass_reg, klass, false_bb, is_null_bb);</span>
+<span class="lineNum">     654 </span>            : #else
+<span class="lineNum">     655 </span>            :                 g_error (&quot;transparent proxy support is disabled while trying to JIT code that uses it&quot;);
+<span class="lineNum">     656 </span>            : #endif
+<span class="lineNum">     657 </span><span class="lineCov">      12950 :         } else {</span>
+<span class="lineNum">     658 </span><span class="lineCov">     689742 :                 int klass_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     659 </span>            : 
+<span class="lineNum">     660 </span><span class="lineCov">     689742 :                 if (klass-&gt;rank) {</span>
+<span class="lineNum">     661 </span><span class="lineCov">      55767 :                         int rank_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     662 </span><span class="lineCov">      55767 :                         int eclass_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     663 </span>            : 
+<span class="lineNum">     664 </span><span class="lineCov">     167312 :                         g_assert (!context_used);</span>
+<span class="lineNum">     665 </span><span class="lineCov">     557731 :                         MONO_EMIT_NEW_LOAD_MEMBASE_OP (cfg, OP_LOADU1_MEMBASE, rank_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, rank));</span>
+<span class="lineNum">     666 </span><span class="lineCov">     557717 :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, rank_reg, klass-&gt;rank);</span>
+<span class="lineNum">     667 </span><span class="lineCov">    1561700 :                         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBNE_UN, false_bb);</span>
+<span class="lineNum">     668 </span><span class="lineCov">     557748 :                         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     669 </span><span class="lineCov">     557737 :                         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, eclass_reg, klass_reg, MONO_STRUCT_OFFSET (MonoClass, cast_class));</span>
+<span class="lineNum">     670 </span><span class="lineCov">      55774 :                         if (klass-&gt;cast_class == mono_defaults.object_class) {</span>
+<span class="lineNum">     671 </span><span class="lineCov">       4269 :                                 int parent_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     672 </span><span class="lineCov">      42689 :                                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, parent_reg, eclass_reg, MONO_STRUCT_OFFSET (MonoClass, parent));</span>
+<span class="lineNum">     673 </span><span class="lineCov">       4269 :                                 mini_emit_class_check_branch (cfg, parent_reg, mono_defaults.enum_class-&gt;parent, OP_PBNE_UN, is_null_bb);</span>
+<span class="lineNum">     674 </span><span class="lineCov">       4269 :                                 mini_emit_class_check_branch (cfg, eclass_reg, mono_defaults.enum_class, OP_PBEQ, is_null_bb);</span>
+<span class="lineNum">     675 </span><span class="lineCov">      98184 :                                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, false_bb);</span>
+<span class="lineNum">     676 </span><span class="lineCov">      55770 :                         } else if (klass-&gt;cast_class == mono_defaults.enum_class-&gt;parent) {</span>
+<span class="lineNum">     677 </span><span class="lineCov">        300 :                                 mini_emit_class_check_branch (cfg, eclass_reg, mono_defaults.enum_class-&gt;parent, OP_PBEQ, is_null_bb);</span>
+<span class="lineNum">     678 </span><span class="lineCov">        300 :                                 mini_emit_class_check_branch (cfg, eclass_reg, mono_defaults.enum_class, OP_PBEQ, is_null_bb);                          </span>
+<span class="lineNum">     679 </span><span class="lineCov">       6900 :                                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, false_bb);</span>
+<span class="lineNum">     680 </span><span class="lineCov">      51501 :                         } else if (klass-&gt;cast_class == mono_defaults.enum_class) {</span>
+<span class="lineNum">     681 </span><span class="lineCov">        300 :                                 mini_emit_class_check_branch (cfg, eclass_reg, mono_defaults.enum_class, OP_PBEQ, is_null_bb);</span>
+<span class="lineNum">     682 </span><span class="lineCov">       6900 :                                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, false_bb);</span>
+<span class="lineNum">     683 </span><span class="lineCov">      51195 :                         } else if (mono_class_is_interface (klass-&gt;cast_class)) {</span>
+<span class="lineNum">     684 </span><span class="lineCov">        200 :                                 mini_emit_iface_class_cast (cfg, eclass_reg, klass-&gt;cast_class, false_bb, is_null_bb);</span>
+<span class="lineNum">     685 </span><span class="lineCov">        200 :                         } else {</span>
+<span class="lineNum">     686 </span><span class="lineCov">     101295 :                                 if ((klass-&gt;rank == 1) &amp;&amp; (klass-&gt;byval_arg.type == MONO_TYPE_SZARRAY)) {</span>
+<span class="lineNum">     687 </span>            :                                         /* Check that the object is a vector too */
+<span class="lineNum">     688 </span><span class="lineCov">      50600 :                                         int bounds_reg = alloc_preg (cfg);</span>
+<span class="lineNum">     689 </span><span class="lineCov">     505994 :                                         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, bounds_reg, obj_reg, MONO_STRUCT_OFFSET (MonoArray, bounds));</span>
+<span class="lineNum">     690 </span><span class="lineCov">     506043 :                                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, bounds_reg, 0);</span>
+<span class="lineNum">     691 </span><span class="lineCov">    1416999 :                                         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBNE_UN, false_bb);</span>
+<span class="lineNum">     692 </span><span class="lineCov">      50609 :                                 }</span>
+<span class="lineNum">     693 </span>            : 
+<span class="lineNum">     694 </span>            :                                 /* the is_null_bb target simply copies the input register to the output */
+<span class="lineNum">     695 </span><span class="lineCov">      50709 :                                 mini_emit_isninst_cast (cfg, eclass_reg, klass-&gt;cast_class, false_bb, is_null_bb);</span>
+<span class="lineNum">     696 </span>            :                         }
+<span class="lineNum">     697 </span><span class="lineCov">     689687 :                 } else if (mono_class_is_nullable (klass)) {</span>
+<span class="lineNum">     698 </span><span class="lineCov">        681 :                         g_assert (!context_used);</span>
+<span class="lineNum">     699 </span><span class="lineCov">       2270 :                         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     700 </span>            :                         /* the is_null_bb target simply copies the input register to the output */
+<span class="lineNum">     701 </span><span class="lineCov">        227 :                         mini_emit_isninst_cast (cfg, klass_reg, klass-&gt;cast_class, false_bb, is_null_bb);</span>
+<span class="lineNum">     702 </span><span class="lineCov">        227 :                 } else {</span>
+<span class="lineNum">     703 </span><span class="lineCov">    1898145 :                         if (!cfg-&gt;compile_aot &amp;&amp; !(cfg-&gt;opt &amp; MONO_OPT_SHARED) &amp;&amp; mono_class_is_sealed (klass)) {</span>
+<span class="lineNum">     704 </span><span class="lineCov">     691657 :                                 g_assert (!context_used);</span>
+<span class="lineNum">     705 </span>            :                                 /* the remoting code is broken, access the class for now */
+<span class="lineNum">     706 </span>            :                                 if (0) {/*FIXME what exactly is broken? This change refers to r39380 from 2005 and mention some remoting fixes were due.*/
+<span class="lineNum">     707 </span>            :                                         MonoVTable *vt = mono_class_vtable (cfg-&gt;domain, klass);
+<span class="lineNum">     708 </span>            :                                         if (!vt) {
+<span class="lineNum">     709 </span>            :                                                 mono_cfg_set_exception (cfg, MONO_EXCEPTION_TYPE_LOAD);
+<span class="lineNum">     710 </span>            :                                                 cfg-&gt;exception_ptr = klass;
+<span class="lineNum">     711 </span>            :                                                 return NULL;
+<span class="lineNum">     712 </span>            :                                         }
+<span class="lineNum">     713 </span>            :                                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, vtable_reg, vt);
+<span class="lineNum">     714 </span>            :                                 } else {
+<span class="lineNum">     715 </span><span class="lineCov">    2304994 :                                         MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     716 </span><span class="lineCov">    2305156 :                                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, klass_reg, klass);</span>
+<span class="lineNum">     717 </span>            :                                 }
+<span class="lineNum">     718 </span><span class="lineCov">    6454840 :                                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBNE_UN, false_bb);</span>
+<span class="lineNum">     719 </span><span class="lineCov">    5301619 :                                 MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, is_null_bb);</span>
+<span class="lineNum">     720 </span><span class="lineCov">     230502 :                         } else {</span>
+<span class="lineNum">     721 </span><span class="lineCov">    4036861 :                                 MONO_EMIT_NEW_LOAD_MEMBASE (cfg, klass_reg, vtable_reg, MONO_STRUCT_OFFSET (MonoVTable, klass));</span>
+<span class="lineNum">     722 </span>            :                                 /* the is_null_bb target simply copies the input register to the output */
+<span class="lineNum">     723 </span><span class="lineCov">     403674 :                                 mini_emit_isninst_cast_inst (cfg, klass_reg, klass, klass_inst, false_bb, is_null_bb);</span>
+<span class="lineNum">     724 </span>            :                         }
+<span class="lineNum">     725 </span>            :                 }
+<span class="lineNum">     726 </span>            :         }
+<span class="lineNum">     727 </span>            : 
+<span class="lineNum">     728 </span><span class="lineCov">    6786425 :         MONO_START_BB (cfg, false_bb);</span>
+<span class="lineNum">     729 </span>            : 
+<span class="lineNum">     730 </span><span class="lineCov">    8485377 :         MONO_EMIT_NEW_PCONST (cfg, res_reg, NULL);</span>
+<span class="lineNum">     731 </span><span class="lineCov">   19515414 :         MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_BR, end_bb);</span>
+<span class="lineNum">     732 </span>            : 
+<span class="lineNum">     733 </span><span class="lineCov">    6787459 :         MONO_START_BB (cfg, is_null_bb);</span>
+<span class="lineNum">     734 </span>            : 
+<span class="lineNum">     735 </span><span class="lineCov">    6788560 :         MONO_START_BB (cfg, end_bb);</span>
+<span class="lineNum">     736 </span>            : 
+<span class="lineNum">     737 </span><span class="lineCov">     848907 :         return ins;</span>
+<span class="lineNum">     738 </span><span class="lineCov">     886477 : }</span>
+<a name="739"><span class="lineNum">     739 </span>            : </a>
+<span class="lineNum">     740 </span>            : static void
+<span class="lineNum">     741 </span>            : mono_decompose_typecheck (MonoCompile *cfg, MonoBasicBlock *bb, MonoInst *ins)
+<span class="lineNum">     742 </span>            : {
+<span class="lineNum">     743 </span>            :         MonoInst *ret, *move, *source;
+<span class="lineNum">     744 </span><span class="lineCov">    3372989 :         MonoClass *klass = ins-&gt;klass;</span>
+<span class="lineNum">     745 </span><span class="lineCov">    3372989 :         int context_used = mini_class_check_context_used (cfg, klass);</span>
+<span class="lineNum">     746 </span><span class="lineCov">    3372989 :         int is_isinst = ins-&gt;opcode == OP_ISINST;</span>
+<span class="lineNum">     747 </span><span class="lineCov">   15971643 :         g_assert (is_isinst || ins-&gt;opcode == OP_CASTCLASS);</span>
+<span class="lineNum">     748 </span><span class="lineCov">   10122966 :         source = get_vreg_to_inst (cfg, ins-&gt;sreg1);</span>
+<span class="lineNum">     749 </span><span class="lineCov">    5270124 :         if (!source || source == (MonoInst *) -1)</span>
+<span class="lineNum">     750 </span><span class="lineCov">    1478810 :                 source = mono_compile_create_var_for_vreg (cfg, &amp;mono_defaults.object_class-&gt;byval_arg, OP_LOCAL, ins-&gt;sreg1);</span>
+<span class="lineNum">     751 </span><span class="lineCov">   16869173 :         g_assert (source &amp;&amp; source != (MonoInst *) -1);</span>
+<span class="lineNum">     752 </span>            : 
+<span class="lineNum">     753 </span>            :         MonoBasicBlock *first_bb;
+<span class="lineNum">     754 </span><span class="lineCov">    6748198 :         NEW_BBLOCK (cfg, first_bb);</span>
+<span class="lineNum">     755 </span><span class="lineCov">    3371331 :         cfg-&gt;cbb = first_bb;</span>
+<span class="lineNum">     756 </span>            : 
+<span class="lineNum">     757 </span><span class="lineCov">    3371331 :         if (mini_class_has_reference_variant_generic_argument (cfg, klass, context_used)) {</span>
+<span class="lineNum">     758 </span><span class="lineCov">      13201 :                 if (is_isinst)</span>
+<span class="lineNum">     759 </span><span class="lineCov">      11834 :                         ret = emit_isinst_with_cache (cfg, source, klass, context_used);</span>
+<span class="lineNum">     760 </span>            :                 else
+<span class="lineNum">     761 </span><span class="lineCov">       1367 :                         ret = emit_castclass_with_cache (cfg, source, klass, context_used);</span>
+<span class="lineNum">     762 </span>            : 
+<span class="lineNum">     763 </span><span class="lineCov">      13199 :         } else {</span>
+<span class="lineNum">     764 </span><span class="lineCov">    3358100 :                 if (is_isinst)</span>
+<span class="lineNum">     765 </span><span class="lineCov">     885907 :                         ret = handle_isinst (cfg, klass, source, context_used);</span>
+<span class="lineNum">     766 </span>            :                 else
+<span class="lineNum">     767 </span><span class="lineCov">    2472422 :                         ret = handle_castclass (cfg, klass, source, context_used);</span>
+<span class="lineNum">     768 </span>            :         }
+<span class="lineNum">     769 </span><span class="lineCov">   40472554 :         EMIT_NEW_UNALU (cfg, move, OP_MOVE, ins-&gt;dreg, ret-&gt;dreg);</span>
+<span class="lineNum">     770 </span>            : 
+<span class="lineNum">     771 </span><span class="lineCov">   13496250 :         g_assert (cfg-&gt;cbb-&gt;code || first_bb-&gt;code);</span>
+<span class="lineNum">     772 </span><span class="lineCov">    3374252 :         MonoInst *prev = ins-&gt;prev;</span>
+<span class="lineNum">     773 </span><span class="lineCov">    3374252 :         mono_replace_ins (cfg, bb, ins, &amp;prev, first_bb, cfg-&gt;cbb);</span>
+<span class="lineNum">     774 </span><span class="lineCov">    3374252 : }</span>
+<a name="775"><span class="lineNum">     775 </span>            : </a>
+<span class="lineNum">     776 </span>            : void
+<span class="lineNum">     777 </span>            : mono_decompose_typechecks (MonoCompile *cfg)
+<span class="lineNum">     778 </span>            : {
+<span class="lineNum">     779 </span><span class="lineCov">    1429218 :         gboolean found_typetest = FALSE;</span>
+<span class="lineNum">     780 </span><span class="lineCov">   78228093 :         for (MonoBasicBlock *bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     781 </span>            :                 MonoInst *ins;
+<span class="lineNum">     782 </span><span class="lineCov">  730136303 :                 MONO_BB_FOR_EACH_INS (bb, ins) {</span>
+<span class="lineNum">     783 </span><span class="lineCov">  330717417 :                         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     784 </span>            :                         case OP_ISINST:
+<span class="lineNum">     785 </span>            :                         case OP_CASTCLASS:
+<span class="lineNum">     786 </span><span class="lineCov">    3373210 :                                 found_typetest = TRUE;</span>
+<span class="lineNum">     787 </span><span class="lineCov">    3373210 :                                 mono_decompose_typecheck (cfg, bb, ins);</span>
+<span class="lineNum">     788 </span><span class="lineCov">    3373210 :                                 break;</span>
+<span class="lineNum">     789 </span>            :                         }
+<span class="lineNum">     790 </span><span class="lineCov">  327274841 :                 }</span>
+<span class="lineNum">     791 </span><span class="lineCov">   37677544 :         }</span>
+<span class="lineNum">     792 </span><span class="lineCov">    1446725 :         if ((cfg-&gt;verbose_level &gt; 2) &amp;&amp; found_typetest)</span>
+<span class="lineNum">     793 </span><span class="lineCov">      16368 :                 mono_print_code (cfg, &quot;AFTER DECOMPOSE TYPE_CHECKS&quot;);</span>
+<span class="lineNum">     794 </span>            :         
+<span class="lineNum">     795 </span><span class="lineCov">    1430156 : }</span>
+<span class="lineNum">     796 </span>            : 
+<span class="lineNum">     797 </span>            : 
+<a name="798"><span class="lineNum">     798 </span>            : //API used by method-to-ir.c</a>
+<span class="lineNum">     799 </span>            : void
+<span class="lineNum">     800 </span>            : mini_emit_class_check (MonoCompile *cfg, int klass_reg, MonoClass *klass)
+<span class="lineNum">     801 </span>            : {
+<span class="lineNum">     802 </span><span class="lineCov">     518500 :         mini_emit_class_check_inst (cfg, klass_reg, klass, NULL);</span>
+<span class="lineNum">     803 </span><span class="lineCov">     518500 : }</span>
+<span class="lineNum">     804 </span>            : 
+<span class="lineNum">     805 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

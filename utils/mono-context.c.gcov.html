@@ -1,0 +1,546 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-context.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-context.c<span style="font-size: 80%;"> (source / <a href="mono-context.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">70</td>
+            <td class="headerCovTableEntry">70</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-context.c: plat independent machine state definitions
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  *
+<span class="lineNum">       5 </span>            :  * Copyright (c) 2011 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : #include &lt;mono/utils/mono-sigcontext.h&gt;
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #ifdef HAVE_UCONTEXT_H
+<span class="lineNum">      12 </span>            : #include &lt;ucontext.h&gt;
+<span class="lineNum">      13 </span>            : #endif
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #if (defined(__i386__) &amp;&amp; !defined(MONO_CROSS_COMPILE)) || (defined(TARGET_X86))
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : #include &lt;mono/utils/mono-context.h&gt;
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #ifdef HOST_WIN32
+<span class="lineNum">      20 </span>            : #include &lt;windows.h&gt;
+<span class="lineNum">      21 </span>            : #endif
+<span class="lineNum">      22 </span>            : 
+<span class="lineNum">      23 </span>            : #ifdef __sun
+<span class="lineNum">      24 </span>            : #define REG_EAX EAX
+<span class="lineNum">      25 </span>            : #define REG_EBX EBX
+<span class="lineNum">      26 </span>            : #define REG_ECX ECX
+<span class="lineNum">      27 </span>            : #define REG_EDX EDX
+<span class="lineNum">      28 </span>            : #define REG_EBP EBP
+<span class="lineNum">      29 </span>            : #define REG_ESP ESP
+<span class="lineNum">      30 </span>            : #define REG_ESI ESI
+<span class="lineNum">      31 </span>            : #define REG_EDI EDI
+<span class="lineNum">      32 </span>            : #define REG_EIP EIP
+<span class="lineNum">      33 </span>            : #endif
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span>            : void
+<span class="lineNum">      36 </span>            : mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
+<span class="lineNum">      37 </span>            : {
+<span class="lineNum">      38 </span>            : #if defined (__native_client__) || defined (HOST_WATCHOS)
+<span class="lineNum">      39 </span>            :         printf(&quot;WARNING: mono_arch_sigctx_to_monoctx() called!\n&quot;);
+<span class="lineNum">      40 </span>            :         mctx-&gt;eax = 0xDEADBEEF;
+<span class="lineNum">      41 </span>            :         mctx-&gt;ebx = 0xDEADBEEF;
+<span class="lineNum">      42 </span>            :         mctx-&gt;ecx = 0xDEADBEEF;
+<span class="lineNum">      43 </span>            :         mctx-&gt;edx = 0xDEADBEEF;
+<span class="lineNum">      44 </span>            :         mctx-&gt;ebp = 0xDEADBEEF;
+<span class="lineNum">      45 </span>            :         mctx-&gt;esp = 0xDEADBEEF;
+<span class="lineNum">      46 </span>            :         mctx-&gt;esi = 0xDEADBEEF;
+<span class="lineNum">      47 </span>            :         mctx-&gt;edi = 0xDEADBEEF;
+<span class="lineNum">      48 </span>            :         mctx-&gt;eip = 0xDEADBEEF;
+<span class="lineNum">      49 </span>            : #elif MONO_CROSS_COMPILE
+<span class="lineNum">      50 </span>            :         g_assert_not_reached ();
+<span class="lineNum">      51 </span>            : #elif defined(MONO_SIGNAL_USE_UCONTEXT_T)
+<span class="lineNum">      52 </span>            :         ucontext_t *ctx = (ucontext_t*)sigctx;
+<span class="lineNum">      53 </span>            :         
+<span class="lineNum">      54 </span>            :         mctx-&gt;eax = UCONTEXT_REG_EAX (ctx);
+<span class="lineNum">      55 </span>            :         mctx-&gt;ebx = UCONTEXT_REG_EBX (ctx);
+<span class="lineNum">      56 </span>            :         mctx-&gt;ecx = UCONTEXT_REG_ECX (ctx);
+<span class="lineNum">      57 </span>            :         mctx-&gt;edx = UCONTEXT_REG_EDX (ctx);
+<span class="lineNum">      58 </span>            :         mctx-&gt;ebp = UCONTEXT_REG_EBP (ctx);
+<span class="lineNum">      59 </span>            :         mctx-&gt;esp = UCONTEXT_REG_ESP (ctx);
+<span class="lineNum">      60 </span>            :         mctx-&gt;esi = UCONTEXT_REG_ESI (ctx);
+<span class="lineNum">      61 </span>            :         mctx-&gt;edi = UCONTEXT_REG_EDI (ctx);
+<span class="lineNum">      62 </span>            :         mctx-&gt;eip = UCONTEXT_REG_EIP (ctx);
+<span class="lineNum">      63 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">      64 </span>            :         CONTEXT *context = (CONTEXT*)sigctx;
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span>            :         mctx-&gt;eip = context-&gt;Eip;
+<span class="lineNum">      67 </span>            :         mctx-&gt;edi = context-&gt;Edi;
+<span class="lineNum">      68 </span>            :         mctx-&gt;esi = context-&gt;Esi;
+<span class="lineNum">      69 </span>            :         mctx-&gt;ebx = context-&gt;Ebx;
+<span class="lineNum">      70 </span>            :         mctx-&gt;edx = context-&gt;Edx;
+<span class="lineNum">      71 </span>            :         mctx-&gt;ecx = context-&gt;Ecx;
+<span class="lineNum">      72 </span>            :         mctx-&gt;eax = context-&gt;Eax;
+<span class="lineNum">      73 </span>            :         mctx-&gt;ebp = context-&gt;Ebp;
+<span class="lineNum">      74 </span>            :         mctx-&gt;esp = context-&gt;Esp;
+<span class="lineNum">      75 </span>            : #else   
+<span class="lineNum">      76 </span>            :         struct sigcontext *ctx = (struct sigcontext *)sigctx;
+<span class="lineNum">      77 </span>            : 
+<span class="lineNum">      78 </span>            :         mctx-&gt;eax = ctx-&gt;SC_EAX;
+<span class="lineNum">      79 </span>            :         mctx-&gt;ebx = ctx-&gt;SC_EBX;
+<span class="lineNum">      80 </span>            :         mctx-&gt;ecx = ctx-&gt;SC_ECX;
+<span class="lineNum">      81 </span>            :         mctx-&gt;edx = ctx-&gt;SC_EDX;
+<span class="lineNum">      82 </span>            :         mctx-&gt;ebp = ctx-&gt;SC_EBP;
+<span class="lineNum">      83 </span>            :         mctx-&gt;esp = ctx-&gt;SC_ESP;
+<span class="lineNum">      84 </span>            :         mctx-&gt;esi = ctx-&gt;SC_ESI;
+<span class="lineNum">      85 </span>            :         mctx-&gt;edi = ctx-&gt;SC_EDI;
+<span class="lineNum">      86 </span>            :         mctx-&gt;eip = ctx-&gt;SC_EIP;
+<span class="lineNum">      87 </span>            : #endif /* if defined(__native_client__) */
+<span class="lineNum">      88 </span>            : }
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span>            : void
+<span class="lineNum">      91 </span>            : mono_monoctx_to_sigctx (MonoContext *mctx, void *sigctx)
+<span class="lineNum">      92 </span>            : {
+<span class="lineNum">      93 </span>            : #if defined(__native_client__) || defined(HOST_WATCHOS)
+<span class="lineNum">      94 </span>            :         printf(&quot;WARNING: mono_arch_monoctx_to_sigctx() called!\n&quot;);
+<span class="lineNum">      95 </span>            : #elif MONO_CROSS_COMPILE
+<span class="lineNum">      96 </span>            :         g_assert_not_reached ();
+<span class="lineNum">      97 </span>            : #elif defined(MONO_SIGNAL_USE_UCONTEXT_T)
+<span class="lineNum">      98 </span>            :         ucontext_t *ctx = (ucontext_t*)sigctx;
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span>            :         UCONTEXT_REG_EAX (ctx) = mctx-&gt;eax;
+<span class="lineNum">     101 </span>            :         UCONTEXT_REG_EBX (ctx) = mctx-&gt;ebx;
+<span class="lineNum">     102 </span>            :         UCONTEXT_REG_ECX (ctx) = mctx-&gt;ecx;
+<span class="lineNum">     103 </span>            :         UCONTEXT_REG_EDX (ctx) = mctx-&gt;edx;
+<span class="lineNum">     104 </span>            :         UCONTEXT_REG_EBP (ctx) = mctx-&gt;ebp;
+<span class="lineNum">     105 </span>            :         UCONTEXT_REG_ESP (ctx) = mctx-&gt;esp;
+<span class="lineNum">     106 </span>            :         UCONTEXT_REG_ESI (ctx) = mctx-&gt;esi;
+<span class="lineNum">     107 </span>            :         UCONTEXT_REG_EDI (ctx) = mctx-&gt;edi;
+<span class="lineNum">     108 </span>            :         UCONTEXT_REG_EIP (ctx) = mctx-&gt;eip;
+<span class="lineNum">     109 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">     110 </span>            :         CONTEXT *context = (CONTEXT*)sigctx;
+<span class="lineNum">     111 </span>            : 
+<span class="lineNum">     112 </span>            :         context-&gt;Eip = mctx-&gt;eip;
+<span class="lineNum">     113 </span>            :         context-&gt;Edi = mctx-&gt;edi;
+<span class="lineNum">     114 </span>            :         context-&gt;Esi = mctx-&gt;esi;
+<span class="lineNum">     115 </span>            :         context-&gt;Ebx = mctx-&gt;ebx;
+<span class="lineNum">     116 </span>            :         context-&gt;Edx = mctx-&gt;edx;
+<span class="lineNum">     117 </span>            :         context-&gt;Ecx = mctx-&gt;ecx;
+<span class="lineNum">     118 </span>            :         context-&gt;Eax = mctx-&gt;eax;
+<span class="lineNum">     119 </span>            :         context-&gt;Ebp = mctx-&gt;ebp;
+<span class="lineNum">     120 </span>            :         context-&gt;Esp = mctx-&gt;esp;
+<span class="lineNum">     121 </span>            : #else
+<span class="lineNum">     122 </span>            :         struct sigcontext *ctx = (struct sigcontext *)sigctx;
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span>            :         ctx-&gt;SC_EAX = mctx-&gt;eax;
+<span class="lineNum">     125 </span>            :         ctx-&gt;SC_EBX = mctx-&gt;ebx;
+<span class="lineNum">     126 </span>            :         ctx-&gt;SC_ECX = mctx-&gt;ecx;
+<span class="lineNum">     127 </span>            :         ctx-&gt;SC_EDX = mctx-&gt;edx;
+<span class="lineNum">     128 </span>            :         ctx-&gt;SC_EBP = mctx-&gt;ebp;
+<span class="lineNum">     129 </span>            :         ctx-&gt;SC_ESP = mctx-&gt;esp;
+<span class="lineNum">     130 </span>            :         ctx-&gt;SC_ESI = mctx-&gt;esi;
+<span class="lineNum">     131 </span>            :         ctx-&gt;SC_EDI = mctx-&gt;edi;
+<span class="lineNum">     132 </span>            :         ctx-&gt;SC_EIP = mctx-&gt;eip;
+<span class="lineNum">     133 </span>            : #endif /* __native_client__ */
+<span class="lineNum">     134 </span>            : }
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span>            : #elif (defined(__x86_64__) &amp;&amp; !defined(MONO_CROSS_COMPILE)) || (defined(TARGET_AMD64)) /* defined(__i386__) */
+<span class="lineNum">     137 </span>            : 
+<span class="lineNum">     138 </span>            : #include &lt;mono/utils/mono-context.h&gt;
+<span class="lineNum">     139 </span>            : 
+<span class="lineNum">     140 </span>            : #ifdef HOST_WIN32
+<span class="lineNum">     141 </span>            : #include &lt;windows.h&gt;
+<span class="lineNum">     142 </span>            : #endif
+<a name="143"><span class="lineNum">     143 </span>            : </a>
+<span class="lineNum">     144 </span>            : void
+<span class="lineNum">     145 </span>            : mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
+<span class="lineNum">     146 </span>            : {
+<span class="lineNum">     147 </span>            : #if defined(__native_client_codegen__) || defined(__native_client__)
+<span class="lineNum">     148 </span>            :         printf(&quot;WARNING: mono_arch_sigctx_to_monoctx() called!\n&quot;);
+<span class="lineNum">     149 </span>            : #endif
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span>            : #ifdef MONO_CROSS_COMPILE
+<span class="lineNum">     152 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     153 </span>            : #elif defined(MONO_SIGNAL_USE_UCONTEXT_T)
+<span class="lineNum">     154 </span><span class="lineCov">     557315 :         ucontext_t *ctx = (ucontext_t*)sigctx;</span>
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RAX] = UCONTEXT_REG_RAX (ctx);</span>
+<span class="lineNum">     157 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RBX] = UCONTEXT_REG_RBX (ctx);</span>
+<span class="lineNum">     158 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RCX] = UCONTEXT_REG_RCX (ctx);</span>
+<span class="lineNum">     159 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RDX] = UCONTEXT_REG_RDX (ctx);</span>
+<span class="lineNum">     160 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RBP] = UCONTEXT_REG_RBP (ctx);</span>
+<span class="lineNum">     161 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RSP] = UCONTEXT_REG_RSP (ctx);</span>
+<span class="lineNum">     162 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RSI] = UCONTEXT_REG_RSI (ctx);</span>
+<span class="lineNum">     163 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RDI] = UCONTEXT_REG_RDI (ctx);</span>
+<span class="lineNum">     164 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_R8] = UCONTEXT_REG_R8 (ctx);</span>
+<span class="lineNum">     165 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_R9] = UCONTEXT_REG_R9 (ctx);</span>
+<span class="lineNum">     166 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_R10] = UCONTEXT_REG_R10 (ctx);</span>
+<span class="lineNum">     167 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_R11] = UCONTEXT_REG_R11 (ctx);</span>
+<span class="lineNum">     168 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_R12] = UCONTEXT_REG_R12 (ctx);</span>
+<span class="lineNum">     169 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_R13] = UCONTEXT_REG_R13 (ctx);</span>
+<span class="lineNum">     170 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_R14] = UCONTEXT_REG_R14 (ctx);</span>
+<span class="lineNum">     171 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_R15] = UCONTEXT_REG_R15 (ctx);</span>
+<span class="lineNum">     172 </span><span class="lineCov">     557315 :         mctx-&gt;gregs [AMD64_RIP] = UCONTEXT_REG_RIP (ctx);</span>
+<span class="lineNum">     173 </span>            : 
+<span class="lineNum">     174 </span>            : #ifdef UCONTEXT_REG_XMM
+<span class="lineNum">     175 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [0] = UCONTEXT_REG_XMM0 (ctx);</span>
+<span class="lineNum">     176 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [1] = UCONTEXT_REG_XMM1 (ctx);</span>
+<span class="lineNum">     177 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [2] = UCONTEXT_REG_XMM2 (ctx);</span>
+<span class="lineNum">     178 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [3] = UCONTEXT_REG_XMM3 (ctx);</span>
+<span class="lineNum">     179 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [4] = UCONTEXT_REG_XMM4 (ctx);</span>
+<span class="lineNum">     180 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [5] = UCONTEXT_REG_XMM5 (ctx);</span>
+<span class="lineNum">     181 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [6] = UCONTEXT_REG_XMM6 (ctx);</span>
+<span class="lineNum">     182 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [7] = UCONTEXT_REG_XMM7 (ctx);</span>
+<span class="lineNum">     183 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [8] = UCONTEXT_REG_XMM8 (ctx);</span>
+<span class="lineNum">     184 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [9] = UCONTEXT_REG_XMM9 (ctx);</span>
+<span class="lineNum">     185 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [10] = UCONTEXT_REG_XMM10 (ctx);</span>
+<span class="lineNum">     186 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [11] = UCONTEXT_REG_XMM11 (ctx);</span>
+<span class="lineNum">     187 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [12] = UCONTEXT_REG_XMM12 (ctx);</span>
+<span class="lineNum">     188 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [13] = UCONTEXT_REG_XMM13 (ctx);</span>
+<span class="lineNum">     189 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [14] = UCONTEXT_REG_XMM14 (ctx);</span>
+<span class="lineNum">     190 </span><span class="lineCov">     557315 :         mctx-&gt;fregs [15] = UCONTEXT_REG_XMM15 (ctx);</span>
+<span class="lineNum">     191 </span>            : #endif
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">     194 </span>            :         CONTEXT *context = (CONTEXT*)sigctx;
+<span class="lineNum">     195 </span>            : 
+<span class="lineNum">     196 </span>            :         mctx-&gt;gregs [AMD64_RIP] = context-&gt;Rip;
+<span class="lineNum">     197 </span>            :         mctx-&gt;gregs [AMD64_RAX] = context-&gt;Rax;
+<span class="lineNum">     198 </span>            :         mctx-&gt;gregs [AMD64_RCX] = context-&gt;Rcx;
+<span class="lineNum">     199 </span>            :         mctx-&gt;gregs [AMD64_RDX] = context-&gt;Rdx;
+<span class="lineNum">     200 </span>            :         mctx-&gt;gregs [AMD64_RBX] = context-&gt;Rbx;
+<span class="lineNum">     201 </span>            :         mctx-&gt;gregs [AMD64_RSP] = context-&gt;Rsp;
+<span class="lineNum">     202 </span>            :         mctx-&gt;gregs [AMD64_RBP] = context-&gt;Rbp;
+<span class="lineNum">     203 </span>            :         mctx-&gt;gregs [AMD64_RSI] = context-&gt;Rsi;
+<span class="lineNum">     204 </span>            :         mctx-&gt;gregs [AMD64_RDI] = context-&gt;Rdi;
+<span class="lineNum">     205 </span>            :         mctx-&gt;gregs [AMD64_R8] = context-&gt;R8;
+<span class="lineNum">     206 </span>            :         mctx-&gt;gregs [AMD64_R9] = context-&gt;R9;
+<span class="lineNum">     207 </span>            :         mctx-&gt;gregs [AMD64_R10] = context-&gt;R10;
+<span class="lineNum">     208 </span>            :         mctx-&gt;gregs [AMD64_R11] = context-&gt;R11;
+<span class="lineNum">     209 </span>            :         mctx-&gt;gregs [AMD64_R12] = context-&gt;R12;
+<span class="lineNum">     210 </span>            :         mctx-&gt;gregs [AMD64_R13] = context-&gt;R13;
+<span class="lineNum">     211 </span>            :         mctx-&gt;gregs [AMD64_R14] = context-&gt;R14;
+<span class="lineNum">     212 </span>            :         mctx-&gt;gregs [AMD64_R15] = context-&gt;R15;
+<span class="lineNum">     213 </span>            : #else
+<span class="lineNum">     214 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     215 </span>            : #endif
+<span class="lineNum">     216 </span><span class="lineCov">     557315 : }</span>
+<a name="217"><span class="lineNum">     217 </span>            : </a>
+<span class="lineNum">     218 </span>            : void
+<span class="lineNum">     219 </span>            : mono_monoctx_to_sigctx (MonoContext *mctx, void *sigctx)
+<span class="lineNum">     220 </span>            : {
+<span class="lineNum">     221 </span>            : #if defined(__native_client__) || defined(__native_client_codegen__)
+<span class="lineNum">     222 </span>            :   printf(&quot;WARNING: mono_arch_monoctx_to_sigctx() called!\n&quot;);
+<span class="lineNum">     223 </span>            : #endif
+<span class="lineNum">     224 </span>            : 
+<span class="lineNum">     225 </span>            : #ifdef MONO_CROSS_COMPILE
+<span class="lineNum">     226 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     227 </span>            : #elif defined(MONO_SIGNAL_USE_UCONTEXT_T)
+<span class="lineNum">     228 </span><span class="lineCov">       1909 :         ucontext_t *ctx = (ucontext_t*)sigctx;</span>
+<span class="lineNum">     229 </span>            : 
+<span class="lineNum">     230 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RAX (ctx) = mctx-&gt;gregs [AMD64_RAX];</span>
+<span class="lineNum">     231 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RBX (ctx) = mctx-&gt;gregs [AMD64_RBX];</span>
+<span class="lineNum">     232 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RCX (ctx) = mctx-&gt;gregs [AMD64_RCX];</span>
+<span class="lineNum">     233 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RDX (ctx) = mctx-&gt;gregs [AMD64_RDX];</span>
+<span class="lineNum">     234 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RBP (ctx) = mctx-&gt;gregs [AMD64_RBP];</span>
+<span class="lineNum">     235 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RSP (ctx) = mctx-&gt;gregs [AMD64_RSP];</span>
+<span class="lineNum">     236 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RSI (ctx) = mctx-&gt;gregs [AMD64_RSI];</span>
+<span class="lineNum">     237 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RDI (ctx) = mctx-&gt;gregs [AMD64_RDI];</span>
+<span class="lineNum">     238 </span><span class="lineCov">       1909 :         UCONTEXT_REG_R8 (ctx) = mctx-&gt;gregs [AMD64_R8];</span>
+<span class="lineNum">     239 </span><span class="lineCov">       1909 :         UCONTEXT_REG_R9 (ctx) = mctx-&gt;gregs [AMD64_R9];</span>
+<span class="lineNum">     240 </span><span class="lineCov">       1909 :         UCONTEXT_REG_R10 (ctx) = mctx-&gt;gregs [AMD64_R10];</span>
+<span class="lineNum">     241 </span><span class="lineCov">       1909 :         UCONTEXT_REG_R11 (ctx) = mctx-&gt;gregs [AMD64_R11];</span>
+<span class="lineNum">     242 </span><span class="lineCov">       1909 :         UCONTEXT_REG_R12 (ctx) = mctx-&gt;gregs [AMD64_R12];</span>
+<span class="lineNum">     243 </span><span class="lineCov">       1909 :         UCONTEXT_REG_R13 (ctx) = mctx-&gt;gregs [AMD64_R13];</span>
+<span class="lineNum">     244 </span><span class="lineCov">       1909 :         UCONTEXT_REG_R14 (ctx) = mctx-&gt;gregs [AMD64_R14];</span>
+<span class="lineNum">     245 </span><span class="lineCov">       1909 :         UCONTEXT_REG_R15 (ctx) = mctx-&gt;gregs [AMD64_R15];</span>
+<span class="lineNum">     246 </span><span class="lineCov">       1909 :         UCONTEXT_REG_RIP (ctx) = mctx-&gt;gregs [AMD64_RIP];</span>
+<span class="lineNum">     247 </span>            : 
+<span class="lineNum">     248 </span>            : #ifdef UCONTEXT_REG_XMM
+<span class="lineNum">     249 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM0 (ctx) = mctx-&gt;fregs [0];</span>
+<span class="lineNum">     250 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM1 (ctx) = mctx-&gt;fregs [1];</span>
+<span class="lineNum">     251 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM2 (ctx) = mctx-&gt;fregs [2];</span>
+<span class="lineNum">     252 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM3 (ctx) = mctx-&gt;fregs [3];</span>
+<span class="lineNum">     253 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM4 (ctx) = mctx-&gt;fregs [4];</span>
+<span class="lineNum">     254 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM5 (ctx) = mctx-&gt;fregs [5];</span>
+<span class="lineNum">     255 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM6 (ctx) = mctx-&gt;fregs [6];</span>
+<span class="lineNum">     256 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM7 (ctx) = mctx-&gt;fregs [7];</span>
+<span class="lineNum">     257 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM8 (ctx) = mctx-&gt;fregs [8];</span>
+<span class="lineNum">     258 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM9 (ctx) = mctx-&gt;fregs [9];</span>
+<span class="lineNum">     259 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM10 (ctx) = mctx-&gt;fregs [10];</span>
+<span class="lineNum">     260 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM11 (ctx) = mctx-&gt;fregs [11];</span>
+<span class="lineNum">     261 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM12 (ctx) = mctx-&gt;fregs [12];</span>
+<span class="lineNum">     262 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM13 (ctx) = mctx-&gt;fregs [13];</span>
+<span class="lineNum">     263 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM14 (ctx) = mctx-&gt;fregs [14];</span>
+<span class="lineNum">     264 </span><span class="lineCov">       1909 :         UCONTEXT_REG_XMM15 (ctx) = mctx-&gt;fregs [15];</span>
+<span class="lineNum">     265 </span>            : #endif
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">     268 </span>            :         CONTEXT *context = (CONTEXT*)sigctx;
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span>            :         context-&gt;Rip = mctx-&gt;gregs [AMD64_RIP];
+<span class="lineNum">     271 </span>            :         context-&gt;Rax = mctx-&gt;gregs [AMD64_RAX];
+<span class="lineNum">     272 </span>            :         context-&gt;Rcx = mctx-&gt;gregs [AMD64_RCX];
+<span class="lineNum">     273 </span>            :         context-&gt;Rdx = mctx-&gt;gregs [AMD64_RDX];
+<span class="lineNum">     274 </span>            :         context-&gt;Rbx = mctx-&gt;gregs [AMD64_RBX];
+<span class="lineNum">     275 </span>            :         context-&gt;Rsp = mctx-&gt;gregs [AMD64_RSP];
+<span class="lineNum">     276 </span>            :         context-&gt;Rbp = mctx-&gt;gregs [AMD64_RBP];
+<span class="lineNum">     277 </span>            :         context-&gt;Rsi = mctx-&gt;gregs [AMD64_RSI];
+<span class="lineNum">     278 </span>            :         context-&gt;Rdi = mctx-&gt;gregs [AMD64_RDI];
+<span class="lineNum">     279 </span>            :         context-&gt;R8 = mctx-&gt;gregs [AMD64_R8];
+<span class="lineNum">     280 </span>            :         context-&gt;R9 = mctx-&gt;gregs [AMD64_R9];
+<span class="lineNum">     281 </span>            :         context-&gt;R10 = mctx-&gt;gregs [AMD64_R10];
+<span class="lineNum">     282 </span>            :         context-&gt;R11 = mctx-&gt;gregs [AMD64_R11];
+<span class="lineNum">     283 </span>            :         context-&gt;R12 = mctx-&gt;gregs [AMD64_R12];
+<span class="lineNum">     284 </span>            :         context-&gt;R13 = mctx-&gt;gregs [AMD64_R13];
+<span class="lineNum">     285 </span>            :         context-&gt;R14 = mctx-&gt;gregs [AMD64_R14];
+<span class="lineNum">     286 </span>            :         context-&gt;R15 = mctx-&gt;gregs [AMD64_R15];
+<span class="lineNum">     287 </span>            : #else
+<span class="lineNum">     288 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     289 </span>            : #endif
+<span class="lineNum">     290 </span><span class="lineCov">       1909 : }</span>
+<span class="lineNum">     291 </span>            : 
+<span class="lineNum">     292 </span>            : #elif defined(__s390x__)
+<span class="lineNum">     293 </span>            : 
+<span class="lineNum">     294 </span>            : #include &lt;mono/utils/mono-context.h&gt;
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span>            : /*------------------------------------------------------------------*/
+<span class="lineNum">     297 </span>            : /*                                                                  */
+<span class="lineNum">     298 </span>            : /* Name         - mono_arch_sigctx_to_monoctx.                      */
+<span class="lineNum">     299 </span>            : /*                                                                  */
+<span class="lineNum">     300 </span>            : /* Function     - Called from the signal handler to convert signal  */
+<span class="lineNum">     301 </span>            : /*                context to MonoContext.                           */
+<span class="lineNum">     302 </span>            : /*                                                                  */
+<span class="lineNum">     303 </span>            : /*------------------------------------------------------------------*/
+<span class="lineNum">     304 </span>            : 
+<span class="lineNum">     305 </span>            : void
+<span class="lineNum">     306 </span>            : mono_sigctx_to_monoctx (void *ctx, MonoContext *mctx)
+<span class="lineNum">     307 </span>            : {
+<span class="lineNum">     308 </span>            :         memcpy (mctx, ctx, sizeof(MonoContext));
+<span class="lineNum">     309 </span>            : }
+<span class="lineNum">     310 </span>            : 
+<span class="lineNum">     311 </span>            : /*========================= End of Function ========================*/
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span>            : /*------------------------------------------------------------------*/
+<span class="lineNum">     314 </span>            : /*                                                                  */
+<span class="lineNum">     315 </span>            : /* Name         - mono_arch_monoctx_to_sigctx.                      */
+<span class="lineNum">     316 </span>            : /*                                                                  */
+<span class="lineNum">     317 </span>            : /* Function     - Convert MonoContext structure to signal context.  */
+<span class="lineNum">     318 </span>            : /*                                                                  */
+<span class="lineNum">     319 </span>            : /*------------------------------------------------------------------*/
+<span class="lineNum">     320 </span>            : 
+<span class="lineNum">     321 </span>            : void
+<span class="lineNum">     322 </span>            : mono_monoctx_to_sigctx (MonoContext *mctx, void *ctx)
+<span class="lineNum">     323 </span>            : {
+<span class="lineNum">     324 </span>            :         memcpy (ctx, mctx, sizeof(MonoContext));
+<span class="lineNum">     325 </span>            : }
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span>            : /*========================= End of Function ========================*/
+<span class="lineNum">     328 </span>            : 
+<span class="lineNum">     329 </span>            : #elif (defined(__arm__) &amp;&amp; !defined(MONO_CROSS_COMPILE)) || (defined(TARGET_ARM))
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span>            : #include &lt;mono/utils/mono-context.h&gt;
+<span class="lineNum">     332 </span>            : #include &lt;mono/arch/arm/arm-codegen.h&gt;
+<span class="lineNum">     333 </span>            : #include &lt;mono/arch/arm/arm-vfp-codegen.h&gt;
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span>            : void
+<span class="lineNum">     336 </span>            : mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
+<span class="lineNum">     337 </span>            : {
+<span class="lineNum">     338 </span>            : #ifdef MONO_CROSS_COMPILE
+<span class="lineNum">     339 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     340 </span>            : #elif defined(__native_client__)
+<span class="lineNum">     341 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     342 </span>            : #else
+<span class="lineNum">     343 </span>            :         arm_ucontext *my_uc = sigctx;
+<span class="lineNum">     344 </span>            : 
+<span class="lineNum">     345 </span>            :         mctx-&gt;pc = UCONTEXT_REG_PC (my_uc);
+<span class="lineNum">     346 </span>            :         mctx-&gt;regs [ARMREG_SP] = UCONTEXT_REG_SP (my_uc);
+<span class="lineNum">     347 </span>            :         mctx-&gt;cpsr = UCONTEXT_REG_CPSR (my_uc);
+<span class="lineNum">     348 </span>            :         memcpy (&amp;mctx-&gt;regs, &amp;UCONTEXT_REG_R0 (my_uc), sizeof (mgreg_t) * 16);
+<span class="lineNum">     349 </span>            : #ifdef UCONTEXT_REG_VFPREGS
+<span class="lineNum">     350 </span>            :         memcpy (&amp;mctx-&gt;fregs, UCONTEXT_REG_VFPREGS (my_uc), sizeof (double) * 16);
+<span class="lineNum">     351 </span>            : #endif
+<span class="lineNum">     352 </span>            : #endif
+<span class="lineNum">     353 </span>            : }
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span>            : void
+<span class="lineNum">     356 </span>            : mono_monoctx_to_sigctx (MonoContext *mctx, void *ctx)
+<span class="lineNum">     357 </span>            : {
+<span class="lineNum">     358 </span>            : #ifdef MONO_CROSS_COMPILE
+<span class="lineNum">     359 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     360 </span>            : #elif defined(__native_client__)
+<span class="lineNum">     361 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     362 </span>            : #else
+<span class="lineNum">     363 </span>            :         arm_ucontext *my_uc = ctx;
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span>            :         UCONTEXT_REG_PC (my_uc) = mctx-&gt;pc;
+<span class="lineNum">     366 </span>            :         UCONTEXT_REG_SP (my_uc) = mctx-&gt;regs [ARMREG_SP];
+<span class="lineNum">     367 </span>            :         UCONTEXT_REG_CPSR (my_uc) = mctx-&gt;cpsr;
+<span class="lineNum">     368 </span>            :         /* The upper registers are not guaranteed to be valid */
+<span class="lineNum">     369 </span>            :         memcpy (&amp;UCONTEXT_REG_R0 (my_uc), &amp;mctx-&gt;regs, sizeof (mgreg_t) * 12);
+<span class="lineNum">     370 </span>            : #ifdef UCONTEXT_REG_VFPREGS
+<span class="lineNum">     371 </span>            :         memcpy (UCONTEXT_REG_VFPREGS (my_uc), &amp;mctx-&gt;fregs, sizeof (double) * 16);
+<span class="lineNum">     372 </span>            : #endif
+<span class="lineNum">     373 </span>            : #endif
+<span class="lineNum">     374 </span>            : }
+<span class="lineNum">     375 </span>            : 
+<span class="lineNum">     376 </span>            : #elif (defined(__aarch64__) &amp;&amp; !defined(MONO_CROSS_COMPILE)) || (defined(TARGET_ARM64))
+<span class="lineNum">     377 </span>            : 
+<span class="lineNum">     378 </span>            : #include &lt;mono/utils/mono-context.h&gt;
+<span class="lineNum">     379 </span>            : 
+<span class="lineNum">     380 </span>            : void
+<span class="lineNum">     381 </span>            : mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
+<span class="lineNum">     382 </span>            : {
+<span class="lineNum">     383 </span>            : #ifdef MONO_CROSS_COMPILE
+<span class="lineNum">     384 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     385 </span>            : #else
+<span class="lineNum">     386 </span>            :         memcpy (mctx-&gt;regs, UCONTEXT_GREGS (sigctx), sizeof (mgreg_t) * 31);
+<span class="lineNum">     387 </span>            :         mctx-&gt;pc = UCONTEXT_REG_PC (sigctx);
+<span class="lineNum">     388 </span>            :         mctx-&gt;regs [ARMREG_SP] = UCONTEXT_REG_SP (sigctx);
+<span class="lineNum">     389 </span>            : #ifdef __linux__
+<span class="lineNum">     390 </span>            :         struct fpsimd_context *fpctx = (struct fpsimd_context*)&amp;((ucontext_t*)sigctx)-&gt;uc_mcontext.__reserved;
+<span class="lineNum">     391 </span>            :         int i;
+<span class="lineNum">     392 </span>            : 
+<span class="lineNum">     393 </span>            :         g_assert (fpctx-&gt;head.magic == FPSIMD_MAGIC);
+<span class="lineNum">     394 </span>            :         for (i = 0; i &lt; 32; ++i)
+<span class="lineNum">     395 </span>            :                 /* Only store the bottom 8 bytes for now */
+<span class="lineNum">     396 </span>            :                 *(guint64*)&amp;(mctx-&gt;fregs [i]) = fpctx-&gt;vregs [i];
+<span class="lineNum">     397 </span>            : #endif
+<span class="lineNum">     398 </span>            :         /* FIXME: apple */
+<span class="lineNum">     399 </span>            : #endif
+<span class="lineNum">     400 </span>            : }
+<span class="lineNum">     401 </span>            : 
+<span class="lineNum">     402 </span>            : void
+<span class="lineNum">     403 </span>            : mono_monoctx_to_sigctx (MonoContext *mctx, void *sigctx)
+<span class="lineNum">     404 </span>            : {
+<span class="lineNum">     405 </span>            : #ifdef MONO_CROSS_COMPILE
+<span class="lineNum">     406 </span>            :         g_assert_not_reached ();
+<span class="lineNum">     407 </span>            : #else
+<span class="lineNum">     408 </span>            :         memcpy (UCONTEXT_GREGS (sigctx), mctx-&gt;regs, sizeof (mgreg_t) * 31);
+<span class="lineNum">     409 </span>            :         UCONTEXT_REG_PC (sigctx) = mctx-&gt;pc;
+<span class="lineNum">     410 </span>            :         UCONTEXT_REG_SP (sigctx) = mctx-&gt;regs [ARMREG_SP];
+<span class="lineNum">     411 </span>            : #endif
+<span class="lineNum">     412 </span>            : }
+<span class="lineNum">     413 </span>            : 
+<span class="lineNum">     414 </span>            : #elif (defined(__mips__) &amp;&amp; !defined(MONO_CROSS_COMPILE)) || (defined(TARGET_MIPS))
+<span class="lineNum">     415 </span>            : 
+<span class="lineNum">     416 </span>            : #include &lt;mono/utils/mono-context.h&gt;
+<span class="lineNum">     417 </span>            : #include &lt;mono/arch/mips/mips-codegen.h&gt;
+<span class="lineNum">     418 </span>            : 
+<span class="lineNum">     419 </span>            : void
+<span class="lineNum">     420 </span>            : mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
+<span class="lineNum">     421 </span>            : {
+<span class="lineNum">     422 </span>            :         int i;
+<span class="lineNum">     423 </span>            : 
+<span class="lineNum">     424 </span>            :         mctx-&gt;sc_pc = UCONTEXT_REG_PC (sigctx);
+<span class="lineNum">     425 </span>            :         for (i = 0; i &lt; 32; ++i) {
+<span class="lineNum">     426 </span>            :                 mctx-&gt;sc_regs[i] = UCONTEXT_GREGS (sigctx) [i];
+<span class="lineNum">     427 </span>            :                 mctx-&gt;sc_fpregs[i] = UCONTEXT_FPREGS (sigctx) [i];
+<span class="lineNum">     428 </span>            :         }
+<span class="lineNum">     429 </span>            : }
+<span class="lineNum">     430 </span>            : 
+<span class="lineNum">     431 </span>            : void
+<span class="lineNum">     432 </span>            : mono_monoctx_to_sigctx (MonoContext *mctx, void *sigctx)
+<span class="lineNum">     433 </span>            : {
+<span class="lineNum">     434 </span>            :         int i;
+<span class="lineNum">     435 </span>            : 
+<span class="lineNum">     436 </span>            :         UCONTEXT_REG_PC (sigctx) = mctx-&gt;sc_pc;
+<span class="lineNum">     437 </span>            :         for (i = 0; i &lt; 32; ++i) {
+<span class="lineNum">     438 </span>            :                 UCONTEXT_GREGS (sigctx) [i] = mctx-&gt;sc_regs[i];
+<span class="lineNum">     439 </span>            :                 UCONTEXT_FPREGS (sigctx) [i] = mctx-&gt;sc_fpregs[i];
+<span class="lineNum">     440 </span>            :         }
+<span class="lineNum">     441 </span>            : }
+<span class="lineNum">     442 </span>            : 
+<span class="lineNum">     443 </span>            : #elif (((defined(__ppc__) || defined(__powerpc__) || defined(__ppc64__)) &amp;&amp; !defined(MONO_CROSS_COMPILE))) || (defined(TARGET_POWERPC))
+<span class="lineNum">     444 </span>            : 
+<span class="lineNum">     445 </span>            : #include &lt;mono/utils/mono-context.h&gt;
+<span class="lineNum">     446 </span>            : #include &lt;mono/mini/mini-ppc.h&gt;
+<span class="lineNum">     447 </span>            : 
+<span class="lineNum">     448 </span>            : void
+<span class="lineNum">     449 </span>            : mono_sigctx_to_monoctx (void *sigctx, MonoContext *mctx)
+<span class="lineNum">     450 </span>            : {
+<span class="lineNum">     451 </span>            :         os_ucontext *uc = sigctx;
+<span class="lineNum">     452 </span>            : 
+<span class="lineNum">     453 </span>            :         mctx-&gt;sc_ir = UCONTEXT_REG_NIP(uc);
+<span class="lineNum">     454 </span>            :         mctx-&gt;sc_sp = UCONTEXT_REG_Rn(uc, 1);
+<span class="lineNum">     455 </span>            :         memcpy (&amp;mctx-&gt;regs, &amp;UCONTEXT_REG_Rn(uc, 13), sizeof (mgreg_t) * MONO_SAVED_GREGS);
+<span class="lineNum">     456 </span>            :         memcpy (&amp;mctx-&gt;fregs, &amp;UCONTEXT_REG_FPRn(uc, 14), sizeof (double) * MONO_SAVED_FREGS);
+<span class="lineNum">     457 </span>            : }
+<span class="lineNum">     458 </span>            : 
+<span class="lineNum">     459 </span>            : void
+<span class="lineNum">     460 </span>            : mono_monoctx_to_sigctx (MonoContext *mctx, void *sigctx)
+<span class="lineNum">     461 </span>            : {
+<span class="lineNum">     462 </span>            :         os_ucontext *uc = sigctx;
+<span class="lineNum">     463 </span>            : 
+<span class="lineNum">     464 </span>            :         UCONTEXT_REG_NIP(uc) = mctx-&gt;sc_ir;
+<span class="lineNum">     465 </span>            :         UCONTEXT_REG_Rn(uc, 1) = mctx-&gt;sc_sp;
+<span class="lineNum">     466 </span>            :         memcpy (&amp;UCONTEXT_REG_Rn(uc, 13), &amp;mctx-&gt;regs, sizeof (mgreg_t) * MONO_SAVED_GREGS);
+<span class="lineNum">     467 </span>            :         memcpy (&amp;UCONTEXT_REG_FPRn(uc, 14), &amp;mctx-&gt;fregs, sizeof (double) * MONO_SAVED_FREGS);
+<span class="lineNum">     468 </span>            : }
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span>            : #endif /* #if defined(__i386__) */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

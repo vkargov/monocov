@@ -1,0 +1,954 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-error.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-error.c<span style="font-size: 80%;"> (source / <a href="mono-error.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">301</td>
+            <td class="headerCovTableEntry">415</td>
+            <td class="headerCovTableEntryLo">72.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">39</td>
+            <td class="headerCovTableEntry">49</td>
+            <td class="headerCovTableEntryMed">79.6 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-error.c: Error handling code
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *      Rodrigo Kumpera    (rkumpera@novell.com)
+<span class="lineNum">       6 </span>            :  * Copyright 2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       7 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      12 </span>            : #include &quot;mono-error.h&quot;
+<span class="lineNum">      13 </span>            : #include &quot;mono-error-internals.h&quot;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &lt;mono/metadata/exception.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;mono/metadata/exception-internals.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/metadata/object-internals.h&gt;
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : #define set_error_messagev() do { \
+<span class="lineNum">      21 </span>            :         if (!(error-&gt;full_message = g_strdup_vprintf (msg_format, args))) \
+<span class="lineNum">      22 </span>            :                         error-&gt;flags |= MONO_ERROR_INCOMPLETE; \
+<span class="lineNum">      23 </span>            : } while (0)
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : #define set_error_message() do { \
+<span class="lineNum">      26 </span>            :         va_list args; \
+<span class="lineNum">      27 </span>            :         va_start (args, msg_format); \
+<span class="lineNum">      28 </span>            :         set_error_messagev();        \
+<span class="lineNum">      29 </span>            :         va_end (args); \
+<span class="lineNum">      30 </span>            : } while (0)
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : static void
+<span class="lineNum">      33 </span>            : mono_error_set_generic_errorv (MonoError *oerror, const char *name_space, const char *name, const char *msg_format, va_list args);
+<a name="34"><span class="lineNum">      34 </span>            : </a>
+<span class="lineNum">      35 </span>            : static gboolean
+<span class="lineNum">      36 </span>            : is_managed_exception (MonoErrorInternal *error)
+<span class="lineNum">      37 </span>            : {
+<span class="lineNum">      38 </span><span class="lineCov">  452571218 :         return (error-&gt;error_code == MONO_ERROR_EXCEPTION_INSTANCE);</span>
+<span class="lineNum">      39 </span>            : }
+<a name="40"><span class="lineNum">      40 </span>            : </a>
+<span class="lineNum">      41 </span>            : static gboolean
+<span class="lineNum">      42 </span>            : is_boxed (MonoErrorInternal *error)
+<span class="lineNum">      43 </span>            : {
+<span class="lineNum">      44 </span><span class="lineCov">  817488288 :         return ((error-&gt;flags &amp; MONO_ERROR_MEMPOOL_BOXED) != 0);</span>
+<span class="lineNum">      45 </span>            : }
+<a name="46"><span class="lineNum">      46 </span>            : </a>
+<span class="lineNum">      47 </span>            : static void
+<span class="lineNum">      48 </span>            : mono_error_prepare (MonoErrorInternal *error)
+<span class="lineNum">      49 </span>            : {
+<span class="lineNum">      50 </span>            :         /* mono_error_set_* after a mono_error_cleanup without an intervening init */
+<span class="lineNum">      51 </span><span class="lineCov">     603777 :         g_assert (error-&gt;error_code != MONO_ERROR_CLEANUP_CALLED_SENTINEL);</span>
+<span class="lineNum">      52 </span><span class="lineCov">     201259 :         if (error-&gt;error_code != MONO_ERROR_NONE)</span>
+<span class="lineNum">      53 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span><span class="lineCov">     201259 :         error-&gt;type_name = error-&gt;assembly_name = error-&gt;member_name = error-&gt;full_message = error-&gt;exception_name_space = error-&gt;exception_name = error-&gt;full_message_with_fields = error-&gt;first_argument = NULL;</span>
+<span class="lineNum">      56 </span><span class="lineCov">     201259 :         error-&gt;exn.klass = NULL;</span>
+<span class="lineNum">      57 </span><span class="lineCov">     402518 : }</span>
+<a name="58"><span class="lineNum">      58 </span>            : </a>
+<span class="lineNum">      59 </span>            : static MonoClass*
+<span class="lineNum">      60 </span>            : get_class (MonoErrorInternal *error)
+<span class="lineNum">      61 </span>            : {
+<span class="lineNum">      62 </span><span class="lineCov">     200087 :         MonoClass *klass = NULL;</span>
+<span class="lineNum">      63 </span><span class="lineCov">     200087 :         if (is_managed_exception (error))</span>
+<span class="lineNum">      64 </span><span class="lineNoCov">          0 :                 klass = mono_object_class (mono_gchandle_get_target (error-&gt;exn.instance_handle));</span>
+<span class="lineNum">      65 </span>            :         else
+<span class="lineNum">      66 </span><span class="lineCov">     200087 :                 klass = error-&gt;exn.klass;</span>
+<span class="lineNum">      67 </span><span class="lineCov">     200087 :         return klass;</span>
+<span class="lineNum">      68 </span>            : }
+<a name="69"><span class="lineNum">      69 </span>            : </a>
+<span class="lineNum">      70 </span>            : static const char*
+<span class="lineNum">      71 </span>            : get_type_name (MonoErrorInternal *error)
+<span class="lineNum">      72 </span>            : {
+<span class="lineNum">      73 </span><span class="lineCov">         31 :         if (error-&gt;type_name)</span>
+<span class="lineNum">      74 </span><span class="lineCov">          8 :                 return error-&gt;type_name;</span>
+<span class="lineNum">      75 </span><span class="lineCov">         23 :         MonoClass *klass = get_class (error);</span>
+<span class="lineNum">      76 </span><span class="lineCov">         23 :         if (klass)</span>
+<span class="lineNum">      77 </span><span class="lineCov">         15 :                 return klass-&gt;name;</span>
+<span class="lineNum">      78 </span><span class="lineCov">          8 :         return &quot;&lt;unknown type&gt;&quot;;</span>
+<span class="lineNum">      79 </span><span class="lineCov">         31 : }</span>
+<a name="80"><span class="lineNum">      80 </span>            : </a>
+<span class="lineNum">      81 </span>            : static const char*
+<span class="lineNum">      82 </span>            : get_assembly_name (MonoErrorInternal *error)
+<span class="lineNum">      83 </span>            : {
+<span class="lineNum">      84 </span><span class="lineCov">         31 :         if (error-&gt;assembly_name)</span>
+<span class="lineNum">      85 </span><span class="lineCov">         16 :                 return error-&gt;assembly_name;</span>
+<span class="lineNum">      86 </span><span class="lineCov">         15 :         MonoClass *klass = get_class (error);</span>
+<span class="lineNum">      87 </span><span class="lineCov">         30 :         if (klass &amp;&amp; klass-&gt;image)</span>
+<span class="lineNum">      88 </span><span class="lineCov">         15 :                 return klass-&gt;image-&gt;name;</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :         return &quot;&lt;unknown assembly&gt;&quot;;</span>
+<span class="lineNum">      90 </span><span class="lineCov">         31 : }</span>
+<a name="91"><span class="lineNum">      91 </span>            : </a>
+<span class="lineNum">      92 </span>            : void
+<span class="lineNum">      93 </span>            : mono_error_init_flags (MonoError *oerror, unsigned short flags)
+<span class="lineNum">      94 </span>            : {
+<span class="lineNum">      95 </span><span class="lineCov"> 6591539719 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">      96 </span><span class="lineCov">13190610612 :         g_assert (sizeof (MonoError) == sizeof (MonoErrorInternal));</span>
+<span class="lineNum">      97 </span>            : 
+<span class="lineNum">      98 </span><span class="lineCov"> 6604673461 :         error-&gt;error_code = MONO_ERROR_NONE;</span>
+<span class="lineNum">      99 </span><span class="lineCov"> 6604673461 :         error-&gt;flags = flags;</span>
+<span class="lineNum">     100 </span><span class="lineCov"> 6604673461 : }</span>
+<span class="lineNum">     101 </span>            : 
+<span class="lineNum">     102 </span>            : /**
+<span class="lineNum">     103 </span>            :  * mono_error_init:
+<span class="lineNum">     104 </span>            :  * @error: Pointer to MonoError struct to initialize
+<span class="lineNum">     105 </span>            :  *
+<span class="lineNum">     106 </span>            :  * Any function which takes a MonoError for purposes of reporting an error
+<span class="lineNum">     107 </span>            :  * is required to call either this or mono_error_init_flags on entry.
+<a name="108"><span class="lineNum">     108 </span>            :  */</a>
+<span class="lineNum">     109 </span>            : void
+<span class="lineNum">     110 </span>            : mono_error_init (MonoError *error)
+<span class="lineNum">     111 </span>            : {
+<span class="lineNum">     112 </span><span class="lineCov"> 6585305836 :         mono_error_init_flags (error, 0);</span>
+<span class="lineNum">     113 </span><span class="lineCov"> 6585305836 : }</span>
+<a name="114"><span class="lineNum">     114 </span>            : </a>
+<span class="lineNum">     115 </span>            : void
+<span class="lineNum">     116 </span>            : mono_error_cleanup (MonoError *oerror)
+<span class="lineNum">     117 </span>            : {
+<span class="lineNum">     118 </span><span class="lineCov">  452180380 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     119 </span><span class="lineCov">  452180380 :         short int orig_error_code = error-&gt;error_code;</span>
+<span class="lineNum">     120 </span><span class="lineCov">  452180380 :         gboolean free_strings = error-&gt;flags &amp; MONO_ERROR_FREE_STRINGS;</span>
+<span class="lineNum">     121 </span><span class="lineCov">  452180380 :         gboolean has_instance_handle = is_managed_exception (error);</span>
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span>            :         /* Two cleanups in a row without an intervening init. */
+<span class="lineNum">     124 </span><span class="lineCov"> 1356519274 :         g_assert (orig_error_code != MONO_ERROR_CLEANUP_CALLED_SENTINEL);</span>
+<span class="lineNum">     125 </span>            :         /* Mempool stored error shouldn't be cleaned up */
+<span class="lineNum">     126 </span><span class="lineCov"> 1356524978 :         g_assert (!is_boxed (error));</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            :         /* Mark it as cleaned up. */
+<span class="lineNum">     129 </span><span class="lineCov">  452179663 :         error-&gt;error_code = MONO_ERROR_CLEANUP_CALLED_SENTINEL;</span>
+<span class="lineNum">     130 </span><span class="lineCov">  452179663 :         error-&gt;flags = 0;</span>
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineCov">  452179663 :         if (orig_error_code == MONO_ERROR_NONE)</span>
+<span class="lineNum">     133 </span><span class="lineCov">  451978827 :                 return;</span>
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineCov">     201238 :         if (has_instance_handle)</span>
+<span class="lineNum">     137 </span><span class="lineCov">        415 :                 mono_gchandle_free (error-&gt;exn.instance_handle);</span>
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span>            : 
+<span class="lineNum">     140 </span><span class="lineCov">     201239 :         g_free ((char*)error-&gt;full_message);</span>
+<span class="lineNum">     141 </span><span class="lineCov">     201239 :         g_free ((char*)error-&gt;full_message_with_fields);</span>
+<span class="lineNum">     142 </span><span class="lineCov">     201239 :         error-&gt;full_message = NULL;</span>
+<span class="lineNum">     143 </span><span class="lineCov">     201239 :         error-&gt;full_message_with_fields = NULL;</span>
+<span class="lineNum">     144 </span><span class="lineCov">     201239 :         if (!free_strings) //no memory was allocated</span>
+<span class="lineNum">     145 </span><span class="lineCov">       1162 :                 return;</span>
+<span class="lineNum">     146 </span>            : 
+<span class="lineNum">     147 </span><span class="lineCov">     200077 :         g_free ((char*)error-&gt;type_name);</span>
+<span class="lineNum">     148 </span><span class="lineCov">     200077 :         g_free ((char*)error-&gt;assembly_name);</span>
+<span class="lineNum">     149 </span><span class="lineCov">     200077 :         g_free ((char*)error-&gt;member_name);</span>
+<span class="lineNum">     150 </span><span class="lineCov">     200077 :         g_free ((char*)error-&gt;exception_name_space);</span>
+<span class="lineNum">     151 </span><span class="lineCov">     200077 :         g_free ((char*)error-&gt;exception_name);</span>
+<span class="lineNum">     152 </span><span class="lineCov">     200077 :         g_free ((char*)error-&gt;first_argument);</span>
+<span class="lineNum">     153 </span><span class="lineCov">     200077 :         error-&gt;type_name = error-&gt;assembly_name = error-&gt;member_name = error-&gt;exception_name_space = error-&gt;exception_name = error-&gt;first_argument = NULL;</span>
+<span class="lineNum">     154 </span><span class="lineCov">     200077 :         error-&gt;exn.klass = NULL;</span>
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineCov">  452376743 : }</span>
+<a name="157"><span class="lineNum">     157 </span>            : </a>
+<span class="lineNum">     158 </span>            : gboolean
+<span class="lineNum">     159 </span>            : mono_error_ok (MonoError *error)
+<span class="lineNum">     160 </span>            : {
+<span class="lineNum">     161 </span><span class="lineCov"> 1719879670 :         return error-&gt;error_code == MONO_ERROR_NONE;</span>
+<span class="lineNum">     162 </span>            : }
+<a name="163"><span class="lineNum">     163 </span>            : </a>
+<span class="lineNum">     164 </span>            : void
+<span class="lineNum">     165 </span>            : mono_error_assert_ok_pos (MonoError *error, const char* filename, int lineno)
+<span class="lineNum">     166 </span>            : {
+<span class="lineNum">     167 </span><span class="lineCov">   13838957 :         if (mono_error_ok (error))</span>
+<span class="lineNum">     168 </span><span class="lineCov">   13839261 :                 return;</span>
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :         g_error (&quot;%s:%d: %s\n&quot;, filename, lineno, mono_error_get_message (error));</span>
+<span class="lineNum">     171 </span><span class="lineCov">   13838986 : }</span>
+<a name="172"><span class="lineNum">     172 </span>            : </a>
+<span class="lineNum">     173 </span>            : unsigned short
+<span class="lineNum">     174 </span>            : mono_error_get_error_code (MonoError *error)
+<span class="lineNum">     175 </span>            : {
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :         return error-&gt;error_code;</span>
+<span class="lineNum">     177 </span>            : }
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span>            : /*Return a pointer to the internal error message, might be NULL.
+<a name="180"><span class="lineNum">     180 </span>            : Caller should not release it.*/</a>
+<span class="lineNum">     181 </span>            : const char*
+<span class="lineNum">     182 </span>            : mono_error_get_message (MonoError *oerror)
+<span class="lineNum">     183 </span>            : {
+<span class="lineNum">     184 </span><span class="lineCov">         39 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     185 </span><span class="lineCov">         39 :         if (error-&gt;error_code == MONO_ERROR_NONE)</span>
+<span class="lineNum">     186 </span><span class="lineCov">          8 :                 return NULL;</span>
+<span class="lineNum">     187 </span><span class="lineCov">         31 :         if (error-&gt;full_message_with_fields)</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :                 return error-&gt;full_message_with_fields;</span>
+<span class="lineNum">     189 </span>            : 
+<span class="lineNum">     190 </span><span class="lineCov">         31 :         error-&gt;full_message_with_fields = g_strdup_printf (&quot;%s assembly:%s type:%s member:%s&quot;,</span>
+<span class="lineNum">     191 </span><span class="lineCov">         31 :                 error-&gt;full_message,</span>
+<span class="lineNum">     192 </span><span class="lineCov">         31 :                 get_assembly_name (error),</span>
+<span class="lineNum">     193 </span><span class="lineCov">         31 :                 get_type_name (error),</span>
+<span class="lineNum">     194 </span><span class="lineCov">         93 :                 error-&gt;member_name ? error-&gt;member_name : &quot;&lt;none&gt;&quot;);</span>
+<span class="lineNum">     195 </span>            : 
+<span class="lineNum">     196 </span><span class="lineCov">         93 :         return error-&gt;full_message_with_fields ? error-&gt;full_message_with_fields : error-&gt;full_message;</span>
+<span class="lineNum">     197 </span><span class="lineCov">         39 : }</span>
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span>            : /*
+<span class="lineNum">     200 </span>            :  * Inform that this error has heap allocated strings.
+<span class="lineNum">     201 </span>            :  * The strings will be duplicated if @dup_strings is TRUE
+<span class="lineNum">     202 </span>            :  * otherwise they will just be free'd in mono_error_cleanup.
+<a name="203"><span class="lineNum">     203 </span>            :  */</a>
+<span class="lineNum">     204 </span>            : void
+<span class="lineNum">     205 </span>            : mono_error_dup_strings (MonoError *oerror, gboolean dup_strings)
+<span class="lineNum">     206 </span>            : {
+<span class="lineNum">     207 </span>            : #define DUP_STR(field) do { if (error-&gt;field) {\
+<span class="lineNum">     208 </span>            :         if (!(error-&gt;field = g_strdup (error-&gt;field))) \
+<span class="lineNum">     209 </span>            :                 error-&gt;flags |= MONO_ERROR_INCOMPLETE; \
+<span class="lineNum">     210 </span>            :         }} while (0);
+<span class="lineNum">     211 </span>            : 
+<span class="lineNum">     212 </span><span class="lineCov">         46 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     213 </span><span class="lineCov">         46 :         error-&gt;flags |= MONO_ERROR_FREE_STRINGS;</span>
+<span class="lineNum">     214 </span>            : 
+<span class="lineNum">     215 </span><span class="lineCov">         46 :         if (dup_strings) {</span>
+<span class="lineNum">     216 </span><span class="lineNoCov">          0 :                 DUP_STR (type_name);</span>
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :                 DUP_STR (assembly_name);</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :                 DUP_STR (member_name);</span>
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :                 DUP_STR (exception_name_space);</span>
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :                 DUP_STR (exception_name);</span>
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :                 DUP_STR (first_argument);</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     223 </span>            : #undef DUP_STR
+<span class="lineNum">     224 </span><span class="lineCov">         46 : }</span>
+<a name="225"><span class="lineNum">     225 </span>            : </a>
+<span class="lineNum">     226 </span>            : void
+<span class="lineNum">     227 </span>            : mono_error_set_error (MonoError *oerror, int error_code, const char *msg_format, ...)
+<span class="lineNum">     228 </span>            : {
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :         mono_error_prepare (error);</span>
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :         error-&gt;error_code = error_code;</span>
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :         set_error_message ();</span>
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 : }</span>
+<a name="235"><span class="lineNum">     235 </span>            : </a>
+<span class="lineNum">     236 </span>            : static void
+<span class="lineNum">     237 </span>            : mono_error_set_assembly_name (MonoError *oerror, const char *assembly_name)
+<span class="lineNum">     238 </span>            : {
+<span class="lineNum">     239 </span><span class="lineCov">        363 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     240 </span><span class="lineCov">       1089 :         g_assert (error-&gt;error_code != MONO_ERROR_NONE);</span>
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span><span class="lineCov">        363 :         error-&gt;assembly_name = assembly_name;</span>
+<span class="lineNum">     243 </span><span class="lineCov">        363 : }</span>
+<a name="244"><span class="lineNum">     244 </span>            : </a>
+<span class="lineNum">     245 </span>            : static void
+<span class="lineNum">     246 </span>            : mono_error_set_member_name (MonoError *oerror, const char *member_name)
+<span class="lineNum">     247 </span>            : {
+<span class="lineNum">     248 </span><span class="lineCov">         28 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     249 </span>            : 
+<span class="lineNum">     250 </span><span class="lineCov">         28 :         error-&gt;member_name = member_name;</span>
+<span class="lineNum">     251 </span><span class="lineCov">         28 : }</span>
+<a name="252"><span class="lineNum">     252 </span>            : </a>
+<span class="lineNum">     253 </span>            : static void
+<span class="lineNum">     254 </span>            : mono_error_set_type_name (MonoError *oerror, const char *type_name)
+<span class="lineNum">     255 </span>            : {
+<span class="lineNum">     256 </span><span class="lineCov">         46 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span><span class="lineCov">         46 :         error-&gt;type_name = type_name;</span>
+<span class="lineNum">     259 </span><span class="lineCov">         46 : }</span>
+<a name="260"><span class="lineNum">     260 </span>            : </a>
+<span class="lineNum">     261 </span>            : static void
+<span class="lineNum">     262 </span>            : mono_error_set_class (MonoError *oerror, MonoClass *klass)
+<span class="lineNum">     263 </span>            : {
+<span class="lineNum">     264 </span><span class="lineCov">        100 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span><span class="lineCov">        100 :         if (is_managed_exception (error))</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     268 </span><span class="lineCov">        100 :         error-&gt;exn.klass = klass;    </span>
+<span class="lineNum">     269 </span><span class="lineCov">        200 : }</span>
+<a name="270"><span class="lineNum">     270 </span>            : </a>
+<span class="lineNum">     271 </span>            : static void
+<span class="lineNum">     272 </span>            : mono_error_set_corlib_exception (MonoError *oerror, const char *name_space, const char *name)
+<span class="lineNum">     273 </span>            : {
+<span class="lineNum">     274 </span><span class="lineCov">        226 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span><span class="lineCov">        226 :         error-&gt;exception_name_space = name_space;</span>
+<span class="lineNum">     277 </span><span class="lineCov">        226 :         error-&gt;exception_name = name;</span>
+<span class="lineNum">     278 </span><span class="lineCov">        226 : }</span>
+<span class="lineNum">     279 </span>            : 
+<a name="280"><span class="lineNum">     280 </span>            : </a>
+<span class="lineNum">     281 </span>            : void
+<span class="lineNum">     282 </span>            : mono_error_set_assembly_load (MonoError *oerror, const char *assembly_name, const char *msg_format, ...)
+<span class="lineNum">     283 </span>            : {
+<span class="lineNum">     284 </span><span class="lineCov">        313 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     285 </span><span class="lineCov">        313 :         mono_error_prepare (error);</span>
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span><span class="lineCov">        313 :         error-&gt;error_code = MONO_ERROR_FILE_NOT_FOUND;</span>
+<span class="lineNum">     288 </span><span class="lineCov">        313 :         mono_error_set_assembly_name (oerror, assembly_name);</span>
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span><span class="lineCov">       1565 :         set_error_message ();</span>
+<span class="lineNum">     291 </span><span class="lineCov">        313 : }</span>
+<span class="lineNum">     292 </span>            : 
+<a name="293"><span class="lineNum">     293 </span>            : </a>
+<span class="lineNum">     294 </span>            : void
+<span class="lineNum">     295 </span>            : mono_error_set_assembly_load_simple (MonoError *oerror, const char *assembly_name, gboolean refection_only)
+<span class="lineNum">     296 </span>            : {
+<span class="lineNum">     297 </span><span class="lineCov">          7 :         if (refection_only)</span>
+<span class="lineNum">     298 </span><span class="lineNoCov">          0 :                 mono_error_set_assembly_load (oerror, assembly_name, &quot;Cannot resolve dependency to assembly because it has not been preloaded. When using the ReflectionOnly APIs, dependent assemblies must be pre-loaded or loaded on demand through the ReflectionOnlyAssemblyResolve event.&quot;);</span>
+<span class="lineNum">     299 </span>            :         else
+<span class="lineNum">     300 </span><span class="lineCov">          7 :                 mono_error_set_assembly_load (oerror, assembly_name, &quot;Could not load file or assembly '%s' or one of its dependencies.&quot;, assembly_name);</span>
+<span class="lineNum">     301 </span><span class="lineCov">          7 : }</span>
+<a name="302"><span class="lineNum">     302 </span>            : </a>
+<span class="lineNum">     303 </span>            : void
+<span class="lineNum">     304 </span>            : mono_error_set_type_load_class (MonoError *oerror, MonoClass *klass, const char *msg_format, ...)
+<span class="lineNum">     305 </span>            : {
+<span class="lineNum">     306 </span>            :         va_list args;
+<span class="lineNum">     307 </span><span class="lineCov">         16 :         va_start (args, msg_format);</span>
+<span class="lineNum">     308 </span><span class="lineCov">         16 :         mono_error_vset_type_load_class (oerror, klass, msg_format, args);</span>
+<span class="lineNum">     309 </span><span class="lineCov">         16 :         va_end (args);</span>
+<span class="lineNum">     310 </span><span class="lineCov">         16 : }</span>
+<a name="311"><span class="lineNum">     311 </span>            : </a>
+<span class="lineNum">     312 </span>            : void
+<span class="lineNum">     313 </span>            : mono_error_vset_type_load_class (MonoError *oerror, MonoClass *klass, const char *msg_format, va_list args)
+<span class="lineNum">     314 </span>            : {
+<span class="lineNum">     315 </span><span class="lineCov">         72 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     316 </span><span class="lineCov">         72 :         mono_error_prepare (error);</span>
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span><span class="lineCov">         72 :         error-&gt;error_code = MONO_ERROR_TYPE_LOAD;</span>
+<span class="lineNum">     319 </span><span class="lineCov">         72 :         mono_error_set_class (oerror, klass);</span>
+<span class="lineNum">     320 </span><span class="lineCov">        216 :         set_error_messagev ();</span>
+<span class="lineNum">     321 </span><span class="lineCov">         72 : }</span>
+<span class="lineNum">     322 </span>            : 
+<span class="lineNum">     323 </span>            : /*
+<span class="lineNum">     324 </span>            :  * Different than other functions, this one here assumes that type_name and assembly_name to have been allocated just for us.
+<span class="lineNum">     325 </span>            :  * Which means mono_error_cleanup will free them.
+<a name="326"><span class="lineNum">     326 </span>            :  */</a>
+<span class="lineNum">     327 </span>            : void
+<span class="lineNum">     328 </span>            : mono_error_set_type_load_name (MonoError *oerror, const char *type_name, const char *assembly_name, const char *msg_format, ...)
+<span class="lineNum">     329 </span>            : {
+<span class="lineNum">     330 </span><span class="lineCov">         46 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     331 </span><span class="lineCov">         46 :         mono_error_prepare (error);</span>
+<span class="lineNum">     332 </span>            : 
+<span class="lineNum">     333 </span><span class="lineCov">         46 :         error-&gt;error_code = MONO_ERROR_TYPE_LOAD;</span>
+<span class="lineNum">     334 </span><span class="lineCov">         46 :         mono_error_set_type_name (oerror, type_name);</span>
+<span class="lineNum">     335 </span><span class="lineCov">         46 :         mono_error_set_assembly_name (oerror, assembly_name);</span>
+<span class="lineNum">     336 </span><span class="lineCov">         46 :         mono_error_dup_strings (oerror, FALSE);</span>
+<span class="lineNum">     337 </span><span class="lineCov">        230 :         set_error_message ();</span>
+<span class="lineNum">     338 </span><span class="lineCov">         46 : }</span>
+<a name="339"><span class="lineNum">     339 </span>            : </a>
+<span class="lineNum">     340 </span>            : void
+<span class="lineNum">     341 </span>            : mono_error_set_method_load (MonoError *oerror, MonoClass *klass, const char *method_name, const char *msg_format, ...)
+<span class="lineNum">     342 </span>            : {
+<span class="lineNum">     343 </span><span class="lineCov">         15 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     344 </span><span class="lineCov">         15 :         mono_error_prepare (error);</span>
+<span class="lineNum">     345 </span>            : 
+<span class="lineNum">     346 </span><span class="lineCov">         15 :         error-&gt;error_code = MONO_ERROR_MISSING_METHOD;</span>
+<span class="lineNum">     347 </span><span class="lineCov">         15 :         mono_error_set_class (oerror, klass);</span>
+<span class="lineNum">     348 </span><span class="lineCov">         15 :         mono_error_set_member_name (oerror, method_name);</span>
+<span class="lineNum">     349 </span><span class="lineCov">         75 :         set_error_message ();</span>
+<span class="lineNum">     350 </span><span class="lineCov">         15 : }</span>
+<a name="351"><span class="lineNum">     351 </span>            : </a>
+<span class="lineNum">     352 </span>            : void
+<span class="lineNum">     353 </span>            : mono_error_set_field_load (MonoError *oerror, MonoClass *klass, const char *field_name, const char *msg_format, ...)
+<span class="lineNum">     354 </span>            : {
+<span class="lineNum">     355 </span><span class="lineCov">         13 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     356 </span><span class="lineCov">         13 :         mono_error_prepare (error);</span>
+<span class="lineNum">     357 </span>            : 
+<span class="lineNum">     358 </span><span class="lineCov">         13 :         error-&gt;error_code = MONO_ERROR_MISSING_FIELD;</span>
+<span class="lineNum">     359 </span><span class="lineCov">         13 :         mono_error_set_class (oerror, klass);</span>
+<span class="lineNum">     360 </span><span class="lineCov">         13 :         mono_error_set_member_name (oerror, field_name);</span>
+<span class="lineNum">     361 </span><span class="lineCov">         65 :         set_error_message ();   </span>
+<span class="lineNum">     362 </span><span class="lineCov">         13 : }</span>
+<a name="363"><span class="lineNum">     363 </span>            : </a>
+<span class="lineNum">     364 </span>            : void
+<span class="lineNum">     365 </span>            : mono_error_set_bad_image_name (MonoError *oerror, const char *assembly_name, const char *msg_format, ...)
+<span class="lineNum">     366 </span>            : {
+<span class="lineNum">     367 </span><span class="lineCov">          4 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     368 </span><span class="lineCov">          4 :         mono_error_prepare (error);</span>
+<span class="lineNum">     369 </span>            : 
+<span class="lineNum">     370 </span><span class="lineCov">          4 :         error-&gt;error_code = MONO_ERROR_BAD_IMAGE;</span>
+<span class="lineNum">     371 </span><span class="lineCov">          4 :         mono_error_set_assembly_name (oerror, assembly_name);</span>
+<span class="lineNum">     372 </span><span class="lineCov">         20 :         set_error_message ();</span>
+<span class="lineNum">     373 </span><span class="lineCov">          4 : }</span>
+<a name="374"><span class="lineNum">     374 </span>            : </a>
+<span class="lineNum">     375 </span>            : void
+<span class="lineNum">     376 </span>            : mono_error_set_bad_image (MonoError *oerror, MonoImage *image, const char *msg_format, ...)
+<span class="lineNum">     377 </span>            : {
+<span class="lineNum">     378 </span><span class="lineCov">         13 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     379 </span><span class="lineCov">         13 :         mono_error_prepare (error);</span>
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span><span class="lineCov">         13 :         error-&gt;error_code = MONO_ERROR_BAD_IMAGE;</span>
+<span class="lineNum">     382 </span><span class="lineCov">         39 :         error-&gt;assembly_name = image ? mono_image_get_name (image) : &quot;&lt;no_image&gt;&quot;;</span>
+<span class="lineNum">     383 </span><span class="lineCov">         65 :         set_error_message ();</span>
+<span class="lineNum">     384 </span><span class="lineCov">         13 : }</span>
+<a name="385"><span class="lineNum">     385 </span>            : </a>
+<span class="lineNum">     386 </span>            : void
+<span class="lineNum">     387 </span>            : mono_error_set_generic_errorv (MonoError *oerror, const char *name_space, const char *name, const char *msg_format, va_list args)
+<span class="lineNum">     388 </span>            : {
+<span class="lineNum">     389 </span><span class="lineCov">        226 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     390 </span><span class="lineCov">        226 :         mono_error_prepare (error);</span>
+<span class="lineNum">     391 </span>            : 
+<span class="lineNum">     392 </span><span class="lineCov">        226 :         error-&gt;error_code = MONO_ERROR_GENERIC;</span>
+<span class="lineNum">     393 </span><span class="lineCov">        226 :         mono_error_set_corlib_exception (oerror, name_space, name);</span>
+<span class="lineNum">     394 </span><span class="lineCov">        678 :         set_error_messagev ();</span>
+<span class="lineNum">     395 </span><span class="lineCov">        226 : }</span>
+<a name="396"><span class="lineNum">     396 </span>            : </a>
+<span class="lineNum">     397 </span>            : void
+<span class="lineNum">     398 </span>            : mono_error_set_generic_error (MonoError *oerror, const char * name_space, const char *name, const char *msg_format, ...)
+<span class="lineNum">     399 </span>            : {
+<span class="lineNum">     400 </span>            :         va_list args;
+<span class="lineNum">     401 </span><span class="lineCov">        224 :         va_start (args, msg_format);</span>
+<span class="lineNum">     402 </span><span class="lineCov">        224 :         mono_error_set_generic_errorv (oerror, name_space, name, msg_format, args);</span>
+<span class="lineNum">     403 </span><span class="lineCov">        224 :         va_end (args);</span>
+<span class="lineNum">     404 </span><span class="lineCov">        224 : }</span>
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span>            : /**
+<span class="lineNum">     407 </span>            :  * mono_error_set_not_implemented:
+<span class="lineNum">     408 </span>            :  *
+<span class="lineNum">     409 </span>            :  * System.NotImplementedException
+<a name="410"><span class="lineNum">     410 </span>            :  */</a>
+<span class="lineNum">     411 </span>            : void
+<span class="lineNum">     412 </span>            : mono_error_set_not_implemented (MonoError *oerror, const char *msg_format, ...)
+<span class="lineNum">     413 </span>            : {
+<span class="lineNum">     414 </span>            :         va_list args;
+<span class="lineNum">     415 </span><span class="lineNoCov">          0 :         va_start (args, msg_format);</span>
+<span class="lineNum">     416 </span><span class="lineNoCov">          0 :         mono_error_set_generic_errorv (oerror, &quot;System&quot;, &quot;NotImplementedException&quot;, msg_format, args);</span>
+<span class="lineNum">     417 </span><span class="lineNoCov">          0 :         va_end (args);</span>
+<span class="lineNum">     418 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     419 </span>            : 
+<span class="lineNum">     420 </span>            : /**
+<span class="lineNum">     421 </span>            :  * mono_error_set_execution_engine:
+<span class="lineNum">     422 </span>            :  *
+<span class="lineNum">     423 </span>            :  * System.ExecutionEngineException
+<a name="424"><span class="lineNum">     424 </span>            :  */</a>
+<span class="lineNum">     425 </span>            : void
+<span class="lineNum">     426 </span>            : mono_error_set_execution_engine (MonoError *oerror, const char *msg_format, ...)
+<span class="lineNum">     427 </span>            : {
+<span class="lineNum">     428 </span>            :         va_list args;
+<span class="lineNum">     429 </span><span class="lineNoCov">          0 :         va_start (args, msg_format);</span>
+<span class="lineNum">     430 </span><span class="lineNoCov">          0 :         mono_error_set_generic_errorv (oerror, &quot;System&quot;, &quot;ExecutionEngineException&quot;, msg_format, args);</span>
+<span class="lineNum">     431 </span><span class="lineNoCov">          0 :         va_end (args);</span>
+<span class="lineNum">     432 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     433 </span>            : 
+<span class="lineNum">     434 </span>            : /**
+<span class="lineNum">     435 </span>            :  * mono_error_set_not_supported:
+<span class="lineNum">     436 </span>            :  *
+<span class="lineNum">     437 </span>            :  * System.NotSupportedException
+<a name="438"><span class="lineNum">     438 </span>            :  */</a>
+<span class="lineNum">     439 </span>            : void
+<span class="lineNum">     440 </span>            : mono_error_set_not_supported (MonoError *oerror, const char *msg_format, ...)
+<span class="lineNum">     441 </span>            : {
+<span class="lineNum">     442 </span>            :         va_list args;
+<span class="lineNum">     443 </span><span class="lineNoCov">          0 :         va_start (args, msg_format);</span>
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :         mono_error_set_generic_errorv (oerror, &quot;System&quot;, &quot;NotSupportedException&quot;, msg_format, args);</span>
+<span class="lineNum">     445 </span><span class="lineNoCov">          0 :         va_end (args);</span>
+<span class="lineNum">     446 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     447 </span>            : 
+<span class="lineNum">     448 </span>            : /**
+<span class="lineNum">     449 </span>            :  * mono_error_set_invalid_operation:
+<span class="lineNum">     450 </span>            :  *
+<span class="lineNum">     451 </span>            :  * System.InvalidOperationException
+<a name="452"><span class="lineNum">     452 </span>            :  */</a>
+<span class="lineNum">     453 </span>            : void
+<span class="lineNum">     454 </span>            : mono_error_set_invalid_operation (MonoError *oerror, const char *msg_format, ...)
+<span class="lineNum">     455 </span>            : {
+<span class="lineNum">     456 </span>            :         va_list args;
+<span class="lineNum">     457 </span><span class="lineCov">          2 :         va_start (args, msg_format);</span>
+<span class="lineNum">     458 </span><span class="lineCov">          2 :         mono_error_set_generic_errorv (oerror, &quot;System&quot;, &quot;InvalidOperationException&quot;, msg_format, args);</span>
+<span class="lineNum">     459 </span><span class="lineCov">          2 :         va_end (args);</span>
+<span class="lineNum">     460 </span><span class="lineCov">          2 : }</span>
+<a name="461"><span class="lineNum">     461 </span>            : </a>
+<span class="lineNum">     462 </span>            : void
+<span class="lineNum">     463 </span>            : mono_error_set_invalid_program (MonoError *oerror, const char *msg_format, ...)
+<span class="lineNum">     464 </span>            : {
+<span class="lineNum">     465 </span><span class="lineNoCov">          0 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     466 </span>            : 
+<span class="lineNum">     467 </span><span class="lineNoCov">          0 :         mono_error_prepare (error);</span>
+<span class="lineNum">     468 </span><span class="lineNoCov">          0 :         error-&gt;error_code = MONO_ERROR_INVALID_PROGRAM;</span>
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span><span class="lineNoCov">          0 :         set_error_message ();</span>
+<span class="lineNum">     471 </span><span class="lineNoCov">          0 : }</span>
+<a name="472"><span class="lineNum">     472 </span>            : </a>
+<span class="lineNum">     473 </span>            : void
+<span class="lineNum">     474 </span>            : mono_error_set_exception_instance (MonoError *oerror, MonoException *exc)
+<span class="lineNum">     475 </span>            : {
+<span class="lineNum">     476 </span><span class="lineCov">        416 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     477 </span>            : 
+<span class="lineNum">     478 </span><span class="lineCov">        416 :         mono_error_prepare (error);</span>
+<span class="lineNum">     479 </span><span class="lineCov">        416 :         error-&gt;error_code = MONO_ERROR_EXCEPTION_INSTANCE;</span>
+<span class="lineNum">     480 </span><span class="lineCov">       1248 :         error-&gt;exn.instance_handle = mono_gchandle_new (exc ? &amp;exc-&gt;object : NULL, FALSE);</span>
+<span class="lineNum">     481 </span><span class="lineCov">        416 : }</span>
+<a name="482"><span class="lineNum">     482 </span>            : </a>
+<span class="lineNum">     483 </span>            : void
+<span class="lineNum">     484 </span>            : mono_error_set_exception_handle (MonoError *oerror, MonoExceptionHandle exc)
+<span class="lineNum">     485 </span>            : {
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     487 </span>            : 
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :         mono_error_prepare (error);</span>
+<span class="lineNum">     489 </span><span class="lineNoCov">          0 :         error-&gt;error_code = MONO_ERROR_EXCEPTION_INSTANCE;</span>
+<span class="lineNum">     490 </span><span class="lineNoCov">          0 :         error-&gt;exn.instance_handle = mono_gchandle_from_handle (MONO_HANDLE_CAST(MonoObject, exc), FALSE);</span>
+<span class="lineNum">     491 </span><span class="lineNoCov">          0 : }</span>
+<a name="492"><span class="lineNum">     492 </span>            : </a>
+<span class="lineNum">     493 </span>            : void
+<span class="lineNum">     494 </span>            : mono_error_set_out_of_memory (MonoError *oerror, const char *msg_format, ...)
+<span class="lineNum">     495 </span>            : {
+<span class="lineNum">     496 </span><span class="lineCov">        100 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     497 </span><span class="lineCov">        100 :         mono_error_prepare (error);</span>
+<span class="lineNum">     498 </span>            : 
+<span class="lineNum">     499 </span><span class="lineCov">        100 :         error-&gt;error_code = MONO_ERROR_OUT_OF_MEMORY;</span>
+<span class="lineNum">     500 </span>            : 
+<span class="lineNum">     501 </span><span class="lineCov">        500 :         set_error_message ();</span>
+<span class="lineNum">     502 </span><span class="lineCov">        100 : }</span>
+<a name="503"><span class="lineNum">     503 </span>            : </a>
+<span class="lineNum">     504 </span>            : void
+<span class="lineNum">     505 </span>            : mono_error_set_argument (MonoError *oerror, const char *argument, const char *msg_format, ...)
+<span class="lineNum">     506 </span>            : {
+<span class="lineNum">     507 </span><span class="lineCov">          6 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     508 </span><span class="lineCov">          6 :         mono_error_prepare (error);</span>
+<span class="lineNum">     509 </span>            : 
+<span class="lineNum">     510 </span><span class="lineCov">          6 :         error-&gt;error_code = MONO_ERROR_ARGUMENT;</span>
+<span class="lineNum">     511 </span><span class="lineCov">          6 :         error-&gt;first_argument = argument;</span>
+<span class="lineNum">     512 </span>            : 
+<span class="lineNum">     513 </span><span class="lineCov">         30 :         set_error_message ();</span>
+<span class="lineNum">     514 </span><span class="lineCov">          6 : }</span>
+<a name="515"><span class="lineNum">     515 </span>            : </a>
+<span class="lineNum">     516 </span>            : void
+<span class="lineNum">     517 </span>            : mono_error_set_argument_null (MonoError *oerror, const char *argument, const char *msg_format, ...)
+<span class="lineNum">     518 </span>            : {
+<span class="lineNum">     519 </span><span class="lineNoCov">          0 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :         mono_error_prepare (error);</span>
+<span class="lineNum">     521 </span>            : 
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :         error-&gt;error_code = MONO_ERROR_ARGUMENT_NULL;</span>
+<span class="lineNum">     523 </span><span class="lineNoCov">          0 :         error-&gt;first_argument = argument;</span>
+<span class="lineNum">     524 </span>            : 
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :         set_error_message ();</span>
+<span class="lineNum">     526 </span><span class="lineNoCov">          0 : }</span>
+<a name="527"><span class="lineNum">     527 </span>            : </a>
+<span class="lineNum">     528 </span>            : void
+<span class="lineNum">     529 </span>            : mono_error_set_not_verifiable (MonoError *oerror, MonoMethod *method, const char *msg_format, ...)
+<span class="lineNum">     530 </span>            : {
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :         mono_error_prepare (error);</span>
+<span class="lineNum">     533 </span>            : 
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 :         error-&gt;error_code = MONO_ERROR_NOT_VERIFIABLE;</span>
+<span class="lineNum">     535 </span><span class="lineNoCov">          0 :         if (method) {</span>
+<span class="lineNum">     536 </span><span class="lineNoCov">          0 :                 mono_error_set_class (oerror, method-&gt;klass);</span>
+<span class="lineNum">     537 </span><span class="lineNoCov">          0 :                 mono_error_set_member_name (oerror, mono_method_full_name (method, 1));</span>
+<span class="lineNum">     538 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     539 </span>            : 
+<span class="lineNum">     540 </span><span class="lineNoCov">          0 :         set_error_message ();</span>
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     542 </span>            : 
+<a name="543"><span class="lineNum">     543 </span>            : </a>
+<span class="lineNum">     544 </span>            : static MonoString*
+<span class="lineNum">     545 </span>            : get_type_name_as_mono_string (MonoErrorInternal *error, MonoDomain *domain, MonoError *error_out)
+<span class="lineNum">     546 </span>            : {
+<span class="lineNum">     547 </span><span class="lineCov">     200063 :         MonoString* res = NULL;</span>
+<span class="lineNum">     548 </span>            : 
+<span class="lineNum">     549 </span><span class="lineCov">     200063 :         if (error-&gt;type_name) {</span>
+<span class="lineNum">     550 </span><span class="lineCov">         14 :                 res = mono_string_new (domain, error-&gt;type_name);</span>
+<span class="lineNum">     551 </span>            :                 
+<span class="lineNum">     552 </span><span class="lineCov">         14 :         } else {</span>
+<span class="lineNum">     553 </span><span class="lineCov">     200049 :                 MonoClass *klass = get_class (error);</span>
+<span class="lineNum">     554 </span><span class="lineCov">     200049 :                 if (klass) {</span>
+<span class="lineNum">     555 </span><span class="lineCov">     200049 :                         char *name = mono_type_full_name (&amp;klass-&gt;byval_arg);</span>
+<span class="lineNum">     556 </span><span class="lineCov">     200049 :                         if (name) {</span>
+<span class="lineNum">     557 </span><span class="lineCov">     200049 :                                 res = mono_string_new (domain, name);</span>
+<span class="lineNum">     558 </span><span class="lineCov">     200049 :                                 g_free (name);</span>
+<span class="lineNum">     559 </span><span class="lineCov">     200049 :                         }</span>
+<span class="lineNum">     560 </span><span class="lineCov">     200049 :                 }</span>
+<span class="lineNum">     561 </span>            :         }
+<span class="lineNum">     562 </span><span class="lineCov">     200063 :         if (!res)</span>
+<span class="lineNum">     563 </span><span class="lineNoCov">          0 :                 mono_error_set_out_of_memory (error_out, &quot;Could not allocate type name&quot;);</span>
+<span class="lineNum">     564 </span><span class="lineCov">     200063 :         return res;</span>
+<span class="lineNum">     565 </span>            : }
+<a name="566"><span class="lineNum">     566 </span>            : </a>
+<span class="lineNum">     567 </span>            : static void
+<span class="lineNum">     568 </span>            : set_message_on_exception (MonoException *exception, MonoErrorInternal *error, MonoError *error_out)
+<span class="lineNum">     569 </span>            : {
+<span class="lineNum">     570 </span><span class="lineCov">     200061 :         MonoString *msg = mono_string_new (mono_domain_get (), error-&gt;full_message);</span>
+<span class="lineNum">     571 </span><span class="lineCov">     200061 :         if (msg)</span>
+<span class="lineNum">     572 </span><span class="lineCov">     600183 :                 MONO_OBJECT_SETREF (exception, message, msg);</span>
+<span class="lineNum">     573 </span>            :         else
+<span class="lineNum">     574 </span><span class="lineNoCov">          0 :                 mono_error_set_out_of_memory (error_out, &quot;Could not allocate exception object&quot;);</span>
+<span class="lineNum">     575 </span><span class="lineCov">     200061 : }</span>
+<span class="lineNum">     576 </span>            : 
+<a name="577"><span class="lineNum">     577 </span>            : /*Can fail with out-of-memory*/</a>
+<span class="lineNum">     578 </span>            : MonoException*
+<span class="lineNum">     579 </span>            : mono_error_prepare_exception (MonoError *oerror, MonoError *error_out)
+<span class="lineNum">     580 </span>            : {
+<span class="lineNum">     581 </span><span class="lineCov">     201136 :         MonoErrorInternal *error = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     582 </span>            : 
+<span class="lineNum">     583 </span><span class="lineCov">     201136 :         MonoException* exception = NULL;</span>
+<span class="lineNum">     584 </span><span class="lineCov">     201136 :         MonoString *assembly_name = NULL, *type_name = NULL, *method_name = NULL, *field_name = NULL, *msg = NULL;</span>
+<span class="lineNum">     585 </span><span class="lineCov">     201136 :         MonoDomain *domain = mono_domain_get ();</span>
+<span class="lineNum">     586 </span>            : 
+<span class="lineNum">     587 </span><span class="lineCov">     201136 :         mono_error_init (error_out);</span>
+<span class="lineNum">     588 </span>            : 
+<span class="lineNum">     589 </span><span class="lineCov">     201136 :         switch (error-&gt;error_code) {</span>
+<span class="lineNum">     590 </span>            :         case MONO_ERROR_NONE:
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     592 </span>            : 
+<span class="lineNum">     593 </span>            :         case MONO_ERROR_MISSING_METHOD:
+<span class="lineNum">     594 </span><span class="lineCov">         36 :                 if ((error-&gt;type_name || error-&gt;exn.klass) &amp;&amp; error-&gt;member_name) {</span>
+<span class="lineNum">     595 </span><span class="lineCov">         12 :                         type_name = get_type_name_as_mono_string (error, domain, error_out);</span>
+<span class="lineNum">     596 </span><span class="lineCov">         12 :                         if (!mono_error_ok (error_out))</span>
+<span class="lineNum">     597 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     598 </span>            : 
+<span class="lineNum">     599 </span><span class="lineCov">         12 :                         method_name = mono_string_new (domain, error-&gt;member_name);</span>
+<span class="lineNum">     600 </span><span class="lineCov">         12 :                         if (!method_name) {</span>
+<span class="lineNum">     601 </span><span class="lineNoCov">          0 :                                 mono_error_set_out_of_memory (error_out, &quot;Could not allocate method name&quot;);</span>
+<span class="lineNum">     602 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     603 </span>            :                         }
+<span class="lineNum">     604 </span>            : 
+<span class="lineNum">     605 </span><span class="lineCov">         12 :                         exception = mono_exception_from_name_two_strings_checked (mono_defaults.corlib, &quot;System&quot;, &quot;MissingMethodException&quot;, type_name, method_name, error_out);</span>
+<span class="lineNum">     606 </span><span class="lineCov">         12 :                         if (exception)</span>
+<span class="lineNum">     607 </span><span class="lineCov">         12 :                                 set_message_on_exception (exception, error, error_out);</span>
+<span class="lineNum">     608 </span><span class="lineCov">         12 :                 } else {</span>
+<span class="lineNum">     609 </span><span class="lineNoCov">          0 :                         exception = mono_exception_from_name_msg (mono_defaults.corlib, &quot;System&quot;, &quot;MissingMethodException&quot;, error-&gt;full_message);</span>
+<span class="lineNum">     610 </span>            :                 }
+<span class="lineNum">     611 </span><span class="lineCov">         12 :                 break;</span>
+<span class="lineNum">     612 </span>            : 
+<span class="lineNum">     613 </span>            :         case MONO_ERROR_MISSING_FIELD:
+<span class="lineNum">     614 </span><span class="lineCov">         33 :                 if ((error-&gt;type_name || error-&gt;exn.klass) &amp;&amp; error-&gt;member_name) {</span>
+<span class="lineNum">     615 </span><span class="lineCov">         11 :                         type_name = get_type_name_as_mono_string (error, domain, error_out);</span>
+<span class="lineNum">     616 </span><span class="lineCov">         11 :                         if (!mono_error_ok (error_out))</span>
+<span class="lineNum">     617 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     618 </span>            :                         
+<span class="lineNum">     619 </span><span class="lineCov">         11 :                         field_name = mono_string_new (domain, error-&gt;member_name);</span>
+<span class="lineNum">     620 </span><span class="lineCov">         11 :                         if (!field_name) {</span>
+<span class="lineNum">     621 </span><span class="lineNoCov">          0 :                                 mono_error_set_out_of_memory (error_out, &quot;Could not allocate field name&quot;);</span>
+<span class="lineNum">     622 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     623 </span>            :                         }
+<span class="lineNum">     624 </span>            :                         
+<span class="lineNum">     625 </span><span class="lineCov">         11 :                         exception = mono_exception_from_name_two_strings_checked (mono_defaults.corlib, &quot;System&quot;, &quot;MissingFieldException&quot;, type_name, field_name, error_out);</span>
+<span class="lineNum">     626 </span><span class="lineCov">         11 :                         if (exception)</span>
+<span class="lineNum">     627 </span><span class="lineCov">         11 :                                 set_message_on_exception (exception, error, error_out);</span>
+<span class="lineNum">     628 </span><span class="lineCov">         11 :                 } else {</span>
+<span class="lineNum">     629 </span><span class="lineNoCov">          0 :                         exception = mono_exception_from_name_msg (mono_defaults.corlib, &quot;System&quot;, &quot;MissingFieldException&quot;, error-&gt;full_message);</span>
+<span class="lineNum">     630 </span>            :                 }
+<span class="lineNum">     631 </span><span class="lineCov">         11 :                 break;</span>
+<span class="lineNum">     632 </span>            : 
+<span class="lineNum">     633 </span>            :         case MONO_ERROR_TYPE_LOAD:
+<span class="lineNum">     634 </span><span class="lineCov">     400104 :                 if ((error-&gt;type_name &amp;&amp; error-&gt;assembly_name) || error-&gt;exn.klass) {</span>
+<span class="lineNum">     635 </span><span class="lineCov">     200040 :                         type_name = get_type_name_as_mono_string (error, domain, error_out);</span>
+<span class="lineNum">     636 </span><span class="lineCov">     200040 :                         if (!mono_error_ok (error_out))</span>
+<span class="lineNum">     637 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     638 </span>            : 
+<span class="lineNum">     639 </span><span class="lineCov">     200040 :                         if (error-&gt;assembly_name) {</span>
+<span class="lineNum">     640 </span><span class="lineCov">         14 :                                 assembly_name = mono_string_new (domain, error-&gt;assembly_name);</span>
+<span class="lineNum">     641 </span><span class="lineCov">         14 :                                 if (!assembly_name) {</span>
+<span class="lineNum">     642 </span><span class="lineNoCov">          0 :                                         mono_error_set_out_of_memory (error_out, &quot;Could not allocate assembly name&quot;);</span>
+<span class="lineNum">     643 </span><span class="lineNoCov">          0 :                                         break;</span>
+<span class="lineNum">     644 </span>            :                                 }
+<span class="lineNum">     645 </span><span class="lineCov">         14 :                         }</span>
+<span class="lineNum">     646 </span>            : 
+<span class="lineNum">     647 </span><span class="lineCov">     200040 :                         exception = mono_exception_from_name_two_strings_checked (mono_get_corlib (), &quot;System&quot;, &quot;TypeLoadException&quot;, type_name, assembly_name, error_out);</span>
+<span class="lineNum">     648 </span><span class="lineCov">     600120 :                         if (exception &amp;&amp; error-&gt;full_message != NULL &amp;&amp; strcmp (error-&gt;full_message, &quot;&quot;))</span>
+<span class="lineNum">     649 </span><span class="lineCov">     200038 :                                 set_message_on_exception (exception, error, error_out);</span>
+<span class="lineNum">     650 </span><span class="lineCov">     200040 :                 } else {</span>
+<span class="lineNum">     651 </span><span class="lineCov">          8 :                         exception = mono_exception_from_name_msg (mono_defaults.corlib, &quot;System&quot;, &quot;TypeLoadException&quot;, error-&gt;full_message);</span>
+<span class="lineNum">     652 </span>            :                 }
+<span class="lineNum">     653 </span><span class="lineCov">     200048 :                 break;</span>
+<span class="lineNum">     654 </span>            : 
+<span class="lineNum">     655 </span>            :         case MONO_ERROR_FILE_NOT_FOUND:
+<span class="lineNum">     656 </span>            :         case MONO_ERROR_BAD_IMAGE:
+<span class="lineNum">     657 </span><span class="lineCov">        319 :                 if (error-&gt;assembly_name) {</span>
+<span class="lineNum">     658 </span><span class="lineCov">        319 :                         msg = mono_string_new (domain, error-&gt;full_message);</span>
+<span class="lineNum">     659 </span><span class="lineCov">        319 :                         if (!msg) {</span>
+<span class="lineNum">     660 </span><span class="lineNoCov">          0 :                                 mono_error_set_out_of_memory (error_out, &quot;Could not allocate message&quot;);</span>
+<span class="lineNum">     661 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     662 </span>            :                         }
+<span class="lineNum">     663 </span>            : 
+<span class="lineNum">     664 </span><span class="lineCov">        319 :                         if (error-&gt;assembly_name) {</span>
+<span class="lineNum">     665 </span><span class="lineCov">        319 :                                 assembly_name = mono_string_new (domain, error-&gt;assembly_name);</span>
+<span class="lineNum">     666 </span><span class="lineCov">        319 :                                 if (!assembly_name) {</span>
+<span class="lineNum">     667 </span><span class="lineNoCov">          0 :                                         mono_error_set_out_of_memory (error_out, &quot;Could not allocate assembly name&quot;);</span>
+<span class="lineNum">     668 </span><span class="lineNoCov">          0 :                                         break;</span>
+<span class="lineNum">     669 </span>            :                                 }
+<span class="lineNum">     670 </span><span class="lineCov">        319 :                         }</span>
+<span class="lineNum">     671 </span>            : 
+<span class="lineNum">     672 </span><span class="lineCov">        319 :                         if (error-&gt;error_code == MONO_ERROR_FILE_NOT_FOUND)</span>
+<span class="lineNum">     673 </span><span class="lineCov">        311 :                                 exception = mono_exception_from_name_two_strings_checked (mono_get_corlib (), &quot;System.IO&quot;, &quot;FileNotFoundException&quot;, msg, assembly_name, error_out);</span>
+<span class="lineNum">     674 </span>            :                         else
+<span class="lineNum">     675 </span><span class="lineCov">          8 :                                 exception = mono_exception_from_name_two_strings_checked (mono_defaults.corlib, &quot;System&quot;, &quot;BadImageFormatException&quot;, msg, assembly_name, error_out);</span>
+<span class="lineNum">     676 </span><span class="lineCov">        319 :                 } else {</span>
+<span class="lineNum">     677 </span><span class="lineNoCov">          0 :                         if (error-&gt;error_code == MONO_ERROR_FILE_NOT_FOUND)</span>
+<span class="lineNum">     678 </span><span class="lineNoCov">          0 :                                 exception = mono_exception_from_name_msg (mono_get_corlib (), &quot;System.IO&quot;, &quot;FileNotFoundException&quot;, error-&gt;full_message);</span>
+<span class="lineNum">     679 </span>            :                         else
+<span class="lineNum">     680 </span><span class="lineNoCov">          0 :                                 exception = mono_exception_from_name_msg (mono_defaults.corlib, &quot;System&quot;, &quot;BadImageFormatException&quot;, error-&gt;full_message);</span>
+<span class="lineNum">     681 </span>            :                 }
+<span class="lineNum">     682 </span><span class="lineCov">        319 :                 break;</span>
+<span class="lineNum">     683 </span>            : 
+<span class="lineNum">     684 </span>            :         case MONO_ERROR_OUT_OF_MEMORY:
+<span class="lineNum">     685 </span><span class="lineCov">        100 :                 exception = mono_get_exception_out_of_memory ();</span>
+<span class="lineNum">     686 </span><span class="lineCov">        100 :                 break;</span>
+<span class="lineNum">     687 </span>            : 
+<span class="lineNum">     688 </span>            :         case MONO_ERROR_ARGUMENT:
+<span class="lineNum">     689 </span><span class="lineCov">          6 :                 exception = mono_get_exception_argument (error-&gt;first_argument, error-&gt;full_message);</span>
+<span class="lineNum">     690 </span><span class="lineCov">          6 :                 break;</span>
+<span class="lineNum">     691 </span>            : 
+<span class="lineNum">     692 </span>            :         case MONO_ERROR_ARGUMENT_NULL:
+<span class="lineNum">     693 </span><span class="lineNoCov">          0 :                 exception = mono_get_exception_argument_null (error-&gt;first_argument);</span>
+<span class="lineNum">     694 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     695 </span>            : 
+<span class="lineNum">     696 </span>            :         case MONO_ERROR_NOT_VERIFIABLE: {
+<span class="lineNum">     697 </span><span class="lineNoCov">          0 :                 char *type_name = NULL, *message;</span>
+<span class="lineNum">     698 </span><span class="lineNoCov">          0 :                 if (error-&gt;exn.klass) {</span>
+<span class="lineNum">     699 </span><span class="lineNoCov">          0 :                         type_name = mono_type_get_full_name (error-&gt;exn.klass);</span>
+<span class="lineNum">     700 </span><span class="lineNoCov">          0 :                         if (!type_name) {</span>
+<span class="lineNum">     701 </span><span class="lineNoCov">          0 :                                 mono_error_set_out_of_memory (error_out, &quot;Could not allocate message&quot;);</span>
+<span class="lineNum">     702 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     703 </span>            :                         }
+<span class="lineNum">     704 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     705 </span><span class="lineNoCov">          0 :                 message = g_strdup_printf (&quot;Error in %s:%s %s&quot;, type_name, error-&gt;member_name, error-&gt;full_message);</span>
+<span class="lineNum">     706 </span><span class="lineNoCov">          0 :                 if (!message) {</span>
+<span class="lineNum">     707 </span><span class="lineNoCov">          0 :                         g_free (type_name);</span>
+<span class="lineNum">     708 </span><span class="lineNoCov">          0 :                         mono_error_set_out_of_memory (error_out, &quot;Could not allocate message&quot;);</span>
+<span class="lineNum">     709 </span><span class="lineNoCov">          0 :                         break;  </span>
+<span class="lineNum">     710 </span>            :                 }
+<span class="lineNum">     711 </span><span class="lineNoCov">          0 :                 exception = mono_exception_from_name_msg (mono_defaults.corlib, &quot;System.Security&quot;, &quot;VerificationException&quot;, message);</span>
+<span class="lineNum">     712 </span><span class="lineNoCov">          0 :                 g_free (message);</span>
+<span class="lineNum">     713 </span><span class="lineNoCov">          0 :                 g_free (type_name);</span>
+<span class="lineNum">     714 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     715 </span>            :         }
+<span class="lineNum">     716 </span>            :         case MONO_ERROR_GENERIC:
+<span class="lineNum">     717 </span><span class="lineCov">        448 :                 if (!error-&gt;exception_name_space || !error-&gt;exception_name)</span>
+<span class="lineNum">     718 </span><span class="lineNoCov">          0 :                         mono_error_set_execution_engine (error_out, &quot;MonoError with generic error but no exception name was supplied&quot;);</span>
+<span class="lineNum">     719 </span>            :                 else
+<span class="lineNum">     720 </span><span class="lineCov">        224 :                         exception = mono_exception_from_name_msg (mono_defaults.corlib, error-&gt;exception_name_space, error-&gt;exception_name, error-&gt;full_message);</span>
+<span class="lineNum">     721 </span><span class="lineCov">        224 :                 break;</span>
+<span class="lineNum">     722 </span>            : 
+<span class="lineNum">     723 </span>            :         case MONO_ERROR_EXCEPTION_INSTANCE:
+<span class="lineNum">     724 </span><span class="lineCov">        416 :                 exception = (MonoException*) mono_gchandle_get_target (error-&gt;exn.instance_handle);</span>
+<span class="lineNum">     725 </span><span class="lineCov">        416 :                 break;</span>
+<span class="lineNum">     726 </span>            : 
+<span class="lineNum">     727 </span>            :         case MONO_ERROR_CLEANUP_CALLED_SENTINEL:
+<span class="lineNum">     728 </span><span class="lineNoCov">          0 :                 mono_error_set_execution_engine (error_out, &quot;MonoError reused after mono_error_cleanup&quot;);</span>
+<span class="lineNum">     729 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     730 </span>            : 
+<span class="lineNum">     731 </span>            :         case MONO_ERROR_INVALID_PROGRAM: {
+<span class="lineNum">     732 </span><span class="lineNoCov">          0 :                 gboolean lacks_message = error-&gt;flags &amp; MONO_ERROR_INCOMPLETE;</span>
+<span class="lineNum">     733 </span><span class="lineNoCov">          0 :                 if (lacks_message)</span>
+<span class="lineNum">     734 </span><span class="lineNoCov">          0 :                         return mono_exception_from_name_msg (mono_defaults.corlib, &quot;System&quot;, &quot;InvalidProgramException&quot;, &quot;&quot;);</span>
+<span class="lineNum">     735 </span>            :                 else
+<span class="lineNum">     736 </span><span class="lineNoCov">          0 :                         return mono_exception_from_name_msg (mono_defaults.corlib, &quot;System&quot;, &quot;InvalidProgramException&quot;, error-&gt;full_message);</span>
+<span class="lineNum">     737 </span>            :         }
+<span class="lineNum">     738 </span>            :         default:
+<span class="lineNum">     739 </span><span class="lineNoCov">          0 :                 mono_error_set_execution_engine (error_out, &quot;Invalid error-code %d&quot;, error-&gt;error_code);</span>
+<span class="lineNum">     740 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     741 </span>            : 
+<span class="lineNum">     742 </span><span class="lineCov">     201135 :         if (!mono_error_ok (error_out))</span>
+<span class="lineNum">     743 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     744 </span><span class="lineCov">     201135 :         if (!exception)</span>
+<span class="lineNum">     745 </span><span class="lineNoCov">          0 :                 mono_error_set_out_of_memory (error_out, &quot;Could not allocate exception object&quot;);</span>
+<span class="lineNum">     746 </span><span class="lineCov">     201135 :         return exception;</span>
+<span class="lineNum">     747 </span><span class="lineCov">     201135 : }</span>
+<span class="lineNum">     748 </span>            : 
+<span class="lineNum">     749 </span>            : /*
+<span class="lineNum">     750 </span>            : Convert this MonoError to an exception if it's faulty or return NULL.
+<span class="lineNum">     751 </span>            : The error object is cleant after.
+<span class="lineNum">     752 </span>            : */
+<a name="753"><span class="lineNum">     753 </span>            : </a>
+<span class="lineNum">     754 </span>            : MonoException*
+<span class="lineNum">     755 </span>            : mono_error_convert_to_exception (MonoError *target_error)
+<span class="lineNum">     756 </span>            : {
+<span class="lineNum">     757 </span>            :         MonoError error;
+<span class="lineNum">     758 </span>            :         MonoException *ex;
+<span class="lineNum">     759 </span>            : 
+<span class="lineNum">     760 </span>            :         /* Mempool stored error shouldn't be cleaned up */
+<span class="lineNum">     761 </span><span class="lineCov"> 1097424931 :         g_assert (!is_boxed ((MonoErrorInternal*)target_error));</span>
+<span class="lineNum">     762 </span>            : 
+<span class="lineNum">     763 </span><span class="lineCov">  365536652 :         if (mono_error_ok (target_error))</span>
+<span class="lineNum">     764 </span><span class="lineCov">  365744717 :                 return NULL;</span>
+<span class="lineNum">     765 </span>            : 
+<span class="lineNum">     766 </span><span class="lineCov">     201135 :         ex = mono_error_prepare_exception (target_error, &amp;error);</span>
+<span class="lineNum">     767 </span><span class="lineCov">     201135 :         if (!mono_error_ok (&amp;error)) {</span>
+<span class="lineNum">     768 </span>            :                 MonoError second_chance;
+<span class="lineNum">     769 </span>            :                 /*Try to produce the exception for the second error. FIXME maybe we should log about the original one*/
+<span class="lineNum">     770 </span><span class="lineNoCov">          0 :                 ex = mono_error_prepare_exception (&amp;error, &amp;second_chance);</span>
+<span class="lineNum">     771 </span>            : 
+<span class="lineNum">     772 </span><span class="lineNoCov">          0 :                 g_assert (mono_error_ok (&amp;second_chance)); /*We can't reasonable handle double faults, maybe later.*/</span>
+<span class="lineNum">     773 </span><span class="lineNoCov">          0 :                 mono_error_cleanup (&amp;error);</span>
+<span class="lineNum">     774 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     775 </span><span class="lineCov">     201135 :         mono_error_cleanup (target_error);</span>
+<span class="lineNum">     776 </span><span class="lineCov">     201135 :         return ex;</span>
+<span class="lineNum">     777 </span><span class="lineCov">  364668030 : }</span>
+<a name="778"><span class="lineNum">     778 </span>            : </a>
+<span class="lineNum">     779 </span>            : void
+<span class="lineNum">     780 </span>            : mono_error_move (MonoError *dest, MonoError *src)
+<span class="lineNum">     781 </span>            : {
+<span class="lineNum">     782 </span><span class="lineNoCov">          0 :         memcpy (dest, src, sizeof (MonoErrorInternal));</span>
+<span class="lineNum">     783 </span><span class="lineNoCov">          0 :         mono_error_init (src);</span>
+<span class="lineNum">     784 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     785 </span>            : 
+<span class="lineNum">     786 </span>            : /**
+<span class="lineNum">     787 </span>            :  * mono_error_box:
+<span class="lineNum">     788 </span>            :  * @ierror: The input error that will be boxed.
+<span class="lineNum">     789 </span>            :  * @image: The mempool of this image will hold the boxed error.
+<span class="lineNum">     790 </span>            :  *
+<span class="lineNum">     791 </span>            :  * Creates a new boxed error in the given mempool from MonoError.
+<span class="lineNum">     792 </span>            :  * It does not alter ierror, so you still have to clean it up with
+<span class="lineNum">     793 </span>            :  * mono_error_cleanup or mono_error_convert_to_exception or another such function.
+<span class="lineNum">     794 </span>            :  *
+<span class="lineNum">     795 </span>            :  * Returns the boxed error, or NULL if the mempool could not allocate.
+<a name="796"><span class="lineNum">     796 </span>            :  */</a>
+<span class="lineNum">     797 </span>            : MonoErrorBoxed*
+<span class="lineNum">     798 </span>            : mono_error_box (const MonoError *ierror, MonoImage *image)
+<span class="lineNum">     799 </span>            : {
+<span class="lineNum">     800 </span><span class="lineCov">         56 :         MonoErrorInternal *from = (MonoErrorInternal*)ierror;</span>
+<span class="lineNum">     801 </span>            :         /* Don't know how to box a gchandle */
+<span class="lineNum">     802 </span><span class="lineCov">        168 :         g_assert (!is_managed_exception (from));</span>
+<span class="lineNum">     803 </span><span class="lineCov">         56 :         MonoErrorBoxed* box = mono_image_alloc (image, sizeof (MonoErrorBoxed));</span>
+<span class="lineNum">     804 </span><span class="lineCov">         56 :         box-&gt;image = image;</span>
+<span class="lineNum">     805 </span><span class="lineCov">         56 :         mono_error_init_flags (&amp;box-&gt;error, MONO_ERROR_MEMPOOL_BOXED);</span>
+<span class="lineNum">     806 </span><span class="lineCov">         56 :         MonoErrorInternal *to = (MonoErrorInternal*)&amp;box-&gt;error;</span>
+<span class="lineNum">     807 </span>            : 
+<span class="lineNum">     808 </span>            : #define DUP_STR(field) do {                                             \
+<span class="lineNum">     809 </span>            :                 if (from-&gt;field) {                                   \
+<span class="lineNum">     810 </span>            :                         if (!(to-&gt;field = mono_image_strdup (image, from-&gt;field))) \
+<span class="lineNum">     811 </span>            :                                 to-&gt;flags |= MONO_ERROR_INCOMPLETE;  \
+<span class="lineNum">     812 </span>            :                 } else {                                                \
+<span class="lineNum">     813 </span>            :                         to-&gt;field = NULL;                            \
+<span class="lineNum">     814 </span>            :                 }                                                       \
+<span class="lineNum">     815 </span>            :         } while (0)
+<span class="lineNum">     816 </span>            : 
+<span class="lineNum">     817 </span><span class="lineCov">         56 :         to-&gt;error_code = from-&gt;error_code;</span>
+<span class="lineNum">     818 </span><span class="lineCov">        224 :         DUP_STR (type_name);</span>
+<span class="lineNum">     819 </span><span class="lineCov">        224 :         DUP_STR (assembly_name);</span>
+<span class="lineNum">     820 </span><span class="lineCov">        224 :         DUP_STR (member_name);</span>
+<span class="lineNum">     821 </span><span class="lineCov">        224 :         DUP_STR (exception_name_space);</span>
+<span class="lineNum">     822 </span><span class="lineCov">        224 :         DUP_STR (exception_name);</span>
+<span class="lineNum">     823 </span><span class="lineCov">        280 :         DUP_STR (full_message);</span>
+<span class="lineNum">     824 </span><span class="lineCov">        224 :         DUP_STR (full_message_with_fields);</span>
+<span class="lineNum">     825 </span><span class="lineCov">        224 :         DUP_STR (first_argument);</span>
+<span class="lineNum">     826 </span><span class="lineCov">         56 :         to-&gt;exn.klass = from-&gt;exn.klass;</span>
+<span class="lineNum">     827 </span>            : 
+<span class="lineNum">     828 </span>            : #undef DUP_STR
+<span class="lineNum">     829 </span>            :         
+<span class="lineNum">     830 </span><span class="lineCov">         56 :         return box;</span>
+<span class="lineNum">     831 </span>            : }
+<span class="lineNum">     832 </span>            : 
+<span class="lineNum">     833 </span>            : 
+<span class="lineNum">     834 </span>            : /**
+<span class="lineNum">     835 </span>            :  * mono_error_set_from_boxed:
+<span class="lineNum">     836 </span>            :  * @oerror: The error that will be set to the contents of the box.
+<span class="lineNum">     837 </span>            :  * @box: A mempool-allocated error.
+<span class="lineNum">     838 </span>            :  *
+<span class="lineNum">     839 </span>            :  * Sets the error condition in the oerror from the contents of the
+<span class="lineNum">     840 </span>            :  * given boxed error.  Does not alter the boxed error, so it can be
+<span class="lineNum">     841 </span>            :  * used in a future call to mono_error_set_from_boxed as needed.  The
+<span class="lineNum">     842 </span>            :  * oerror should've been previously initialized with mono_error_init,
+<span class="lineNum">     843 </span>            :  * as usual.
+<span class="lineNum">     844 </span>            :  *
+<span class="lineNum">     845 </span>            :  * Returns TRUE on success or FALSE on failure.
+<a name="846"><span class="lineNum">     846 </span>            :  */</a>
+<span class="lineNum">     847 </span>            : gboolean
+<span class="lineNum">     848 </span>            : mono_error_set_from_boxed (MonoError *oerror, const MonoErrorBoxed *box)
+<span class="lineNum">     849 </span>            : {
+<span class="lineNum">     850 </span><span class="lineCov">     200035 :         MonoErrorInternal* to = (MonoErrorInternal*)oerror;</span>
+<span class="lineNum">     851 </span><span class="lineCov">     200035 :         MonoErrorInternal* from = (MonoErrorInternal*)&amp;box-&gt;error;</span>
+<span class="lineNum">     852 </span><span class="lineCov">     600105 :         g_assert (!is_managed_exception (from));</span>
+<span class="lineNum">     853 </span>            : 
+<span class="lineNum">     854 </span><span class="lineCov">     200035 :         mono_error_prepare (to);</span>
+<span class="lineNum">     855 </span><span class="lineCov">     200035 :         to-&gt;flags |= MONO_ERROR_FREE_STRINGS;</span>
+<span class="lineNum">     856 </span>            : #define DUP_STR(field)  do {                                            \
+<span class="lineNum">     857 </span>            :                 if (from-&gt;field) {                                   \
+<span class="lineNum">     858 </span>            :                         if (!(to-&gt;field = g_strdup (from-&gt;field)))        \
+<span class="lineNum">     859 </span>            :                                 to-&gt;flags |= MONO_ERROR_INCOMPLETE;  \
+<span class="lineNum">     860 </span>            :                 } else {                                                \
+<span class="lineNum">     861 </span>            :                         to-&gt;field = NULL;                            \
+<span class="lineNum">     862 </span>            :                 }                                                       \
+<span class="lineNum">     863 </span>            :         } while (0)
+<span class="lineNum">     864 </span>            : 
+<span class="lineNum">     865 </span><span class="lineCov">     200035 :         to-&gt;error_code = from-&gt;error_code;</span>
+<span class="lineNum">     866 </span><span class="lineCov">     800140 :         DUP_STR (type_name);</span>
+<span class="lineNum">     867 </span><span class="lineCov">     800140 :         DUP_STR (assembly_name);</span>
+<span class="lineNum">     868 </span><span class="lineCov">     800140 :         DUP_STR (member_name);</span>
+<span class="lineNum">     869 </span><span class="lineCov">     800140 :         DUP_STR (exception_name_space);</span>
+<span class="lineNum">     870 </span><span class="lineCov">     800140 :         DUP_STR (exception_name);</span>
+<span class="lineNum">     871 </span><span class="lineCov">    1000175 :         DUP_STR (full_message);</span>
+<span class="lineNum">     872 </span><span class="lineCov">     800140 :         DUP_STR (full_message_with_fields);</span>
+<span class="lineNum">     873 </span><span class="lineCov">     800140 :         DUP_STR (first_argument);</span>
+<span class="lineNum">     874 </span><span class="lineCov">     200035 :         to-&gt;exn.klass = from-&gt;exn.klass;</span>
+<span class="lineNum">     875 </span>            :                   
+<span class="lineNum">     876 </span>            : #undef DUP_STR
+<span class="lineNum">     877 </span><span class="lineCov">     200035 :         return (to-&gt;flags &amp; MONO_ERROR_INCOMPLETE) == 0 ;</span>
+<span class="lineNum">     878 </span>            : }
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

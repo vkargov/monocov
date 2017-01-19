@@ -1,0 +1,695 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/lock-free-alloc.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - lock-free-alloc.c<span style="font-size: 80%;"> (source / <a href="lock-free-alloc.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">189</td>
+            <td class="headerCovTableEntry">241</td>
+            <td class="headerCovTableEntryMed">78.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">20</td>
+            <td class="headerCovTableEntry">22</td>
+            <td class="headerCovTableEntryHi">90.9 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * lock-free-alloc.c: Lock free allocator.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * (C) Copyright 2011 Novell, Inc
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : /*
+<span class="lineNum">      10 </span>            :  * This is a simplified version of the lock-free allocator described in
+<span class="lineNum">      11 </span>            :  *
+<span class="lineNum">      12 </span>            :  * Scalable Lock-Free Dynamic Memory Allocation
+<span class="lineNum">      13 </span>            :  * Maged M. Michael, PLDI 2004
+<span class="lineNum">      14 </span>            :  *
+<span class="lineNum">      15 </span>            :  * I could not get Michael's allocator working bug free under heavy
+<span class="lineNum">      16 </span>            :  * stress tests.  The paper doesn't provide correctness proof and after
+<span class="lineNum">      17 </span>            :  * failing to formalize the ownership of descriptors I devised this
+<span class="lineNum">      18 </span>            :  * simpler allocator.
+<span class="lineNum">      19 </span>            :  *
+<span class="lineNum">      20 </span>            :  * Allocation within superblocks proceeds exactly like in Michael's
+<span class="lineNum">      21 </span>            :  * allocator.  The simplification is that a thread has to &quot;acquire&quot; a
+<span class="lineNum">      22 </span>            :  * descriptor before it can allocate from its superblock.  While it owns
+<span class="lineNum">      23 </span>            :  * the descriptor no other thread can acquire and hence allocate from
+<span class="lineNum">      24 </span>            :  * it.  A consequence of this is that the ABA problem cannot occur, so
+<span class="lineNum">      25 </span>            :  * we don't need the tag field and don't have to use 64 bit CAS.
+<span class="lineNum">      26 </span>            :  *
+<span class="lineNum">      27 </span>            :  * Descriptors are stored in two locations: The partial queue and the
+<span class="lineNum">      28 </span>            :  * active field.  They can only be in at most one of those at one time.
+<span class="lineNum">      29 </span>            :  * If a thread wants to allocate, it needs to get a descriptor.  It
+<span class="lineNum">      30 </span>            :  * tries the active descriptor first, CASing it to NULL.  If that
+<span class="lineNum">      31 </span>            :  * doesn't work, it gets a descriptor out of the partial queue.  Once it
+<span class="lineNum">      32 </span>            :  * has the descriptor it owns it because it is not referenced anymore.
+<span class="lineNum">      33 </span>            :  * It allocates a slot and then gives the descriptor back (unless it is
+<span class="lineNum">      34 </span>            :  * FULL).
+<span class="lineNum">      35 </span>            :  *
+<span class="lineNum">      36 </span>            :  * Note that it is still possible that a slot is freed while an
+<span class="lineNum">      37 </span>            :  * allocation is in progress from the same superblock.  Ownership in
+<span class="lineNum">      38 </span>            :  * this case is not complicated, though.  If the block was FULL and the
+<span class="lineNum">      39 </span>            :  * free set it to PARTIAL, the free now owns the block (because FULL
+<span class="lineNum">      40 </span>            :  * blocks are not referenced from partial and active) and has to give it
+<span class="lineNum">      41 </span>            :  * back.  If the block was PARTIAL then the free doesn't own the block
+<span class="lineNum">      42 </span>            :  * (because it's either still referenced, or an alloc owns it).  A
+<span class="lineNum">      43 </span>            :  * special case of this is that it has changed from PARTIAL to EMPTY and
+<span class="lineNum">      44 </span>            :  * now needs to be retired.  Technically, the free wouldn't have to do
+<span class="lineNum">      45 </span>            :  * anything in this case because the first thing an alloc does when it
+<span class="lineNum">      46 </span>            :  * gets ownership of a descriptor is to check whether it is EMPTY and
+<span class="lineNum">      47 </span>            :  * retire it if that is the case.  As an optimization, our free does try
+<span class="lineNum">      48 </span>            :  * to acquire the descriptor (by CASing the active field, which, if it
+<span class="lineNum">      49 </span>            :  * is lucky, points to that descriptor) and if it can do so, retire it.
+<span class="lineNum">      50 </span>            :  * If it can't, it tries to retire other descriptors from the partial
+<span class="lineNum">      51 </span>            :  * queue, so that we can be sure that even if no more allocations
+<span class="lineNum">      52 </span>            :  * happen, descriptors are still retired.  This is analogous to what
+<span class="lineNum">      53 </span>            :  * Michael's allocator does.
+<span class="lineNum">      54 </span>            :  *
+<span class="lineNum">      55 </span>            :  * Another difference to Michael's allocator is not related to
+<span class="lineNum">      56 </span>            :  * concurrency, however: We don't point from slots to descriptors.
+<span class="lineNum">      57 </span>            :  * Instead we allocate superblocks aligned and point from the start of
+<span class="lineNum">      58 </span>            :  * the superblock to the descriptor, so we only need one word of
+<span class="lineNum">      59 </span>            :  * metadata per superblock.
+<span class="lineNum">      60 </span>            :  *
+<span class="lineNum">      61 </span>            :  * FIXME: Having more than one allocator per size class is probably
+<span class="lineNum">      62 </span>            :  * buggy because it was never tested.
+<span class="lineNum">      63 </span>            :  */
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      66 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      67 </span>            : 
+<span class="lineNum">      68 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">      69 </span>            : #ifdef SGEN_WITHOUT_MONO
+<span class="lineNum">      70 </span>            : #include &lt;mono/sgen/sgen-gc.h&gt;
+<span class="lineNum">      71 </span>            : #include &lt;mono/sgen/sgen-client.h&gt;
+<span class="lineNum">      72 </span>            : #else
+<span class="lineNum">      73 </span>            : #include &lt;mono/utils/mono-mmap.h&gt;
+<span class="lineNum">      74 </span>            : #endif
+<span class="lineNum">      75 </span>            : #include &lt;mono/utils/mono-membar.h&gt;
+<span class="lineNum">      76 </span>            : #include &lt;mono/utils/hazard-pointer.h&gt;
+<span class="lineNum">      77 </span>            : #include &lt;mono/utils/lock-free-queue.h&gt;
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            : #include &lt;mono/utils/lock-free-alloc.h&gt;
+<span class="lineNum">      80 </span>            : 
+<span class="lineNum">      81 </span>            : //#define DESC_AVAIL_DUMMY
+<span class="lineNum">      82 </span>            : 
+<span class="lineNum">      83 </span>            : enum {
+<span class="lineNum">      84 </span>            :         STATE_FULL,
+<span class="lineNum">      85 </span>            :         STATE_PARTIAL,
+<span class="lineNum">      86 </span>            :         STATE_EMPTY
+<span class="lineNum">      87 </span>            : };
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : typedef union {
+<span class="lineNum">      90 </span>            :         gint32 value;
+<span class="lineNum">      91 </span>            :         struct {
+<span class="lineNum">      92 </span>            :                 guint32 avail : 15;
+<span class="lineNum">      93 </span>            :                 guint32 count : 15;
+<span class="lineNum">      94 </span>            :                 guint32 state : 2;
+<span class="lineNum">      95 </span>            :         } data;
+<span class="lineNum">      96 </span>            : } Anchor;
+<span class="lineNum">      97 </span>            : 
+<span class="lineNum">      98 </span>            : typedef struct _MonoLockFreeAllocDescriptor Descriptor;
+<span class="lineNum">      99 </span>            : struct _MonoLockFreeAllocDescriptor {
+<span class="lineNum">     100 </span>            :         MonoLockFreeQueueNode node;
+<span class="lineNum">     101 </span>            :         MonoLockFreeAllocator *heap;
+<span class="lineNum">     102 </span>            :         volatile Anchor anchor;
+<span class="lineNum">     103 </span>            :         unsigned int slot_size;
+<span class="lineNum">     104 </span>            :         unsigned int block_size;
+<span class="lineNum">     105 </span>            :         unsigned int max_count;
+<span class="lineNum">     106 </span>            :         gpointer sb;
+<span class="lineNum">     107 </span>            : #ifndef DESC_AVAIL_DUMMY
+<span class="lineNum">     108 </span>            :         Descriptor * volatile next;
+<span class="lineNum">     109 </span>            : #endif
+<span class="lineNum">     110 </span>            :         gboolean in_use;        /* used for debugging only */
+<span class="lineNum">     111 </span>            : };
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span>            : #define NUM_DESC_BATCH  64
+<a name="114"><span class="lineNum">     114 </span>            : </a>
+<span class="lineNum">     115 </span>            : static MONO_ALWAYS_INLINE gpointer
+<span class="lineNum">     116 </span>            : sb_header_for_addr (gpointer addr, size_t block_size)
+<span class="lineNum">     117 </span>            : {
+<span class="lineNum">     118 </span><span class="lineCov">    8736929 :         return (gpointer)(((size_t)addr) &amp; (~(block_size - 1)));</span>
+<span class="lineNum">     119 </span>            : }
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span>            : /* Taken from SGen */
+<a name="122"><span class="lineNum">     122 </span>            : </a>
+<span class="lineNum">     123 </span>            : static unsigned long
+<span class="lineNum">     124 </span>            : prot_flags_for_activate (int activate)
+<span class="lineNum">     125 </span>            : {
+<span class="lineNum">     126 </span><span class="lineCov">     557220 :         unsigned long prot_flags = activate? MONO_MMAP_READ|MONO_MMAP_WRITE: MONO_MMAP_NONE;</span>
+<span class="lineNum">     127 </span><span class="lineCov">     557220 :         return prot_flags | MONO_MMAP_PRIVATE | MONO_MMAP_ANON;</span>
+<span class="lineNum">     128 </span>            : }
+<a name="129"><span class="lineNum">     129 </span>            : </a>
+<span class="lineNum">     130 </span>            : static gpointer
+<span class="lineNum">     131 </span>            : alloc_sb (Descriptor *desc)
+<span class="lineNum">     132 </span>            : {
+<span class="lineNum">     133 </span>            :         static int pagesize = -1;
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span>            :         gpointer sb_header;
+<span class="lineNum">     136 </span>            : 
+<span class="lineNum">     137 </span><span class="lineCov">     553264 :         if (pagesize == -1)</span>
+<span class="lineNum">     138 </span><span class="lineCov">       3285 :                 pagesize = mono_pagesize ();</span>
+<span class="lineNum">     139 </span>            : 
+<span class="lineNum">     140 </span><span class="lineCov">    1659792 :         sb_header = desc-&gt;block_size == pagesize ?</span>
+<span class="lineNum">     141 </span><span class="lineCov">     549713 :                 mono_valloc (NULL, desc-&gt;block_size, prot_flags_for_activate (TRUE), desc-&gt;heap-&gt;account_type) :</span>
+<span class="lineNum">     142 </span><span class="lineCov">       3551 :                 mono_valloc_aligned (desc-&gt;block_size, desc-&gt;block_size, prot_flags_for_activate (TRUE), desc-&gt;heap-&gt;account_type);</span>
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span><span class="lineCov">    1659792 :         g_assert (sb_header == sb_header_for_addr (sb_header, desc-&gt;block_size));</span>
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span><span class="lineCov">     553264 :         *(Descriptor**)sb_header = desc;</span>
+<span class="lineNum">     147 </span>            :         //g_print (&quot;sb %p for %p\n&quot;, sb_header, desc);
+<span class="lineNum">     148 </span>            : 
+<span class="lineNum">     149 </span><span class="lineCov">     553264 :         return (char*)sb_header + LOCK_FREE_ALLOC_SB_HEADER_SIZE;</span>
+<span class="lineNum">     150 </span>            : }
+<a name="151"><span class="lineNum">     151 </span>            : </a>
+<span class="lineNum">     152 </span>            : static void
+<span class="lineNum">     153 </span>            : free_sb (gpointer sb, size_t block_size, MonoMemAccountType type)
+<span class="lineNum">     154 </span>            : {
+<span class="lineNum">     155 </span><span class="lineCov">     480746 :         gpointer sb_header = sb_header_for_addr (sb, block_size);</span>
+<span class="lineNum">     156 </span><span class="lineCov">    1442238 :         g_assert ((char*)sb_header + LOCK_FREE_ALLOC_SB_HEADER_SIZE == sb);</span>
+<span class="lineNum">     157 </span><span class="lineCov">     480746 :         mono_vfree (sb_header, block_size, type);</span>
+<span class="lineNum">     158 </span>            :         //g_print (&quot;free sb %p\n&quot;, sb_header);
+<span class="lineNum">     159 </span><span class="lineCov">     480746 : }</span>
+<span class="lineNum">     160 </span>            : 
+<span class="lineNum">     161 </span>            : #ifndef DESC_AVAIL_DUMMY
+<span class="lineNum">     162 </span>            : static Descriptor * volatile desc_avail;
+<a name="163"><span class="lineNum">     163 </span>            : </a>
+<span class="lineNum">     164 </span>            : static Descriptor*
+<span class="lineNum">     165 </span>            : desc_alloc (MonoMemAccountType type)
+<span class="lineNum">     166 </span>            : {
+<span class="lineNum">     167 </span><span class="lineCov">     553264 :         MonoThreadHazardPointers *hp = mono_hazard_pointer_get ();</span>
+<span class="lineNum">     168 </span>            :         Descriptor *desc;
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span><span class="lineCov">     553268 :         for (;;) {</span>
+<span class="lineNum">     171 </span>            :                 gboolean success;
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span><span class="lineCov">     553268 :                 desc = (Descriptor *) mono_get_hazardous_pointer ((gpointer * volatile)&amp;desc_avail, hp, 1);</span>
+<span class="lineNum">     174 </span><span class="lineCov">     553268 :                 if (desc) {</span>
+<span class="lineNum">     175 </span><span class="lineCov">     549312 :                         Descriptor *next = desc-&gt;next;</span>
+<span class="lineNum">     176 </span><span class="lineCov">     549312 :                         success = (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;desc_avail, next, desc) == desc);</span>
+<span class="lineNum">     177 </span><span class="lineCov">     549312 :                 } else {</span>
+<span class="lineNum">     178 </span><span class="lineCov">       3956 :                         size_t desc_size = sizeof (Descriptor);</span>
+<span class="lineNum">     179 </span>            :                         Descriptor *d;
+<span class="lineNum">     180 </span>            :                         int i;
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span><span class="lineCov">       3956 :                         desc = (Descriptor *) mono_valloc (NULL, desc_size * NUM_DESC_BATCH, prot_flags_for_activate (TRUE), type);</span>
+<span class="lineNum">     183 </span>            : 
+<span class="lineNum">     184 </span>            :                         /* Organize into linked list. */
+<span class="lineNum">     185 </span><span class="lineCov">       3956 :                         d = desc;</span>
+<span class="lineNum">     186 </span><span class="lineCov">     514280 :                         for (i = 0; i &lt; NUM_DESC_BATCH; ++i) {</span>
+<span class="lineNum">     187 </span><span class="lineCov">     759552 :                                 Descriptor *next = (i == (NUM_DESC_BATCH - 1)) ? NULL : (Descriptor*)((char*)desc + ((i + 1) * desc_size));</span>
+<span class="lineNum">     188 </span><span class="lineCov">     253184 :                                 d-&gt;next = next;</span>
+<span class="lineNum">     189 </span><span class="lineCov">     253184 :                                 mono_lock_free_queue_node_init (&amp;d-&gt;node, TRUE);</span>
+<span class="lineNum">     190 </span><span class="lineCov">     253184 :                                 d = next;</span>
+<span class="lineNum">     191 </span><span class="lineCov">     253184 :                         }</span>
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span><span class="lineCov">       3956 :                         mono_memory_write_barrier ();</span>
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span><span class="lineCov">       3956 :                         success = (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;desc_avail, desc-&gt;next, NULL) == NULL);</span>
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span><span class="lineCov">       3956 :                         if (!success)</span>
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                                 mono_vfree (desc, desc_size * NUM_DESC_BATCH, type);</span>
+<span class="lineNum">     199 </span>            :                 }
+<span class="lineNum">     200 </span>            : 
+<span class="lineNum">     201 </span><span class="lineCov">    2213072 :                 mono_hazard_pointer_clear (hp, 1);</span>
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span><span class="lineCov">     553268 :                 if (success)</span>
+<span class="lineNum">     204 </span><span class="lineCov">     553264 :                         break;</span>
+<span class="lineNum">     205 </span>            :         }
+<span class="lineNum">     206 </span>            : 
+<span class="lineNum">     207 </span><span class="lineCov">    1659792 :         g_assert (!desc-&gt;in_use);</span>
+<span class="lineNum">     208 </span><span class="lineCov">     553264 :         desc-&gt;in_use = TRUE;</span>
+<span class="lineNum">     209 </span>            : 
+<span class="lineNum">     210 </span><span class="lineCov">     553264 :         return desc;</span>
+<span class="lineNum">     211 </span>            : }
+<a name="212"><span class="lineNum">     212 </span>            : </a>
+<span class="lineNum">     213 </span>            : static void
+<span class="lineNum">     214 </span>            : desc_enqueue_avail (gpointer _desc)
+<span class="lineNum">     215 </span>            : {
+<span class="lineNum">     216 </span><span class="lineCov">     480746 :         Descriptor *desc = (Descriptor *) _desc;</span>
+<span class="lineNum">     217 </span>            :         Descriptor *old_head;
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span><span class="lineCov">    1442238 :         g_assert (desc-&gt;anchor.data.state == STATE_EMPTY);</span>
+<span class="lineNum">     220 </span><span class="lineCov">    1442238 :         g_assert (!desc-&gt;in_use);</span>
+<span class="lineNum">     221 </span>            : 
+<span class="lineNum">     222 </span><span class="lineCov">     480746 :         do {</span>
+<span class="lineNum">     223 </span><span class="lineCov">     480746 :                 old_head = desc_avail;</span>
+<span class="lineNum">     224 </span><span class="lineCov">     480746 :                 desc-&gt;next = old_head;</span>
+<span class="lineNum">     225 </span><span class="lineCov">     480746 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     226 </span><span class="lineCov">     961492 :         } while (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;desc_avail, desc, old_head) != old_head);</span>
+<span class="lineNum">     227 </span><span class="lineCov">     480746 : }</span>
+<a name="228"><span class="lineNum">     228 </span>            : </a>
+<span class="lineNum">     229 </span>            : static void
+<span class="lineNum">     230 </span>            : desc_retire (Descriptor *desc)
+<span class="lineNum">     231 </span>            : {
+<span class="lineNum">     232 </span><span class="lineCov">    1442238 :         g_assert (desc-&gt;anchor.data.state == STATE_EMPTY);</span>
+<span class="lineNum">     233 </span><span class="lineCov">    1442238 :         g_assert (desc-&gt;in_use);</span>
+<span class="lineNum">     234 </span><span class="lineCov">     480746 :         desc-&gt;in_use = FALSE;</span>
+<span class="lineNum">     235 </span><span class="lineCov">     480746 :         free_sb (desc-&gt;sb, desc-&gt;block_size, desc-&gt;heap-&gt;account_type);</span>
+<span class="lineNum">     236 </span><span class="lineCov">     480746 :         mono_thread_hazardous_try_free (desc, desc_enqueue_avail);</span>
+<span class="lineNum">     237 </span><span class="lineCov">     480746 : }</span>
+<span class="lineNum">     238 </span>            : #else
+<span class="lineNum">     239 </span>            : MonoLockFreeQueue available_descs;
+<span class="lineNum">     240 </span>            : 
+<span class="lineNum">     241 </span>            : static Descriptor*
+<span class="lineNum">     242 </span>            : desc_alloc (MonoMemAccountType type)
+<span class="lineNum">     243 </span>            : {
+<span class="lineNum">     244 </span>            :         Descriptor *desc = (Descriptor*)mono_lock_free_queue_dequeue (&amp;available_descs);
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span>            :         if (desc)
+<span class="lineNum">     247 </span>            :                 return desc;
+<span class="lineNum">     248 </span>            : 
+<span class="lineNum">     249 </span>            :         return g_calloc (1, sizeof (Descriptor));
+<span class="lineNum">     250 </span>            : }
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span>            : static void
+<span class="lineNum">     253 </span>            : desc_retire (Descriptor *desc)
+<span class="lineNum">     254 </span>            : {
+<span class="lineNum">     255 </span>            :         free_sb (desc-&gt;sb, desc-&gt;block_size, desc-&gt;heap-&gt;account_type);
+<span class="lineNum">     256 </span>            :         mono_lock_free_queue_enqueue (&amp;available_descs, &amp;desc-&gt;node);
+<span class="lineNum">     257 </span>            : }
+<span class="lineNum">     258 </span>            : #endif
+<a name="259"><span class="lineNum">     259 </span>            : </a>
+<span class="lineNum">     260 </span>            : static Descriptor*
+<span class="lineNum">     261 </span>            : list_get_partial (MonoLockFreeAllocSizeClass *sc)
+<span class="lineNum">     262 </span>            : {
+<span class="lineNum">     263 </span><span class="lineCov">     691054 :         for (;;) {</span>
+<span class="lineNum">     264 </span><span class="lineCov">     691056 :                 Descriptor *desc = (Descriptor*) mono_lock_free_queue_dequeue (&amp;sc-&gt;partial);</span>
+<span class="lineNum">     265 </span><span class="lineCov">     691056 :                 if (!desc)</span>
+<span class="lineNum">     266 </span><span class="lineCov">     553264 :                         return NULL;</span>
+<span class="lineNum">     267 </span><span class="lineCov">     137792 :                 if (desc-&gt;anchor.data.state != STATE_EMPTY)</span>
+<span class="lineNum">     268 </span><span class="lineCov">     137308 :                         return desc;</span>
+<span class="lineNum">     269 </span><span class="lineCov">        484 :                 desc_retire (desc);</span>
+<span class="lineNum">     270 </span>            :         }
+<span class="lineNum">     271 </span><span class="lineCov">     690572 : }</span>
+<a name="272"><span class="lineNum">     272 </span>            : </a>
+<span class="lineNum">     273 </span>            : static void
+<span class="lineNum">     274 </span>            : desc_put_partial (gpointer _desc)
+<span class="lineNum">     275 </span>            : {
+<span class="lineNum">     276 </span><span class="lineCov">     305539 :         Descriptor *desc = (Descriptor *) _desc;</span>
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span><span class="lineCov">     916617 :         g_assert (desc-&gt;anchor.data.state != STATE_FULL);</span>
+<span class="lineNum">     279 </span>            : 
+<span class="lineNum">     280 </span><span class="lineCov">     305539 :         mono_lock_free_queue_node_unpoison (&amp;desc-&gt;node);</span>
+<span class="lineNum">     281 </span><span class="lineCov">     305539 :         mono_lock_free_queue_enqueue (&amp;desc-&gt;heap-&gt;sc-&gt;partial, &amp;desc-&gt;node);</span>
+<span class="lineNum">     282 </span><span class="lineCov">     305539 : }</span>
+<a name="283"><span class="lineNum">     283 </span>            : </a>
+<span class="lineNum">     284 </span>            : static void
+<span class="lineNum">     285 </span>            : list_put_partial (Descriptor *desc)
+<span class="lineNum">     286 </span>            : {
+<span class="lineNum">     287 </span><span class="lineCov">     642465 :         g_assert (desc-&gt;anchor.data.state != STATE_FULL);</span>
+<span class="lineNum">     288 </span><span class="lineCov">     214155 :         mono_thread_hazardous_try_free (desc, desc_put_partial);</span>
+<span class="lineNum">     289 </span><span class="lineCov">     214155 : }</span>
+<a name="290"><span class="lineNum">     290 </span>            : </a>
+<span class="lineNum">     291 </span>            : static void
+<span class="lineNum">     292 </span>            : list_remove_empty_desc (MonoLockFreeAllocSizeClass *sc)
+<span class="lineNum">     293 </span>            : {
+<span class="lineNum">     294 </span><span class="lineCov">      71600 :         int num_non_empty = 0;</span>
+<span class="lineNum">     295 </span><span class="lineCov">     188371 :         for (;;) {</span>
+<span class="lineNum">     296 </span><span class="lineCov">     188371 :                 Descriptor *desc = (Descriptor*) mono_lock_free_queue_dequeue (&amp;sc-&gt;partial);</span>
+<span class="lineNum">     297 </span><span class="lineCov">     188371 :                 if (!desc)</span>
+<span class="lineNum">     298 </span><span class="lineCov">      25908 :                         return;</span>
+<span class="lineNum">     299 </span>            :                 /*
+<span class="lineNum">     300 </span>            :                  * We don't need to read atomically because we're the
+<span class="lineNum">     301 </span>            :                  * only thread that references this descriptor.
+<span class="lineNum">     302 </span>            :                  */
+<span class="lineNum">     303 </span><span class="lineCov">     162463 :                 if (desc-&gt;anchor.data.state == STATE_EMPTY) {</span>
+<span class="lineNum">     304 </span><span class="lineCov">      71079 :                         desc_retire (desc);</span>
+<span class="lineNum">     305 </span><span class="lineCov">      71079 :                 } else {</span>
+<span class="lineNum">     306 </span><span class="lineCov">     274152 :                         g_assert (desc-&gt;heap-&gt;sc == sc);</span>
+<span class="lineNum">     307 </span><span class="lineCov">      91384 :                         mono_thread_hazardous_try_free (desc, desc_put_partial);</span>
+<span class="lineNum">     308 </span><span class="lineCov">      91384 :                         if (++num_non_empty &gt;= 2)</span>
+<span class="lineNum">     309 </span><span class="lineCov">      45692 :                                 return;</span>
+<span class="lineNum">     310 </span>            :                 }
+<span class="lineNum">     311 </span>            :         }
+<span class="lineNum">     312 </span><span class="lineCov">      71600 : }</span>
+<a name="313"><span class="lineNum">     313 </span>            : </a>
+<span class="lineNum">     314 </span>            : static Descriptor*
+<span class="lineNum">     315 </span>            : heap_get_partial (MonoLockFreeAllocator *heap)
+<span class="lineNum">     316 </span>            : {
+<span class="lineNum">     317 </span><span class="lineCov">     690570 :         return list_get_partial (heap-&gt;sc);</span>
+<span class="lineNum">     318 </span>            : }
+<a name="319"><span class="lineNum">     319 </span>            : </a>
+<span class="lineNum">     320 </span>            : static void
+<span class="lineNum">     321 </span>            : heap_put_partial (Descriptor *desc)
+<span class="lineNum">     322 </span>            : {
+<span class="lineNum">     323 </span><span class="lineCov">     214155 :         list_put_partial (desc);</span>
+<span class="lineNum">     324 </span><span class="lineCov">     214155 : }</span>
+<a name="325"><span class="lineNum">     325 </span>            : </a>
+<span class="lineNum">     326 </span>            : static gboolean
+<span class="lineNum">     327 </span>            : set_anchor (Descriptor *desc, Anchor old_anchor, Anchor new_anchor)
+<span class="lineNum">     328 </span>            : {
+<span class="lineNum">     329 </span><span class="lineCov">   16161482 :         if (old_anchor.data.state == STATE_EMPTY)</span>
+<span class="lineNum">     330 </span><span class="lineNoCov">          0 :                 g_assert (new_anchor.data.state == STATE_EMPTY);</span>
+<span class="lineNum">     331 </span>            : 
+<span class="lineNum">     332 </span><span class="lineCov">   16161482 :         return InterlockedCompareExchange (&amp;desc-&gt;anchor.value, new_anchor.value, old_anchor.value) == old_anchor.value;</span>
+<span class="lineNum">     333 </span>            : }
+<a name="334"><span class="lineNum">     334 </span>            : </a>
+<span class="lineNum">     335 </span>            : static gpointer
+<span class="lineNum">     336 </span>            : alloc_from_active_or_partial (MonoLockFreeAllocator *heap)
+<span class="lineNum">     337 </span>            : {
+<span class="lineNum">     338 </span>            :         Descriptor *desc;
+<span class="lineNum">     339 </span>            :         Anchor old_anchor, new_anchor;
+<span class="lineNum">     340 </span><span class="lineCov">    9011817 :         gpointer addr;</span>
+<span class="lineNum">     341 </span>            : 
+<span class="lineNum">     342 </span>            :  retry:
+<span class="lineNum">     343 </span><span class="lineCov">    9011827 :         desc = heap-&gt;active;</span>
+<span class="lineNum">     344 </span><span class="lineCov">    9011827 :         if (desc) {</span>
+<span class="lineNum">     345 </span><span class="lineCov">    8321270 :                 if (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;heap-&gt;active, NULL, desc) != desc)</span>
+<span class="lineNum">     346 </span><span class="lineCov">          5 :                         goto retry;</span>
+<span class="lineNum">     347 </span><span class="lineCov">    8321265 :         } else {</span>
+<span class="lineNum">     348 </span><span class="lineCov">     690572 :                 desc = heap_get_partial (heap);</span>
+<span class="lineNum">     349 </span><span class="lineCov">     690572 :                 if (!desc)</span>
+<span class="lineNum">     350 </span><span class="lineCov">     553264 :                         return NULL;</span>
+<span class="lineNum">     351 </span>            :         }
+<span class="lineNum">     352 </span>            : 
+<span class="lineNum">     353 </span>            :         /* Now we own the desc. */
+<span class="lineNum">     354 </span>            : 
+<span class="lineNum">     355 </span><span class="lineCov">    8458573 :         do {</span>
+<span class="lineNum">     356 </span>            :                 unsigned int next;
+<span class="lineNum">     357 </span><span class="lineCov">    8458571 :                 new_anchor = old_anchor = *(volatile Anchor*)&amp;desc-&gt;anchor.value;</span>
+<span class="lineNum">     358 </span><span class="lineCov">    8458571 :                 if (old_anchor.data.state == STATE_EMPTY) {</span>
+<span class="lineNum">     359 </span>            :                         /* We must free it because we own it. */
+<span class="lineNum">     360 </span><span class="lineCov">          1 :                         desc_retire (desc);</span>
+<span class="lineNum">     361 </span><span class="lineCov">          1 :                         goto retry;</span>
+<span class="lineNum">     362 </span>            :                 }
+<span class="lineNum">     363 </span><span class="lineCov">   25375710 :                 g_assert (old_anchor.data.state == STATE_PARTIAL);</span>
+<span class="lineNum">     364 </span><span class="lineCov">   25375710 :                 g_assert (old_anchor.data.count &gt; 0);</span>
+<span class="lineNum">     365 </span>            : 
+<span class="lineNum">     366 </span><span class="lineCov">    8458570 :                 addr = (char*)desc-&gt;sb + old_anchor.data.avail * desc-&gt;slot_size;</span>
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span><span class="lineCov">    8458570 :                 mono_memory_read_barrier ();</span>
+<span class="lineNum">     369 </span>            : 
+<span class="lineNum">     370 </span><span class="lineCov">    8458570 :                 next = *(unsigned int*)addr;</span>
+<span class="lineNum">     371 </span><span class="lineCov">   25375704 :                 g_assert (next &lt; LOCK_FREE_ALLOC_SB_USABLE_SIZE (desc-&gt;block_size) / desc-&gt;slot_size);</span>
+<span class="lineNum">     372 </span>            : 
+<span class="lineNum">     373 </span><span class="lineCov">    8458567 :                 new_anchor.data.avail = next;</span>
+<span class="lineNum">     374 </span><span class="lineCov">    8458567 :                 --new_anchor.data.count;</span>
+<span class="lineNum">     375 </span>            : 
+<span class="lineNum">     376 </span><span class="lineCov">    8458567 :                 if (new_anchor.data.count == 0)</span>
+<span class="lineNum">     377 </span><span class="lineCov">     368318 :                         new_anchor.data.state = STATE_FULL;</span>
+<span class="lineNum">     378 </span><span class="lineCov">   16917136 :         } while (!set_anchor (desc, old_anchor, new_anchor));</span>
+<span class="lineNum">     379 </span>            : 
+<span class="lineNum">     380 </span>            :         /* If the desc is partial we have to give it back. */
+<span class="lineNum">     381 </span><span class="lineCov">    8458569 :         if (new_anchor.data.state == STATE_PARTIAL) {</span>
+<span class="lineNum">     382 </span><span class="lineCov">    8090254 :                 if (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;heap-&gt;active, desc, NULL) != NULL)</span>
+<span class="lineNum">     383 </span><span class="lineCov">          1 :                         heap_put_partial (desc);</span>
+<span class="lineNum">     384 </span><span class="lineCov">    8090254 :         }</span>
+<span class="lineNum">     385 </span>            : 
+<span class="lineNum">     386 </span><span class="lineCov">    8458572 :         return addr;</span>
+<span class="lineNum">     387 </span><span class="lineCov">    9011831 : }</span>
+<a name="388"><span class="lineNum">     388 </span>            : </a>
+<span class="lineNum">     389 </span>            : static gpointer
+<span class="lineNum">     390 </span>            : alloc_from_new_sb (MonoLockFreeAllocator *heap)
+<span class="lineNum">     391 </span>            : {
+<span class="lineNum">     392 </span>            :         unsigned int slot_size, block_size, count, i;
+<span class="lineNum">     393 </span><span class="lineCov">     553264 :         Descriptor *desc = desc_alloc (heap-&gt;account_type);</span>
+<span class="lineNum">     394 </span>            : 
+<span class="lineNum">     395 </span><span class="lineCov">     553264 :         slot_size = desc-&gt;slot_size = heap-&gt;sc-&gt;slot_size;</span>
+<span class="lineNum">     396 </span><span class="lineCov">     553264 :         block_size = desc-&gt;block_size = heap-&gt;sc-&gt;block_size;</span>
+<span class="lineNum">     397 </span><span class="lineCov">     553264 :         count = LOCK_FREE_ALLOC_SB_USABLE_SIZE (block_size) / slot_size;</span>
+<span class="lineNum">     398 </span>            : 
+<span class="lineNum">     399 </span><span class="lineCov">     553264 :         desc-&gt;heap = heap;</span>
+<span class="lineNum">     400 </span>            :         /*
+<span class="lineNum">     401 </span>            :          * Setting avail to 1 because 0 is the block we're allocating
+<span class="lineNum">     402 </span>            :          * right away.
+<span class="lineNum">     403 </span>            :          */
+<span class="lineNum">     404 </span><span class="lineCov">     553264 :         desc-&gt;anchor.data.avail = 1;</span>
+<span class="lineNum">     405 </span><span class="lineCov">     553264 :         desc-&gt;slot_size = heap-&gt;sc-&gt;slot_size;</span>
+<span class="lineNum">     406 </span><span class="lineCov">     553264 :         desc-&gt;max_count = count;</span>
+<span class="lineNum">     407 </span>            : 
+<span class="lineNum">     408 </span><span class="lineCov">     553264 :         desc-&gt;anchor.data.count = desc-&gt;max_count - 1;</span>
+<span class="lineNum">     409 </span><span class="lineCov">     553264 :         desc-&gt;anchor.data.state = STATE_PARTIAL;</span>
+<span class="lineNum">     410 </span>            : 
+<span class="lineNum">     411 </span><span class="lineCov">     553264 :         desc-&gt;sb = alloc_sb (desc);</span>
+<span class="lineNum">     412 </span>            : 
+<span class="lineNum">     413 </span>            :         /* Organize blocks into linked list. */
+<span class="lineNum">     414 </span><span class="lineCov">   51520542 :         for (i = 1; i &lt; count - 1; ++i)</span>
+<span class="lineNum">     415 </span><span class="lineCov">   25207007 :                 *(unsigned int*)((char*)desc-&gt;sb + i * slot_size) = i + 1;</span>
+<span class="lineNum">     416 </span>            : 
+<span class="lineNum">     417 </span><span class="lineCov">     553264 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     418 </span>            : 
+<span class="lineNum">     419 </span>            :         /* Make it active or free it again. */
+<span class="lineNum">     420 </span><span class="lineCov">     553264 :         if (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;heap-&gt;active, desc, NULL) == NULL) {</span>
+<span class="lineNum">     421 </span><span class="lineCov">     553182 :                 return desc-&gt;sb;</span>
+<span class="lineNum">     422 </span>            :         } else {
+<span class="lineNum">     423 </span><span class="lineCov">         82 :                 desc-&gt;anchor.data.state = STATE_EMPTY;</span>
+<span class="lineNum">     424 </span><span class="lineCov">         82 :                 desc_retire (desc);</span>
+<span class="lineNum">     425 </span><span class="lineCov">         82 :                 return NULL;</span>
+<span class="lineNum">     426 </span>            :         }
+<span class="lineNum">     427 </span><span class="lineCov">     553264 : }</span>
+<a name="428"><span class="lineNum">     428 </span>            : </a>
+<span class="lineNum">     429 </span>            : gpointer
+<span class="lineNum">     430 </span>            : mono_lock_free_alloc (MonoLockFreeAllocator *heap)
+<span class="lineNum">     431 </span>            : {
+<span class="lineNum">     432 </span>            :         gpointer addr;
+<span class="lineNum">     433 </span>            : 
+<span class="lineNum">     434 </span><span class="lineCov">    9011818 :         for (;;) {</span>
+<span class="lineNum">     435 </span>            : 
+<span class="lineNum">     436 </span><span class="lineCov">    9011836 :                 addr = alloc_from_active_or_partial (heap);</span>
+<span class="lineNum">     437 </span><span class="lineCov">    9011836 :                 if (addr)</span>
+<span class="lineNum">     438 </span><span class="lineCov">    8458572 :                         break;</span>
+<span class="lineNum">     439 </span>            : 
+<span class="lineNum">     440 </span><span class="lineCov">     553264 :                 addr = alloc_from_new_sb (heap);</span>
+<span class="lineNum">     441 </span><span class="lineCov">     553264 :                 if (addr)</span>
+<span class="lineNum">     442 </span><span class="lineCov">     553182 :                         break;</span>
+<span class="lineNum">     443 </span>            :         }
+<span class="lineNum">     444 </span>            : 
+<span class="lineNum">     445 </span><span class="lineCov">    9011753 :         return addr;</span>
+<span class="lineNum">     446 </span>            : }
+<a name="447"><span class="lineNum">     447 </span>            : </a>
+<span class="lineNum">     448 </span>            : void
+<span class="lineNum">     449 </span>            : mono_lock_free_free (gpointer ptr, size_t block_size)
+<span class="lineNum">     450 </span>            : {
+<span class="lineNum">     451 </span>            :         Anchor old_anchor, new_anchor;
+<span class="lineNum">     452 </span>            :         Descriptor *desc;
+<span class="lineNum">     453 </span>            :         gpointer sb;
+<span class="lineNum">     454 </span><span class="lineCov">    7702920 :         MonoLockFreeAllocator *heap = NULL;</span>
+<span class="lineNum">     455 </span>            : 
+<span class="lineNum">     456 </span><span class="lineCov">    7702920 :         desc = *(Descriptor**) sb_header_for_addr (ptr, block_size);</span>
+<span class="lineNum">     457 </span><span class="lineCov">   23108741 :         g_assert (block_size == desc-&gt;block_size);</span>
+<span class="lineNum">     458 </span>            : 
+<span class="lineNum">     459 </span><span class="lineCov">    7702912 :         sb = desc-&gt;sb;</span>
+<span class="lineNum">     460 </span>            : 
+<span class="lineNum">     461 </span><span class="lineCov">    7702912 :         do {</span>
+<span class="lineNum">     462 </span><span class="lineCov">    7702918 :                 new_anchor = old_anchor = *(volatile Anchor*)&amp;desc-&gt;anchor.value;</span>
+<span class="lineNum">     463 </span><span class="lineCov">    7702918 :                 *(unsigned int*)ptr = old_anchor.data.avail;</span>
+<span class="lineNum">     464 </span><span class="lineCov">    7702918 :                 new_anchor.data.avail = ((char*)ptr - (char*)sb) / desc-&gt;slot_size;</span>
+<span class="lineNum">     465 </span><span class="lineCov">   23108761 :                 g_assert (new_anchor.data.avail &lt; LOCK_FREE_ALLOC_SB_USABLE_SIZE (block_size) / desc-&gt;slot_size);</span>
+<span class="lineNum">     466 </span>            : 
+<span class="lineNum">     467 </span><span class="lineCov">    7702929 :                 if (old_anchor.data.state == STATE_FULL)</span>
+<span class="lineNum">     468 </span><span class="lineCov">     334883 :                         new_anchor.data.state = STATE_PARTIAL;</span>
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span><span class="lineCov">    7702925 :                 if (++new_anchor.data.count == desc-&gt;max_count) {</span>
+<span class="lineNum">     471 </span><span class="lineCov">     480700 :                         heap = desc-&gt;heap;</span>
+<span class="lineNum">     472 </span><span class="lineCov">     480700 :                         new_anchor.data.state = STATE_EMPTY;</span>
+<span class="lineNum">     473 </span><span class="lineCov">     480700 :                 }</span>
+<span class="lineNum">     474 </span><span class="lineCov">   15405846 :         } while (!set_anchor (desc, old_anchor, new_anchor));</span>
+<span class="lineNum">     475 </span>            : 
+<span class="lineNum">     476 </span><span class="lineCov">    7702915 :         if (new_anchor.data.state == STATE_EMPTY) {</span>
+<span class="lineNum">     477 </span><span class="lineCov">    1442100 :                 g_assert (old_anchor.data.state != STATE_EMPTY);</span>
+<span class="lineNum">     478 </span>            : 
+<span class="lineNum">     479 </span><span class="lineCov">     480700 :                 if (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;heap-&gt;active, NULL, desc) == desc) {</span>
+<span class="lineNum">     480 </span>            :                         /*
+<span class="lineNum">     481 </span>            :                          * We own desc, check if it's still empty, in which case we retire it.
+<span class="lineNum">     482 </span>            :                          * If it's partial we need to put it back either on the active slot or
+<span class="lineNum">     483 </span>            :                          * on the partial list.
+<span class="lineNum">     484 </span>            :                          */
+<span class="lineNum">     485 </span><span class="lineCov">     409100 :                         if (desc-&gt;anchor.data.state == STATE_EMPTY) {</span>
+<span class="lineNum">     486 </span><span class="lineCov">     409100 :                                 desc_retire (desc);</span>
+<span class="lineNum">     487 </span><span class="lineCov">     409100 :                         } else if (desc-&gt;anchor.data.state == STATE_PARTIAL) {</span>
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :                                 if (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;heap-&gt;active, desc, NULL) != NULL)</span>
+<span class="lineNum">     489 </span><span class="lineNoCov">          0 :                                         heap_put_partial (desc);</span>
+<span class="lineNum">     490 </span>            : 
+<span class="lineNum">     491 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     492 </span><span class="lineCov">     409100 :                 } else {</span>
+<span class="lineNum">     493 </span>            :                         /*
+<span class="lineNum">     494 </span>            :                          * Somebody else must free it, so we do some
+<span class="lineNum">     495 </span>            :                          * freeing for others.
+<span class="lineNum">     496 </span>            :                          */
+<span class="lineNum">     497 </span><span class="lineCov">      71600 :                         list_remove_empty_desc (heap-&gt;sc);</span>
+<span class="lineNum">     498 </span>            :                 }
+<span class="lineNum">     499 </span><span class="lineCov">    7702923 :         } else if (old_anchor.data.state == STATE_FULL) {</span>
+<span class="lineNum">     500 </span>            :                 /*
+<span class="lineNum">     501 </span>            :                  * Nobody owned it, now we do, so we need to give it
+<span class="lineNum">     502 </span>            :                  * back.
+<span class="lineNum">     503 </span>            :                  */
+<span class="lineNum">     504 </span>            : 
+<span class="lineNum">     505 </span><span class="lineCov">    1004649 :                 g_assert (new_anchor.data.state == STATE_PARTIAL);</span>
+<span class="lineNum">     506 </span>            : 
+<span class="lineNum">     507 </span><span class="lineCov">     334883 :                 if (InterlockedCompareExchangePointer ((gpointer * volatile)&amp;desc-&gt;heap-&gt;active, desc, NULL) != NULL)</span>
+<span class="lineNum">     508 </span><span class="lineCov">     214154 :                         heap_put_partial (desc);</span>
+<span class="lineNum">     509 </span><span class="lineCov">     334883 :         }</span>
+<span class="lineNum">     510 </span><span class="lineCov">    7702922 : }</span>
+<span class="lineNum">     511 </span>            : 
+<span class="lineNum">     512 </span>            : #define g_assert_OR_PRINT(c, format, ...)       do {                            \
+<span class="lineNum">     513 </span>            :                 if (!(c)) {                                             \
+<span class="lineNum">     514 </span>            :                         if (print)                                      \
+<span class="lineNum">     515 </span>            :                                 g_print ((format), ## __VA_ARGS__);     \
+<span class="lineNum">     516 </span>            :                         else                                            \
+<span class="lineNum">     517 </span>            :                                 g_assert (FALSE);                               \
+<span class="lineNum">     518 </span>            :                 }                                                       \
+<span class="lineNum">     519 </span>            :         } while (0)
+<a name="520"><span class="lineNum">     520 </span>            : </a>
+<span class="lineNum">     521 </span>            : static void
+<span class="lineNum">     522 </span>            : descriptor_check_consistency (Descriptor *desc, gboolean print)
+<span class="lineNum">     523 </span>            : {
+<span class="lineNum">     524 </span><span class="lineNoCov">          0 :         int count = desc-&gt;anchor.data.count;</span>
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :         int max_count = LOCK_FREE_ALLOC_SB_USABLE_SIZE (desc-&gt;block_size) / desc-&gt;slot_size;</span>
+<span class="lineNum">     526 </span>            : #if _MSC_VER
+<span class="lineNum">     527 </span>            :         gboolean* linked = alloca(max_count*sizeof(gboolean));
+<span class="lineNum">     528 </span>            : #else
+<span class="lineNum">     529 </span><span class="lineNoCov">          0 :         gboolean linked [max_count];</span>
+<span class="lineNum">     530 </span>            : #endif
+<span class="lineNum">     531 </span>            :         int i, last;
+<span class="lineNum">     532 </span>            :         unsigned int index;
+<span class="lineNum">     533 </span>            : 
+<span class="lineNum">     534 </span>            : #ifndef DESC_AVAIL_DUMMY
+<span class="lineNum">     535 </span>            :         Descriptor *avail;
+<span class="lineNum">     536 </span>            : 
+<span class="lineNum">     537 </span><span class="lineNoCov">          0 :         for (avail = desc_avail; avail; avail = avail-&gt;next)</span>
+<span class="lineNum">     538 </span><span class="lineNoCov">          0 :                 g_assert_OR_PRINT (desc != avail, &quot;descriptor is in the available list\n&quot;);</span>
+<span class="lineNum">     539 </span>            : #endif
+<span class="lineNum">     540 </span>            : 
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :         g_assert_OR_PRINT (desc-&gt;slot_size == desc-&gt;heap-&gt;sc-&gt;slot_size, &quot;slot size doesn't match size class\n&quot;);</span>
+<span class="lineNum">     542 </span>            : 
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :         if (print)</span>
+<span class="lineNum">     544 </span><span class="lineNoCov">          0 :                 g_print (&quot;descriptor %p is &quot;, desc);</span>
+<span class="lineNum">     545 </span>            : 
+<span class="lineNum">     546 </span><span class="lineNoCov">          0 :         switch (desc-&gt;anchor.data.state) {</span>
+<span class="lineNum">     547 </span>            :         case STATE_FULL:
+<span class="lineNum">     548 </span><span class="lineNoCov">          0 :                 if (print)</span>
+<span class="lineNum">     549 </span><span class="lineNoCov">          0 :                         g_print (&quot;full\n&quot;);</span>
+<span class="lineNum">     550 </span><span class="lineNoCov">          0 :                 g_assert_OR_PRINT (count == 0, &quot;count is not zero: %d\n&quot;, count);</span>
+<span class="lineNum">     551 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     552 </span>            :         case STATE_PARTIAL:
+<span class="lineNum">     553 </span><span class="lineNoCov">          0 :                 if (print)</span>
+<span class="lineNum">     554 </span><span class="lineNoCov">          0 :                         g_print (&quot;partial\n&quot;);</span>
+<span class="lineNum">     555 </span><span class="lineNoCov">          0 :                 g_assert_OR_PRINT (count &lt; max_count, &quot;count too high: is %d but must be below %d\n&quot;, count, max_count);</span>
+<span class="lineNum">     556 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     557 </span>            :         case STATE_EMPTY:
+<span class="lineNum">     558 </span><span class="lineNoCov">          0 :                 if (print)</span>
+<span class="lineNum">     559 </span><span class="lineNoCov">          0 :                         g_print (&quot;empty\n&quot;);</span>
+<span class="lineNum">     560 </span><span class="lineNoCov">          0 :                 g_assert_OR_PRINT (count == max_count, &quot;count is wrong: is %d but should be %d\n&quot;, count, max_count);</span>
+<span class="lineNum">     561 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     562 </span>            :         default:
+<span class="lineNum">     563 </span><span class="lineNoCov">          0 :                 g_assert_OR_PRINT (FALSE, &quot;invalid state\n&quot;);</span>
+<span class="lineNum">     564 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     565 </span>            : 
+<span class="lineNum">     566 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; max_count; ++i)</span>
+<span class="lineNum">     567 </span><span class="lineNoCov">          0 :                 linked [i] = FALSE;</span>
+<span class="lineNum">     568 </span>            : 
+<span class="lineNum">     569 </span><span class="lineNoCov">          0 :         index = desc-&gt;anchor.data.avail;</span>
+<span class="lineNum">     570 </span><span class="lineNoCov">          0 :         last = -1;</span>
+<span class="lineNum">     571 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; count; ++i) {</span>
+<span class="lineNum">     572 </span><span class="lineNoCov">          0 :                 gpointer addr = (char*)desc-&gt;sb + index * desc-&gt;slot_size;</span>
+<span class="lineNum">     573 </span><span class="lineNoCov">          0 :                 g_assert_OR_PRINT (index &gt;= 0 &amp;&amp; index &lt; max_count,</span>
+<span class="lineNum">     574 </span>            :                                 &quot;index %d for %dth available slot, linked from %d, not in range [0 .. %d)\n&quot;,
+<span class="lineNum">     575 </span>            :                                 index, i, last, max_count);
+<span class="lineNum">     576 </span><span class="lineNoCov">          0 :                 g_assert_OR_PRINT (!linked [index], &quot;%dth available slot %d linked twice\n&quot;, i, index);</span>
+<span class="lineNum">     577 </span><span class="lineNoCov">          0 :                 if (linked [index])</span>
+<span class="lineNum">     578 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     579 </span><span class="lineNoCov">          0 :                 linked [index] = TRUE;</span>
+<span class="lineNum">     580 </span><span class="lineNoCov">          0 :                 last = index;</span>
+<span class="lineNum">     581 </span><span class="lineNoCov">          0 :                 index = *(unsigned int*)addr;</span>
+<span class="lineNum">     582 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     583 </span><span class="lineNoCov">          0 : }</span>
+<a name="584"><span class="lineNum">     584 </span>            : </a>
+<span class="lineNum">     585 </span>            : gboolean
+<span class="lineNum">     586 </span>            : mono_lock_free_allocator_check_consistency (MonoLockFreeAllocator *heap)
+<span class="lineNum">     587 </span>            : {
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 :         Descriptor *active = heap-&gt;active;</span>
+<span class="lineNum">     589 </span>            :         Descriptor *desc;
+<span class="lineNum">     590 </span><span class="lineNoCov">          0 :         if (active) {</span>
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 :                 g_assert (active-&gt;anchor.data.state == STATE_PARTIAL);</span>
+<span class="lineNum">     592 </span><span class="lineNoCov">          0 :                 descriptor_check_consistency (active, FALSE);</span>
+<span class="lineNum">     593 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     594 </span><span class="lineNoCov">          0 :         while ((desc = (Descriptor*)mono_lock_free_queue_dequeue (&amp;heap-&gt;sc-&gt;partial))) {</span>
+<span class="lineNum">     595 </span><span class="lineNoCov">          0 :                 g_assert (desc-&gt;anchor.data.state == STATE_PARTIAL || desc-&gt;anchor.data.state == STATE_EMPTY);</span>
+<span class="lineNum">     596 </span><span class="lineNoCov">          0 :                 descriptor_check_consistency (desc, FALSE);</span>
+<span class="lineNum">     597 </span>            :         }
+<span class="lineNum">     598 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     599 </span>            : }
+<a name="600"><span class="lineNum">     600 </span>            : </a>
+<span class="lineNum">     601 </span>            : void
+<span class="lineNum">     602 </span>            : mono_lock_free_allocator_init_size_class (MonoLockFreeAllocSizeClass *sc, unsigned int slot_size, unsigned int block_size)
+<span class="lineNum">     603 </span>            : {
+<span class="lineNum">     604 </span><span class="lineCov">     285903 :         g_assert (block_size &gt; 0);</span>
+<span class="lineNum">     605 </span><span class="lineCov">     285903 :         g_assert ((block_size &amp; (block_size - 1)) == 0); /* check if power of 2 */</span>
+<span class="lineNum">     606 </span><span class="lineCov">     285903 :         g_assert (slot_size * 2 &lt;= LOCK_FREE_ALLOC_SB_USABLE_SIZE (block_size));</span>
+<span class="lineNum">     607 </span>            : 
+<span class="lineNum">     608 </span><span class="lineCov">      95301 :         mono_lock_free_queue_init (&amp;sc-&gt;partial);</span>
+<span class="lineNum">     609 </span><span class="lineCov">      95301 :         sc-&gt;slot_size = slot_size;</span>
+<span class="lineNum">     610 </span><span class="lineCov">      95301 :         sc-&gt;block_size = block_size;</span>
+<span class="lineNum">     611 </span><span class="lineCov">      95301 : }</span>
+<a name="612"><span class="lineNum">     612 </span>            : </a>
+<span class="lineNum">     613 </span>            : void
+<span class="lineNum">     614 </span>            : mono_lock_free_allocator_init_allocator (MonoLockFreeAllocator *heap, MonoLockFreeAllocSizeClass *sc, MonoMemAccountType account_type)
+<span class="lineNum">     615 </span>            : {
+<span class="lineNum">     616 </span><span class="lineCov">      95301 :         heap-&gt;sc = sc;</span>
+<span class="lineNum">     617 </span><span class="lineCov">      95301 :         heap-&gt;active = NULL;</span>
+<span class="lineNum">     618 </span><span class="lineCov">      95301 :         heap-&gt;account_type = account_type;</span>
+<span class="lineNum">     619 </span><span class="lineCov">      95301 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

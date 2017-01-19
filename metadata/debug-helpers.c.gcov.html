@@ -1,0 +1,1231 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/debug-helpers.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - debug-helpers.c<span style="font-size: 80%;"> (source / <a href="debug-helpers.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">284</td>
+            <td class="headerCovTableEntry">591</td>
+            <td class="headerCovTableEntryLo">48.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">16</td>
+            <td class="headerCovTableEntry">33</td>
+            <td class="headerCovTableEntryLo">48.5 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * debug-helpers.c:
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Mono Project (http://www.mono-project.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright (C) 2005-2008 Novell, Inc. (http://www.novell.com)
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      12 </span>            : #include &quot;mono/metadata/tokentype.h&quot;
+<span class="lineNum">      13 </span>            : #include &quot;mono/metadata/opcodes.h&quot;
+<span class="lineNum">      14 </span>            : #include &quot;mono/metadata/metadata-internals.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;mono/metadata/class-internals.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;mono/metadata/object-internals.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/metadata/mono-endian.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;mono/metadata/debug-helpers.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;mono/metadata/tabledefs.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;mono/metadata/appdomain.h&quot;
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : struct MonoMethodDesc {
+<span class="lineNum">      23 </span>            :         char *name_space;
+<span class="lineNum">      24 </span>            :         char *klass;
+<span class="lineNum">      25 </span>            :         char *name;
+<span class="lineNum">      26 </span>            :         char *args;
+<span class="lineNum">      27 </span>            :         guint num_args;
+<span class="lineNum">      28 </span>            :         gboolean include_namespace, klass_glob, name_glob;
+<span class="lineNum">      29 </span>            : };
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : #ifdef HAVE_ARRAY_ELEM_INIT
+<span class="lineNum">      32 </span>            : #define MSGSTRFIELD(line) MSGSTRFIELD1(line)
+<span class="lineNum">      33 </span>            : #define MSGSTRFIELD1(line) str##line
+<span class="lineNum">      34 </span>            : static const struct msgstr_t {
+<span class="lineNum">      35 </span>            : #define WRAPPER(a,b) char MSGSTRFIELD(__LINE__) [sizeof (b)];
+<span class="lineNum">      36 </span>            : #include &quot;wrapper-types.h&quot;
+<span class="lineNum">      37 </span>            : #undef WRAPPER
+<span class="lineNum">      38 </span>            : } opstr = {
+<span class="lineNum">      39 </span>            : #define WRAPPER(a,b) b,
+<span class="lineNum">      40 </span>            : #include &quot;wrapper-types.h&quot;
+<span class="lineNum">      41 </span>            : #undef WRAPPER
+<span class="lineNum">      42 </span>            : };
+<span class="lineNum">      43 </span>            : static const gint16 opidx [] = {
+<span class="lineNum">      44 </span>            : #define WRAPPER(a,b) [MONO_WRAPPER_ ## a] = offsetof (struct msgstr_t, MSGSTRFIELD(__LINE__)),
+<span class="lineNum">      45 </span>            : #include &quot;wrapper-types.h&quot;
+<span class="lineNum">      46 </span>            : #undef WRAPPER
+<span class="lineNum">      47 </span>            : };
+<a name="48"><span class="lineNum">      48 </span>            : </a>
+<span class="lineNum">      49 </span>            : static const char*
+<span class="lineNum">      50 </span>            : wrapper_type_to_str (guint32 wrapper_type)
+<span class="lineNum">      51 </span>            : {
+<span class="lineNum">      52 </span><span class="lineCov">   14063805 :         g_assert (wrapper_type &lt; MONO_WRAPPER_NUM);</span>
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span><span class="lineCov">    4687935 :         return (const char*)&amp;opstr + opidx [wrapper_type];</span>
+<span class="lineNum">      55 </span>            : }
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : #else
+<span class="lineNum">      58 </span>            : #define WRAPPER(a,b) b,
+<span class="lineNum">      59 </span>            : static const char* const
+<span class="lineNum">      60 </span>            : wrapper_type_names [MONO_WRAPPER_NUM + 1] = {
+<span class="lineNum">      61 </span>            : #include &quot;wrapper-types.h&quot;
+<span class="lineNum">      62 </span>            :         NULL
+<span class="lineNum">      63 </span>            : };
+<span class="lineNum">      64 </span>            : 
+<span class="lineNum">      65 </span>            : static const char*
+<span class="lineNum">      66 </span>            : wrapper_type_to_str (guint32 wrapper_type)
+<span class="lineNum">      67 </span>            : {
+<span class="lineNum">      68 </span>            :         g_assert (wrapper_type &lt; MONO_WRAPPER_NUM);
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span>            :         return wrapper_type_names [wrapper_type];
+<span class="lineNum">      71 </span>            : }
+<span class="lineNum">      72 </span>            : 
+<span class="lineNum">      73 </span>            : #endif
+<a name="74"><span class="lineNum">      74 </span>            : </a>
+<span class="lineNum">      75 </span>            : static void
+<span class="lineNum">      76 </span>            : append_class_name (GString *res, MonoClass *klass, gboolean include_namespace)
+<span class="lineNum">      77 </span>            : {
+<span class="lineNum">      78 </span><span class="lineCov">   38670794 :         if (!klass) {</span>
+<span class="lineNum">      79 </span><span class="lineNoCov">          0 :                 g_string_append (res, &quot;Unknown&quot;);</span>
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      81 </span>            :         }
+<span class="lineNum">      82 </span><span class="lineCov">   38670861 :         if (klass-&gt;nested_in) {</span>
+<span class="lineNum">      83 </span><span class="lineCov">    2947494 :                 append_class_name (res, klass-&gt;nested_in, include_namespace);</span>
+<span class="lineNum">      84 </span><span class="lineCov">    2947494 :                 g_string_append_c (res, '/');</span>
+<span class="lineNum">      85 </span><span class="lineCov">    2947494 :         }</span>
+<span class="lineNum">      86 </span><span class="lineCov">   77338099 :         if (include_namespace &amp;&amp; *(klass-&gt;name_space)) {</span>
+<span class="lineNum">      87 </span><span class="lineCov">   35256189 :                 g_string_append (res, klass-&gt;name_space);</span>
+<span class="lineNum">      88 </span><span class="lineCov">   35256189 :                 g_string_append_c (res, '.');</span>
+<span class="lineNum">      89 </span><span class="lineCov">   35256189 :         }</span>
+<span class="lineNum">      90 </span><span class="lineCov">   38671108 :         g_string_append (res, klass-&gt;name);</span>
+<span class="lineNum">      91 </span><span class="lineCov">   77342103 : }</span>
+<a name="92"><span class="lineNum">      92 </span>            : </a>
+<span class="lineNum">      93 </span>            : static MonoClass*
+<span class="lineNum">      94 </span>            : find_system_class (const char *name)
+<span class="lineNum">      95 </span>            : {
+<span class="lineNum">      96 </span><span class="lineNoCov">          0 :         if (!strcmp (name, &quot;void&quot;)) </span>
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :                 return mono_defaults.void_class;</span>
+<span class="lineNum">      98 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;char&quot;)) return mono_defaults.char_class;</span>
+<span class="lineNum">      99 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;bool&quot;)) return mono_defaults.boolean_class;</span>
+<span class="lineNum">     100 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;byte&quot;)) return mono_defaults.byte_class;</span>
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;sbyte&quot;)) return mono_defaults.sbyte_class;</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;uint16&quot;)) return mono_defaults.uint16_class;</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;int16&quot;)) return mono_defaults.int16_class;</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;uint&quot;)) return mono_defaults.uint32_class;</span>
+<span class="lineNum">     105 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;int&quot;)) return mono_defaults.int32_class;</span>
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;ulong&quot;)) return mono_defaults.uint64_class;</span>
+<span class="lineNum">     107 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;long&quot;)) return mono_defaults.int64_class;</span>
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;uintptr&quot;)) return mono_defaults.uint_class;</span>
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;intptr&quot;)) return mono_defaults.int_class;</span>
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;single&quot;)) return mono_defaults.single_class;</span>
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;double&quot;)) return mono_defaults.double_class;</span>
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;string&quot;)) return mono_defaults.string_class;</span>
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :         else if (!strcmp (name, &quot;object&quot;)) return mono_defaults.object_class;</span>
+<span class="lineNum">     114 </span>            :         else
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 : }</span>
+<a name="117"><span class="lineNum">     117 </span>            : </a>
+<span class="lineNum">     118 </span>            : void
+<span class="lineNum">     119 </span>            : mono_type_get_desc (GString *res, MonoType *type, gboolean include_namespace)
+<span class="lineNum">     120 </span>            : {
+<span class="lineNum">     121 </span>            :         int i;
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span><span class="lineCov">   72446926 :         switch (type-&gt;type) {</span>
+<span class="lineNum">     124 </span>            :         case MONO_TYPE_VOID:
+<span class="lineNum">     125 </span><span class="lineCov">     282854 :                 g_string_append (res, &quot;void&quot;); break;</span>
+<span class="lineNum">     126 </span>            :         case MONO_TYPE_CHAR:
+<span class="lineNum">     127 </span><span class="lineCov">     210619 :                 g_string_append (res, &quot;char&quot;); break;</span>
+<span class="lineNum">     128 </span>            :         case MONO_TYPE_BOOLEAN:
+<span class="lineNum">     129 </span><span class="lineCov">    1402843 :                 g_string_append (res, &quot;bool&quot;); break;</span>
+<span class="lineNum">     130 </span>            :         case MONO_TYPE_U1:
+<span class="lineNum">     131 </span><span class="lineCov">    3364200 :                 g_string_append (res, &quot;byte&quot;); break;</span>
+<span class="lineNum">     132 </span>            :         case MONO_TYPE_I1:
+<span class="lineNum">     133 </span><span class="lineCov">     201584 :                 g_string_append (res, &quot;sbyte&quot;); break;</span>
+<span class="lineNum">     134 </span>            :         case MONO_TYPE_U2:
+<span class="lineNum">     135 </span><span class="lineCov">     379792 :                 g_string_append (res, &quot;uint16&quot;); break;</span>
+<span class="lineNum">     136 </span>            :         case MONO_TYPE_I2:
+<span class="lineNum">     137 </span><span class="lineCov">     118993 :                 g_string_append (res, &quot;int16&quot;); break;</span>
+<span class="lineNum">     138 </span>            :         case MONO_TYPE_U4:
+<span class="lineNum">     139 </span><span class="lineCov">     221258 :                 g_string_append (res, &quot;uint&quot;); break;</span>
+<span class="lineNum">     140 </span>            :         case MONO_TYPE_I4:
+<span class="lineNum">     141 </span><span class="lineCov">    4474489 :                 g_string_append (res, &quot;int&quot;); break;</span>
+<span class="lineNum">     142 </span>            :         case MONO_TYPE_U8:
+<span class="lineNum">     143 </span><span class="lineCov">      45392 :                 g_string_append (res, &quot;ulong&quot;); break;</span>
+<span class="lineNum">     144 </span>            :         case MONO_TYPE_I8:
+<span class="lineNum">     145 </span><span class="lineCov">     161134 :                 g_string_append (res, &quot;long&quot;); break;</span>
+<span class="lineNum">     146 </span>            :         case MONO_TYPE_FNPTR: /* who cares for the exact signature? */
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :                 g_string_append (res, &quot;*()&quot;); break;</span>
+<span class="lineNum">     148 </span>            :         case MONO_TYPE_U:
+<span class="lineNum">     149 </span><span class="lineCov">         62 :                 g_string_append (res, &quot;uintptr&quot;); break;</span>
+<span class="lineNum">     150 </span>            :         case MONO_TYPE_I:
+<span class="lineNum">     151 </span><span class="lineCov">    3960473 :                 g_string_append (res, &quot;intptr&quot;); break;</span>
+<span class="lineNum">     152 </span>            :         case MONO_TYPE_R4:
+<span class="lineNum">     153 </span><span class="lineCov">     390702 :                 g_string_append (res, &quot;single&quot;); break;</span>
+<span class="lineNum">     154 </span>            :         case MONO_TYPE_R8:
+<span class="lineNum">     155 </span><span class="lineCov">     186477 :                 g_string_append (res, &quot;double&quot;); break;</span>
+<span class="lineNum">     156 </span>            :         case MONO_TYPE_STRING:
+<span class="lineNum">     157 </span><span class="lineCov">    4156143 :                 g_string_append (res, &quot;string&quot;); break;</span>
+<span class="lineNum">     158 </span>            :         case MONO_TYPE_OBJECT:
+<span class="lineNum">     159 </span><span class="lineCov">    3682562 :                 g_string_append (res, &quot;object&quot;); break;</span>
+<span class="lineNum">     160 </span>            :         case MONO_TYPE_PTR:
+<span class="lineNum">     161 </span><span class="lineCov">    2847498 :                 mono_type_get_desc (res, type-&gt;data.type, include_namespace);</span>
+<span class="lineNum">     162 </span><span class="lineCov">    2847498 :                 g_string_append_c (res, '*');</span>
+<span class="lineNum">     163 </span><span class="lineCov">    2847498 :                 break;</span>
+<span class="lineNum">     164 </span>            :         case MONO_TYPE_ARRAY:
+<span class="lineNum">     165 </span><span class="lineCov">         34 :                 mono_type_get_desc (res, &amp;type-&gt;data.array-&gt;eklass-&gt;byval_arg, include_namespace);</span>
+<span class="lineNum">     166 </span><span class="lineCov">         34 :                 g_string_append_c (res, '[');</span>
+<span class="lineNum">     167 </span><span class="lineCov">        136 :                 for (i = 1; i &lt; type-&gt;data.array-&gt;rank; ++i)</span>
+<span class="lineNum">     168 </span><span class="lineCov">         34 :                         g_string_append_c (res, ',');</span>
+<span class="lineNum">     169 </span><span class="lineCov">         34 :                 g_string_append_c (res, ']');</span>
+<span class="lineNum">     170 </span><span class="lineCov">         34 :                 break;</span>
+<span class="lineNum">     171 </span>            :         case MONO_TYPE_SZARRAY:
+<span class="lineNum">     172 </span><span class="lineCov">     718909 :                 mono_type_get_desc (res, &amp;type-&gt;data.klass-&gt;byval_arg, include_namespace);</span>
+<span class="lineNum">     173 </span><span class="lineCov">     718909 :                 g_string_append (res, &quot;[]&quot;);</span>
+<span class="lineNum">     174 </span><span class="lineCov">     718909 :                 break;</span>
+<span class="lineNum">     175 </span>            :         case MONO_TYPE_CLASS:
+<span class="lineNum">     176 </span>            :         case MONO_TYPE_VALUETYPE:
+<span class="lineNum">     177 </span><span class="lineCov">   35723332 :                 append_class_name (res, type-&gt;data.klass, include_namespace);</span>
+<span class="lineNum">     178 </span><span class="lineCov">   35723332 :                 break;</span>
+<span class="lineNum">     179 </span>            :         case MONO_TYPE_GENERICINST: {
+<span class="lineNum">     180 </span>            :                 MonoGenericContext *context;
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span><span class="lineCov">    7599117 :                 mono_type_get_desc (res, &amp;type-&gt;data.generic_class-&gt;container_class-&gt;byval_arg, include_namespace);</span>
+<span class="lineNum">     183 </span><span class="lineCov">    7599117 :                 g_string_append (res, &quot;&lt;&quot;);</span>
+<span class="lineNum">     184 </span><span class="lineCov">    7599117 :                 context = &amp;type-&gt;data.generic_class-&gt;context;</span>
+<span class="lineNum">     185 </span><span class="lineCov">    7599117 :                 if (context-&gt;class_inst) {</span>
+<span class="lineNum">     186 </span><span class="lineCov">   34584978 :                         for (i = 0; i &lt; context-&gt;class_inst-&gt;type_argc; ++i) {</span>
+<span class="lineNum">     187 </span><span class="lineCov">    9693430 :                                 if (i &gt; 0)</span>
+<span class="lineNum">     188 </span><span class="lineCov">    2094316 :                                         g_string_append (res, &quot;, &quot;);</span>
+<span class="lineNum">     189 </span><span class="lineCov">    9693399 :                                 mono_type_get_desc (res, context-&gt;class_inst-&gt;type_argv [i], include_namespace);</span>
+<span class="lineNum">     190 </span><span class="lineCov">    9693399 :                         }</span>
+<span class="lineNum">     191 </span><span class="lineCov">    7599100 :                 }</span>
+<span class="lineNum">     192 </span><span class="lineCov">    7599100 :                 if (context-&gt;method_inst) {</span>
+<span class="lineNum">     193 </span><span class="lineNoCov">          0 :                         if (context-&gt;class_inst)</span>
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 :                                         g_string_append (res, &quot;; &quot;);</span>
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :                         for (i = 0; i &lt; context-&gt;method_inst-&gt;type_argc; ++i) {</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :                                 if (i &gt; 0)</span>
+<span class="lineNum">     197 </span><span class="lineNoCov">          0 :                                         g_string_append (res, &quot;, &quot;);</span>
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                                 mono_type_get_desc (res, context-&gt;method_inst-&gt;type_argv [i], include_namespace);</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     201 </span><span class="lineCov">    7599095 :                 g_string_append (res, &quot;&gt;&quot;);</span>
+<span class="lineNum">     202 </span><span class="lineCov">    7599095 :                 break;</span>
+<span class="lineNum">     203 </span>            :         }
+<span class="lineNum">     204 </span>            :         case MONO_TYPE_VAR:
+<span class="lineNum">     205 </span>            :         case MONO_TYPE_MVAR:
+<span class="lineNum">     206 </span><span class="lineCov">    2318505 :                 if (type-&gt;data.generic_param) {</span>
+<span class="lineNum">     207 </span><span class="lineCov">    2318497 :                         const char *name = mono_generic_param_name (type-&gt;data.generic_param);</span>
+<span class="lineNum">     208 </span><span class="lineCov">    2318497 :                         if (name)</span>
+<span class="lineNum">     209 </span><span class="lineCov">    2318484 :                                 g_string_append (res, name);</span>
+<span class="lineNum">     210 </span>            :                         else
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :                                 g_string_append_printf (res, &quot;%s%d&quot;, type-&gt;type == MONO_TYPE_VAR ? &quot;!&quot; : &quot;!!&quot;, mono_generic_param_num (type-&gt;data.generic_param));</span>
+<span class="lineNum">     212 </span><span class="lineCov">    2318572 :                 } else {</span>
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :                         g_string_append (res, &quot;&lt;unknown&gt;&quot;);</span>
+<span class="lineNum">     214 </span>            :                 }
+<span class="lineNum">     215 </span><span class="lineCov">    2318566 :                 break;</span>
+<span class="lineNum">     216 </span>            :         case MONO_TYPE_TYPEDBYREF:
+<span class="lineNum">     217 </span><span class="lineCov">         40 :                 g_string_append (res, &quot;typedbyref&quot;);</span>
+<span class="lineNum">     218 </span><span class="lineCov">         40 :                 break;</span>
+<span class="lineNum">     219 </span>            :         default:
+<span class="lineNum">     220 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     221 </span>            :         }
+<span class="lineNum">     222 </span><span class="lineCov">   72446488 :         if (type-&gt;byref)</span>
+<span class="lineNum">     223 </span><span class="lineCov">    1428513 :                 g_string_append_c (res, '&amp;');</span>
+<span class="lineNum">     224 </span><span class="lineCov">   72446278 : }</span>
+<a name="225"><span class="lineNum">     225 </span>            : </a>
+<span class="lineNum">     226 </span>            : char*
+<span class="lineNum">     227 </span>            : mono_type_full_name (MonoType *type)
+<span class="lineNum">     228 </span>            : {
+<span class="lineNum">     229 </span>            :         GString *str;
+<span class="lineNum">     230 </span>            : 
+<span class="lineNum">     231 </span><span class="lineCov">   21083505 :         str = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     232 </span><span class="lineCov">   21083505 :         mono_type_get_desc (str, type, TRUE);</span>
+<span class="lineNum">     233 </span><span class="lineCov">   21083505 :         return g_string_free (str, FALSE);</span>
+<span class="lineNum">     234 </span>            : }
+<a name="235"><span class="lineNum">     235 </span>            : </a>
+<span class="lineNum">     236 </span>            : char*
+<span class="lineNum">     237 </span>            : mono_signature_get_desc (MonoMethodSignature *sig, gboolean include_namespace)
+<span class="lineNum">     238 </span>            : {
+<span class="lineNum">     239 </span>            :         int i;
+<span class="lineNum">     240 </span>            :         char *result;
+<span class="lineNum">     241 </span>            :         GString *res;
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span><span class="lineCov">   20053897 :         if (!sig)</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :                 return g_strdup (&quot;&lt;invalid signature&gt;&quot;);</span>
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">   20053881 :         res = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     247 </span>            : 
+<span class="lineNum">     248 </span><span class="lineCov">   99719324 :         for (i = 0; i &lt; sig-&gt;param_count; ++i) {</span>
+<span class="lineNum">     249 </span><span class="lineCov">   29805895 :                 if (i &gt; 0)</span>
+<span class="lineNum">     250 </span><span class="lineCov">   16205503 :                         g_string_append_c (res, ',');</span>
+<span class="lineNum">     251 </span><span class="lineCov">   29805783 :                 mono_type_get_desc (res, sig-&gt;params [i], include_namespace);</span>
+<span class="lineNum">     252 </span><span class="lineCov">   29805783 :         }</span>
+<span class="lineNum">     253 </span><span class="lineCov">   20053943 :         result = res-&gt;str;</span>
+<span class="lineNum">     254 </span><span class="lineCov">   20053943 :         g_string_free (res, FALSE);</span>
+<span class="lineNum">     255 </span><span class="lineCov">   20053943 :         return result;</span>
+<span class="lineNum">     256 </span><span class="lineCov">   20053964 : }</span>
+<a name="257"><span class="lineNum">     257 </span>            : </a>
+<span class="lineNum">     258 </span>            : char*
+<span class="lineNum">     259 </span>            : mono_signature_full_name (MonoMethodSignature *sig)
+<span class="lineNum">     260 </span>            : {
+<span class="lineNum">     261 </span>            :         int i;
+<span class="lineNum">     262 </span>            :         char *result;
+<span class="lineNum">     263 </span>            :         GString *res;
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :         if (!sig)</span>
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :                 return g_strdup (&quot;&lt;invalid signature&gt;&quot;);</span>
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :         res = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :         mono_type_get_desc (res, sig-&gt;ret, TRUE);</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :         g_string_append_c (res, '(');</span>
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; sig-&gt;param_count; ++i) {</span>
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :                 if (i &gt; 0)</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                         g_string_append_c (res, ',');</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                 mono_type_get_desc (res, sig-&gt;params [i], TRUE);</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :         g_string_append_c (res, ')');</span>
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :         result = res-&gt;str;</span>
+<span class="lineNum">     279 </span><span class="lineNoCov">          0 :         g_string_free (res, FALSE);</span>
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     281 </span><span class="lineNoCov">          0 : }</span>
+<a name="282"><span class="lineNum">     282 </span>            : </a>
+<span class="lineNum">     283 </span>            : static void
+<span class="lineNum">     284 </span>            : ginst_get_desc (GString *str, MonoGenericInst *ginst)
+<span class="lineNum">     285 </span>            : {
+<span class="lineNum">     286 </span>            :         int i;
+<span class="lineNum">     287 </span>            : 
+<span class="lineNum">     288 </span><span class="lineCov">    2265767 :         for (i = 0; i &lt; ginst-&gt;type_argc; ++i) {</span>
+<span class="lineNum">     289 </span><span class="lineCov">     593491 :                 if (i &gt; 0)</span>
+<span class="lineNum">     290 </span><span class="lineCov">      54095 :                         g_string_append (str, &quot;, &quot;);</span>
+<span class="lineNum">     291 </span><span class="lineCov">     593492 :                 mono_type_get_desc (str, ginst-&gt;type_argv [i], TRUE);</span>
+<span class="lineNum">     292 </span><span class="lineCov">     593492 :         }</span>
+<span class="lineNum">     293 </span><span class="lineCov">     539395 : }</span>
+<a name="294"><span class="lineNum">     294 </span>            : </a>
+<span class="lineNum">     295 </span>            : char*
+<span class="lineNum">     296 </span>            : mono_context_get_desc (MonoGenericContext *context)
+<span class="lineNum">     297 </span>            : {
+<span class="lineNum">     298 </span>            :         GString *str;
+<span class="lineNum">     299 </span>            :         char *res;
+<span class="lineNum">     300 </span>            : 
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :         str = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :         g_string_append (str, &quot;&lt;&quot;);</span>
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :         if (context-&gt;class_inst)</span>
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :                 ginst_get_desc (str, context-&gt;class_inst);</span>
+<span class="lineNum">     306 </span><span class="lineNoCov">          0 :         if (context-&gt;method_inst) {</span>
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :                 if (context-&gt;class_inst)</span>
+<span class="lineNum">     308 </span><span class="lineNoCov">          0 :                         g_string_append (str, &quot;; &quot;);</span>
+<span class="lineNum">     309 </span><span class="lineNoCov">          0 :                 ginst_get_desc (str, context-&gt;method_inst);</span>
+<span class="lineNum">     310 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span><span class="lineNoCov">          0 :         g_string_append (str, &quot;&gt;&quot;);</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :         res = g_strdup (str-&gt;str);</span>
+<span class="lineNum">     314 </span><span class="lineNoCov">          0 :         g_string_free (str, TRUE);</span>
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">     316 </span>            : }       
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span>            : /**
+<span class="lineNum">     319 </span>            :  * mono_method_desc_new:
+<span class="lineNum">     320 </span>            :  * @name: the method name.
+<span class="lineNum">     321 </span>            :  * @include_namespace: whether the name includes a namespace or not.
+<span class="lineNum">     322 </span>            :  *
+<span class="lineNum">     323 </span>            :  * Creates a method description for @name, which conforms to the following
+<span class="lineNum">     324 </span>            :  * specification:
+<span class="lineNum">     325 </span>            :  *
+<span class="lineNum">     326 </span>            :  * [namespace.]classname:methodname[(args...)]
+<span class="lineNum">     327 </span>            :  *
+<span class="lineNum">     328 </span>            :  * in all the loaded assemblies.
+<span class="lineNum">     329 </span>            :  *
+<span class="lineNum">     330 </span>            :  * Both classname and methodname can contain '*' which matches anything.
+<span class="lineNum">     331 </span>            :  *
+<span class="lineNum">     332 </span>            :  * Returns: a parsed representation of the method description.
+<a name="333"><span class="lineNum">     333 </span>            :  */</a>
+<span class="lineNum">     334 </span>            : MonoMethodDesc*
+<span class="lineNum">     335 </span>            : mono_method_desc_new (const char *name, gboolean include_namespace)
+<span class="lineNum">     336 </span>            : {
+<span class="lineNum">     337 </span>            :         MonoMethodDesc *result;
+<span class="lineNum">     338 </span>            :         char *class_name, *class_nspace, *method_name, *use_args, *end;
+<span class="lineNum">     339 </span>            :         int use_namespace;
+<span class="lineNum">     340 </span>            :         int generic_delim_stack;
+<span class="lineNum">     341 </span>            :         
+<span class="lineNum">     342 </span><span class="lineCov">      86740 :         class_nspace = g_strdup (name);</span>
+<span class="lineNum">     343 </span><span class="lineCov">      86740 :         use_args = strchr (class_nspace, '(');</span>
+<span class="lineNum">     344 </span><span class="lineCov">      86740 :         if (use_args) {</span>
+<span class="lineNum">     345 </span>            :                 /* Allow a ' ' between the method name and the signature */
+<span class="lineNum">     346 </span><span class="lineCov">       2258 :                 if (use_args &gt; class_nspace &amp;&amp; use_args [-1] == ' ')</span>
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :                         use_args [-1] = 0;</span>
+<span class="lineNum">     348 </span><span class="lineCov">       1129 :                 *use_args++ = 0;</span>
+<span class="lineNum">     349 </span><span class="lineCov">       1129 :                 end = strchr (use_args, ')');</span>
+<span class="lineNum">     350 </span><span class="lineCov">       1129 :                 if (!end) {</span>
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                         g_free (class_nspace);</span>
+<span class="lineNum">     352 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     353 </span>            :                 }
+<span class="lineNum">     354 </span><span class="lineCov">       1129 :                 *end = 0;</span>
+<span class="lineNum">     355 </span><span class="lineCov">       1129 :         }</span>
+<span class="lineNum">     356 </span><span class="lineCov">      86733 :         method_name = strrchr (class_nspace, ':');</span>
+<span class="lineNum">     357 </span><span class="lineCov">      86733 :         if (!method_name) {</span>
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :                 g_free (class_nspace);</span>
+<span class="lineNum">     359 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     360 </span>            :         }
+<span class="lineNum">     361 </span>            :         /* allow two :: to separate the method name */
+<span class="lineNum">     362 </span><span class="lineCov">     173569 :         if (method_name != class_nspace &amp;&amp; method_name [-1] == ':')</span>
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :                 method_name [-1] = 0;</span>
+<span class="lineNum">     364 </span><span class="lineCov">      86757 :         *method_name++ = 0;</span>
+<span class="lineNum">     365 </span><span class="lineCov">      86757 :         class_name = strrchr (class_nspace, '.');</span>
+<span class="lineNum">     366 </span><span class="lineCov">      86757 :         if (class_name) {</span>
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :                 *class_name++ = 0;</span>
+<span class="lineNum">     368 </span><span class="lineNoCov">          0 :                 use_namespace = 1;</span>
+<span class="lineNum">     369 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     370 </span><span class="lineCov">      86748 :                 class_name = class_nspace;</span>
+<span class="lineNum">     371 </span><span class="lineCov">      86748 :                 use_namespace = 0;</span>
+<span class="lineNum">     372 </span>            :         }
+<span class="lineNum">     373 </span><span class="lineCov">      86771 :         result = g_new0 (MonoMethodDesc, 1);</span>
+<span class="lineNum">     374 </span><span class="lineCov">      86771 :         result-&gt;include_namespace = include_namespace;</span>
+<span class="lineNum">     375 </span><span class="lineCov">      86771 :         result-&gt;name = method_name;</span>
+<span class="lineNum">     376 </span><span class="lineCov">      86771 :         result-&gt;klass = class_name;</span>
+<span class="lineNum">     377 </span><span class="lineCov">     260275 :         result-&gt;name_space = use_namespace? class_nspace: NULL;</span>
+<span class="lineNum">     378 </span><span class="lineCov">     260179 :         result-&gt;args = use_args? use_args: NULL;</span>
+<span class="lineNum">     379 </span><span class="lineCov">      86720 :         if (strstr (result-&gt;name, &quot;*&quot;))</span>
+<span class="lineNum">     380 </span><span class="lineNoCov">          0 :                 result-&gt;name_glob = TRUE;</span>
+<span class="lineNum">     381 </span><span class="lineCov">      86711 :         if (strstr (result-&gt;klass, &quot;*&quot;))</span>
+<span class="lineNum">     382 </span><span class="lineNoCov">          0 :                 result-&gt;klass_glob = TRUE;</span>
+<span class="lineNum">     383 </span><span class="lineCov">      86745 :         if (use_args) {</span>
+<span class="lineNum">     384 </span><span class="lineCov">       1129 :                 end = use_args;</span>
+<span class="lineNum">     385 </span><span class="lineCov">       1129 :                 if (*end)</span>
+<span class="lineNum">     386 </span><span class="lineCov">       1129 :                         result-&gt;num_args = 1;</span>
+<span class="lineNum">     387 </span><span class="lineCov">       1129 :                 generic_delim_stack = 0;</span>
+<span class="lineNum">     388 </span><span class="lineCov">      29282 :                 while (*end) {</span>
+<span class="lineNum">     389 </span><span class="lineCov">      13512 :                         if (*end == '&lt;')</span>
+<span class="lineNum">     390 </span><span class="lineNoCov">          0 :                                 generic_delim_stack++;</span>
+<span class="lineNum">     391 </span><span class="lineCov">      13512 :                         else if (*end == '&gt;')</span>
+<span class="lineNum">     392 </span><span class="lineNoCov">          0 :                                 generic_delim_stack--;</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span><span class="lineCov">      14637 :                         if (*end == ',' &amp;&amp; generic_delim_stack == 0)</span>
+<span class="lineNum">     395 </span><span class="lineCov">       1125 :                                 result-&gt;num_args++;</span>
+<span class="lineNum">     396 </span><span class="lineCov">      13512 :                         ++end;</span>
+<span class="lineNum">     397 </span>            :                 }
+<span class="lineNum">     398 </span><span class="lineCov">       1129 :         }</span>
+<span class="lineNum">     399 </span>            : 
+<span class="lineNum">     400 </span><span class="lineCov">      86717 :         return result;</span>
+<span class="lineNum">     401 </span><span class="lineCov">      86724 : }</span>
+<a name="402"><span class="lineNum">     402 </span>            : </a>
+<span class="lineNum">     403 </span>            : MonoMethodDesc*
+<span class="lineNum">     404 </span>            : mono_method_desc_from_method (MonoMethod *method)
+<span class="lineNum">     405 </span>            : {
+<span class="lineNum">     406 </span>            :         MonoMethodDesc *result;
+<span class="lineNum">     407 </span>            :         
+<span class="lineNum">     408 </span><span class="lineNoCov">          0 :         result = g_new0 (MonoMethodDesc, 1);</span>
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :         result-&gt;include_namespace = TRUE;</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :         result-&gt;name = g_strdup (method-&gt;name);</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         result-&gt;klass = g_strdup (method-&gt;klass-&gt;name);</span>
+<span class="lineNum">     412 </span><span class="lineNoCov">          0 :         result-&gt;name_space = g_strdup (method-&gt;klass-&gt;name_space);</span>
+<span class="lineNum">     413 </span>            : 
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     415 </span>            : }
+<span class="lineNum">     416 </span>            : 
+<span class="lineNum">     417 </span>            : /**
+<span class="lineNum">     418 </span>            :  * mono_method_desc_free:
+<span class="lineNum">     419 </span>            :  * @desc: method description to be released
+<span class="lineNum">     420 </span>            :  *
+<span class="lineNum">     421 </span>            :  * Releases the MonoMethodDesc object @desc.
+<a name="422"><span class="lineNum">     422 </span>            :  */</a>
+<span class="lineNum">     423 </span>            : void
+<span class="lineNum">     424 </span>            : mono_method_desc_free (MonoMethodDesc *desc)
+<span class="lineNum">     425 </span>            : {
+<span class="lineNum">     426 </span><span class="lineCov">      86709 :         if (desc-&gt;name_space)</span>
+<span class="lineNum">     427 </span><span class="lineNoCov">          0 :                 g_free (desc-&gt;name_space);</span>
+<span class="lineNum">     428 </span><span class="lineCov">      86717 :         else if (desc-&gt;klass)</span>
+<span class="lineNum">     429 </span><span class="lineCov">      86719 :                 g_free (desc-&gt;klass);</span>
+<span class="lineNum">     430 </span><span class="lineCov">      86776 :         g_free (desc);</span>
+<span class="lineNum">     431 </span><span class="lineCov">      86776 : }</span>
+<span class="lineNum">     432 </span>            : 
+<span class="lineNum">     433 </span>            : /**
+<span class="lineNum">     434 </span>            :  * mono_method_descr_match:
+<span class="lineNum">     435 </span>            :  * @desc: MonoMethoDescription
+<span class="lineNum">     436 </span>            :  * @method: MonoMethod to test
+<span class="lineNum">     437 </span>            :  *
+<span class="lineNum">     438 </span>            :  * Determines whether the specified @method matches the provided @desc description.
+<span class="lineNum">     439 </span>            :  *
+<span class="lineNum">     440 </span>            :  * namespace and class are supposed to match already if this function is used.
+<span class="lineNum">     441 </span>            :  * Returns: True if the method matches the description, false otherwise.
+<a name="442"><span class="lineNum">     442 </span>            :  */</a>
+<span class="lineNum">     443 </span>            : gboolean
+<span class="lineNum">     444 </span>            : mono_method_desc_match (MonoMethodDesc *desc, MonoMethod *method)
+<span class="lineNum">     445 </span>            : {
+<span class="lineNum">     446 </span>            :         char *sig;
+<span class="lineNum">     447 </span>            :         gboolean name_match;
+<span class="lineNum">     448 </span>            : 
+<span class="lineNum">     449 </span><span class="lineCov">     297143 :         name_match = strcmp (desc-&gt;name, method-&gt;name) == 0;</span>
+<span class="lineNum">     450 </span><span class="lineCov">     297143 :         if (!name_match)</span>
+<span class="lineNum">     451 </span><span class="lineCov">     209399 :                 return FALSE;</span>
+<span class="lineNum">     452 </span><span class="lineCov">      87865 :         if (!desc-&gt;args)</span>
+<span class="lineNum">     453 </span><span class="lineCov">      85621 :                 return TRUE;</span>
+<span class="lineNum">     454 </span><span class="lineCov">       2258 :         if (desc-&gt;num_args != mono_method_signature (method)-&gt;param_count)</span>
+<span class="lineNum">     455 </span><span class="lineCov">       1129 :                 return FALSE;</span>
+<span class="lineNum">     456 </span><span class="lineCov">       1129 :         sig = mono_signature_get_desc (mono_method_signature (method), desc-&gt;include_namespace);</span>
+<span class="lineNum">     457 </span><span class="lineCov">       1129 :         if (strcmp (sig, desc-&gt;args)) {</span>
+<span class="lineNum">     458 </span><span class="lineNoCov">          0 :                 g_free (sig);</span>
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     460 </span>            :         }
+<span class="lineNum">     461 </span><span class="lineCov">       1129 :         g_free (sig);</span>
+<span class="lineNum">     462 </span><span class="lineCov">       1129 :         return TRUE;</span>
+<span class="lineNum">     463 </span><span class="lineCov">     297270 : }</span>
+<a name="464"><span class="lineNum">     464 </span>            : </a>
+<span class="lineNum">     465 </span>            : static const char *
+<span class="lineNum">     466 </span>            : my_strrchr (const char *str, char ch, int *len)
+<span class="lineNum">     467 </span>            : {
+<span class="lineNum">     468 </span>            :         int pos;
+<span class="lineNum">     469 </span>            : 
+<span class="lineNum">     470 </span><span class="lineNoCov">          0 :         for (pos = (*len)-1; pos &gt;= 0; pos--) {</span>
+<span class="lineNum">     471 </span><span class="lineNoCov">          0 :                 if (str [pos] != ch)</span>
+<span class="lineNum">     472 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     473 </span>            : 
+<span class="lineNum">     474 </span><span class="lineNoCov">          0 :                 *len = pos;</span>
+<span class="lineNum">     475 </span><span class="lineNoCov">          0 :                 return str + pos;</span>
+<span class="lineNum">     476 </span>            :         }
+<span class="lineNum">     477 </span>            : 
+<span class="lineNum">     478 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     479 </span><span class="lineNoCov">          0 : }</span>
+<a name="480"><span class="lineNum">     480 </span>            : </a>
+<span class="lineNum">     481 </span>            : static gboolean
+<span class="lineNum">     482 </span>            : match_class (MonoMethodDesc *desc, int pos, MonoClass *klass)
+<span class="lineNum">     483 </span>            : {
+<span class="lineNum">     484 </span>            :         const char *p;
+<span class="lineNum">     485 </span>            : 
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :         if (desc-&gt;klass_glob &amp;&amp; !strcmp (desc-&gt;klass, &quot;*&quot;))</span>
+<span class="lineNum">     487 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     488 </span>            : #ifndef _EGLIB_MAJOR
+<span class="lineNum">     489 </span>            :         if (desc-&gt;klass_glob &amp;&amp; g_pattern_match_simple (desc-&gt;klass, klass-&gt;name))
+<span class="lineNum">     490 </span>            :                 return TRUE;
+<span class="lineNum">     491 </span>            : #endif
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :         p = my_strrchr (desc-&gt;klass, '/', &amp;pos);</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 :         if (!p) {</span>
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :                 if (strncmp (desc-&gt;klass, klass-&gt;name, pos))</span>
+<span class="lineNum">     495 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     496 </span><span class="lineNoCov">          0 :                 if (desc-&gt;name_space &amp;&amp; strcmp (desc-&gt;name_space, klass-&gt;name_space))</span>
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     499 </span>            :         }
+<span class="lineNum">     500 </span>            : 
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 :         if (strcmp (p+1, klass-&gt;name))</span>
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :         if (!klass-&gt;nested_in)</span>
+<span class="lineNum">     504 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     505 </span>            : 
+<span class="lineNum">     506 </span><span class="lineNoCov">          0 :         return match_class (desc, pos, klass-&gt;nested_in);</span>
+<span class="lineNum">     507 </span><span class="lineNoCov">          0 : }</span>
+<a name="508"><span class="lineNum">     508 </span>            : </a>
+<span class="lineNum">     509 </span>            : gboolean
+<span class="lineNum">     510 </span>            : mono_method_desc_full_match (MonoMethodDesc *desc, MonoMethod *method)
+<span class="lineNum">     511 </span>            : {
+<span class="lineNum">     512 </span><span class="lineNoCov">          0 :         if (!desc-&gt;klass)</span>
+<span class="lineNum">     513 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     514 </span><span class="lineNoCov">          0 :         if (!match_class (desc, strlen (desc-&gt;klass), method-&gt;klass))</span>
+<span class="lineNum">     515 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     516 </span>            : 
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :         return mono_method_desc_match (desc, method);</span>
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 : }</span>
+<a name="519"><span class="lineNum">     519 </span>            : </a>
+<span class="lineNum">     520 </span>            : MonoMethod*
+<span class="lineNum">     521 </span>            : mono_method_desc_search_in_class (MonoMethodDesc *desc, MonoClass *klass)
+<span class="lineNum">     522 </span>            : {
+<span class="lineNum">     523 </span>            :         MonoMethod* m;
+<span class="lineNum">     524 </span><span class="lineCov">      86686 :         gpointer iter = NULL;</span>
+<span class="lineNum">     525 </span>            :         
+<span class="lineNum">     526 </span><span class="lineCov">     594559 :         while ((m = mono_class_get_methods (klass, &amp;iter)))</span>
+<span class="lineNum">     527 </span><span class="lineCov">     297295 :                 if (mono_method_desc_match (desc, m))</span>
+<span class="lineNum">     528 </span><span class="lineCov">      86751 :                         return m;</span>
+<span class="lineNum">     529 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     530 </span><span class="lineCov">      86754 : }</span>
+<a name="531"><span class="lineNum">     531 </span>            : </a>
+<span class="lineNum">     532 </span>            : MonoMethod*
+<span class="lineNum">     533 </span>            : mono_method_desc_search_in_image (MonoMethodDesc *desc, MonoImage *image)
+<span class="lineNum">     534 </span>            : {
+<span class="lineNum">     535 </span>            :         MonoClass *klass;
+<span class="lineNum">     536 </span>            :         const MonoTableInfo *methods;
+<span class="lineNum">     537 </span>            :         MonoMethod *method;
+<span class="lineNum">     538 </span>            :         int i;
+<span class="lineNum">     539 </span>            : 
+<span class="lineNum">     540 </span>            :         /* Handle short names for system classes */
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :         if (!desc-&gt;name_space &amp;&amp; image == mono_defaults.corlib) {</span>
+<span class="lineNum">     542 </span><span class="lineNoCov">          0 :                 klass = find_system_class (desc-&gt;klass);</span>
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :                 if (klass)</span>
+<span class="lineNum">     544 </span><span class="lineNoCov">          0 :                         return mono_method_desc_search_in_class (desc, klass);</span>
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     546 </span>            : 
+<span class="lineNum">     547 </span><span class="lineNoCov">          0 :         if (desc-&gt;name_space &amp;&amp; desc-&gt;klass) {</span>
+<span class="lineNum">     548 </span><span class="lineNoCov">          0 :                 klass = mono_class_try_load_from_name (image, desc-&gt;name_space, desc-&gt;klass);</span>
+<span class="lineNum">     549 </span><span class="lineNoCov">          0 :                 if (!klass)</span>
+<span class="lineNum">     550 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     551 </span><span class="lineNoCov">          0 :                 return mono_method_desc_search_in_class (desc, klass);</span>
+<span class="lineNum">     552 </span>            :         }
+<span class="lineNum">     553 </span>            : 
+<span class="lineNum">     554 </span>            :         /* FIXME: Is this call necessary?  We don't use its result. */
+<span class="lineNum">     555 </span><span class="lineNoCov">          0 :         mono_image_get_table_info (image, MONO_TABLE_TYPEDEF);</span>
+<span class="lineNum">     556 </span><span class="lineNoCov">          0 :         methods = mono_image_get_table_info (image, MONO_TABLE_METHOD);</span>
+<span class="lineNum">     557 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; mono_table_info_get_rows (methods); ++i) {</span>
+<span class="lineNum">     558 </span>            :                 MonoError error;
+<span class="lineNum">     559 </span><span class="lineNoCov">          0 :                 guint32 token = mono_metadata_decode_row_col (methods, i, MONO_METHOD_NAME);</span>
+<span class="lineNum">     560 </span><span class="lineNoCov">          0 :                 const char *n = mono_metadata_string_heap (image, token);</span>
+<span class="lineNum">     561 </span>            : 
+<span class="lineNum">     562 </span><span class="lineNoCov">          0 :                 if (strcmp (n, desc-&gt;name))</span>
+<span class="lineNum">     563 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     564 </span><span class="lineNoCov">          0 :                 method = mono_get_method_checked (image, MONO_TOKEN_METHOD_DEF | (i + 1), NULL, NULL, &amp;error);</span>
+<span class="lineNum">     565 </span><span class="lineNoCov">          0 :                 if (!method) {</span>
+<span class="lineNum">     566 </span><span class="lineNoCov">          0 :                         mono_error_cleanup (&amp;error);</span>
+<span class="lineNum">     567 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     568 </span>            :                 }
+<span class="lineNum">     569 </span><span class="lineNoCov">          0 :                 if (mono_method_desc_full_match (desc, method))</span>
+<span class="lineNum">     570 </span><span class="lineNoCov">          0 :                         return method;</span>
+<span class="lineNum">     571 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     572 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     573 </span><span class="lineNoCov">          0 : }</span>
+<a name="574"><span class="lineNum">     574 </span>            : </a>
+<span class="lineNum">     575 </span>            : static const unsigned char*
+<span class="lineNum">     576 </span>            : dis_one (GString *str, MonoDisHelper *dh, MonoMethod *method, const unsigned char *ip, const unsigned char *end)
+<span class="lineNum">     577 </span>            : {
+<span class="lineNum">     578 </span>            :         MonoError error;
+<span class="lineNum">     579 </span><span class="lineCov">   10125550 :         MonoMethodHeader *header = mono_method_get_header_checked (method, &amp;error);</span>
+<span class="lineNum">     580 </span>            :         const MonoOpcode *opcode;
+<span class="lineNum">     581 </span>            :         guint32 label, token;
+<span class="lineNum">     582 </span>            :         gint32 sval;
+<span class="lineNum">     583 </span>            :         int i;
+<span class="lineNum">     584 </span>            :         char *tmp;
+<span class="lineNum">     585 </span>            :         const unsigned char* il_code;
+<span class="lineNum">     586 </span>            : 
+<span class="lineNum">     587 </span><span class="lineCov">   10125550 :         if (!header) {</span>
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 :                 g_string_append_printf (str, &quot;could not disassemble, bad header due to %s&quot;, mono_error_get_message (&amp;error));</span>
+<span class="lineNum">     589 </span><span class="lineNoCov">          0 :                 mono_error_cleanup (&amp;error);</span>
+<span class="lineNum">     590 </span><span class="lineNoCov">          0 :                 return end;</span>
+<span class="lineNum">     591 </span>            :         }
+<span class="lineNum">     592 </span><span class="lineCov">   10125536 :         il_code = mono_method_header_get_code (header, NULL, NULL);</span>
+<span class="lineNum">     593 </span>            : 
+<span class="lineNum">     594 </span><span class="lineCov">   10125536 :         label = ip - il_code;</span>
+<span class="lineNum">     595 </span><span class="lineCov">   10125536 :         if (dh-&gt;indenter) {</span>
+<span class="lineNum">     596 </span><span class="lineNoCov">          0 :                 tmp = dh-&gt;indenter (dh, method, label);</span>
+<span class="lineNum">     597 </span><span class="lineNoCov">          0 :                 g_string_append (str, tmp);</span>
+<span class="lineNum">     598 </span><span class="lineNoCov">          0 :                 g_free (tmp);</span>
+<span class="lineNum">     599 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     600 </span><span class="lineCov">   10125539 :         if (dh-&gt;label_format)</span>
+<span class="lineNum">     601 </span><span class="lineCov">   10125547 :                 g_string_append_printf (str, dh-&gt;label_format, label);</span>
+<span class="lineNum">     602 </span>            :         
+<span class="lineNum">     603 </span><span class="lineCov">   10125547 :         i = mono_opcode_value (&amp;ip, end);</span>
+<span class="lineNum">     604 </span><span class="lineCov">   10125547 :         ip++;</span>
+<span class="lineNum">     605 </span><span class="lineCov">   10125547 :         opcode = &amp;mono_opcodes [i];</span>
+<span class="lineNum">     606 </span><span class="lineCov">   10125547 :         g_string_append_printf (str, &quot;%-10s&quot;, mono_opcode_name (i));</span>
+<span class="lineNum">     607 </span>            : 
+<span class="lineNum">     608 </span><span class="lineCov">   10125547 :         switch (opcode-&gt;argument) {</span>
+<span class="lineNum">     609 </span>            :         case MonoInlineNone:
+<span class="lineNum">     610 </span><span class="lineCov">    5290281 :                 break;</span>
+<span class="lineNum">     611 </span>            :         case MonoInlineType:
+<span class="lineNum">     612 </span>            :         case MonoInlineField:
+<span class="lineNum">     613 </span>            :         case MonoInlineMethod:
+<span class="lineNum">     614 </span>            :         case MonoInlineTok:
+<span class="lineNum">     615 </span>            :         case MonoInlineSig:
+<span class="lineNum">     616 </span><span class="lineCov">    2798302 :                 token = read32 (ip);</span>
+<span class="lineNum">     617 </span><span class="lineCov">    2798302 :                 if (dh-&gt;tokener) {</span>
+<span class="lineNum">     618 </span><span class="lineNoCov">          0 :                         tmp = dh-&gt;tokener (dh, method, token);</span>
+<span class="lineNum">     619 </span><span class="lineNoCov">          0 :                         g_string_append (str, tmp);</span>
+<span class="lineNum">     620 </span><span class="lineNoCov">          0 :                         g_free (tmp);</span>
+<span class="lineNum">     621 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     622 </span><span class="lineCov">    2798302 :                         g_string_append_printf (str, &quot;0x%08x&quot;, token);</span>
+<span class="lineNum">     623 </span>            :                 }
+<span class="lineNum">     624 </span><span class="lineCov">    2798303 :                 ip += 4;</span>
+<span class="lineNum">     625 </span><span class="lineCov">    2798303 :                 break;</span>
+<span class="lineNum">     626 </span>            :         case MonoInlineString: {
+<span class="lineNum">     627 </span>            :                 const char *blob;
+<span class="lineNum">     628 </span>            :                 char *s;
+<span class="lineNum">     629 </span>            :                 size_t len2;
+<span class="lineNum">     630 </span><span class="lineCov">      69082 :                 char *blob2 = NULL;</span>
+<span class="lineNum">     631 </span>            : 
+<span class="lineNum">     632 </span><span class="lineCov">     138164 :                 if (!image_is_dynamic (method-&gt;klass-&gt;image) &amp;&amp; !method_is_dynamic (method)) {</span>
+<span class="lineNum">     633 </span><span class="lineCov">      69082 :                         token = read32 (ip);</span>
+<span class="lineNum">     634 </span><span class="lineCov">      69082 :                         blob = mono_metadata_user_string (method-&gt;klass-&gt;image, mono_metadata_token_index (token));</span>
+<span class="lineNum">     635 </span>            : 
+<span class="lineNum">     636 </span><span class="lineCov">      69082 :                         len2 = mono_metadata_decode_blob_size (blob, &amp;blob);</span>
+<span class="lineNum">     637 </span><span class="lineCov">      69082 :                         len2 &gt;&gt;= 1;</span>
+<span class="lineNum">     638 </span>            : 
+<span class="lineNum">     639 </span>            : #ifdef NO_UNALIGNED_ACCESS
+<span class="lineNum">     640 </span>            :                         /* The blob might not be 2 byte aligned */
+<span class="lineNum">     641 </span>            :                         blob2 = g_malloc ((len2 * 2) + 1);
+<span class="lineNum">     642 </span>            :                         memcpy (blob2, blob, len2 * 2);
+<span class="lineNum">     643 </span>            : #else
+<span class="lineNum">     644 </span><span class="lineCov">      69082 :                         blob2 = (char*)blob;</span>
+<span class="lineNum">     645 </span>            : #endif
+<span class="lineNum">     646 </span>            : 
+<span class="lineNum">     647 </span>            : #if G_BYTE_ORDER != G_LITTLE_ENDIAN
+<span class="lineNum">     648 </span>            :                         {
+<span class="lineNum">     649 </span>            :                                 guint16 *buf = g_new (guint16, len2 + 1);
+<span class="lineNum">     650 </span>            :                                 int i;
+<span class="lineNum">     651 </span>            : 
+<span class="lineNum">     652 </span>            :                                 for (i = 0; i &lt; len2; ++i)
+<span class="lineNum">     653 </span>            :                                         buf [i] = GUINT16_FROM_LE (((guint16*)blob2) [i]);
+<span class="lineNum">     654 </span>            :                                 s = g_utf16_to_utf8 (buf, len2, NULL, NULL, NULL);
+<span class="lineNum">     655 </span>            :                                 g_free (buf);
+<span class="lineNum">     656 </span>            :                         }
+<span class="lineNum">     657 </span>            : #else
+<span class="lineNum">     658 </span><span class="lineCov">      69082 :                                 s = g_utf16_to_utf8 ((gunichar2*)blob2, len2, NULL, NULL, NULL);</span>
+<span class="lineNum">     659 </span>            : #endif
+<span class="lineNum">     660 </span>            : 
+<span class="lineNum">     661 </span><span class="lineCov">      69082 :                         g_string_append_printf (str, &quot;\&quot;%s\&quot;&quot;, s);</span>
+<span class="lineNum">     662 </span><span class="lineCov">      69082 :                         g_free (s);</span>
+<span class="lineNum">     663 </span><span class="lineCov">      69082 :                         if (blob != blob2)</span>
+<span class="lineNum">     664 </span><span class="lineNoCov">          0 :                                 g_free (blob2);</span>
+<span class="lineNum">     665 </span><span class="lineCov">      69082 :                 }</span>
+<span class="lineNum">     666 </span><span class="lineCov">      69082 :                 ip += 4;</span>
+<span class="lineNum">     667 </span><span class="lineCov">      69082 :                 break;</span>
+<span class="lineNum">     668 </span>            :         }
+<span class="lineNum">     669 </span>            :         case MonoInlineVar:
+<span class="lineNum">     670 </span><span class="lineCov">       3400 :                 g_string_append_printf (str, &quot;%d&quot;, read16 (ip));</span>
+<span class="lineNum">     671 </span><span class="lineCov">       3400 :                 ip += 2;</span>
+<span class="lineNum">     672 </span><span class="lineCov">       3400 :                 break;</span>
+<span class="lineNum">     673 </span>            :         case MonoShortInlineVar:
+<span class="lineNum">     674 </span><span class="lineCov">     849880 :                 g_string_append_printf (str, &quot;%d&quot;, (*ip));</span>
+<span class="lineNum">     675 </span><span class="lineCov">     849880 :                 ip ++;</span>
+<span class="lineNum">     676 </span><span class="lineCov">     849880 :                 break;</span>
+<span class="lineNum">     677 </span>            :         case MonoInlineBrTarget:
+<span class="lineNum">     678 </span><span class="lineCov">     118250 :                 sval = read32 (ip);</span>
+<span class="lineNum">     679 </span><span class="lineCov">     118250 :                 ip += 4;</span>
+<span class="lineNum">     680 </span><span class="lineCov">     118250 :                 if (dh-&gt;label_target)</span>
+<span class="lineNum">     681 </span><span class="lineCov">     118250 :                         g_string_append_printf (str, dh-&gt;label_target, ip + sval - il_code);</span>
+<span class="lineNum">     682 </span>            :                 else
+<span class="lineNum">     683 </span><span class="lineNoCov">          0 :                         g_string_append_printf (str, &quot;%d&quot;, sval);</span>
+<span class="lineNum">     684 </span><span class="lineCov">     118250 :                 break;</span>
+<span class="lineNum">     685 </span>            :         case MonoShortInlineBrTarget:
+<span class="lineNum">     686 </span><span class="lineCov">     710913 :                 sval = *(const signed char*)ip;</span>
+<span class="lineNum">     687 </span><span class="lineCov">     710913 :                 ip ++;</span>
+<span class="lineNum">     688 </span><span class="lineCov">     710913 :                 if (dh-&gt;label_target)</span>
+<span class="lineNum">     689 </span><span class="lineCov">     710913 :                         g_string_append_printf (str, dh-&gt;label_target, ip + sval - il_code);</span>
+<span class="lineNum">     690 </span>            :                 else
+<span class="lineNum">     691 </span><span class="lineNoCov">          0 :                         g_string_append_printf (str, &quot;%d&quot;, sval);</span>
+<span class="lineNum">     692 </span><span class="lineCov">     710913 :                 break;</span>
+<span class="lineNum">     693 </span>            :         case MonoInlineSwitch: {
+<span class="lineNum">     694 </span>            :                 const unsigned char *end;
+<span class="lineNum">     695 </span><span class="lineCov">       7613 :                 sval = read32 (ip);</span>
+<span class="lineNum">     696 </span><span class="lineCov">       7613 :                 ip += 4;</span>
+<span class="lineNum">     697 </span><span class="lineCov">       7613 :                 end = ip + sval * 4;</span>
+<span class="lineNum">     698 </span><span class="lineCov">       7613 :                 g_string_append_c (str, '(');</span>
+<span class="lineNum">     699 </span><span class="lineCov">     187666 :                 for (i = 0; i &lt; sval; ++i) {</span>
+<span class="lineNum">     700 </span><span class="lineCov">      86221 :                         if (i &gt; 0)</span>
+<span class="lineNum">     701 </span><span class="lineCov">      78608 :                                 g_string_append (str, &quot;, &quot;);</span>
+<span class="lineNum">     702 </span><span class="lineCov">      86219 :                         label = read32 (ip);</span>
+<span class="lineNum">     703 </span><span class="lineCov">      86219 :                         if (dh-&gt;label_target)</span>
+<span class="lineNum">     704 </span><span class="lineCov">      86219 :                                 g_string_append_printf (str, dh-&gt;label_target, end + label - il_code);</span>
+<span class="lineNum">     705 </span>            :                         else
+<span class="lineNum">     706 </span><span class="lineNoCov">          0 :                                 g_string_append_printf (str, &quot;%d&quot;, label);</span>
+<span class="lineNum">     707 </span><span class="lineCov">      86221 :                         ip += 4;</span>
+<span class="lineNum">     708 </span><span class="lineCov">      86221 :                 }</span>
+<span class="lineNum">     709 </span><span class="lineCov">       7613 :                 g_string_append_c (str, ')');</span>
+<span class="lineNum">     710 </span><span class="lineCov">       7613 :                 break;</span>
+<span class="lineNum">     711 </span>            :         }
+<span class="lineNum">     712 </span>            :         case MonoInlineR: {
+<span class="lineNum">     713 </span>            :                 double r;
+<span class="lineNum">     714 </span><span class="lineCov">      20430 :                 readr8 (ip, &amp;r);</span>
+<span class="lineNum">     715 </span><span class="lineCov">      10215 :                 g_string_append_printf (str, &quot;%g&quot;, r);</span>
+<span class="lineNum">     716 </span><span class="lineCov">      10215 :                 ip += 8;</span>
+<span class="lineNum">     717 </span><span class="lineCov">      10215 :                 break;</span>
+<span class="lineNum">     718 </span>            :         }
+<span class="lineNum">     719 </span>            :         case MonoShortInlineR: {
+<span class="lineNum">     720 </span>            :                 float r;
+<span class="lineNum">     721 </span><span class="lineCov">      56804 :                 readr4 (ip, &amp;r);</span>
+<span class="lineNum">     722 </span><span class="lineCov">      28402 :                 g_string_append_printf (str, &quot;%g&quot;, r);</span>
+<span class="lineNum">     723 </span><span class="lineCov">      28402 :                 ip += 4;</span>
+<span class="lineNum">     724 </span><span class="lineCov">      28402 :                 break;</span>
+<span class="lineNum">     725 </span>            :         }
+<span class="lineNum">     726 </span>            :         case MonoInlineI:
+<span class="lineNum">     727 </span><span class="lineCov">     108102 :                 g_string_append_printf (str, &quot;%d&quot;, (gint32)read32 (ip));</span>
+<span class="lineNum">     728 </span><span class="lineCov">     108102 :                 ip += 4;</span>
+<span class="lineNum">     729 </span><span class="lineCov">     108102 :                 break;</span>
+<span class="lineNum">     730 </span>            :         case MonoShortInlineI:
+<span class="lineNum">     731 </span><span class="lineCov">     125965 :                 g_string_append_printf (str, &quot;%d&quot;, *(const signed char*)ip);</span>
+<span class="lineNum">     732 </span><span class="lineCov">     125965 :                 ip ++;</span>
+<span class="lineNum">     733 </span><span class="lineCov">     125965 :                 break;</span>
+<span class="lineNum">     734 </span>            :         case MonoInlineI8:
+<span class="lineNum">     735 </span><span class="lineCov">       5143 :                 ip += 8;</span>
+<span class="lineNum">     736 </span><span class="lineCov">       5143 :                 break;</span>
+<span class="lineNum">     737 </span>            :         default:
+<span class="lineNum">     738 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">     739 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     740 </span><span class="lineCov">   10125510 :         if (dh-&gt;newline)</span>
+<span class="lineNum">     741 </span><span class="lineCov">   10125521 :                 g_string_append (str, dh-&gt;newline);</span>
+<span class="lineNum">     742 </span>            : 
+<span class="lineNum">     743 </span><span class="lineCov">   10125544 :         mono_metadata_free_mh (header);</span>
+<span class="lineNum">     744 </span><span class="lineCov">   10125544 :         return ip;</span>
+<span class="lineNum">     745 </span><span class="lineCov">   10125551 : }</span>
+<span class="lineNum">     746 </span>            : 
+<span class="lineNum">     747 </span>            : static MonoDisHelper
+<span class="lineNum">     748 </span>            : default_dh = {
+<span class="lineNum">     749 </span>            :         &quot;\n&quot;,
+<span class="lineNum">     750 </span>            :         &quot;IL_%04x: &quot;, /* label_format */
+<span class="lineNum">     751 </span>            :         &quot;IL_%04x&quot;, /* label_target */
+<span class="lineNum">     752 </span>            :         NULL, /* indenter */
+<span class="lineNum">     753 </span>            :         NULL, /* tokener */
+<span class="lineNum">     754 </span>            :         NULL  /* user data */
+<span class="lineNum">     755 </span>            : };
+<a name="756"><span class="lineNum">     756 </span>            : </a>
+<span class="lineNum">     757 </span>            : char*
+<span class="lineNum">     758 </span>            : mono_disasm_code_one (MonoDisHelper *dh, MonoMethod *method, const guchar *ip, const guchar **endp)
+<span class="lineNum">     759 </span>            : {
+<span class="lineNum">     760 </span>            :         char *result;
+<span class="lineNum">     761 </span><span class="lineCov">   10125562 :         GString *res = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     762 </span>            : 
+<span class="lineNum">     763 </span><span class="lineCov">   10125562 :         if (!dh)</span>
+<span class="lineNum">     764 </span><span class="lineCov">   10125562 :                 dh = &amp;default_dh;</span>
+<span class="lineNum">     765 </span>            :         /* set ip + 2 as the end: this is just a debugging method */
+<span class="lineNum">     766 </span><span class="lineCov">   10125545 :         ip = dis_one (res, dh, method, ip, ip + 2);</span>
+<span class="lineNum">     767 </span><span class="lineCov">   10125545 :         if (endp)</span>
+<span class="lineNum">     768 </span><span class="lineNoCov">          0 :                 *endp = ip;</span>
+<span class="lineNum">     769 </span>            :         
+<span class="lineNum">     770 </span><span class="lineCov">   10125548 :         result = res-&gt;str;</span>
+<span class="lineNum">     771 </span><span class="lineCov">   10125548 :         g_string_free (res, FALSE);</span>
+<span class="lineNum">     772 </span><span class="lineCov">   10125548 :         return result;</span>
+<span class="lineNum">     773 </span>            : }
+<a name="774"><span class="lineNum">     774 </span>            : </a>
+<span class="lineNum">     775 </span>            : char*
+<span class="lineNum">     776 </span>            : mono_disasm_code (MonoDisHelper *dh, MonoMethod *method, const guchar *ip, const guchar* end)
+<span class="lineNum">     777 </span>            : {
+<span class="lineNum">     778 </span>            :         char *result;
+<span class="lineNum">     779 </span><span class="lineNoCov">          0 :         GString *res = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     780 </span>            : 
+<span class="lineNum">     781 </span><span class="lineNoCov">          0 :         if (!dh)</span>
+<span class="lineNum">     782 </span><span class="lineNoCov">          0 :                 dh = &amp;default_dh;</span>
+<span class="lineNum">     783 </span><span class="lineNoCov">          0 :         while (ip &lt; end) {</span>
+<span class="lineNum">     784 </span><span class="lineNoCov">          0 :                 ip = dis_one (res, dh, method, ip, end);</span>
+<span class="lineNum">     785 </span>            :         }
+<span class="lineNum">     786 </span>            :         
+<span class="lineNum">     787 </span><span class="lineNoCov">          0 :         result = res-&gt;str;</span>
+<span class="lineNum">     788 </span><span class="lineNoCov">          0 :         g_string_free (res, FALSE);</span>
+<span class="lineNum">     789 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     790 </span>            : }
+<span class="lineNum">     791 </span>            : 
+<span class="lineNum">     792 </span>            : /**
+<span class="lineNum">     793 </span>            :  * mono_field_full_name:
+<span class="lineNum">     794 </span>            :  * @field: field to retrieve information for
+<span class="lineNum">     795 </span>            :  *
+<span class="lineNum">     796 </span>            :  * Returns: the full name for the field, made up of the namespace, type name and the field name.
+<a name="797"><span class="lineNum">     797 </span>            :  */</a>
+<span class="lineNum">     798 </span>            : char *
+<span class="lineNum">     799 </span>            : mono_field_full_name (MonoClassField *field)
+<span class="lineNum">     800 </span>            : {
+<span class="lineNum">     801 </span>            :         char *res;
+<span class="lineNum">     802 </span><span class="lineCov">          6 :         const char *nspace = field-&gt;parent-&gt;name_space;</span>
+<span class="lineNum">     803 </span>            : 
+<span class="lineNum">     804 </span><span class="lineCov">         12 :         res = g_strdup_printf (&quot;%s%s%s:%s&quot;, nspace, *nspace ? &quot;.&quot; : &quot;&quot;,</span>
+<span class="lineNum">     805 </span><span class="lineCov">          6 :                                                    field-&gt;parent-&gt;name, mono_field_get_name (field));</span>
+<span class="lineNum">     806 </span>            : 
+<span class="lineNum">     807 </span><span class="lineCov">          6 :         return res;</span>
+<span class="lineNum">     808 </span>            : }
+<a name="809"><span class="lineNum">     809 </span>            : </a>
+<span class="lineNum">     810 </span>            : char *
+<span class="lineNum">     811 </span>            : mono_method_get_name_full (MonoMethod *method, gboolean signature, gboolean ret, MonoTypeNameFormat format)
+<span class="lineNum">     812 </span>            : {
+<span class="lineNum">     813 </span>            :         char *res;
+<span class="lineNum">     814 </span>            :         char wrapper [64];
+<span class="lineNum">     815 </span>            :         char *klass_desc;
+<span class="lineNum">     816 </span><span class="lineCov">   19543396 :         char *inst_desc = NULL;</span>
+<span class="lineNum">     817 </span>            : 
+<span class="lineNum">     818 </span><span class="lineCov">   19543396 :         if (format == MONO_TYPE_NAME_FORMAT_IL)</span>
+<span class="lineNum">     819 </span><span class="lineCov">   19541344 :                 klass_desc = mono_type_full_name (&amp;method-&gt;klass-&gt;byval_arg);</span>
+<span class="lineNum">     820 </span>            :         else
+<span class="lineNum">     821 </span><span class="lineCov">       2054 :                 klass_desc = mono_type_get_name_full (&amp;method-&gt;klass-&gt;byval_arg, format);</span>
+<span class="lineNum">     822 </span>            : 
+<span class="lineNum">     823 </span><span class="lineCov">   23974538 :         if (method-&gt;is_inflated &amp;&amp; ((MonoMethodInflated*)method)-&gt;context.method_inst) {</span>
+<span class="lineNum">     824 </span><span class="lineCov">     539395 :                 GString *str = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     825 </span><span class="lineCov">     539395 :                 if (format == MONO_TYPE_NAME_FORMAT_IL)</span>
+<span class="lineNum">     826 </span><span class="lineCov">     539395 :                         g_string_append (str, &quot;&lt;&quot;);</span>
+<span class="lineNum">     827 </span>            :                 else
+<span class="lineNum">     828 </span><span class="lineNoCov">          0 :                         g_string_append (str, &quot;[&quot;);</span>
+<span class="lineNum">     829 </span><span class="lineCov">     539395 :                 ginst_get_desc (str, ((MonoMethodInflated*)method)-&gt;context.method_inst);</span>
+<span class="lineNum">     830 </span><span class="lineCov">     539395 :                 if (format == MONO_TYPE_NAME_FORMAT_IL)</span>
+<span class="lineNum">     831 </span><span class="lineCov">     539395 :                         g_string_append_c (str, '&gt;');</span>
+<span class="lineNum">     832 </span>            :                 else
+<span class="lineNum">     833 </span><span class="lineNoCov">          0 :                         g_string_append_c (str, ']');</span>
+<span class="lineNum">     834 </span>            : 
+<span class="lineNum">     835 </span><span class="lineCov">     539395 :                 inst_desc = str-&gt;str;</span>
+<span class="lineNum">     836 </span><span class="lineCov">     539395 :                 g_string_free (str, FALSE);</span>
+<span class="lineNum">     837 </span><span class="lineCov">   19543438 :         } else if (method-&gt;is_generic) {</span>
+<span class="lineNum">     838 </span><span class="lineNoCov">          0 :                 MonoGenericContainer *container = mono_method_get_generic_container (method);</span>
+<span class="lineNum">     839 </span>            : 
+<span class="lineNum">     840 </span><span class="lineNoCov">          0 :                 GString *str = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     841 </span><span class="lineNoCov">          0 :                 if (format == MONO_TYPE_NAME_FORMAT_IL)</span>
+<span class="lineNum">     842 </span><span class="lineNoCov">          0 :                         g_string_append (str, &quot;&lt;&quot;);</span>
+<span class="lineNum">     843 </span>            :                 else
+<span class="lineNum">     844 </span><span class="lineNoCov">          0 :                         g_string_append (str, &quot;[&quot;);</span>
+<span class="lineNum">     845 </span><span class="lineNoCov">          0 :                 ginst_get_desc (str, container-&gt;context.method_inst);</span>
+<span class="lineNum">     846 </span><span class="lineNoCov">          0 :                 if (format == MONO_TYPE_NAME_FORMAT_IL)</span>
+<span class="lineNum">     847 </span><span class="lineNoCov">          0 :                         g_string_append_c (str, '&gt;');</span>
+<span class="lineNum">     848 </span>            :                 else
+<span class="lineNum">     849 </span><span class="lineNoCov">          0 :                         g_string_append_c (str, ']');</span>
+<span class="lineNum">     850 </span>            : 
+<span class="lineNum">     851 </span><span class="lineNoCov">          0 :                 inst_desc = str-&gt;str;</span>
+<span class="lineNum">     852 </span><span class="lineNoCov">          0 :                 g_string_free (str, FALSE);</span>
+<span class="lineNum">     853 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     854 </span>            : 
+<span class="lineNum">     855 </span><span class="lineCov">   19543443 :         if (method-&gt;wrapper_type != MONO_WRAPPER_NONE)</span>
+<span class="lineNum">     856 </span><span class="lineCov">    2346781 :                 sprintf (wrapper, &quot;(wrapper %s) &quot;, wrapper_type_to_str (method-&gt;wrapper_type));</span>
+<span class="lineNum">     857 </span>            :         else
+<span class="lineNum">     858 </span><span class="lineCov">   17196675 :                 strcpy (wrapper, &quot;&quot;);</span>
+<span class="lineNum">     859 </span>            : 
+<span class="lineNum">     860 </span><span class="lineCov">   19543426 :         if (signature) {</span>
+<span class="lineNum">     861 </span><span class="lineCov">   19289417 :                 char *tmpsig = mono_signature_get_desc (mono_method_signature (method), TRUE);</span>
+<span class="lineNum">     862 </span>            : 
+<span class="lineNum">     863 </span><span class="lineCov">   19289417 :                 if (method-&gt;wrapper_type != MONO_WRAPPER_NONE)</span>
+<span class="lineNum">     864 </span><span class="lineCov">    2341155 :                         sprintf (wrapper, &quot;(wrapper %s) &quot;, wrapper_type_to_str (method-&gt;wrapper_type));</span>
+<span class="lineNum">     865 </span>            :                 else
+<span class="lineNum">     866 </span><span class="lineCov">   16948258 :                         strcpy (wrapper, &quot;&quot;);</span>
+<span class="lineNum">     867 </span><span class="lineCov">   19289412 :                 if (ret) {</span>
+<span class="lineNum">     868 </span><span class="lineCov">     433800 :                         char *ret_str = mono_type_full_name (mono_method_signature (method)-&gt;ret);</span>
+<span class="lineNum">     869 </span><span class="lineCov">     867596 :                         res = g_strdup_printf (&quot;%s%s %s:%s%s (%s)&quot;, wrapper, ret_str, klass_desc,</span>
+<span class="lineNum">     870 </span><span class="lineCov">    1301396 :                                                                    method-&gt;name, inst_desc ? inst_desc : &quot;&quot;, tmpsig);</span>
+<span class="lineNum">     871 </span><span class="lineCov">     433796 :                         g_free (ret_str);</span>
+<span class="lineNum">     872 </span><span class="lineCov">     433796 :                 } else {</span>
+<span class="lineNum">     873 </span><span class="lineCov">   37711216 :                         res = g_strdup_printf (&quot;%s%s:%s%s (%s)&quot;, wrapper, klass_desc,</span>
+<span class="lineNum">     874 </span><span class="lineCov">   56566823 :                                                                    method-&gt;name, inst_desc ? inst_desc : &quot;&quot;, tmpsig);</span>
+<span class="lineNum">     875 </span>            :                 }
+<span class="lineNum">     876 </span><span class="lineCov">   19289368 :                 g_free (tmpsig);</span>
+<span class="lineNum">     877 </span><span class="lineCov">   19289368 :         } else {</span>
+<span class="lineNum">     878 </span><span class="lineCov">     508100 :                 res = g_strdup_printf (&quot;%s%s:%s%s&quot;, wrapper, klass_desc,</span>
+<span class="lineNum">     879 </span><span class="lineCov">     762150 :                                                            method-&gt;name, inst_desc ? inst_desc : &quot;&quot;);</span>
+<span class="lineNum">     880 </span>            :         }
+<span class="lineNum">     881 </span>            : 
+<span class="lineNum">     882 </span><span class="lineCov">   19543413 :         g_free (klass_desc);</span>
+<span class="lineNum">     883 </span><span class="lineCov">   19543413 :         g_free (inst_desc);</span>
+<span class="lineNum">     884 </span>            : 
+<span class="lineNum">     885 </span><span class="lineCov">   19543413 :         return res;</span>
+<span class="lineNum">     886 </span>            : }
+<a name="887"><span class="lineNum">     887 </span>            : </a>
+<span class="lineNum">     888 </span>            : char *
+<span class="lineNum">     889 </span>            : mono_method_full_name (MonoMethod *method, gboolean signature)
+<span class="lineNum">     890 </span>            : {
+<span class="lineNum">     891 </span><span class="lineCov">   19107580 :         return mono_method_get_name_full (method, signature, FALSE, MONO_TYPE_NAME_FORMAT_IL);</span>
+<span class="lineNum">     892 </span>            : }
+<a name="893"><span class="lineNum">     893 </span>            : </a>
+<span class="lineNum">     894 </span>            : char *
+<span class="lineNum">     895 </span>            : mono_method_get_full_name (MonoMethod *method)
+<span class="lineNum">     896 </span>            : {
+<span class="lineNum">     897 </span><span class="lineCov">     433794 :         return mono_method_get_name_full (method, TRUE, TRUE, MONO_TYPE_NAME_FORMAT_IL);</span>
+<span class="lineNum">     898 </span>            : }
+<a name="899"><span class="lineNum">     899 </span>            : </a>
+<span class="lineNum">     900 </span>            : static const char*
+<span class="lineNum">     901 </span>            : print_name_space (MonoClass *klass)
+<span class="lineNum">     902 </span>            : {
+<span class="lineNum">     903 </span><span class="lineNoCov">          0 :         if (klass-&gt;nested_in) {</span>
+<span class="lineNum">     904 </span><span class="lineNoCov">          0 :                 print_name_space (klass-&gt;nested_in);</span>
+<span class="lineNum">     905 </span><span class="lineNoCov">          0 :                 g_print (&quot;%s&quot;, klass-&gt;nested_in-&gt;name);</span>
+<span class="lineNum">     906 </span><span class="lineNoCov">          0 :                 return &quot;/&quot;;</span>
+<span class="lineNum">     907 </span>            :         }
+<span class="lineNum">     908 </span><span class="lineNoCov">          0 :         if (klass-&gt;name_space [0]) {</span>
+<span class="lineNum">     909 </span><span class="lineNoCov">          0 :                 g_print (&quot;%s&quot;, klass-&gt;name_space);</span>
+<span class="lineNum">     910 </span><span class="lineNoCov">          0 :                 return &quot;.&quot;;</span>
+<span class="lineNum">     911 </span>            :         }
+<span class="lineNum">     912 </span><span class="lineNoCov">          0 :         return &quot;&quot;;</span>
+<span class="lineNum">     913 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     914 </span>            : 
+<span class="lineNum">     915 </span>            : /**
+<span class="lineNum">     916 </span>            :  * mono_object_describe:
+<span class="lineNum">     917 </span>            :  *
+<span class="lineNum">     918 </span>            :  * Prints to stdout a small description of the object @obj.
+<span class="lineNum">     919 </span>            :  * For use in a debugger.
+<a name="920"><span class="lineNum">     920 </span>            :  */</a>
+<span class="lineNum">     921 </span>            : void
+<span class="lineNum">     922 </span>            : mono_object_describe (MonoObject *obj)
+<span class="lineNum">     923 </span>            : {
+<span class="lineNum">     924 </span>            :         MonoError error;
+<span class="lineNum">     925 </span>            :         MonoClass* klass;
+<span class="lineNum">     926 </span>            :         const char* sep;
+<span class="lineNum">     927 </span><span class="lineNoCov">          0 :         if (!obj) {</span>
+<span class="lineNum">     928 </span><span class="lineNoCov">          0 :                 g_print (&quot;(null)\n&quot;);</span>
+<span class="lineNum">     929 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     930 </span>            :         }
+<span class="lineNum">     931 </span><span class="lineNoCov">          0 :         klass = mono_object_class (obj);</span>
+<span class="lineNum">     932 </span><span class="lineNoCov">          0 :         if (klass == mono_defaults.string_class) {</span>
+<span class="lineNum">     933 </span><span class="lineNoCov">          0 :                 char *utf8 = mono_string_to_utf8_checked ((MonoString*)obj, &amp;error);</span>
+<span class="lineNum">     934 </span><span class="lineNoCov">          0 :                 mono_error_cleanup (&amp;error); /* FIXME don't swallow the error */</span>
+<span class="lineNum">     935 </span><span class="lineNoCov">          0 :                 if (utf8 &amp;&amp; strlen (utf8) &gt; 60) {</span>
+<span class="lineNum">     936 </span><span class="lineNoCov">          0 :                         utf8 [57] = '.';</span>
+<span class="lineNum">     937 </span><span class="lineNoCov">          0 :                         utf8 [58] = '.';</span>
+<span class="lineNum">     938 </span><span class="lineNoCov">          0 :                         utf8 [59] = '.';</span>
+<span class="lineNum">     939 </span><span class="lineNoCov">          0 :                         utf8 [60] = 0;</span>
+<span class="lineNum">     940 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     941 </span><span class="lineNoCov">          0 :                 if (utf8) {</span>
+<span class="lineNum">     942 </span><span class="lineNoCov">          0 :                         g_print (&quot;String at %p, length: %d, '%s'\n&quot;, obj, mono_string_length ((MonoString*) obj), utf8);</span>
+<span class="lineNum">     943 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     944 </span><span class="lineNoCov">          0 :                         g_print (&quot;String at %p, length: %d, unable to decode UTF16\n&quot;, obj, mono_string_length ((MonoString*) obj));</span>
+<span class="lineNum">     945 </span>            :                 }
+<span class="lineNum">     946 </span><span class="lineNoCov">          0 :                 g_free (utf8);</span>
+<span class="lineNum">     947 </span><span class="lineNoCov">          0 :         } else if (klass-&gt;rank) {</span>
+<span class="lineNum">     948 </span><span class="lineNoCov">          0 :                 MonoArray *array = (MonoArray*)obj;</span>
+<span class="lineNum">     949 </span><span class="lineNoCov">          0 :                 sep = print_name_space (klass);</span>
+<span class="lineNum">     950 </span><span class="lineNoCov">          0 :                 g_print (&quot;%s%s&quot;, sep, klass-&gt;name);</span>
+<span class="lineNum">     951 </span><span class="lineNoCov">          0 :                 g_print (&quot; at %p, rank: %d, length: %d\n&quot;, obj, klass-&gt;rank, (int)mono_array_length (array));</span>
+<span class="lineNum">     952 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     953 </span><span class="lineNoCov">          0 :                 sep = print_name_space (klass);</span>
+<span class="lineNum">     954 </span><span class="lineNoCov">          0 :                 g_print (&quot;%s%s&quot;, sep, klass-&gt;name);</span>
+<span class="lineNum">     955 </span><span class="lineNoCov">          0 :                 g_print (&quot; object at %p (klass: %p)\n&quot;, obj, klass);</span>
+<span class="lineNum">     956 </span>            :         }
+<span class="lineNum">     957 </span>            : 
+<span class="lineNum">     958 </span><span class="lineNoCov">          0 : }</span>
+<a name="959"><span class="lineNum">     959 </span>            : </a>
+<span class="lineNum">     960 </span>            : static void
+<span class="lineNum">     961 </span>            : print_field_value (const char *field_ptr, MonoClassField *field, int type_offset)
+<span class="lineNum">     962 </span>            : {
+<span class="lineNum">     963 </span>            :         MonoType *type;
+<span class="lineNum">     964 </span><span class="lineNoCov">          0 :         g_print (&quot;At %p (ofs: %2d) %s: &quot;, field_ptr, field-&gt;offset + type_offset, mono_field_get_name (field));</span>
+<span class="lineNum">     965 </span><span class="lineNoCov">          0 :         type = mono_type_get_underlying_type (field-&gt;type);</span>
+<span class="lineNum">     966 </span>            : 
+<span class="lineNum">     967 </span><span class="lineNoCov">          0 :         switch (type-&gt;type) {</span>
+<span class="lineNum">     968 </span>            :         case MONO_TYPE_I:
+<span class="lineNum">     969 </span>            :         case MONO_TYPE_U:
+<span class="lineNum">     970 </span>            :         case MONO_TYPE_PTR:
+<span class="lineNum">     971 </span>            :         case MONO_TYPE_FNPTR:
+<span class="lineNum">     972 </span><span class="lineNoCov">          0 :                 g_print (&quot;%p\n&quot;, *(const void**)field_ptr);</span>
+<span class="lineNum">     973 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     974 </span>            :         case MONO_TYPE_STRING:
+<span class="lineNum">     975 </span>            :         case MONO_TYPE_SZARRAY:
+<span class="lineNum">     976 </span>            :         case MONO_TYPE_CLASS:
+<span class="lineNum">     977 </span>            :         case MONO_TYPE_OBJECT:
+<span class="lineNum">     978 </span>            :         case MONO_TYPE_ARRAY:
+<span class="lineNum">     979 </span><span class="lineNoCov">          0 :                 mono_object_describe (*(MonoObject**)field_ptr);</span>
+<span class="lineNum">     980 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     981 </span>            :         case MONO_TYPE_GENERICINST:
+<span class="lineNum">     982 </span><span class="lineNoCov">          0 :                 if (!mono_type_generic_inst_is_valuetype (type)) {</span>
+<span class="lineNum">     983 </span><span class="lineNoCov">          0 :                         mono_object_describe (*(MonoObject**)field_ptr);</span>
+<span class="lineNum">     984 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     985 </span>            :                 } else {
+<span class="lineNum">     986 </span>            :                         /* fall through */
+<span class="lineNum">     987 </span>            :                 }
+<span class="lineNum">     988 </span>            :         case MONO_TYPE_VALUETYPE: {
+<span class="lineNum">     989 </span><span class="lineNoCov">          0 :                 MonoClass *k = mono_class_from_mono_type (type);</span>
+<span class="lineNum">     990 </span><span class="lineNoCov">          0 :                 g_print (&quot;%s ValueType (type: %p) at %p\n&quot;, k-&gt;name, k, field_ptr);</span>
+<span class="lineNum">     991 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     992 </span>            :         }
+<span class="lineNum">     993 </span>            :         case MONO_TYPE_I1:
+<span class="lineNum">     994 </span><span class="lineNoCov">          0 :                 g_print (&quot;%d\n&quot;, *(gint8*)field_ptr);</span>
+<span class="lineNum">     995 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     996 </span>            :         case MONO_TYPE_U1:
+<span class="lineNum">     997 </span><span class="lineNoCov">          0 :                 g_print (&quot;%d\n&quot;, *(guint8*)field_ptr);</span>
+<span class="lineNum">     998 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     999 </span>            :         case MONO_TYPE_I2:
+<span class="lineNum">    1000 </span><span class="lineNoCov">          0 :                 g_print (&quot;%d\n&quot;, *(gint16*)field_ptr);</span>
+<span class="lineNum">    1001 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1002 </span>            :         case MONO_TYPE_U2:
+<span class="lineNum">    1003 </span><span class="lineNoCov">          0 :                 g_print (&quot;%d\n&quot;, *(guint16*)field_ptr);</span>
+<span class="lineNum">    1004 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1005 </span>            :         case MONO_TYPE_I4:
+<span class="lineNum">    1006 </span><span class="lineNoCov">          0 :                 g_print (&quot;%d\n&quot;, *(gint32*)field_ptr);</span>
+<span class="lineNum">    1007 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1008 </span>            :         case MONO_TYPE_U4:
+<span class="lineNum">    1009 </span><span class="lineNoCov">          0 :                 g_print (&quot;%u\n&quot;, *(guint32*)field_ptr);</span>
+<span class="lineNum">    1010 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1011 </span>            :         case MONO_TYPE_I8:
+<span class="lineNum">    1012 </span><span class="lineNoCov">          0 :                 g_print (&quot;%lld\n&quot;, (long long int)*(gint64*)field_ptr);</span>
+<span class="lineNum">    1013 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1014 </span>            :         case MONO_TYPE_U8:
+<span class="lineNum">    1015 </span><span class="lineNoCov">          0 :                 g_print (&quot;%llu\n&quot;, (long long unsigned int)*(guint64*)field_ptr);</span>
+<span class="lineNum">    1016 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1017 </span>            :         case MONO_TYPE_R4:
+<span class="lineNum">    1018 </span><span class="lineNoCov">          0 :                 g_print (&quot;%f\n&quot;, *(gfloat*)field_ptr);</span>
+<span class="lineNum">    1019 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1020 </span>            :         case MONO_TYPE_R8:
+<span class="lineNum">    1021 </span><span class="lineNoCov">          0 :                 g_print (&quot;%f\n&quot;, *(gdouble*)field_ptr);</span>
+<span class="lineNum">    1022 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1023 </span>            :         case MONO_TYPE_BOOLEAN:
+<span class="lineNum">    1024 </span><span class="lineNoCov">          0 :                 g_print (&quot;%s (%d)\n&quot;, *(guint8*)field_ptr? &quot;True&quot;: &quot;False&quot;, *(guint8*)field_ptr);</span>
+<span class="lineNum">    1025 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1026 </span>            :         case MONO_TYPE_CHAR:
+<span class="lineNum">    1027 </span><span class="lineNoCov">          0 :                 g_print (&quot;'%c' (%d 0x%04x)\n&quot;, *(guint16*)field_ptr, *(guint16*)field_ptr, *(guint16*)field_ptr);</span>
+<span class="lineNum">    1028 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1029 </span>            :         default:
+<span class="lineNum">    1030 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">    1031 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">    1032 </span>            :         }
+<span class="lineNum">    1033 </span><span class="lineNoCov">          0 : }</span>
+<a name="1034"><span class="lineNum">    1034 </span>            : </a>
+<span class="lineNum">    1035 </span>            : static void
+<span class="lineNum">    1036 </span>            : objval_describe (MonoClass *klass, const char *addr)
+<span class="lineNum">    1037 </span>            : {
+<span class="lineNum">    1038 </span>            :         MonoClassField *field;
+<span class="lineNum">    1039 </span>            :         MonoClass *p;
+<span class="lineNum">    1040 </span>            :         const char *field_ptr;
+<span class="lineNum">    1041 </span><span class="lineNoCov">          0 :         gssize type_offset = 0;</span>
+<span class="lineNum">    1042 </span>            : 
+<span class="lineNum">    1043 </span><span class="lineNoCov">          0 :         if (klass-&gt;valuetype)</span>
+<span class="lineNum">    1044 </span><span class="lineNoCov">          0 :                 type_offset = -sizeof (MonoObject);</span>
+<span class="lineNum">    1045 </span>            : 
+<span class="lineNum">    1046 </span><span class="lineNoCov">          0 :         for (p = klass; p != NULL; p = p-&gt;parent) {</span>
+<span class="lineNum">    1047 </span><span class="lineNoCov">          0 :                 gpointer iter = NULL;</span>
+<span class="lineNum">    1048 </span><span class="lineNoCov">          0 :                 int printed_header = FALSE;</span>
+<span class="lineNum">    1049 </span><span class="lineNoCov">          0 :                 while ((field = mono_class_get_fields (p, &amp;iter))) {</span>
+<span class="lineNum">    1050 </span><span class="lineNoCov">          0 :                         if (field-&gt;type-&gt;attrs &amp; (FIELD_ATTRIBUTE_STATIC | FIELD_ATTRIBUTE_HAS_FIELD_RVA))</span>
+<span class="lineNum">    1051 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">    1052 </span>            : 
+<span class="lineNum">    1053 </span><span class="lineNoCov">          0 :                         if (p != klass &amp;&amp; !printed_header) {</span>
+<span class="lineNum">    1054 </span>            :                                 const char *sep;
+<span class="lineNum">    1055 </span><span class="lineNoCov">          0 :                                 g_print (&quot;In class &quot;);</span>
+<span class="lineNum">    1056 </span><span class="lineNoCov">          0 :                                 sep = print_name_space (p);</span>
+<span class="lineNum">    1057 </span><span class="lineNoCov">          0 :                                 g_print (&quot;%s%s:\n&quot;, sep, p-&gt;name);</span>
+<span class="lineNum">    1058 </span><span class="lineNoCov">          0 :                                 printed_header = TRUE;</span>
+<span class="lineNum">    1059 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1060 </span><span class="lineNoCov">          0 :                         field_ptr = (const char*)addr + field-&gt;offset + type_offset;</span>
+<span class="lineNum">    1061 </span>            : 
+<span class="lineNum">    1062 </span><span class="lineNoCov">          0 :                         print_field_value (field_ptr, field, type_offset);</span>
+<span class="lineNum">    1063 </span>            :                 }
+<span class="lineNum">    1064 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1065 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1066 </span>            : 
+<span class="lineNum">    1067 </span>            : /**
+<span class="lineNum">    1068 </span>            :  * mono_object_describe_fields:
+<span class="lineNum">    1069 </span>            :  *
+<span class="lineNum">    1070 </span>            :  * Prints to stdout a small description of each field of the object @obj.
+<span class="lineNum">    1071 </span>            :  * For use in a debugger.
+<a name="1072"><span class="lineNum">    1072 </span>            :  */</a>
+<span class="lineNum">    1073 </span>            : void
+<span class="lineNum">    1074 </span>            : mono_object_describe_fields (MonoObject *obj)
+<span class="lineNum">    1075 </span>            : {
+<span class="lineNum">    1076 </span><span class="lineNoCov">          0 :         MonoClass *klass = mono_object_class (obj);</span>
+<span class="lineNum">    1077 </span><span class="lineNoCov">          0 :         objval_describe (klass, (char*)obj);</span>
+<span class="lineNum">    1078 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1079 </span>            : 
+<span class="lineNum">    1080 </span>            : /**
+<span class="lineNum">    1081 </span>            :  * mono_value_describe_fields:
+<span class="lineNum">    1082 </span>            :  *
+<span class="lineNum">    1083 </span>            :  * Prints to stdout a small description of each field of the value type
+<span class="lineNum">    1084 </span>            :  * stored at @addr of type @klass.
+<span class="lineNum">    1085 </span>            :  * For use in a debugger.
+<a name="1086"><span class="lineNum">    1086 </span>            :  */</a>
+<span class="lineNum">    1087 </span>            : void
+<span class="lineNum">    1088 </span>            : mono_value_describe_fields (MonoClass* klass, const char* addr)
+<span class="lineNum">    1089 </span>            : {
+<span class="lineNum">    1090 </span><span class="lineNoCov">          0 :         objval_describe (klass, addr);</span>
+<span class="lineNum">    1091 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1092 </span>            : 
+<span class="lineNum">    1093 </span>            : /**
+<span class="lineNum">    1094 </span>            :  * mono_class_describe_statics:
+<span class="lineNum">    1095 </span>            :  *
+<span class="lineNum">    1096 </span>            :  * Prints to stdout a small description of each static field of the type @klass
+<span class="lineNum">    1097 </span>            :  * in the current application domain.
+<span class="lineNum">    1098 </span>            :  * For use in a debugger.
+<a name="1099"><span class="lineNum">    1099 </span>            :  */</a>
+<span class="lineNum">    1100 </span>            : void
+<span class="lineNum">    1101 </span>            : mono_class_describe_statics (MonoClass* klass)
+<span class="lineNum">    1102 </span>            : {
+<span class="lineNum">    1103 </span>            :         MonoError error;
+<span class="lineNum">    1104 </span>            :         MonoClassField *field;
+<span class="lineNum">    1105 </span>            :         MonoClass *p;
+<span class="lineNum">    1106 </span>            :         const char *field_ptr;
+<span class="lineNum">    1107 </span><span class="lineNoCov">          0 :         MonoVTable *vtable = mono_class_vtable_full (mono_domain_get (), klass, &amp;error);</span>
+<span class="lineNum">    1108 </span>            :         const char *addr;
+<span class="lineNum">    1109 </span>            : 
+<span class="lineNum">    1110 </span><span class="lineNoCov">          0 :         if (!vtable || !is_ok (&amp;error)) {</span>
+<span class="lineNum">    1111 </span><span class="lineNoCov">          0 :                 mono_error_cleanup (&amp;error);</span>
+<span class="lineNum">    1112 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1113 </span>            :         }
+<span class="lineNum">    1114 </span>            : 
+<span class="lineNum">    1115 </span><span class="lineNoCov">          0 :         if (!(addr = (const char *)mono_vtable_get_static_field_data (vtable)))</span>
+<span class="lineNum">    1116 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1117 </span>            : 
+<span class="lineNum">    1118 </span><span class="lineNoCov">          0 :         for (p = klass; p != NULL; p = p-&gt;parent) {</span>
+<span class="lineNum">    1119 </span><span class="lineNoCov">          0 :                 gpointer iter = NULL;</span>
+<span class="lineNum">    1120 </span><span class="lineNoCov">          0 :                 while ((field = mono_class_get_fields (p, &amp;iter))) {</span>
+<span class="lineNum">    1121 </span><span class="lineNoCov">          0 :                         if (field-&gt;type-&gt;attrs &amp; FIELD_ATTRIBUTE_LITERAL)</span>
+<span class="lineNum">    1122 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">    1123 </span><span class="lineNoCov">          0 :                         if (!(field-&gt;type-&gt;attrs &amp; (FIELD_ATTRIBUTE_STATIC | FIELD_ATTRIBUTE_HAS_FIELD_RVA)))</span>
+<span class="lineNum">    1124 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">    1125 </span>            : 
+<span class="lineNum">    1126 </span><span class="lineNoCov">          0 :                         field_ptr = (const char*)addr + field-&gt;offset;</span>
+<span class="lineNum">    1127 </span>            : 
+<span class="lineNum">    1128 </span><span class="lineNoCov">          0 :                         print_field_value (field_ptr, field, 0);</span>
+<span class="lineNum">    1129 </span>            :                 }
+<span class="lineNum">    1130 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1131 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1132 </span>            : 
+<span class="lineNum">    1133 </span>            : /**
+<span class="lineNum">    1134 </span>            :  * mono_print_method_code
+<span class="lineNum">    1135 </span>            :  * @MonoMethod: a pointer to the method
+<span class="lineNum">    1136 </span>            :  *
+<span class="lineNum">    1137 </span>            :  * This method is used from a debugger to print the code of the method.
+<span class="lineNum">    1138 </span>            :  *
+<span class="lineNum">    1139 </span>            :  * This prints the IL code of the method in the standard output.
+<a name="1140"><span class="lineNum">    1140 </span>            :  */</a>
+<span class="lineNum">    1141 </span>            : void
+<span class="lineNum">    1142 </span>            : mono_method_print_code (MonoMethod *method)
+<span class="lineNum">    1143 </span>            : {
+<span class="lineNum">    1144 </span>            :         MonoError error;
+<span class="lineNum">    1145 </span>            :         char *code;
+<span class="lineNum">    1146 </span><span class="lineNoCov">          0 :         MonoMethodHeader *header = mono_method_get_header_checked (method, &amp;error);</span>
+<span class="lineNum">    1147 </span><span class="lineNoCov">          0 :         if (!header) {</span>
+<span class="lineNum">    1148 </span><span class="lineNoCov">          0 :                 printf (&quot;METHOD HEADER NOT FOUND DUE TO: %s\n&quot;, mono_error_get_message (&amp;error));</span>
+<span class="lineNum">    1149 </span><span class="lineNoCov">          0 :                 mono_error_cleanup (&amp;error);</span>
+<span class="lineNum">    1150 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1151 </span>            :         }
+<span class="lineNum">    1152 </span><span class="lineNoCov">          0 :         code = mono_disasm_code (0, method, header-&gt;code, header-&gt;code + header-&gt;code_size);</span>
+<span class="lineNum">    1153 </span><span class="lineNoCov">          0 :         printf (&quot;CODE FOR %s:\n%s\n&quot;, mono_method_full_name (method, TRUE), code);</span>
+<span class="lineNum">    1154 </span><span class="lineNoCov">          0 :         g_free (code);</span>
+<span class="lineNum">    1155 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

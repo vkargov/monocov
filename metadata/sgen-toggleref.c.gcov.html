@@ -1,0 +1,296 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/sgen-toggleref.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - sgen-toggleref.c<span style="font-size: 80%;"> (source / <a href="sgen-toggleref.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">18</td>
+            <td class="headerCovTableEntry">97</td>
+            <td class="headerCovTableEntryLo">18.6 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntryLo">37.5 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-toggleref.c: toggleref support for sgen
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *  Rodrigo Kumpera (kumpera@gmail.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2011 Xamarin, Inc.
+<span class="lineNum">       8 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : #include &quot;sgen/sgen-gc.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;sgen-toggleref.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;sgen/sgen-client.h&quot;
+<span class="lineNum">      20 </span>            : 
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : /*only one of the two can be non null at a given time*/
+<span class="lineNum">      23 </span>            : typedef struct {
+<span class="lineNum">      24 </span>            :         GCObject *strong_ref;
+<span class="lineNum">      25 </span>            :         GCObject *weak_ref;
+<span class="lineNum">      26 </span>            : } MonoGCToggleRef;
+<span class="lineNum">      27 </span>            : 
+<span class="lineNum">      28 </span>            : static MonoToggleRefStatus (*toggleref_callback) (MonoObject *obj);
+<span class="lineNum">      29 </span>            : static MonoGCToggleRef *toggleref_array;
+<span class="lineNum">      30 </span>            : static int toggleref_array_size;
+<span class="lineNum">      31 </span>            : static int toggleref_array_capacity;
+<a name="32"><span class="lineNum">      32 </span>            : </a>
+<span class="lineNum">      33 </span>            : void
+<span class="lineNum">      34 </span>            : sgen_process_togglerefs (void)
+<span class="lineNum">      35 </span>            : {
+<span class="lineNum">      36 </span>            :         int i, w;
+<span class="lineNum">      37 </span><span class="lineCov">     193201 :         int toggle_ref_counts [3] = { 0, 0, 0 };</span>
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span><span class="lineCov">     386402 :         SGEN_LOG (4, &quot;Proccessing ToggleRefs %d&quot;, toggleref_array_size);</span>
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span><span class="lineCov">     386402 :         for (i = w = 0; i &lt; toggleref_array_size; ++i) {</span>
+<span class="lineNum">      42 </span>            :                 int res;
+<span class="lineNum">      43 </span><span class="lineNoCov">          0 :                 MonoGCToggleRef r = toggleref_array [i];</span>
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            :                 MonoObject *obj;
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span><span class="lineNoCov">          0 :                 if (r.strong_ref)</span>
+<span class="lineNum">      48 </span><span class="lineNoCov">          0 :                         obj = r.strong_ref;</span>
+<span class="lineNum">      49 </span><span class="lineNoCov">          0 :                 else if (r.weak_ref)</span>
+<span class="lineNum">      50 </span><span class="lineNoCov">          0 :                         obj = r.weak_ref;</span>
+<span class="lineNum">      51 </span>            :                 else
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span><span class="lineNoCov">          0 :                 res = toggleref_callback (obj);</span>
+<span class="lineNum">      55 </span><span class="lineNoCov">          0 :                 ++toggle_ref_counts [res];</span>
+<span class="lineNum">      56 </span><span class="lineNoCov">          0 :                 switch (res) {</span>
+<span class="lineNum">      57 </span>            :                 case MONO_TOGGLE_REF_DROP:
+<span class="lineNum">      58 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">      59 </span>            :                 case MONO_TOGGLE_REF_STRONG:
+<span class="lineNum">      60 </span><span class="lineNoCov">          0 :                         toggleref_array [w].strong_ref = obj;</span>
+<span class="lineNum">      61 </span><span class="lineNoCov">          0 :                         toggleref_array [w].weak_ref = NULL;</span>
+<span class="lineNum">      62 </span><span class="lineNoCov">          0 :                         ++w;</span>
+<span class="lineNum">      63 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">      64 </span>            :                 case MONO_TOGGLE_REF_WEAK:
+<span class="lineNum">      65 </span><span class="lineNoCov">          0 :                         toggleref_array [w].strong_ref = NULL;</span>
+<span class="lineNum">      66 </span><span class="lineNoCov">          0 :                         toggleref_array [w].weak_ref = obj;</span>
+<span class="lineNum">      67 </span><span class="lineNoCov">          0 :                         ++w;</span>
+<span class="lineNum">      68 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">      69 </span>            :                 default:
+<span class="lineNum">      70 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span><span class="lineCov">     193201 :         toggleref_array_size = w;</span>
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span><span class="lineCov">     386402 :         SGEN_LOG (4, &quot;Done Proccessing ToggleRefs dropped %d strong %d weak %d final size %d&quot;,</span>
+<span class="lineNum">      77 </span>            :                 toggle_ref_counts [MONO_TOGGLE_REF_DROP],
+<span class="lineNum">      78 </span>            :                 toggle_ref_counts [MONO_TOGGLE_REF_STRONG],
+<span class="lineNum">      79 </span>            :                 toggle_ref_counts [MONO_TOGGLE_REF_WEAK],
+<span class="lineNum">      80 </span>            :                 w);
+<a name="81"><span class="lineNum">      81 </span><span class="lineCov">     193201 : }</span></a>
+<span class="lineNum">      82 </span>            : 
+<span class="lineNum">      83 </span>            : void sgen_client_mark_togglerefs (char *start, char *end, ScanCopyContext ctx)
+<span class="lineNum">      84 </span>            : {
+<span class="lineNum">      85 </span><span class="lineCov">     189716 :         CopyOrMarkObjectFunc copy_func = ctx.ops-&gt;copy_or_mark_object;</span>
+<span class="lineNum">      86 </span><span class="lineCov">     189716 :         SgenGrayQueue *queue = ctx.queue;</span>
+<span class="lineNum">      87 </span>            :         int i;
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span><span class="lineCov">     379432 :         SGEN_LOG (4, &quot;Marking ToggleRefs %d&quot;, toggleref_array_size);</span>
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span><span class="lineCov">     379432 :         for (i = 0; i &lt; toggleref_array_size; ++i) {</span>
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :                 if (toggleref_array [i].strong_ref) {</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :                         GCObject *object = toggleref_array [i].strong_ref;</span>
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 :                         if ((char*)object &gt;= start &amp;&amp; (char*)object &lt; end) {</span>
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :                                 SGEN_LOG (6, &quot;\tcopying strong slot %d&quot;, i);</span>
+<span class="lineNum">      96 </span><span class="lineNoCov">          0 :                                 copy_func (&amp;toggleref_array [i].strong_ref, queue);</span>
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">      98 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">      99 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     100 </span><span class="lineCov">     189716 :         sgen_drain_gray_stack (ctx);</span>
+<a name="101"><span class="lineNum">     101 </span><span class="lineCov">     189716 : }</span></a>
+<span class="lineNum">     102 </span>            : 
+<span class="lineNum">     103 </span>            : void sgen_client_clear_togglerefs (char *start, char *end, ScanCopyContext ctx)
+<span class="lineNum">     104 </span>            : {
+<span class="lineNum">     105 </span><span class="lineCov">     189716 :         CopyOrMarkObjectFunc copy_func = ctx.ops-&gt;copy_or_mark_object;</span>
+<span class="lineNum">     106 </span><span class="lineCov">     189716 :         SgenGrayQueue *queue = ctx.queue;</span>
+<span class="lineNum">     107 </span>            :         int i;
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span><span class="lineCov">     379432 :         SGEN_LOG (4, &quot;Clearing ToggleRefs %d&quot;, toggleref_array_size);</span>
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span><span class="lineCov">     379432 :         for (i = 0; i &lt; toggleref_array_size; ++i) {</span>
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :                 if (toggleref_array [i].weak_ref) {</span>
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :                         GCObject *object = toggleref_array [i].weak_ref;</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :                         if ((char*)object &gt;= start &amp;&amp; (char*)object &lt; end) {</span>
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :                                 if (sgen_gc_is_object_ready_for_finalization (object)) {</span>
+<span class="lineNum">     117 </span><span class="lineNoCov">          0 :                                         SGEN_LOG (6, &quot;\tcleaning weak slot %d&quot;, i);</span>
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :                                         toggleref_array [i].weak_ref = NULL; /* We defer compaction to only happen on the callback step. */</span>
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :                                 } else {</span>
+<span class="lineNum">     120 </span><span class="lineNoCov">          0 :                                         SGEN_LOG (6, &quot;\tkeeping weak slot %d&quot;, i);</span>
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :                                         copy_func (&amp;toggleref_array [i].weak_ref, queue);</span>
+<span class="lineNum">     122 </span>            :                                 }
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     126 </span><span class="lineCov">     189716 :         sgen_drain_gray_stack (ctx);</span>
+<span class="lineNum">     127 </span><span class="lineCov">     189716 : }</span>
+<a name="128"><span class="lineNum">     128 </span>            : </a>
+<span class="lineNum">     129 </span>            : static void
+<span class="lineNum">     130 </span>            : ensure_toggleref_capacity (int capacity)
+<span class="lineNum">     131 </span>            : {
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :         if (!toggleref_array) {</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :                 toggleref_array_capacity = 32;</span>
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :                 toggleref_array = (MonoGCToggleRef *)sgen_alloc_internal_dynamic (</span>
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :                         toggleref_array_capacity * sizeof (MonoGCToggleRef),</span>
+<span class="lineNum">     136 </span>            :                         INTERNAL_MEM_TOGGLEREF_DATA,
+<span class="lineNum">     137 </span>            :                         TRUE);
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :         if (toggleref_array_size + capacity &gt;= toggleref_array_capacity) {</span>
+<span class="lineNum">     140 </span>            :                 MonoGCToggleRef *tmp;
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :                 int old_capacity = toggleref_array_capacity;</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                 while (toggleref_array_capacity &lt; toggleref_array_size + capacity)</span>
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :                         toggleref_array_capacity *= 2;</span>
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :                 tmp = (MonoGCToggleRef *)sgen_alloc_internal_dynamic (</span>
+<span class="lineNum">     146 </span><span class="lineNoCov">          0 :                         toggleref_array_capacity * sizeof (MonoGCToggleRef),</span>
+<span class="lineNum">     147 </span>            :                         INTERNAL_MEM_TOGGLEREF_DATA,
+<span class="lineNum">     148 </span>            :                         TRUE);
+<span class="lineNum">     149 </span>            : 
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :                 memcpy (tmp, toggleref_array, toggleref_array_size * sizeof (MonoGCToggleRef));</span>
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :                 sgen_free_internal_dynamic (toggleref_array, old_capacity * sizeof (MonoGCToggleRef), INTERNAL_MEM_TOGGLEREF_DATA);</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 :                 toggleref_array = tmp;</span>
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     156 </span>            : 
+<span class="lineNum">     157 </span>            : /**
+<span class="lineNum">     158 </span>            :  * mono_gc_toggleref_add:
+<span class="lineNum">     159 </span>            :  * @object object to register for toggleref processing
+<span class="lineNum">     160 </span>            :  * @strong_ref if true the object is registered with a strong ref, a weak one otherwise
+<span class="lineNum">     161 </span>            :  *
+<span class="lineNum">     162 </span>            :  * Register a given object for toggleref processing. It will be stored internally and the toggleref callback will be called
+<span class="lineNum">     163 </span>            :  * on it until it returns MONO_TOGGLE_REF_DROP or is collected.
+<a name="164"><span class="lineNum">     164 </span>            : */</a>
+<span class="lineNum">     165 </span>            : void
+<span class="lineNum">     166 </span>            : mono_gc_toggleref_add (MonoObject *object, mono_bool strong_ref)
+<span class="lineNum">     167 </span>            : {
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :         if (!toggleref_callback)</span>
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     170 </span>            : 
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :         SGEN_LOG (4, &quot;Adding toggleref %p %d&quot;, object, strong_ref);</span>
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :         sgen_gc_lock ();</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :         ensure_toggleref_capacity (1);</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :         toggleref_array [toggleref_array_size].strong_ref = strong_ref ? object : NULL;</span>
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :         toggleref_array [toggleref_array_size].weak_ref = strong_ref ? NULL : object;</span>
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 :         ++toggleref_array_size;</span>
+<span class="lineNum">     179 </span>            : 
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :         sgen_gc_unlock ();</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span>            : /**
+<span class="lineNum">     184 </span>            :  * mono_gc_toggleref_register_callback:
+<span class="lineNum">     185 </span>            :  * @callback callback used to determine the new state of the given object.
+<span class="lineNum">     186 </span>            :  *
+<span class="lineNum">     187 </span>            :  * The callback must decide the status of a given object. It must return one of the values in the MONO_TOGGLE_REF_ enum.
+<span class="lineNum">     188 </span>            :  * This function is called with the world running but with the GC locked. This means that you can do everything that doesn't
+<span class="lineNum">     189 </span>            :  * require GC interaction. This includes, but not limited to, allocating objects, (de)registering for finalization, manipulating
+<span class="lineNum">     190 </span>            :  *gchandles, storing to reference fields or interacting with other threads that might perform such operations.
+<a name="191"><span class="lineNum">     191 </span>            :  */</a>
+<span class="lineNum">     192 </span>            : void
+<span class="lineNum">     193 </span>            : mono_gc_toggleref_register_callback (MonoToggleRefStatus (*proccess_toggleref) (MonoObject *obj))
+<span class="lineNum">     194 </span>            : {
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :         toggleref_callback = proccess_toggleref;</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 : }</span>
+<a name="197"><span class="lineNum">     197 </span>            : </a>
+<span class="lineNum">     198 </span>            : static MonoToggleRefStatus
+<span class="lineNum">     199 </span>            : test_toggleref_callback (MonoObject *obj)
+<span class="lineNum">     200 </span>            : {
+<span class="lineNum">     201 </span>            :         static MonoClassField *mono_toggleref_test_field;
+<span class="lineNum">     202 </span><span class="lineNoCov">          0 :         MonoToggleRefStatus status = MONO_TOGGLE_REF_DROP;</span>
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :         if (!mono_toggleref_test_field) {</span>
+<span class="lineNum">     205 </span><span class="lineNoCov">          0 :                 mono_toggleref_test_field = mono_class_get_field_from_name (mono_object_get_class (obj), &quot;__test&quot;);</span>
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :                 g_assert (mono_toggleref_test_field);</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     208 </span>            : 
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :         mono_field_get_value (obj, mono_toggleref_test_field, &amp;status);</span>
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :         printf (&quot;toggleref-cb obj %d\n&quot;, status);</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :         return status;</span>
+<span class="lineNum">     212 </span>            : }
+<a name="213"><span class="lineNum">     213 </span>            : </a>
+<span class="lineNum">     214 </span>            : void
+<span class="lineNum">     215 </span>            : sgen_register_test_toggleref_callback (void)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :         toggleref_callback = test_toggleref_callback;</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     219 </span>            : 
+<span class="lineNum">     220 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

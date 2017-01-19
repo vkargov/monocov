@@ -1,0 +1,289 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-array-list.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-array-list.c<span style="font-size: 80%;"> (source / <a href="sgen-array-list.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">86</td>
+            <td class="headerCovTableEntry">95</td>
+            <td class="headerCovTableEntryHi">90.5 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntry">7</td>
+            <td class="headerCovTableEntryMed">85.7 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-array-list.c: A pointer array list that doesn't require reallocs
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright (C) 2016 Xamarin Inc
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * This library is free software; you can redistribute it and/or
+<span class="lineNum">       7 </span>            :  * modify it under the terms of the GNU Library General Public
+<span class="lineNum">       8 </span>            :  * License 2.0 as published by the Free Software Foundation;
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * This library is distributed in the hope that it will be useful,
+<span class="lineNum">      11 </span>            :  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+<span class="lineNum">      12 </span>            :  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+<span class="lineNum">      13 </span>            :  * Library General Public License for more details.
+<span class="lineNum">      14 </span>            :  *
+<span class="lineNum">      15 </span>            :  * You should have received a copy of the GNU Library General Public
+<span class="lineNum">      16 </span>            :  * License 2.0 along with this library; if not, write to the Free
+<span class="lineNum">      17 </span>            :  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+<span class="lineNum">      18 </span>            :  */
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #include &quot;mono/sgen/sgen-gc.h&quot;
+<span class="lineNum">      25 </span>            : #include &quot;mono/sgen/sgen-array-list.h&quot;
+<a name="26"><span class="lineNum">      26 </span>            : </a>
+<span class="lineNum">      27 </span>            : static void
+<span class="lineNum">      28 </span>            : sgen_array_list_grow (SgenArrayList *array, guint32 old_capacity)
+<span class="lineNum">      29 </span>            : {
+<span class="lineNum">      30 </span><span class="lineCov">      17034 :         const guint32 new_bucket = sgen_array_list_index_bucket (old_capacity);</span>
+<span class="lineNum">      31 </span><span class="lineCov">      17034 :         const guint32 growth = sgen_array_list_bucket_size (new_bucket);</span>
+<span class="lineNum">      32 </span><span class="lineCov">      17034 :         const guint32 new_capacity = old_capacity + growth;</span>
+<span class="lineNum">      33 </span><span class="lineCov">      17034 :         const guint32 new_bucket_size = sizeof (**array-&gt;entries) * growth;</span>
+<span class="lineNum">      34 </span>            :         gpointer *entries;
+<span class="lineNum">      35 </span><span class="lineCov">      17034 :         if (array-&gt;capacity &gt;= new_capacity)</span>
+<span class="lineNum">      36 </span><span class="lineCov">        353 :                 return;</span>
+<span class="lineNum">      37 </span><span class="lineCov">      16681 :         if (array-&gt;mem_type != -1)</span>
+<span class="lineNum">      38 </span><span class="lineCov">       7978 :                 entries = (gpointer*) sgen_alloc_internal_dynamic (new_bucket_size, array-&gt;mem_type, TRUE);</span>
+<span class="lineNum">      39 </span>            :         else
+<span class="lineNum">      40 </span><span class="lineCov">       8702 :                 entries = (gpointer*) g_malloc0 (new_bucket_size);</span>
+<span class="lineNum">      41 </span><span class="lineCov">      16680 :         if (array-&gt;bucket_alloc_callback)</span>
+<span class="lineNum">      42 </span><span class="lineCov">          6 :                 array-&gt;bucket_alloc_callback (entries, new_bucket_size, TRUE);</span>
+<span class="lineNum">      43 </span>            :         /*
+<span class="lineNum">      44 </span>            :          * The zeroing of the newly allocated bucket must be complete before storing
+<span class="lineNum">      45 </span>            :          * the new bucket pointer.
+<span class="lineNum">      46 </span>            :          */
+<span class="lineNum">      47 </span><span class="lineCov">      16681 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">      48 </span><span class="lineCov">      16681 :         if (InterlockedCompareExchangePointer ((volatile gpointer *)&amp;array-&gt;entries [new_bucket], entries, NULL) == NULL) {</span>
+<span class="lineNum">      49 </span>            :                 /*
+<span class="lineNum">      50 </span>            :                  * It must not be the case that we succeeded in setting the bucket
+<span class="lineNum">      51 </span>            :                  * pointer, while someone else succeeded in changing the capacity.
+<span class="lineNum">      52 </span>            :                  */
+<span class="lineNum">      53 </span><span class="lineCov">      16671 :                 if (InterlockedCompareExchange ((volatile gint32 *)&amp;array-&gt;capacity, new_capacity, old_capacity) != old_capacity)</span>
+<span class="lineNum">      54 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">      55 </span><span class="lineCov">      16671 :                 array-&gt;slot_hint = old_capacity;</span>
+<span class="lineNum">      56 </span><span class="lineCov">      16671 :                 return;</span>
+<span class="lineNum">      57 </span>            :         }
+<span class="lineNum">      58 </span>            :         /* Someone beat us to the allocation. */
+<span class="lineNum">      59 </span><span class="lineCov">         10 :         if (array-&gt;bucket_alloc_callback)</span>
+<span class="lineNum">      60 </span><span class="lineNoCov">          0 :                 array-&gt;bucket_alloc_callback (entries, new_bucket_size, FALSE);</span>
+<span class="lineNum">      61 </span><span class="lineCov">         10 :         if (array-&gt;mem_type != -1)</span>
+<span class="lineNum">      62 </span><span class="lineNoCov">          0 :                 sgen_free_internal_dynamic (entries, new_bucket_size, array-&gt;mem_type);</span>
+<span class="lineNum">      63 </span>            :         else
+<span class="lineNum">      64 </span><span class="lineCov">         10 :                 g_free (entries);</span>
+<span class="lineNum">      65 </span><span class="lineCov">      17034 : }</span>
+<a name="66"><span class="lineNum">      66 </span>            : </a>
+<span class="lineNum">      67 </span>            : static guint32
+<span class="lineNum">      68 </span>            : sgen_array_list_find_unset (SgenArrayList *array, guint32 capacity)
+<span class="lineNum">      69 </span>            : {
+<span class="lineNum">      70 </span><span class="lineCov">    3129315 :         if (!array-&gt;is_slot_set_func) {</span>
+<span class="lineNum">      71 </span><span class="lineCov">     652885 :                 guint32 next_slot = array-&gt;next_slot;</span>
+<span class="lineNum">      72 </span>            :                 /* We can't lookup empty slots, use next_slot */
+<span class="lineNum">      73 </span><span class="lineCov">     652885 :                 if (next_slot &lt; capacity)</span>
+<span class="lineNum">      74 </span><span class="lineCov">     649245 :                         return next_slot;</span>
+<span class="lineNum">      75 </span><span class="lineCov">       3640 :         } else {</span>
+<span class="lineNum">      76 </span><span class="lineCov">    2476447 :                 guint32 slot_hint = array-&gt;slot_hint;</span>
+<span class="lineNum">      77 </span>            :                 guint32 index;
+<span class="lineNum">      78 </span>            :                 volatile gpointer *slot;
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineCov">   16463745 :                 SGEN_ARRAY_LIST_FOREACH_SLOT_RANGE(array, slot_hint, capacity, slot, index) {</span>
+<span class="lineNum">      81 </span><span class="lineCov">    5483204 :                         if (!array-&gt;is_slot_set_func (slot))</span>
+<span class="lineNum">      82 </span><span class="lineCov">    2474035 :                                 return index;</span>
+<span class="lineNum">      83 </span><span class="lineCov">    3010819 :                 } SGEN_ARRAY_LIST_END_FOREACH_SLOT_RANGE;</span>
+<span class="lineNum">      84 </span>            : 
+<span class="lineNum">      85 </span><span class="lineCov">   17194551 :                 SGEN_ARRAY_LIST_FOREACH_SLOT_RANGE (array, 0, slot_hint, slot, index) {</span>
+<span class="lineNum">      86 </span><span class="lineCov">    5412926 :                         if (!array-&gt;is_slot_set_func (slot))</span>
+<span class="lineNum">      87 </span><span class="lineCov">        301 :                                 return index;</span>
+<span class="lineNum">      88 </span><span class="lineCov">    5920996 :                 } SGEN_ARRAY_LIST_END_FOREACH_SLOT_RANGE;</span>
+<span class="lineNum">      89 </span>            :         }
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span><span class="lineCov">       5976 :         return -1;</span>
+<span class="lineNum">      92 </span><span class="lineCov">    3129474 : }</span>
+<a name="93"><span class="lineNum">      93 </span>            : </a>
+<span class="lineNum">      94 </span>            : static void
+<span class="lineNum">      95 </span>            : sgen_array_list_update_next_slot (SgenArrayList *array, guint32 new_index)
+<span class="lineNum">      96 </span>            : {
+<span class="lineNum">      97 </span><span class="lineCov">    3123322 :         if (!array-&gt;set_slot_func) {</span>
+<span class="lineNum">      98 </span>            :                 /*
+<span class="lineNum">      99 </span>            :                  * If we don't have a custom setter it means we don't have thread
+<span class="lineNum">     100 </span>            :                  * safety requirements.
+<span class="lineNum">     101 </span>            :                  */
+<span class="lineNum">     102 </span><span class="lineCov">     649245 :                 if (new_index &gt;= array-&gt;next_slot)</span>
+<span class="lineNum">     103 </span><span class="lineCov">     649245 :                         array-&gt;next_slot = new_index + 1;</span>
+<span class="lineNum">     104 </span><span class="lineCov">     649245 :         } else {</span>
+<span class="lineNum">     105 </span>            :                 guint32 old_next_slot;
+<span class="lineNum">     106 </span>            :                 /* Thread safe update */
+<span class="lineNum">     107 </span><span class="lineCov">    2474086 :                 do {</span>
+<span class="lineNum">     108 </span><span class="lineCov">    2475449 :                         old_next_slot = array-&gt;next_slot;</span>
+<span class="lineNum">     109 </span><span class="lineCov">    2475449 :                         if (new_index &lt; old_next_slot)</span>
+<span class="lineNum">     110 </span><span class="lineCov">      56094 :                                 break;</span>
+<span class="lineNum">     111 </span><span class="lineCov">    4839133 :                 } while (InterlockedCompareExchange ((volatile gint32 *)&amp;array-&gt;next_slot, new_index + 1, old_next_slot) != old_next_slot);</span>
+<span class="lineNum">     112 </span>            :         }
+<span class="lineNum">     113 </span><span class="lineCov">    3123708 : }</span>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span>            : /*
+<span class="lineNum">     116 </span>            :  * Extension for the array list that allows fast allocation and index based fetching
+<span class="lineNum">     117 </span>            :  * of long lived memory of various sizes, without the need of realloc. Not thread safe.
+<a name="118"><span class="lineNum">     118 </span>            :  */</a>
+<span class="lineNum">     119 </span>            : guint32
+<span class="lineNum">     120 </span>            : sgen_array_list_alloc_block (SgenArrayList *array, guint32 slots_to_add)
+<span class="lineNum">     121 </span>            : {
+<span class="lineNum">     122 </span><span class="lineCov">       1047 :         guint32 new_index = array-&gt;next_slot;</span>
+<span class="lineNum">     123 </span><span class="lineCov">       1047 :         guint32 old_capacity = array-&gt;capacity;</span>
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span>            :         /* FIXME Don't allocate arrays that will be skipped */
+<span class="lineNum">     126 </span>            :         /* There are no empty arrays between next_slot and capacity because we allocate incrementally */
+<span class="lineNum">     127 </span><span class="lineCov">       4200 :         while ((old_capacity - new_index) &lt; slots_to_add) {</span>
+<span class="lineNum">     128 </span><span class="lineCov">       1053 :                 sgen_array_list_grow (array, old_capacity);</span>
+<span class="lineNum">     129 </span><span class="lineCov">       1053 :                 new_index = old_capacity;</span>
+<span class="lineNum">     130 </span><span class="lineCov">       1053 :                 old_capacity = array-&gt;capacity;</span>
+<span class="lineNum">     131 </span>            :         }
+<span class="lineNum">     132 </span>            : 
+<span class="lineNum">     133 </span><span class="lineCov">       3141 :         SGEN_ASSERT (0, sgen_array_list_index_bucket (new_index) == sgen_array_list_index_bucket (new_index + slots_to_add - 1),</span>
+<span class="lineNum">     134 </span>            :                         &quot;We failed to allocate a continuous block of slots&quot;);
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineCov">       1047 :         array-&gt;next_slot = new_index + slots_to_add;</span>
+<span class="lineNum">     137 </span>            :         /* The slot address will point to the allocated memory */
+<span class="lineNum">     138 </span><span class="lineCov">       1047 :         return new_index;</span>
+<span class="lineNum">     139 </span>            : }
+<a name="140"><span class="lineNum">     140 </span>            : </a>
+<span class="lineNum">     141 </span>            : guint32
+<span class="lineNum">     142 </span>            : sgen_array_list_add (SgenArrayList *array, gpointer ptr, int data, gboolean increase_size_before_set)
+<span class="lineNum">     143 </span>            : {
+<span class="lineNum">     144 </span>            :         guint32 index, capacity;
+<span class="lineNum">     145 </span>            :         volatile gpointer *slot;
+<span class="lineNum">     146 </span>            : 
+<span class="lineNum">     147 </span><span class="lineCov">    6237834 :         if (!array-&gt;capacity)</span>
+<span class="lineNum">     148 </span><span class="lineCov">      10004 :                 sgen_array_list_grow (array, 0);</span>
+<span class="lineNum">     149 </span>            : retry:
+<span class="lineNum">     150 </span><span class="lineCov">    3129483 :         capacity = array-&gt;capacity;</span>
+<span class="lineNum">     151 </span><span class="lineCov">    3129483 :         index = sgen_array_list_find_unset (array, capacity);</span>
+<span class="lineNum">     152 </span><span class="lineCov">    3129483 :         if (index == -1) {</span>
+<span class="lineNum">     153 </span><span class="lineCov">       5975 :                 sgen_array_list_grow (array, capacity);</span>
+<span class="lineNum">     154 </span><span class="lineCov">       5975 :                 goto retry;</span>
+<span class="lineNum">     155 </span>            :         }
+<span class="lineNum">     156 </span><span class="lineCov">    3123201 :         array-&gt;slot_hint = index;</span>
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span><span class="lineCov">    3123201 :         if (increase_size_before_set) {</span>
+<span class="lineNum">     159 </span><span class="lineCov">    2474048 :                 sgen_array_list_update_next_slot (array, index);</span>
+<span class="lineNum">     160 </span><span class="lineCov">    2474048 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     161 </span><span class="lineCov">    2474048 :         }</span>
+<span class="lineNum">     162 </span>            : 
+<span class="lineNum">     163 </span><span class="lineCov">    3123642 :         slot = sgen_array_list_get_slot (array, index);</span>
+<span class="lineNum">     164 </span><span class="lineCov">    3123642 :         if (array-&gt;set_slot_func) {</span>
+<span class="lineNum">     165 </span><span class="lineCov">    2474469 :                 if (!array-&gt;set_slot_func (slot, ptr, data))</span>
+<span class="lineNum">     166 </span><span class="lineCov">       4359 :                         goto retry;</span>
+<span class="lineNum">     167 </span><span class="lineCov">    2470153 :         } else {</span>
+<span class="lineNum">     168 </span><span class="lineCov">     649245 :                 *slot = ptr;</span>
+<span class="lineNum">     169 </span>            :         }
+<span class="lineNum">     170 </span>            : 
+<span class="lineNum">     171 </span><span class="lineCov">    3119398 :         if (!increase_size_before_set) {</span>
+<span class="lineNum">     172 </span><span class="lineCov">     649245 :                 mono_memory_write_barrier ();</span>
+<span class="lineNum">     173 </span><span class="lineCov">     649245 :                 sgen_array_list_update_next_slot (array, index);</span>
+<span class="lineNum">     174 </span><span class="lineCov">     649245 :         }</span>
+<span class="lineNum">     175 </span>            : 
+<span class="lineNum">     176 </span><span class="lineCov">    3119387 :         return index;</span>
+<span class="lineNum">     177 </span>            : }
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span>            : /*
+<span class="lineNum">     180 </span>            :  * Removes all NULL pointers from the array. Not thread safe
+<a name="181"><span class="lineNum">     181 </span>            :  */</a>
+<span class="lineNum">     182 </span>            : void
+<span class="lineNum">     183 </span>            : sgen_array_list_remove_nulls (SgenArrayList *array)
+<span class="lineNum">     184 </span>            : {
+<span class="lineNum">     185 </span><span class="lineCov">     179770 :         guint32 start = 0;</span>
+<span class="lineNum">     186 </span>            :         volatile gpointer *slot;
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span><span class="lineCov">   33168762 :         SGEN_ARRAY_LIST_FOREACH_SLOT (array, slot) {</span>
+<span class="lineNum">     189 </span><span class="lineCov">    7752341 :                 if (*slot)</span>
+<span class="lineNum">     190 </span><span class="lineCov">    7742218 :                         *sgen_array_list_get_slot (array, start++) = *slot;</span>
+<span class="lineNum">     191 </span><span class="lineCov">    8112438 :         } SGEN_ARRAY_LIST_END_FOREACH_SLOT;</span>
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span><span class="lineCov">     179770 :         mono_memory_write_barrier ();</span>
+<span class="lineNum">     194 </span><span class="lineCov">     179770 :         array-&gt;next_slot = start;</span>
+<span class="lineNum">     195 </span><span class="lineCov">     179770 : }</span>
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span>            : /*
+<span class="lineNum">     198 </span>            :  * Does a linear search through the pointer array to find `ptr`.  Returns the index if
+<span class="lineNum">     199 </span>            :  * found, otherwise (guint32)-1.
+<a name="200"><span class="lineNum">     200 </span>            :  */</a>
+<span class="lineNum">     201 </span>            : guint32
+<span class="lineNum">     202 </span>            : sgen_array_list_find (SgenArrayList *array, gpointer ptr)
+<span class="lineNum">     203 </span>            : {
+<span class="lineNum">     204 </span>            :         volatile gpointer *slot;
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :         SGEN_ARRAY_LIST_FOREACH_SLOT (array, slot) {</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                 if (*slot == ptr)</span>
+<span class="lineNum">     208 </span><span class="lineNoCov">          0 :                         return __index;</span>
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :         } SGEN_ARRAY_LIST_END_FOREACH_SLOT;</span>
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :         return (guint32)-1;</span>
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

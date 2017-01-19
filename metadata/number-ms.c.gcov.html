@@ -1,0 +1,406 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/number-ms.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - number-ms.c<span style="font-size: 80%;"> (source / <a href="number-ms.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">87</td>
+            <td class="headerCovTableEntry">106</td>
+            <td class="headerCovTableEntryMed">82.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * number-ms.c: System.Double, System.Single and System.Number runtime support
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Ludovic Henry (ludovic@xamarin.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2015 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : //
+<span class="lineNum">      12 </span>            : // Copyright (c) Microsoft. All rights reserved.
+<span class="lineNum">      13 </span>            : // Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      14 </span>            : //
+<span class="lineNum">      15 </span>            : // Files:
+<span class="lineNum">      16 </span>            : //  - src/classlibnative/bcltype/number.cpp
+<span class="lineNum">      17 </span>            : //
+<span class="lineNum">      18 </span>            : // Ported from C++ to C and adjusted to Mono runtime
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : #include &quot;number-ms.h&quot;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : static const guint64 rgval64Power10[] = {
+<span class="lineNum">      25 </span>            :         /* powers of 10 */
+<span class="lineNum">      26 </span>            :         0xa000000000000000LL,
+<span class="lineNum">      27 </span>            :         0xc800000000000000LL,
+<span class="lineNum">      28 </span>            :         0xfa00000000000000LL,
+<span class="lineNum">      29 </span>            :         0x9c40000000000000LL,
+<span class="lineNum">      30 </span>            :         0xc350000000000000LL,
+<span class="lineNum">      31 </span>            :         0xf424000000000000LL,
+<span class="lineNum">      32 </span>            :         0x9896800000000000LL,
+<span class="lineNum">      33 </span>            :         0xbebc200000000000LL,
+<span class="lineNum">      34 </span>            :         0xee6b280000000000LL,
+<span class="lineNum">      35 </span>            :         0x9502f90000000000LL,
+<span class="lineNum">      36 </span>            :         0xba43b74000000000LL,
+<span class="lineNum">      37 </span>            :         0xe8d4a51000000000LL,
+<span class="lineNum">      38 </span>            :         0x9184e72a00000000LL,
+<span class="lineNum">      39 </span>            :         0xb5e620f480000000LL,
+<span class="lineNum">      40 </span>            :         0xe35fa931a0000000LL,
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            :         /* powers of 0.1 */
+<span class="lineNum">      43 </span>            :         0xcccccccccccccccdLL,
+<span class="lineNum">      44 </span>            :         0xa3d70a3d70a3d70bLL,
+<span class="lineNum">      45 </span>            :         0x83126e978d4fdf3cLL,
+<span class="lineNum">      46 </span>            :         0xd1b71758e219652eLL,
+<span class="lineNum">      47 </span>            :         0xa7c5ac471b478425LL,
+<span class="lineNum">      48 </span>            :         0x8637bd05af6c69b7LL,
+<span class="lineNum">      49 </span>            :         0xd6bf94d5e57a42beLL,
+<span class="lineNum">      50 </span>            :         0xabcc77118461ceffLL,
+<span class="lineNum">      51 </span>            :         0x89705f4136b4a599LL,
+<span class="lineNum">      52 </span>            :         0xdbe6fecebdedd5c2LL,
+<span class="lineNum">      53 </span>            :         0xafebff0bcb24ab02LL,
+<span class="lineNum">      54 </span>            :         0x8cbccc096f5088cfLL,
+<span class="lineNum">      55 </span>            :         0xe12e13424bb40e18LL,
+<span class="lineNum">      56 </span>            :         0xb424dc35095cd813LL,
+<span class="lineNum">      57 </span>            :         0x901d7cf73ab0acdcLL,
+<span class="lineNum">      58 </span>            : };
+<span class="lineNum">      59 </span>            : 
+<span class="lineNum">      60 </span>            : static const gint8 rgexp64Power10[] = {
+<span class="lineNum">      61 </span>            :         /* exponents for both powers of 10 and 0.1 */
+<span class="lineNum">      62 </span>            :         4,
+<span class="lineNum">      63 </span>            :         7,
+<span class="lineNum">      64 </span>            :         10,
+<span class="lineNum">      65 </span>            :         14,
+<span class="lineNum">      66 </span>            :         17,
+<span class="lineNum">      67 </span>            :         20,
+<span class="lineNum">      68 </span>            :         24,
+<span class="lineNum">      69 </span>            :         27,
+<span class="lineNum">      70 </span>            :         30,
+<span class="lineNum">      71 </span>            :         34,
+<span class="lineNum">      72 </span>            :         37,
+<span class="lineNum">      73 </span>            :         40,
+<span class="lineNum">      74 </span>            :         44,
+<span class="lineNum">      75 </span>            :         47,
+<span class="lineNum">      76 </span>            :         50,
+<span class="lineNum">      77 </span>            : };
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            : static const guint64 rgval64Power10By16[] = {
+<span class="lineNum">      80 </span>            :         /* powers of 10^16 */
+<span class="lineNum">      81 </span>            :         0x8e1bc9bf04000000LL,
+<span class="lineNum">      82 </span>            :         0x9dc5ada82b70b59eLL,
+<span class="lineNum">      83 </span>            :         0xaf298d050e4395d6LL,
+<span class="lineNum">      84 </span>            :         0xc2781f49ffcfa6d4LL,
+<span class="lineNum">      85 </span>            :         0xd7e77a8f87daf7faLL,
+<span class="lineNum">      86 </span>            :         0xefb3ab16c59b14a0LL,
+<span class="lineNum">      87 </span>            :         0x850fadc09923329cLL,
+<span class="lineNum">      88 </span>            :         0x93ba47c980e98cdeLL,
+<span class="lineNum">      89 </span>            :         0xa402b9c5a8d3a6e6LL,
+<span class="lineNum">      90 </span>            :         0xb616a12b7fe617a8LL,
+<span class="lineNum">      91 </span>            :         0xca28a291859bbf90LL,
+<span class="lineNum">      92 </span>            :         0xe070f78d39275566LL,
+<span class="lineNum">      93 </span>            :         0xf92e0c3537826140LL,
+<span class="lineNum">      94 </span>            :         0x8a5296ffe33cc92cLL,
+<span class="lineNum">      95 </span>            :         0x9991a6f3d6bf1762LL,
+<span class="lineNum">      96 </span>            :         0xaa7eebfb9df9de8aLL,
+<span class="lineNum">      97 </span>            :         0xbd49d14aa79dbc7eLL,
+<span class="lineNum">      98 </span>            :         0xd226fc195c6a2f88LL,
+<span class="lineNum">      99 </span>            :         0xe950df20247c83f8LL,
+<span class="lineNum">     100 </span>            :         0x81842f29f2cce373LL,
+<span class="lineNum">     101 </span>            :         0x8fcac257558ee4e2LL,
+<span class="lineNum">     102 </span>            : 
+<span class="lineNum">     103 </span>            :         /* powers of 0.1^16 */
+<span class="lineNum">     104 </span>            :         0xe69594bec44de160LL,
+<span class="lineNum">     105 </span>            :         0xcfb11ead453994c3LL,
+<span class="lineNum">     106 </span>            :         0xbb127c53b17ec165LL,
+<span class="lineNum">     107 </span>            :         0xa87fea27a539e9b3LL,
+<span class="lineNum">     108 </span>            :         0x97c560ba6b0919b5LL,
+<span class="lineNum">     109 </span>            :         0x88b402f7fd7553abLL,
+<span class="lineNum">     110 </span>            :         0xf64335bcf065d3a0LL,
+<span class="lineNum">     111 </span>            :         0xddd0467c64bce4c4LL,
+<span class="lineNum">     112 </span>            :         0xc7caba6e7c5382edLL,
+<span class="lineNum">     113 </span>            :         0xb3f4e093db73a0b7LL,
+<span class="lineNum">     114 </span>            :         0xa21727db38cb0053LL,
+<span class="lineNum">     115 </span>            :         0x91ff83775423cc29LL,
+<span class="lineNum">     116 </span>            :         0x8380dea93da4bc82LL,
+<span class="lineNum">     117 </span>            :         0xece53cec4a314f00LL,
+<span class="lineNum">     118 </span>            :         0xd5605fcdcf32e217LL,
+<span class="lineNum">     119 </span>            :         0xc0314325637a1978LL,
+<span class="lineNum">     120 </span>            :         0xad1c8eab5ee43ba2LL,
+<span class="lineNum">     121 </span>            :         0x9becce62836ac5b0LL,
+<span class="lineNum">     122 </span>            :         0x8c71dcd9ba0b495cLL,
+<span class="lineNum">     123 </span>            :         0xfd00b89747823938LL,
+<span class="lineNum">     124 </span>            :         0xe3e27a444d8d991aLL,
+<span class="lineNum">     125 </span>            : };
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span>            : static const gint16 rgexp64Power10By16[] = {
+<span class="lineNum">     128 </span>            :         /* exponents for both powers of 10^16 and 0.1^16 */
+<span class="lineNum">     129 </span>            :         54,
+<span class="lineNum">     130 </span>            :         107,
+<span class="lineNum">     131 </span>            :         160,
+<span class="lineNum">     132 </span>            :         213,
+<span class="lineNum">     133 </span>            :         266,
+<span class="lineNum">     134 </span>            :         319,
+<span class="lineNum">     135 </span>            :         373,
+<span class="lineNum">     136 </span>            :         426,
+<span class="lineNum">     137 </span>            :         479,
+<span class="lineNum">     138 </span>            :         532,
+<span class="lineNum">     139 </span>            :         585,
+<span class="lineNum">     140 </span>            :         638,
+<span class="lineNum">     141 </span>            :         691,
+<span class="lineNum">     142 </span>            :         745,
+<span class="lineNum">     143 </span>            :         798,
+<span class="lineNum">     144 </span>            :         851,
+<span class="lineNum">     145 </span>            :         904,
+<span class="lineNum">     146 </span>            :         957,
+<span class="lineNum">     147 </span>            :         1010,
+<span class="lineNum">     148 </span>            :         1064,
+<span class="lineNum">     149 </span>            :         1117,
+<span class="lineNum">     150 </span>            : };
+<a name="151"><span class="lineNum">     151 </span>            : </a>
+<span class="lineNum">     152 </span>            : static inline guint64
+<span class="lineNum">     153 </span>            : digits_to_int (guint16 *p, int count)
+<span class="lineNum">     154 </span>            : {
+<span class="lineNum">     155 </span><span class="lineCov">        115 :         g_assert (1 &lt;= count &amp;&amp; count &lt;= 9);</span>
+<span class="lineNum">     156 </span><span class="lineCov">         72 :         guint8 i = 0;</span>
+<span class="lineNum">     157 </span><span class="lineCov">         72 :         guint64 res = 0;</span>
+<span class="lineNum">     158 </span><span class="lineCov">         72 :         switch (count) {</span>
+<span class="lineNum">     159 </span><span class="lineCov">          1 :         case 9: res += 100000000 * (p [i++] - '0');</span>
+<span class="lineNum">     160 </span><span class="lineCov">          2 :         case 8: res +=  10000000 * (p [i++] - '0');</span>
+<span class="lineNum">     161 </span><span class="lineCov">          2 :         case 7: res +=   1000000 * (p [i++] - '0');</span>
+<span class="lineNum">     162 </span><span class="lineCov">          2 :         case 6: res +=    100000 * (p [i++] - '0');</span>
+<span class="lineNum">     163 </span><span class="lineCov">          2 :         case 5: res +=     10000 * (p [i++] - '0');</span>
+<span class="lineNum">     164 </span><span class="lineCov">          5 :         case 4: res +=      1000 * (p [i++] - '0');</span>
+<span class="lineNum">     165 </span><span class="lineCov">          6 :         case 3: res +=       100 * (p [i++] - '0');</span>
+<span class="lineNum">     166 </span><span class="lineCov">          6 :         case 2: res +=        10 * (p [i++] - '0');</span>
+<span class="lineNum">     167 </span><span class="lineCov">         23 :         case 1: res +=         1 * (p [i++] - '0');</span>
+<span class="lineNum">     168 </span><span class="lineCov">         23 :         }</span>
+<span class="lineNum">     169 </span><span class="lineCov">         23 :         return res;</span>
+<span class="lineNum">     170 </span>            : }
+<a name="171"><span class="lineNum">     171 </span>            : </a>
+<span class="lineNum">     172 </span>            : static inline guint64
+<span class="lineNum">     173 </span>            : mul_64_lossy (guint64 a, guint64 b, gint *pexp)
+<span class="lineNum">     174 </span>            : {
+<span class="lineNum">     175 </span>            :         /* it's ok to losse some precision here - it will be called
+<span class="lineNum">     176 </span>            :          * at most twice during the conversion, so the error won't
+<span class="lineNum">     177 </span>            :          * propagate to any of the 53 significant bits of the result */
+<span class="lineNum">     178 </span><span class="lineCov">          6 :         guint64 val =</span>
+<span class="lineNum">     179 </span><span class="lineCov">          6 :                   ((((guint64) (guint32) (a &gt;&gt; 32)) * ((guint64) (guint32) (b &gt;&gt; 32)))      )</span>
+<span class="lineNum">     180 </span><span class="lineCov">          6 :                 + ((((guint64) (guint32) (a &gt;&gt; 32)) * ((guint64) (guint32) (b      ))) &gt;&gt; 32)</span>
+<span class="lineNum">     181 </span><span class="lineCov">          6 :                 + ((((guint64) (guint32) (a      )) * ((guint64) (guint32) (b &gt;&gt; 32))) &gt;&gt; 32);</span>
+<span class="lineNum">     182 </span>            : 
+<span class="lineNum">     183 </span>            :         /* normalize */
+<span class="lineNum">     184 </span><span class="lineCov">          6 :         if ((val &amp; 0x8000000000000000LL) == 0) {</span>
+<span class="lineNum">     185 </span><span class="lineCov">          3 :                 val &lt;&lt;= 1;</span>
+<span class="lineNum">     186 </span><span class="lineCov">          3 :                 *pexp -= 1;</span>
+<span class="lineNum">     187 </span><span class="lineCov">          3 :         }</span>
+<span class="lineNum">     188 </span>            : 
+<span class="lineNum">     189 </span><span class="lineCov">          6 :         return val;</span>
+<span class="lineNum">     190 </span>            : }
+<a name="191"><span class="lineNum">     191 </span>            : </a>
+<span class="lineNum">     192 </span>            : static inline void
+<span class="lineNum">     193 </span>            : number_to_double (MonoNumber *number, gdouble *value)
+<span class="lineNum">     194 </span>            : {
+<span class="lineNum">     195 </span>            :         guint64 val;
+<span class="lineNum">     196 </span>            :         guint16 *src;
+<span class="lineNum">     197 </span>            :         gint exp, remaining, total, count, scale, absscale, index;
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span><span class="lineCov">         22 :         total = 0;</span>
+<span class="lineNum">     200 </span><span class="lineCov">         22 :         src = number-&gt;digits;</span>
+<span class="lineNum">     201 </span><span class="lineCov">        142 :         while (*src++) total ++;</span>
+<span class="lineNum">     202 </span>            : 
+<span class="lineNum">     203 </span><span class="lineCov">         22 :         remaining = total;</span>
+<span class="lineNum">     204 </span>            : 
+<span class="lineNum">     205 </span><span class="lineCov">         22 :         src = number-&gt;digits;</span>
+<span class="lineNum">     206 </span><span class="lineCov">         44 :         while (*src == '0') {</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                 remaining --;</span>
+<span class="lineNum">     208 </span><span class="lineNoCov">          0 :                 src ++;</span>
+<span class="lineNum">     209 </span>            :         }
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineCov">         22 :         if (remaining == 0) {</span>
+<span class="lineNum">     212 </span><span class="lineNoCov">          0 :                 *value = 0;</span>
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :                 goto done;</span>
+<span class="lineNum">     214 </span>            :         }
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span><span class="lineCov">         66 :         count = MIN (remaining, 9);</span>
+<span class="lineNum">     217 </span><span class="lineCov">         22 :         remaining -= count;</span>
+<span class="lineNum">     218 </span><span class="lineCov">         22 :         val = digits_to_int (src, count);</span>
+<span class="lineNum">     219 </span>            : 
+<span class="lineNum">     220 </span><span class="lineCov">         22 :         if (remaining &gt; 0) {</span>
+<span class="lineNum">     221 </span><span class="lineCov">          3 :                 count = MIN (remaining, 9);</span>
+<span class="lineNum">     222 </span><span class="lineCov">          1 :                 remaining -= count;</span>
+<span class="lineNum">     223 </span>            : 
+<span class="lineNum">     224 </span>            :                 /* get the denormalized power of 10 */
+<span class="lineNum">     225 </span><span class="lineCov">          1 :                 guint32 mult = (guint32) (rgval64Power10 [count - 1] &gt;&gt; (64 - rgexp64Power10 [count - 1]));</span>
+<span class="lineNum">     226 </span><span class="lineCov">          1 :                 val = ((guint64) (guint32) val) * ((guint64) mult) + digits_to_int (src + 9, count);</span>
+<span class="lineNum">     227 </span><span class="lineCov">          1 :         }</span>
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span><span class="lineCov">         22 :         scale = number-&gt;scale - (total - remaining);</span>
+<span class="lineNum">     230 </span><span class="lineCov">         22 :         absscale = abs (scale);</span>
+<span class="lineNum">     231 </span>            : 
+<span class="lineNum">     232 </span><span class="lineCov">         22 :         if (absscale &gt;= 22 * 16) {</span>
+<span class="lineNum">     233 </span>            :                 /* overflow / underflow */
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :                 *(guint64*) value = (scale &gt; 0) ? 0x7FF0000000000000LL : 0;</span>
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                 goto done;</span>
+<span class="lineNum">     236 </span>            :         }
+<span class="lineNum">     237 </span>            : 
+<span class="lineNum">     238 </span><span class="lineCov">         22 :         exp = 64;</span>
+<span class="lineNum">     239 </span>            : 
+<span class="lineNum">     240 </span>            :         /* normalize the mantiss */
+<span class="lineNum">     241 </span><span class="lineCov">         43 :         if ((val &amp; 0xFFFFFFFF00000000LL) == 0) { val &lt;&lt;= 32; exp -= 32; }</span>
+<span class="lineNum">     242 </span><span class="lineCov">         43 :         if ((val &amp; 0xFFFF000000000000LL) == 0) { val &lt;&lt;= 16; exp -= 16; }</span>
+<span class="lineNum">     243 </span><span class="lineCov">         41 :         if ((val &amp; 0xFF00000000000000LL) == 0) { val &lt;&lt;= 8;  exp -= 8;  }</span>
+<span class="lineNum">     244 </span><span class="lineCov">         42 :         if ((val &amp; 0xF000000000000000LL) == 0) { val &lt;&lt;= 4;  exp -= 4;  }</span>
+<span class="lineNum">     245 </span><span class="lineCov">         38 :         if ((val &amp; 0xC000000000000000LL) == 0) { val &lt;&lt;= 2;  exp -= 2;  }</span>
+<span class="lineNum">     246 </span><span class="lineCov">         37 :         if ((val &amp; 0x8000000000000000LL) == 0) { val &lt;&lt;= 1;  exp -= 1;  }</span>
+<span class="lineNum">     247 </span>            : 
+<span class="lineNum">     248 </span><span class="lineCov">         22 :         index = absscale &amp; 15;</span>
+<span class="lineNum">     249 </span><span class="lineCov">         22 :         if (index) {</span>
+<span class="lineNum">     250 </span><span class="lineCov">          5 :                 gint multexp = rgexp64Power10 [index - 1];</span>
+<span class="lineNum">     251 </span>            :                 /* the exponents are shared between the inverted and regular table */
+<span class="lineNum">     252 </span><span class="lineCov">         15 :                 exp += (scale &lt; 0) ? (-multexp + 1) : multexp;</span>
+<span class="lineNum">     253 </span>            : 
+<span class="lineNum">     254 </span><span class="lineCov">          5 :                 guint64 multval = rgval64Power10 [index + ((scale &lt; 0) ? 15 : 0) - 1];</span>
+<span class="lineNum">     255 </span><span class="lineCov">          5 :                 val = mul_64_lossy (val, multval, &amp;exp);</span>
+<span class="lineNum">     256 </span><span class="lineCov">          5 :         }</span>
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span><span class="lineCov">         22 :         index = absscale &gt;&gt; 4;</span>
+<span class="lineNum">     259 </span><span class="lineCov">         22 :         if (index) {</span>
+<span class="lineNum">     260 </span><span class="lineCov">          1 :                 gint multexp = rgexp64Power10By16 [index - 1];</span>
+<span class="lineNum">     261 </span>            :                 /* the exponents are shared between the inverted and regular table */
+<span class="lineNum">     262 </span><span class="lineCov">          3 :                 exp += (scale &lt; 0) ? (-multexp + 1) : multexp;</span>
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span><span class="lineCov">          1 :                 guint64 multval = rgval64Power10By16 [index + ((scale &lt; 0) ? 21 : 0) - 1];</span>
+<span class="lineNum">     265 </span><span class="lineCov">          1 :                 val = mul_64_lossy (val, multval, &amp;exp);</span>
+<span class="lineNum">     266 </span><span class="lineCov">          1 :         }</span>
+<span class="lineNum">     267 </span>            : 
+<span class="lineNum">     268 </span><span class="lineCov">         22 :         if ((guint32) val &amp; (1 &lt;&lt; 10)) {</span>
+<span class="lineNum">     269 </span>            :                 /* IEEE round to even */
+<span class="lineNum">     270 </span><span class="lineCov">          3 :                 guint64 tmp = val + ((1 &lt;&lt; 10) - 1) + (((guint32) val &gt;&gt; 11) &amp; 1);</span>
+<span class="lineNum">     271 </span><span class="lineCov">          3 :                 if (tmp &lt; val) {</span>
+<span class="lineNum">     272 </span>            :                         /* overflow */
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :                         tmp = (tmp &gt;&gt; 1) | 0x8000000000000000LL;</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                         exp += 1;</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     276 </span><span class="lineCov">          3 :                 val = tmp;</span>
+<span class="lineNum">     277 </span><span class="lineCov">          3 :         }</span>
+<span class="lineNum">     278 </span>            : 
+<span class="lineNum">     279 </span>            :         /* return the exponent to a biased state */
+<span class="lineNum">     280 </span><span class="lineCov">         22 :         exp += 0x3FE;</span>
+<span class="lineNum">     281 </span>            : 
+<span class="lineNum">     282 </span>            :         /* handle overflow, underflow, &quot;Epsilon - 1/2 Epsilon&quot;, denormalized, and the normal case */
+<span class="lineNum">     283 </span><span class="lineCov">         22 :         if (exp &lt;= 0) {</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                 if (exp == -52 &amp;&amp; (val &gt;= 0x8000000000000058LL)) {</span>
+<span class="lineNum">     285 </span>            :                         /* round X where {Epsilon &gt; X &gt;= 2.470328229206232730000000E-324} up to Epsilon (instead of down to zero) */
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :                         val = 0x0000000000000001LL;</span>
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :                 } else if (exp &lt;= -52) {</span>
+<span class="lineNum">     288 </span>            :                         /* underflow */
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :                         val = 0;</span>
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     291 </span>            :                         /* denormalized */
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :                         val &gt;&gt;= (-exp + 11 + 1);</span>
+<span class="lineNum">     293 </span>            :                 }
+<span class="lineNum">     294 </span><span class="lineCov">         22 :         } else if (exp &gt;= 0x7FF) {</span>
+<span class="lineNum">     295 </span>            :                 /* overflow */
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :                 val = 0x7FF0000000000000LL;</span>
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     298 </span>            :                 /* normal postive exponent case */
+<span class="lineNum">     299 </span><span class="lineCov">         22 :                 val = ((guint64) exp &lt;&lt; 52) + ((val &gt;&gt; 11) &amp; 0x000FFFFFFFFFFFFFLL);</span>
+<span class="lineNum">     300 </span>            :         }
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span><span class="lineCov">         22 :         *(guint64*) value = val;</span>
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span>            : done:
+<span class="lineNum">     305 </span><span class="lineCov">         22 :         if (number-&gt;sign)</span>
+<span class="lineNum">     306 </span><span class="lineCov">          1 :                 *(guint64*) value |= 0x8000000000000000LL;</span>
+<span class="lineNum">     307 </span><span class="lineCov">         22 : }</span>
+<a name="308"><span class="lineNum">     308 </span>            : </a>
+<span class="lineNum">     309 </span>            : gint
+<span class="lineNum">     310 </span>            : mono_double_from_number (gpointer from, MonoDouble *target)
+<span class="lineNum">     311 </span>            : {
+<span class="lineNum">     312 </span>            :         MonoDouble_double res;
+<span class="lineNum">     313 </span>            :         guint e, mant_lo, mant_hi;
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span><span class="lineCov">         22 :         res.d = 0;</span>
+<span class="lineNum">     316 </span>            : 
+<span class="lineNum">     317 </span><span class="lineCov">         22 :         number_to_double ((MonoNumber*) from, &amp;res.d);</span>
+<span class="lineNum">     318 </span><span class="lineCov">         22 :         e = res.s.exp;</span>
+<span class="lineNum">     319 </span><span class="lineCov">         22 :         mant_lo = res.s.mantLo;</span>
+<span class="lineNum">     320 </span><span class="lineCov">         22 :         mant_hi = res.s.mantHi;</span>
+<span class="lineNum">     321 </span>            : 
+<span class="lineNum">     322 </span><span class="lineCov">         22 :         if (e == 0x7ff)</span>
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">     324 </span>            : 
+<span class="lineNum">     325 </span><span class="lineCov">         22 :         if (e == 0 &amp;&amp; mant_lo == 0 &amp;&amp; mant_hi == 0)</span>
+<span class="lineNum">     326 </span><span class="lineNoCov">          0 :                 res.d = 0;</span>
+<span class="lineNum">     327 </span>            : 
+<span class="lineNum">     328 </span><span class="lineCov">         22 :         *target = res.s;</span>
+<span class="lineNum">     329 </span><span class="lineCov">         22 :         return 1;</span>
+<span class="lineNum">     330 </span><span class="lineCov">         22 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

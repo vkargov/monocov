@@ -1,0 +1,614 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/w32mutex-unix.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - w32mutex-unix.c<span style="font-size: 80%;"> (source / <a href="w32mutex-unix.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">123</td>
+            <td class="headerCovTableEntry">207</td>
+            <td class="headerCovTableEntryLo">59.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">22</td>
+            <td class="headerCovTableEntry">28</td>
+            <td class="headerCovTableEntryMed">78.6 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * w32mutex-unix.c: Runtime support for managed Mutex on Unix
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Ludovic Henry (luhenry@microsoft.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &quot;w32mutex.h&quot;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;pthread.h&gt;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &quot;w32handle-namespace.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;mono/io-layer/io-layer.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;mono/metadata/object-internals.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/utils/mono-logger-internals.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;mono/utils/mono-threads.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;mono/metadata/w32handle.h&quot;
+<span class="lineNum">      20 </span>            : 
+<span class="lineNum">      21 </span>            : typedef struct {
+<span class="lineNum">      22 </span>            :         MonoNativeThreadId tid;
+<span class="lineNum">      23 </span>            :         guint32 recursion;
+<span class="lineNum">      24 </span>            :         gboolean abandoned;
+<span class="lineNum">      25 </span>            : } MonoW32HandleMutex;
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : struct MonoW32HandleNamedMutex {
+<span class="lineNum">      28 </span>            :         MonoW32HandleMutex m;
+<span class="lineNum">      29 </span>            :         MonoW32HandleNamespace sharedns;
+<span class="lineNum">      30 </span>            : };
+<a name="31"><span class="lineNum">      31 </span>            : </a>
+<span class="lineNum">      32 </span>            : static void
+<span class="lineNum">      33 </span>            : thread_own_mutex (MonoInternalThread *internal, gpointer handle)
+<span class="lineNum">      34 </span>            : {
+<span class="lineNum">      35 </span><span class="lineCov">       3415 :         mono_w32handle_ref (handle);</span>
+<span class="lineNum">      36 </span>            : 
+<span class="lineNum">      37 </span>            :         /* if we are not on the current thread, there is a
+<span class="lineNum">      38 </span>            :          * race condition when allocating internal-&gt;owned_mutexes */
+<span class="lineNum">      39 </span><span class="lineCov">      10245 :         g_assert (mono_thread_internal_is_current (internal));</span>
+<span class="lineNum">      40 </span>            : 
+<span class="lineNum">      41 </span><span class="lineCov">       3415 :         if (!internal-&gt;owned_mutexes)</span>
+<span class="lineNum">      42 </span><span class="lineCov">        202 :                 internal-&gt;owned_mutexes = g_ptr_array_new ();</span>
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span><span class="lineCov">       3415 :         g_ptr_array_add (internal-&gt;owned_mutexes, handle);</span>
+<span class="lineNum">      45 </span><span class="lineCov">       3415 : }</span>
+<a name="46"><span class="lineNum">      46 </span>            : </a>
+<span class="lineNum">      47 </span>            : static void
+<span class="lineNum">      48 </span>            : thread_disown_mutex (MonoInternalThread *internal, gpointer handle)
+<span class="lineNum">      49 </span>            : {
+<span class="lineNum">      50 </span>            :         gboolean removed;
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span><span class="lineCov">      10245 :         g_assert (mono_thread_internal_is_current (internal));</span>
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span><span class="lineCov">      10245 :         g_assert (internal-&gt;owned_mutexes);</span>
+<span class="lineNum">      55 </span><span class="lineCov">       3415 :         removed = g_ptr_array_remove (internal-&gt;owned_mutexes, handle);</span>
+<span class="lineNum">      56 </span><span class="lineCov">      10245 :         g_assert (removed);</span>
+<span class="lineNum">      57 </span>            : 
+<span class="lineNum">      58 </span><span class="lineCov">       3415 :         mono_w32handle_unref (handle);</span>
+<span class="lineNum">      59 </span><span class="lineCov">       3415 : }</span>
+<a name="60"><span class="lineNum">      60 </span>            : </a>
+<span class="lineNum">      61 </span>            : static gboolean
+<span class="lineNum">      62 </span>            : mutex_handle_own (gpointer handle, MonoW32HandleType type, gboolean *abandoned)
+<span class="lineNum">      63 </span>            : {
+<span class="lineNum">      64 </span>            :         MonoW32HandleMutex *mutex_handle;
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span><span class="lineCov">       3415 :         *abandoned = FALSE;</span>
+<span class="lineNum">      67 </span>            : 
+<span class="lineNum">      68 </span><span class="lineCov">       3415 :         if (!mono_w32handle_lookup (handle, type, (gpointer *)&amp;mutex_handle)) {</span>
+<span class="lineNum">      69 </span><span class="lineNoCov">          0 :                 g_warning (&quot;%s: error looking up %s handle %p&quot;, __func__, mono_w32handle_get_typename (type), handle);</span>
+<span class="lineNum">      70 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">      71 </span>            :         }
+<span class="lineNum">      72 </span>            : 
+<span class="lineNum">      73 </span><span class="lineCov">       3415 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: owning %s handle %p, before: [tid: %p, recursion: %d], after: [tid: %p, recursion: %d], abandoned: %s&quot;,</span>
+<span class="lineNum">      74 </span><span class="lineCov">       3415 :                 __func__, mono_w32handle_get_typename (type), handle, (gpointer) mutex_handle-&gt;tid, mutex_handle-&gt;recursion, (gpointer) pthread_self (), mutex_handle-&gt;recursion + 1, mutex_handle-&gt;abandoned ? &quot;true&quot; : &quot;false&quot;);</span>
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span><span class="lineCov">       3415 :         if (mutex_handle-&gt;recursion != 0) {</span>
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :                 g_assert (pthread_equal (pthread_self (), mutex_handle-&gt;tid));</span>
+<span class="lineNum">      78 </span><span class="lineNoCov">          0 :                 mutex_handle-&gt;recursion++;</span>
+<span class="lineNum">      79 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">      80 </span><span class="lineCov">       3415 :                 mutex_handle-&gt;tid = pthread_self ();</span>
+<span class="lineNum">      81 </span><span class="lineCov">       3415 :                 mutex_handle-&gt;recursion = 1;</span>
+<span class="lineNum">      82 </span>            : 
+<span class="lineNum">      83 </span><span class="lineCov">       3415 :                 thread_own_mutex (mono_thread_internal_current (), handle);</span>
+<span class="lineNum">      84 </span>            :         }
+<span class="lineNum">      85 </span>            : 
+<span class="lineNum">      86 </span><span class="lineCov">       3415 :         if (mutex_handle-&gt;abandoned) {</span>
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 :                 mutex_handle-&gt;abandoned = FALSE;</span>
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 :                 *abandoned = TRUE;</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span><span class="lineCov">       3415 :         mono_w32handle_set_signal_state (handle, FALSE, FALSE);</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span><span class="lineCov">       3415 :         return TRUE;</span>
+<span class="lineNum">      94 </span><span class="lineCov">       3415 : }</span>
+<a name="95"><span class="lineNum">      95 </span>            : </a>
+<span class="lineNum">      96 </span>            : static gboolean
+<span class="lineNum">      97 </span>            : mutex_handle_is_owned (gpointer handle, MonoW32HandleType type)
+<span class="lineNum">      98 </span>            : {
+<span class="lineNum">      99 </span>            :         MonoW32HandleMutex *mutex_handle;
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span><span class="lineCov">       3415 :         if (!mono_w32handle_lookup (handle, type, (gpointer *)&amp;mutex_handle)) {</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :                 g_warning (&quot;%s: error looking up %s handle %p&quot;, __func__, mono_w32handle_get_typename (type), handle);</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     104 </span>            :         }
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span><span class="lineCov">       3415 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: testing ownership %s handle %p&quot;,</span>
+<span class="lineNum">     107 </span><span class="lineCov">       3415 :                 __func__, mono_w32handle_get_typename (type), handle);</span>
+<span class="lineNum">     108 </span>            : 
+<span class="lineNum">     109 </span><span class="lineCov">       3618 :         if (mutex_handle-&gt;recursion &gt; 0 &amp;&amp; pthread_equal (mutex_handle-&gt;tid, pthread_self ())) {</span>
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: %s handle %p owned by %p&quot;,</span>
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :                         __func__, mono_w32handle_get_typename (type), handle, (gpointer) pthread_self ());</span>
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     113 </span>            :         } else {
+<span class="lineNum">     114 </span><span class="lineCov">       3415 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: %s handle %p not owned by %p, tid: %p recursion: %d&quot;,</span>
+<span class="lineNum">     115 </span><span class="lineCov">       3415 :                         __func__, mono_w32handle_get_typename (type), handle, (gpointer) pthread_self (), (gpointer) mutex_handle-&gt;tid, mutex_handle-&gt;recursion);</span>
+<span class="lineNum">     116 </span><span class="lineCov">       3415 :                 return FALSE;</span>
+<span class="lineNum">     117 </span>            :         }
+<a name="118"><span class="lineNum">     118 </span><span class="lineCov">       3415 : }</span></a>
+<span class="lineNum">     119 </span>            : 
+<span class="lineNum">     120 </span>            : static void mutex_signal(gpointer handle)
+<span class="lineNum">     121 </span>            : {
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 :         ves_icall_System_Threading_Mutex_ReleaseMutex_internal (handle);</span>
+<a name="123"><span class="lineNum">     123 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span>            : static gboolean mutex_own (gpointer handle, gboolean *abandoned)
+<span class="lineNum">     126 </span>            : {
+<span class="lineNum">     127 </span><span class="lineCov">          4 :         return mutex_handle_own (handle, MONO_W32HANDLE_MUTEX, abandoned);</span>
+<a name="128"><span class="lineNum">     128 </span>            : }</a>
+<span class="lineNum">     129 </span>            : 
+<span class="lineNum">     130 </span>            : static gboolean mutex_is_owned (gpointer handle)
+<span class="lineNum">     131 </span>            : {
+<span class="lineNum">     132 </span>            :         
+<span class="lineNum">     133 </span><span class="lineCov">          4 :         return mutex_handle_is_owned (handle, MONO_W32HANDLE_MUTEX);</span>
+<a name="134"><span class="lineNum">     134 </span>            : }</a>
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span>            : static void namedmutex_signal (gpointer handle)
+<span class="lineNum">     137 </span>            : {
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :         ves_icall_System_Threading_Mutex_ReleaseMutex_internal (handle);</span>
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 : }</span>
+<a name="140"><span class="lineNum">     140 </span>            : </a>
+<span class="lineNum">     141 </span>            : /* NB, always called with the shared handle lock held */
+<span class="lineNum">     142 </span>            : static gboolean namedmutex_own (gpointer handle, gboolean *abandoned)
+<span class="lineNum">     143 </span>            : {
+<span class="lineNum">     144 </span><span class="lineCov">       3411 :         return mutex_handle_own (handle, MONO_W32HANDLE_NAMEDMUTEX, abandoned);</span>
+<a name="145"><span class="lineNum">     145 </span>            : }</a>
+<span class="lineNum">     146 </span>            : 
+<span class="lineNum">     147 </span>            : static gboolean namedmutex_is_owned (gpointer handle)
+<span class="lineNum">     148 </span>            : {
+<span class="lineNum">     149 </span><span class="lineCov">       3411 :         return mutex_handle_is_owned (handle, MONO_W32HANDLE_NAMEDMUTEX);</span>
+<a name="150"><span class="lineNum">     150 </span>            : }</a>
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span>            : static void mutex_handle_prewait (gpointer handle, MonoW32HandleType type)
+<span class="lineNum">     153 </span>            : {
+<span class="lineNum">     154 </span>            :         /* If the mutex is not currently owned, do nothing and let the
+<span class="lineNum">     155 </span>            :          * usual wait carry on.  If it is owned, check that the owner
+<span class="lineNum">     156 </span>            :          * is still alive; if it isn't we override the previous owner
+<span class="lineNum">     157 </span>            :          * and assume that process exited abnormally and failed to
+<span class="lineNum">     158 </span>            :          * clean up.
+<span class="lineNum">     159 </span>            :          */
+<span class="lineNum">     160 </span>            :         MonoW32HandleMutex *mutex_handle;
+<span class="lineNum">     161 </span>            : 
+<span class="lineNum">     162 </span><span class="lineCov">        208 :         if (!mono_w32handle_lookup (handle, type, (gpointer *)&amp;mutex_handle)) {</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :                 g_warning (&quot;%s: error looking up %s handle %p&quot;,</span>
+<span class="lineNum">     164 </span>            :                         __func__, mono_w32handle_get_typename (type), handle);
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     166 </span>            :         }
+<span class="lineNum">     167 </span>            : 
+<span class="lineNum">     168 </span><span class="lineCov">        208 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: pre-waiting %s handle %p, owned? %s&quot;,</span>
+<span class="lineNum">     169 </span><span class="lineCov">        208 :                 __func__, mono_w32handle_get_typename (type), handle, mutex_handle-&gt;recursion != 0 ? &quot;true&quot; : &quot;false&quot;);</span>
+<span class="lineNum">     170 </span><span class="lineCov">        416 : }</span>
+<a name="171"><span class="lineNum">     171 </span>            : </a>
+<span class="lineNum">     172 </span>            : /* The shared state is not locked when prewait methods are called */
+<span class="lineNum">     173 </span>            : static void mutex_prewait (gpointer handle)
+<span class="lineNum">     174 </span>            : {
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :         mutex_handle_prewait (handle, MONO_W32HANDLE_MUTEX);</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 : }</span>
+<a name="177"><span class="lineNum">     177 </span>            : </a>
+<span class="lineNum">     178 </span>            : /* The shared state is not locked when prewait methods are called */
+<span class="lineNum">     179 </span>            : static void namedmutex_prewait (gpointer handle)
+<span class="lineNum">     180 </span>            : {
+<span class="lineNum">     181 </span><span class="lineCov">        208 :         mutex_handle_prewait (handle, MONO_W32HANDLE_NAMEDMUTEX);</span>
+<a name="182"><span class="lineNum">     182 </span><span class="lineCov">        208 : }</span></a>
+<span class="lineNum">     183 </span>            : 
+<span class="lineNum">     184 </span>            : static void mutex_details (gpointer data)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :         MonoW32HandleMutex *mut = (MonoW32HandleMutex *)data;</span>
+<span class="lineNum">     187 </span>            :         
+<span class="lineNum">     188 </span>            : #ifdef PTHREAD_POINTER_ID
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :         g_print (&quot;own: %5p, count: %5u&quot;, mut-&gt;tid, mut-&gt;recursion);</span>
+<span class="lineNum">     190 </span>            : #else
+<span class="lineNum">     191 </span>            :         g_print (&quot;own: %5ld, count: %5u&quot;, mut-&gt;tid, mut-&gt;recursion);
+<span class="lineNum">     192 </span>            : #endif
+<a name="193"><span class="lineNum">     193 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span>            : static void namedmutex_details (gpointer data)
+<span class="lineNum">     196 </span>            : {
+<span class="lineNum">     197 </span><span class="lineNoCov">          0 :         MonoW32HandleNamedMutex *namedmut = (MonoW32HandleNamedMutex *)data;</span>
+<span class="lineNum">     198 </span>            :         
+<span class="lineNum">     199 </span>            : #ifdef PTHREAD_POINTER_ID
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :         g_print (&quot;own: %5p, count: %5u, name: \&quot;%s\&quot;&quot;,</span>
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :                 namedmut-&gt;m.tid, namedmut-&gt;m.recursion, namedmut-&gt;sharedns.name);</span>
+<span class="lineNum">     202 </span>            : #else
+<span class="lineNum">     203 </span>            :         g_print (&quot;own: %5ld, count: %5u, name: \&quot;%s\&quot;&quot;,
+<span class="lineNum">     204 </span>            :                 namedmut-&gt;m.tid, namedmut-&gt;m.recursion, namedmut-&gt;sharedns.name);
+<span class="lineNum">     205 </span>            : #endif
+<a name="206"><span class="lineNum">     206 </span><span class="lineNoCov">          0 : }</span></a>
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span>            : static const gchar* mutex_typename (void)
+<span class="lineNum">     209 </span>            : {
+<span class="lineNum">     210 </span><span class="lineCov">         65 :         return &quot;Mutex&quot;;</span>
+<a name="211"><span class="lineNum">     211 </span>            : }</a>
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span>            : static gsize mutex_typesize (void)
+<span class="lineNum">     214 </span>            : {
+<span class="lineNum">     215 </span><span class="lineCov">          3 :         return sizeof (MonoW32HandleMutex);</span>
+<a name="216"><span class="lineNum">     216 </span>            : }</a>
+<span class="lineNum">     217 </span>            : 
+<span class="lineNum">     218 </span>            : static const gchar* namedmutex_typename (void)
+<span class="lineNum">     219 </span>            : {
+<span class="lineNum">     220 </span><span class="lineCov">      64527 :         return &quot;N.Mutex&quot;;</span>
+<a name="221"><span class="lineNum">     221 </span>            : }</a>
+<span class="lineNum">     222 </span>            : 
+<span class="lineNum">     223 </span>            : static gsize namedmutex_typesize (void)
+<span class="lineNum">     224 </span>            : {
+<span class="lineNum">     225 </span><span class="lineCov">       2924 :         return sizeof (MonoW32HandleNamedMutex);</span>
+<span class="lineNum">     226 </span>            : }
+<a name="227"><span class="lineNum">     227 </span>            : </a>
+<span class="lineNum">     228 </span>            : void
+<span class="lineNum">     229 </span>            : mono_w32mutex_init (void)
+<span class="lineNum">     230 </span>            : {
+<span class="lineNum">     231 </span>            :         static MonoW32HandleOps mutex_ops = {
+<span class="lineNum">     232 </span>            :                 NULL,                   /* close */
+<span class="lineNum">     233 </span>            :                 mutex_signal,           /* signal */
+<span class="lineNum">     234 </span>            :                 mutex_own,              /* own */
+<span class="lineNum">     235 </span>            :                 mutex_is_owned,         /* is_owned */
+<span class="lineNum">     236 </span>            :                 NULL,                   /* special_wait */
+<span class="lineNum">     237 </span>            :                 mutex_prewait,                  /* prewait */
+<span class="lineNum">     238 </span>            :                 mutex_details,  /* details */
+<span class="lineNum">     239 </span>            :                 mutex_typename, /* typename */
+<span class="lineNum">     240 </span>            :                 mutex_typesize, /* typesize */
+<span class="lineNum">     241 </span>            :         };
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span>            :         static MonoW32HandleOps namedmutex_ops = {
+<span class="lineNum">     244 </span>            :                 NULL,                   /* close */
+<span class="lineNum">     245 </span>            :                 namedmutex_signal,      /* signal */
+<span class="lineNum">     246 </span>            :                 namedmutex_own,         /* own */
+<span class="lineNum">     247 </span>            :                 namedmutex_is_owned,    /* is_owned */
+<span class="lineNum">     248 </span>            :                 NULL,                   /* special_wait */
+<span class="lineNum">     249 </span>            :                 namedmutex_prewait,     /* prewait */
+<span class="lineNum">     250 </span>            :                 namedmutex_details,     /* details */
+<span class="lineNum">     251 </span>            :                 namedmutex_typename,    /* typename */
+<span class="lineNum">     252 </span>            :                 namedmutex_typesize,    /* typesize */
+<span class="lineNum">     253 </span>            :         };
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineCov">       3285 :         mono_w32handle_register_ops (MONO_W32HANDLE_MUTEX,      &amp;mutex_ops);</span>
+<span class="lineNum">     256 </span><span class="lineCov">       3285 :         mono_w32handle_register_ops (MONO_W32HANDLE_NAMEDMUTEX, &amp;namedmutex_ops);</span>
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span><span class="lineCov">       3285 :         mono_w32handle_register_capabilities (MONO_W32HANDLE_MUTEX,</span>
+<span class="lineNum">     259 </span>            :                 (MonoW32HandleCapability)(MONO_W32HANDLE_CAP_WAIT | MONO_W32HANDLE_CAP_SIGNAL | MONO_W32HANDLE_CAP_OWN));
+<span class="lineNum">     260 </span><span class="lineCov">       3285 :         mono_w32handle_register_capabilities (MONO_W32HANDLE_NAMEDMUTEX,</span>
+<span class="lineNum">     261 </span>            :                 (MonoW32HandleCapability)(MONO_W32HANDLE_CAP_WAIT | MONO_W32HANDLE_CAP_SIGNAL | MONO_W32HANDLE_CAP_OWN));
+<a name="262"><span class="lineNum">     262 </span><span class="lineCov">       3285 : }</span></a>
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span>            : static gpointer mutex_handle_create (MonoW32HandleMutex *mutex_handle, MonoW32HandleType type, gboolean owned)
+<span class="lineNum">     265 </span>            : {
+<span class="lineNum">     266 </span>            :         gpointer handle;
+<span class="lineNum">     267 </span>            :         gboolean abandoned;
+<span class="lineNum">     268 </span>            : 
+<span class="lineNum">     269 </span><span class="lineCov">       2927 :         mutex_handle-&gt;tid = 0;</span>
+<span class="lineNum">     270 </span><span class="lineCov">       2927 :         mutex_handle-&gt;recursion = 0;</span>
+<span class="lineNum">     271 </span><span class="lineCov">       2927 :         mutex_handle-&gt;abandoned = FALSE;</span>
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span><span class="lineCov">       2927 :         handle = mono_w32handle_new (type, mutex_handle);</span>
+<span class="lineNum">     274 </span><span class="lineCov">       2927 :         if (handle == INVALID_HANDLE_VALUE) {</span>
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                 g_warning (&quot;%s: error creating %s handle&quot;,</span>
+<span class="lineNum">     276 </span>            :                         __func__, mono_w32handle_get_typename (type));
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :                 SetLastError (ERROR_GEN_FAILURE);</span>
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     279 </span>            :         }
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span><span class="lineCov">       2927 :         mono_w32handle_lock_handle (handle);</span>
+<span class="lineNum">     282 </span>            : 
+<span class="lineNum">     283 </span><span class="lineCov">       2927 :         if (owned)</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                 mutex_handle_own (handle, type, &amp;abandoned);</span>
+<span class="lineNum">     285 </span>            :         else
+<span class="lineNum">     286 </span><span class="lineCov">       2927 :                 mono_w32handle_set_signal_state (handle, TRUE, FALSE);</span>
+<span class="lineNum">     287 </span>            : 
+<span class="lineNum">     288 </span><span class="lineCov">       2927 :         mono_w32handle_unlock_handle (handle);</span>
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span><span class="lineCov">       2927 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: created %s handle %p&quot;,</span>
+<span class="lineNum">     291 </span><span class="lineCov">       2927 :                 __func__, mono_w32handle_get_typename (type), handle);</span>
+<span class="lineNum">     292 </span>            : 
+<span class="lineNum">     293 </span><span class="lineCov">       2927 :         return handle;</span>
+<a name="294"><span class="lineNum">     294 </span><span class="lineCov">       2927 : }</span></a>
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span>            : static gpointer mutex_create (gboolean owned)
+<span class="lineNum">     297 </span>            : {
+<span class="lineNum">     298 </span>            :         MonoW32HandleMutex mutex_handle;
+<span class="lineNum">     299 </span><span class="lineCov">          3 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: creating %s handle&quot;,</span>
+<span class="lineNum">     300 </span><span class="lineCov">          3 :                 __func__, mono_w32handle_get_typename (MONO_W32HANDLE_MUTEX));</span>
+<span class="lineNum">     301 </span><span class="lineCov">          3 :         return mutex_handle_create (&amp;mutex_handle, MONO_W32HANDLE_MUTEX, owned);</span>
+<a name="302"><span class="lineNum">     302 </span>            : }</a>
+<span class="lineNum">     303 </span>            : 
+<span class="lineNum">     304 </span>            : static gpointer namedmutex_create (gboolean owned, const gunichar2 *name)
+<span class="lineNum">     305 </span>            : {
+<span class="lineNum">     306 </span>            :         gpointer handle;
+<span class="lineNum">     307 </span>            :         gchar *utf8_name;
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span><span class="lineCov">       3411 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: creating %s handle&quot;,</span>
+<span class="lineNum">     310 </span><span class="lineCov">       3411 :                 __func__, mono_w32handle_get_typename (MONO_W32HANDLE_NAMEDMUTEX));</span>
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span>            :         /* w32 seems to guarantee that opening named objects can't race each other */
+<span class="lineNum">     313 </span><span class="lineCov">       3411 :         mono_w32handle_namespace_lock ();</span>
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span><span class="lineCov">       3411 :         utf8_name = g_utf16_to_utf8 (name, -1, NULL, NULL, NULL);</span>
+<span class="lineNum">     316 </span>            : 
+<span class="lineNum">     317 </span><span class="lineCov">       3411 :         handle = mono_w32handle_namespace_search_handle (MONO_W32HANDLE_NAMEDMUTEX, utf8_name);</span>
+<span class="lineNum">     318 </span><span class="lineCov">       3411 :         if (handle == INVALID_HANDLE_VALUE) {</span>
+<span class="lineNum">     319 </span>            :                 /* The name has already been used for a different object. */
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                 handle = NULL;</span>
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :                 SetLastError (ERROR_INVALID_HANDLE);</span>
+<span class="lineNum">     322 </span><span class="lineCov">       3411 :         } else if (handle) {</span>
+<span class="lineNum">     323 </span>            :                 /* Not an error, but this is how the caller is informed that the mutex wasn't freshly created */
+<span class="lineNum">     324 </span><span class="lineCov">        487 :                 SetLastError (ERROR_ALREADY_EXISTS);</span>
+<span class="lineNum">     325 </span>            : 
+<span class="lineNum">     326 </span>            :                 /* mono_w32handle_namespace_search_handle already adds a ref to the handle */
+<span class="lineNum">     327 </span><span class="lineCov">        487 :         } else {</span>
+<span class="lineNum">     328 </span>            :                 /* A new named mutex */
+<span class="lineNum">     329 </span>            :                 MonoW32HandleNamedMutex namedmutex_handle;
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span><span class="lineCov">       2924 :                 strncpy (&amp;namedmutex_handle.sharedns.name [0], utf8_name, MAX_PATH);</span>
+<span class="lineNum">     332 </span><span class="lineCov">       2924 :                 namedmutex_handle.sharedns.name [MAX_PATH] = '\0';</span>
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span><span class="lineCov">       2924 :                 handle = mutex_handle_create ((MonoW32HandleMutex*) &amp;namedmutex_handle, MONO_W32HANDLE_NAMEDMUTEX, owned);</span>
+<span class="lineNum">     335 </span>            :         }
+<span class="lineNum">     336 </span>            : 
+<span class="lineNum">     337 </span><span class="lineCov">       3411 :         g_free (utf8_name);</span>
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span><span class="lineCov">       3411 :         mono_w32handle_namespace_unlock ();</span>
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span><span class="lineCov">       3411 :         return handle;</span>
+<span class="lineNum">     342 </span>            : }
+<a name="343"><span class="lineNum">     343 </span>            : </a>
+<span class="lineNum">     344 </span>            : gpointer
+<span class="lineNum">     345 </span>            : ves_icall_System_Threading_Mutex_CreateMutex_internal (MonoBoolean owned, MonoString *name, MonoBoolean *created)
+<span class="lineNum">     346 </span>            : {
+<span class="lineNum">     347 </span>            :         gpointer mutex;
+<span class="lineNum">     348 </span>            : 
+<span class="lineNum">     349 </span><span class="lineCov">       3394 :         *created = TRUE;</span>
+<span class="lineNum">     350 </span>            : 
+<span class="lineNum">     351 </span>            :         /* Need to blow away any old errors here, because code tests
+<span class="lineNum">     352 </span>            :          * for ERROR_ALREADY_EXISTS on success (!) to see if a mutex
+<span class="lineNum">     353 </span>            :          * was freshly created */
+<span class="lineNum">     354 </span><span class="lineCov">       3394 :         SetLastError (ERROR_SUCCESS);</span>
+<span class="lineNum">     355 </span>            : 
+<span class="lineNum">     356 </span><span class="lineCov">       3394 :         if (!name) {</span>
+<span class="lineNum">     357 </span><span class="lineCov">          3 :                 mutex = mutex_create (owned);</span>
+<span class="lineNum">     358 </span><span class="lineCov">          3 :         } else {</span>
+<span class="lineNum">     359 </span><span class="lineCov">       3411 :                 mutex = namedmutex_create (owned, mono_string_chars (name));</span>
+<span class="lineNum">     360 </span>            : 
+<span class="lineNum">     361 </span><span class="lineCov">       3411 :                 if (GetLastError () == ERROR_ALREADY_EXISTS)</span>
+<span class="lineNum">     362 </span><span class="lineCov">        487 :                         *created = FALSE;</span>
+<span class="lineNum">     363 </span>            :         }
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span><span class="lineCov">       3414 :         return mutex;</span>
+<span class="lineNum">     366 </span>            : }
+<a name="367"><span class="lineNum">     367 </span>            : </a>
+<span class="lineNum">     368 </span>            : MonoBoolean
+<span class="lineNum">     369 </span>            : ves_icall_System_Threading_Mutex_ReleaseMutex_internal (gpointer handle)
+<span class="lineNum">     370 </span>            : {
+<span class="lineNum">     371 </span>            :         MonoW32HandleType type;
+<span class="lineNum">     372 </span>            :         MonoW32HandleMutex *mutex_handle;
+<span class="lineNum">     373 </span>            :         pthread_t tid;
+<span class="lineNum">     374 </span>            :         gboolean ret;
+<span class="lineNum">     375 </span>            : 
+<span class="lineNum">     376 </span><span class="lineCov">       3415 :         if (handle == NULL) {</span>
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :                 SetLastError (ERROR_INVALID_HANDLE);</span>
+<span class="lineNum">     378 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     379 </span>            :         }
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span><span class="lineCov">       3415 :         switch (type = mono_w32handle_get_type (handle)) {</span>
+<span class="lineNum">     382 </span>            :         case MONO_W32HANDLE_MUTEX:
+<span class="lineNum">     383 </span>            :         case MONO_W32HANDLE_NAMEDMUTEX:
+<span class="lineNum">     384 </span><span class="lineCov">       3415 :                 break;</span>
+<span class="lineNum">     385 </span>            :         default:
+<span class="lineNum">     386 </span><span class="lineNoCov">          0 :                 SetLastError (ERROR_INVALID_HANDLE);</span>
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     388 </span>            :         }
+<span class="lineNum">     389 </span>            : 
+<span class="lineNum">     390 </span><span class="lineCov">       3415 :         if (!mono_w32handle_lookup (handle, type, (gpointer *)&amp;mutex_handle)) {</span>
+<span class="lineNum">     391 </span><span class="lineNoCov">          0 :                 g_warning (&quot;%s: error looking up %s handle %p&quot;,</span>
+<span class="lineNum">     392 </span>            :                         __func__, mono_w32handle_get_typename (type), handle);
+<span class="lineNum">     393 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     394 </span>            :         }
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineCov">       3415 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: releasing %s handle %p, tid: %p recursion: %d&quot;,</span>
+<span class="lineNum">     397 </span><span class="lineCov">       3415 :                 __func__, mono_w32handle_get_typename (type), handle, (gpointer) mutex_handle-&gt;tid, mutex_handle-&gt;recursion);</span>
+<span class="lineNum">     398 </span>            : 
+<span class="lineNum">     399 </span><span class="lineCov">       3415 :         mono_w32handle_lock_handle (handle);</span>
+<span class="lineNum">     400 </span>            : 
+<span class="lineNum">     401 </span><span class="lineCov">       3415 :         tid = pthread_self ();</span>
+<span class="lineNum">     402 </span>            : 
+<span class="lineNum">     403 </span><span class="lineCov">       3415 :         if (mutex_handle-&gt;abandoned) {</span>
+<span class="lineNum">     404 </span>            :                 // The Win32 ReleaseMutex() function returns TRUE for abandoned mutexes
+<span class="lineNum">     405 </span><span class="lineNoCov">          0 :                 ret = TRUE;</span>
+<span class="lineNum">     406 </span><span class="lineCov">       3415 :         } else if (!pthread_equal (mutex_handle-&gt;tid, tid)) {</span>
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :                 ret = FALSE;</span>
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: we don't own %s handle %p (owned by %ld, me %ld)&quot;,</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :                             __func__, mono_w32handle_get_typename (type), handle, (long)mutex_handle-&gt;tid, (long)tid);</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     412 </span><span class="lineCov">       3415 :                 ret = TRUE;</span>
+<span class="lineNum">     413 </span>            : 
+<span class="lineNum">     414 </span>            :                 /* OK, we own this mutex */
+<span class="lineNum">     415 </span><span class="lineCov">       3415 :                 mutex_handle-&gt;recursion--;</span>
+<span class="lineNum">     416 </span>            : 
+<span class="lineNum">     417 </span><span class="lineCov">       3415 :                 if (mutex_handle-&gt;recursion == 0) {</span>
+<span class="lineNum">     418 </span><span class="lineCov">       3415 :                         thread_disown_mutex (mono_thread_internal_current (), handle);</span>
+<span class="lineNum">     419 </span>            : 
+<span class="lineNum">     420 </span><span class="lineCov">       3415 :                         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: unlocking %s handle %p, tid: %p recusion : %d&quot;,</span>
+<span class="lineNum">     421 </span><span class="lineCov">       3415 :                                 __func__, mono_w32handle_get_typename (type), handle, (gpointer) mutex_handle-&gt;tid, mutex_handle-&gt;recursion);</span>
+<span class="lineNum">     422 </span>            : 
+<span class="lineNum">     423 </span><span class="lineCov">       3415 :                         mutex_handle-&gt;tid = 0;</span>
+<span class="lineNum">     424 </span><span class="lineCov">       3415 :                         mono_w32handle_set_signal_state (handle, TRUE, FALSE);</span>
+<span class="lineNum">     425 </span><span class="lineCov">       3415 :                 }</span>
+<span class="lineNum">     426 </span>            :         }
+<span class="lineNum">     427 </span>            : 
+<span class="lineNum">     428 </span><span class="lineCov">       3415 :         mono_w32handle_unlock_handle (handle);</span>
+<span class="lineNum">     429 </span>            : 
+<span class="lineNum">     430 </span><span class="lineCov">       3415 :         return ret;</span>
+<span class="lineNum">     431 </span><span class="lineCov">       3415 : }</span>
+<a name="432"><span class="lineNum">     432 </span>            : </a>
+<span class="lineNum">     433 </span>            : gpointer
+<span class="lineNum">     434 </span>            : ves_icall_System_Threading_Mutex_OpenMutex_internal (MonoString *name, gint32 rights G_GNUC_UNUSED, gint32 *error)
+<span class="lineNum">     435 </span>            : {
+<span class="lineNum">     436 </span>            :         gpointer handle;
+<span class="lineNum">     437 </span>            :         gchar *utf8_name;
+<span class="lineNum">     438 </span>            : 
+<span class="lineNum">     439 </span><span class="lineNoCov">          0 :         *error = ERROR_SUCCESS;</span>
+<span class="lineNum">     440 </span>            : 
+<span class="lineNum">     441 </span>            :         /* w32 seems to guarantee that opening named objects can't race each other */
+<span class="lineNum">     442 </span><span class="lineNoCov">          0 :         mono_w32handle_namespace_lock ();</span>
+<span class="lineNum">     443 </span>            : 
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :         utf8_name = g_utf16_to_utf8 (mono_string_chars (name), -1, NULL, NULL, NULL);</span>
+<span class="lineNum">     445 </span>            : 
+<span class="lineNum">     446 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: Opening named mutex [%s]&quot;,</span>
+<span class="lineNum">     447 </span><span class="lineNoCov">          0 :                 __func__, utf8_name);</span>
+<span class="lineNum">     448 </span>            : 
+<span class="lineNum">     449 </span><span class="lineNoCov">          0 :         handle = mono_w32handle_namespace_search_handle (MONO_W32HANDLE_NAMEDMUTEX, utf8_name);</span>
+<span class="lineNum">     450 </span><span class="lineNoCov">          0 :         if (handle == INVALID_HANDLE_VALUE) {</span>
+<span class="lineNum">     451 </span>            :                 /* The name has already been used for a different object. */
+<span class="lineNum">     452 </span><span class="lineNoCov">          0 :                 *error = ERROR_INVALID_HANDLE;</span>
+<span class="lineNum">     453 </span><span class="lineNoCov">          0 :                 goto cleanup;</span>
+<span class="lineNum">     454 </span><span class="lineNoCov">          0 :         } else if (!handle) {</span>
+<span class="lineNum">     455 </span>            :                 /* This name doesn't exist */
+<span class="lineNum">     456 </span><span class="lineNoCov">          0 :                 *error = ERROR_FILE_NOT_FOUND;</span>
+<span class="lineNum">     457 </span><span class="lineNoCov">          0 :                 goto cleanup;</span>
+<span class="lineNum">     458 </span>            :         }
+<span class="lineNum">     459 </span>            : 
+<span class="lineNum">     460 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: returning named mutex handle %p&quot;,</span>
+<span class="lineNum">     461 </span><span class="lineNoCov">          0 :                 __func__, handle);</span>
+<span class="lineNum">     462 </span>            : 
+<span class="lineNum">     463 </span>            : cleanup:
+<span class="lineNum">     464 </span><span class="lineNoCov">          0 :         g_free (utf8_name);</span>
+<span class="lineNum">     465 </span>            : 
+<span class="lineNum">     466 </span><span class="lineNoCov">          0 :         mono_w32handle_namespace_unlock ();</span>
+<span class="lineNum">     467 </span>            : 
+<span class="lineNum">     468 </span><span class="lineNoCov">          0 :         return handle;</span>
+<span class="lineNum">     469 </span>            : }
+<a name="470"><span class="lineNum">     470 </span>            : </a>
+<span class="lineNum">     471 </span>            : void
+<span class="lineNum">     472 </span>            : mono_w32mutex_abandon (void)
+<span class="lineNum">     473 </span>            : {
+<span class="lineNum">     474 </span>            :         MonoInternalThread *internal;
+<span class="lineNum">     475 </span>            : 
+<span class="lineNum">     476 </span><span class="lineCov">      60049 :         g_assert (mono_thread_internal_current_is_attached ());</span>
+<span class="lineNum">     477 </span>            : 
+<span class="lineNum">     478 </span><span class="lineCov">      20016 :         internal = mono_thread_internal_current ();</span>
+<span class="lineNum">     479 </span><span class="lineCov">      60048 :         g_assert (internal);</span>
+<span class="lineNum">     480 </span>            : 
+<span class="lineNum">     481 </span><span class="lineCov">      20016 :         if (!internal-&gt;owned_mutexes)</span>
+<span class="lineNum">     482 </span><span class="lineCov">      19814 :                 return;</span>
+<span class="lineNum">     483 </span>            : 
+<span class="lineNum">     484 </span><span class="lineCov">        404 :         while (internal-&gt;owned_mutexes-&gt;len) {</span>
+<span class="lineNum">     485 </span>            :                 MonoW32HandleType type;
+<span class="lineNum">     486 </span>            :                 MonoW32HandleMutex *mutex_handle;
+<span class="lineNum">     487 </span>            :                 MonoNativeThreadId tid;
+<span class="lineNum">     488 </span>            :                 gpointer handle;
+<span class="lineNum">     489 </span>            : 
+<span class="lineNum">     490 </span><span class="lineNoCov">          0 :                 handle = g_ptr_array_index (internal-&gt;owned_mutexes, 0);</span>
+<span class="lineNum">     491 </span>            : 
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :                 switch (type = mono_w32handle_get_type (handle)) {</span>
+<span class="lineNum">     493 </span>            :                 case MONO_W32HANDLE_MUTEX:
+<span class="lineNum">     494 </span>            :                 case MONO_W32HANDLE_NAMEDMUTEX:
+<span class="lineNum">     495 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     496 </span>            :                 default:
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :                         g_assert_not_reached ();</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     499 </span>            : 
+<span class="lineNum">     500 </span><span class="lineNoCov">          0 :                 if (!mono_w32handle_lookup (handle, type, (gpointer *)&amp;mutex_handle)) {</span>
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 :                         g_error (&quot;%s: error looking up %s handle %p&quot;,</span>
+<span class="lineNum">     502 </span>            :                                 __func__, mono_w32handle_get_typename (type), handle);
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     504 </span>            : 
+<span class="lineNum">     505 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: abandoning %s handle %p&quot;,</span>
+<span class="lineNum">     506 </span><span class="lineNoCov">          0 :                         __func__, mono_w32handle_get_typename (type), handle);</span>
+<span class="lineNum">     507 </span>            : 
+<span class="lineNum">     508 </span><span class="lineNoCov">          0 :                 tid = MONO_UINT_TO_NATIVE_THREAD_ID (internal-&gt;tid);</span>
+<span class="lineNum">     509 </span>            : 
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :                 if (!pthread_equal (mutex_handle-&gt;tid, tid))</span>
+<span class="lineNum">     511 </span><span class="lineNoCov">          0 :                         g_error (&quot;%s: trying to release mutex %p acquired by thread %p from thread %p&quot;,</span>
+<span class="lineNum">     512 </span>            :                                 __func__, handle, (gpointer) mutex_handle-&gt;tid, (gpointer) tid);
+<span class="lineNum">     513 </span>            : 
+<span class="lineNum">     514 </span><span class="lineNoCov">          0 :                 mono_w32handle_lock_handle (handle);</span>
+<span class="lineNum">     515 </span>            : 
+<span class="lineNum">     516 </span><span class="lineNoCov">          0 :                 mutex_handle-&gt;recursion = 0;</span>
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :                 mutex_handle-&gt;tid = 0;</span>
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :                 mutex_handle-&gt;abandoned = TRUE;</span>
+<span class="lineNum">     519 </span>            : 
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :                 mono_w32handle_set_signal_state (handle, TRUE, FALSE);</span>
+<span class="lineNum">     521 </span>            : 
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :                 thread_disown_mutex (internal, handle);</span>
+<span class="lineNum">     523 </span>            : 
+<span class="lineNum">     524 </span><span class="lineNoCov">          0 :                 mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: abandoned %s handle %p&quot;,</span>
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :                         __func__, mono_w32handle_get_typename (type), handle);</span>
+<span class="lineNum">     526 </span>            : 
+<span class="lineNum">     527 </span><span class="lineNoCov">          0 :                 mono_w32handle_unlock_handle (handle);</span>
+<span class="lineNum">     528 </span>            :         }
+<span class="lineNum">     529 </span>            : 
+<span class="lineNum">     530 </span><span class="lineCov">        202 :         g_ptr_array_free (internal-&gt;owned_mutexes, TRUE);</span>
+<span class="lineNum">     531 </span><span class="lineCov">        202 :         internal-&gt;owned_mutexes = NULL;</span>
+<span class="lineNum">     532 </span><span class="lineCov">      20219 : }</span>
+<a name="533"><span class="lineNum">     533 </span>            : </a>
+<span class="lineNum">     534 </span>            : MonoW32HandleNamespace*
+<span class="lineNum">     535 </span>            : mono_w32mutex_get_namespace (MonoW32HandleNamedMutex *mutex)
+<span class="lineNum">     536 </span>            : {
+<span class="lineNum">     537 </span><span class="lineCov">        487 :         return &amp;mutex-&gt;sharedns;</span>
+<span class="lineNum">     538 </span>            : }
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

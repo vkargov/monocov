@@ -1,0 +1,559 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-protocol-def.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-protocol-def.h<span style="font-size: 80%;"> (source / <a href="sgen-protocol-def.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">81</td>
+            <td class="headerCovTableEntry">94</td>
+            <td class="headerCovTableEntryMed">86.2 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">51</td>
+            <td class="headerCovTableEntry">58</td>
+            <td class="headerCovTableEntryMed">87.9 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * All binary protocol entries are defined here.  To keep compatibility with past binary
+<span class="lineNum">       3 </span>            :  * protocol files, new protocol entries need to be defined at the end of the file so that
+<span class="lineNum">       4 </span>            :  * the sequential numbering is preserved.  We also can't change the types or numbers of
+<span class="lineNum">       5 </span>            :  * arguments of existing entries.  Instead, a new entry has to be added and the old entry
+<span class="lineNum">       6 </span>            :  * retired - add a comment to make clear it's not used anymore, but it needs to stay in the
+<span class="lineNum">       7 </span>            :  * definition file, both to preserve the numbering as well as for the benefit of
+<span class="lineNum">       8 </span>            :  * `sgen-grep-binprot`, which will still want to read the old entries.
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  * It might become necessary to add a header protocol entry that includes version
+<span class="lineNum">      11 </span>            :  * information.  If/when we do that, we should also include word length and endianness.  As
+<span class="lineNum">      12 </span>            :  * of right now, binary protocol files don't identify themselves as 32 vs 64 bits or big- vs
+<span class="lineNum">      13 </span>            :  * little-endian.  At that point, `sgen-grep-binprot` should also be made able to read all
+<span class="lineNum">      14 </span>            :  * combinations of files, regardless of the host.
+<a name="15"><span class="lineNum">      15 </span>            :  */</a>
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span><span class="lineCov">     189716 : BEGIN_PROTOCOL_ENTRY3 (binary_protocol_collection_requested, TYPE_INT, generation, TYPE_SIZE, requested_size, TYPE_BOOL, force)</span>
+<span class="lineNum">      18 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      19 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      20 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      21 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="22"><span class="lineNum">      22 </span><span class="lineCov">     189716 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span><span class="lineCov">     189716 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_collection_begin, TYPE_INT, index, TYPE_INT, generation)</span>
+<span class="lineNum">      25 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      26 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      27 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      28 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="29"><span class="lineNum">      29 </span><span class="lineCov">     189716 : END_PROTOCOL_ENTRY_FLUSH</span></a>
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span><span class="lineCov">     189716 : BEGIN_PROTOCOL_ENTRY4 (binary_protocol_collection_end, TYPE_INT, index, TYPE_INT, generation, TYPE_LONGLONG, num_scanned_objects, TYPE_LONGLONG, num_unique_scanned_objects)</span>
+<span class="lineNum">      32 </span>            : CUSTOM_PRINT (printf (&quot;%d generation %d scanned %lld unique %lld %0.2f%%&quot;, entry-&gt;index, entry-&gt;generation, entry-&gt;num_scanned_objects, entry-&gt;num_unique_scanned_objects, entry-&gt;num_unique_scanned_objects ? (100.0 * (double) entry-&gt;num_scanned_objects / (double) entry-&gt;num_unique_scanned_objects) : 0.0))
+<span class="lineNum">      33 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      34 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      35 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="36"><span class="lineNum">      36 </span><span class="lineCov">     189716 : END_PROTOCOL_ENTRY_FLUSH</span></a>
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span><span class="lineCov">        249 : BEGIN_PROTOCOL_ENTRY0 (binary_protocol_concurrent_start)</span>
+<span class="lineNum">      39 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      40 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      41 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      42 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="43"><span class="lineNum">      43 </span><span class="lineCov">        249 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span><span class="lineCov">        584 : BEGIN_PROTOCOL_ENTRY0 (binary_protocol_concurrent_update)</span>
+<span class="lineNum">      46 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      47 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      48 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      49 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="50"><span class="lineNum">      50 </span><span class="lineCov">        584 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span><span class="lineCov">        249 : BEGIN_PROTOCOL_ENTRY0 (binary_protocol_concurrent_finish)</span>
+<span class="lineNum">      53 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      54 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      55 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      56 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="57"><span class="lineNum">      57 </span><span class="lineCov">        249 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span><span class="lineCov">     179770 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_sweep_begin, TYPE_INT, generation, TYPE_BOOL, full_sweep)</span>
+<span class="lineNum">      60 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      61 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      62 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      63 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="64"><span class="lineNum">      64 </span><span class="lineCov">     179770 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span><span class="lineCov">     179770 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_sweep_end, TYPE_INT, generation, TYPE_BOOL, full_sweep)</span>
+<span class="lineNum">      67 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      68 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      69 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      70 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="71"><span class="lineNum">      71 </span><span class="lineCov">     179770 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      72 </span>            : 
+<span class="lineNum">      73 </span><span class="lineCov">     193201 : BEGIN_PROTOCOL_ENTRY3 (binary_protocol_world_stopping, TYPE_INT, generation, TYPE_LONGLONG, timestamp, TYPE_POINTER, thread)</span>
+<span class="lineNum">      74 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      75 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      76 </span>            : MATCH_INDEX (ptr == entry-&gt;thread ? 2 : BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      77 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="78"><span class="lineNum">      78 </span><span class="lineCov">     193201 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineCov">     193201 : BEGIN_PROTOCOL_ENTRY6 (binary_protocol_world_stopped, TYPE_INT, generation, TYPE_LONGLONG, timestamp, TYPE_LONGLONG, total_major_cards, TYPE_LONGLONG, marked_major_cards, TYPE_LONGLONG, total_los_cards, TYPE_LONGLONG, marked_los_cards)</span>
+<span class="lineNum">      81 </span>            : CUSTOM_PRINT (printf (&quot;generation %d timestamp %lld total %lld marked %lld %0.2f%%&quot;, entry-&gt;generation, entry-&gt;timestamp, entry-&gt;total_major_cards + entry-&gt;total_los_cards, entry-&gt;marked_major_cards + entry-&gt;marked_los_cards, 100.0 * (double) (entry-&gt;marked_major_cards + entry-&gt;marked_los_cards) / (double) (entry-&gt;total_major_cards + entry-&gt;total_los_cards)))
+<span class="lineNum">      82 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      83 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      84 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="85"><span class="lineNum">      85 </span><span class="lineCov">     193201 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span><span class="lineCov">     193201 : BEGIN_PROTOCOL_ENTRY6 (binary_protocol_world_restarting, TYPE_INT, generation, TYPE_LONGLONG, timestamp, TYPE_LONGLONG, total_major_cards, TYPE_LONGLONG, marked_major_cards, TYPE_LONGLONG, total_los_cards, TYPE_LONGLONG, marked_los_cards)</span>
+<span class="lineNum">      88 </span>            : CUSTOM_PRINT (printf (&quot;generation %d timestamp %lld total %lld marked %lld %0.2f%%&quot;, entry-&gt;generation, entry-&gt;timestamp, entry-&gt;total_major_cards + entry-&gt;total_los_cards, entry-&gt;marked_major_cards + entry-&gt;marked_los_cards, 100.0 * (double) (entry-&gt;marked_major_cards + entry-&gt;marked_los_cards) / (double) (entry-&gt;total_major_cards + entry-&gt;total_los_cards)))
+<span class="lineNum">      89 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      90 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      91 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="92"><span class="lineNum">      92 </span><span class="lineCov">     193201 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineCov">     193201 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_world_restarted, TYPE_INT, generation, TYPE_LONGLONG, timestamp)</span>
+<span class="lineNum">      95 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">      96 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">      97 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">      98 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="99"><span class="lineNum">      99 </span><span class="lineCov">     193201 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span><span class="lineCov">     649245 : BEGIN_PROTOCOL_ENTRY_HEAVY2 (binary_protocol_block_alloc, TYPE_POINTER, addr, TYPE_SIZE, size)</span>
+<span class="lineNum">     102 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     103 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     104 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;addr, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     105 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="106"><span class="lineNum">     106 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     107 </span>            : 
+<span class="lineNum">     108 </span><span class="lineCov">     281261 : BEGIN_PROTOCOL_ENTRY_HEAVY2 (binary_protocol_block_free, TYPE_POINTER, addr, TYPE_SIZE, size)</span>
+<span class="lineNum">     109 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     110 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     111 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;addr, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     112 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="113"><span class="lineNum">     113 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span><span class="lineCov">   37521594 : BEGIN_PROTOCOL_ENTRY_HEAVY4 (binary_protocol_block_set_state, TYPE_POINTER, addr, TYPE_SIZE, size, TYPE_INT, old, TYPE_INT, new_)</span>
+<span class="lineNum">     116 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     117 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     118 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;addr, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     119 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="120"><span class="lineNum">     120 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     121 </span>            : 
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_mark_start, TYPE_INT, generation)</span>
+<span class="lineNum">     123 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     124 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     125 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     126 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="127"><span class="lineNum">     127 </span><span class="lineNoCov">          0 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     128 </span>            : 
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_mark_end, TYPE_INT, generation)</span>
+<span class="lineNum">     130 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     131 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     132 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     133 </span>            : IS_VTABLE_MATCH (FALSE)
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 : END_PROTOCOL_ENTRY</span>
+<a name="135"><span class="lineNum">     135 </span>            : </a>
+<span class="lineNum">     136 </span>            : /* FIXME: unify sweep and reclaim */
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_reclaim_start, TYPE_INT, generation)</span>
+<span class="lineNum">     138 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     139 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     140 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     141 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="142"><span class="lineNum">     142 </span><span class="lineNoCov">          0 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_reclaim_end, TYPE_INT, generation)</span>
+<span class="lineNum">     145 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     146 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     147 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     148 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="149"><span class="lineNum">     149 </span><span class="lineNoCov">          0 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span><span class="lineCov">   61884703 : BEGIN_PROTOCOL_ENTRY_HEAVY4 (binary_protocol_alloc, TYPE_POINTER, obj, TYPE_POINTER, vtable, TYPE_SIZE, size, TYPE_POINTER, provenance)</span>
+<span class="lineNum">     152 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     153 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     154 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;obj, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     155 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<a name="156"><span class="lineNum">     156 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     157 </span>            : 
+<span class="lineNum">     158 </span><span class="lineCov">  133401742 : BEGIN_PROTOCOL_ENTRY_HEAVY4 (binary_protocol_copy, TYPE_POINTER, from, TYPE_POINTER, to, TYPE_POINTER, vtable, TYPE_SIZE, size)</span>
+<span class="lineNum">     159 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     160 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     161 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;from, entry-&gt;size) ? 0 : matches_interval (ptr, entry-&gt;to, entry-&gt;size) ? 1 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     162 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<a name="163"><span class="lineNum">     163 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     164 </span>            : 
+<span class="lineNum">     165 </span><span class="lineCov">   26069320 : BEGIN_PROTOCOL_ENTRY_HEAVY2 (binary_protocol_pin_stage, TYPE_POINTER, addr_ptr, TYPE_POINTER, addr)</span>
+<span class="lineNum">     166 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     167 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     168 </span>            : MATCH_INDEX (ptr == entry-&gt;addr_ptr ? 0 : ptr == entry-&gt;addr ? 1 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     169 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="170"><span class="lineNum">     170 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     171 </span>            : 
+<span class="lineNum">     172 </span><span class="lineCov">      12957 : BEGIN_PROTOCOL_ENTRY_HEAVY1 (binary_protocol_cement_stage, TYPE_POINTER, addr)</span>
+<span class="lineNum">     173 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     174 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     175 </span>            : MATCH_INDEX (ptr == entry-&gt;addr ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     176 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="177"><span class="lineNum">     177 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineCov">    3420956 : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_pin, TYPE_POINTER, obj, TYPE_POINTER, vtable, TYPE_SIZE, size)</span>
+<span class="lineNum">     180 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     181 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     182 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;obj, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     183 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<a name="184"><span class="lineNum">     184 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     185 </span>            : 
+<span class="lineNum">     186 </span><span class="lineCov">  250515996 : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_mark, TYPE_POINTER, obj, TYPE_POINTER, vtable, TYPE_SIZE, size)</span>
+<span class="lineNum">     187 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     188 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     189 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;obj, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     190 </span>            : IS_VTABLE_MATCH (FALSE)
+<span class="lineNum">     191 </span>            : END_PROTOCOL_ENTRY_HEAVY
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span>            : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_scan_begin, TYPE_POINTER, obj, TYPE_POINTER, vtable, TYPE_SIZE, size)
+<span class="lineNum">     194 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     195 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     196 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;obj, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     197 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<span class="lineNum">     198 </span>            : END_PROTOCOL_ENTRY_HEAVY
+<span class="lineNum">     199 </span>            : 
+<span class="lineNum">     200 </span>            : BEGIN_PROTOCOL_ENTRY_HEAVY2 (binary_protocol_scan_vtype_begin, TYPE_POINTER, obj, TYPE_SIZE, size)
+<span class="lineNum">     201 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     202 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     203 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;obj, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     204 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="205"><span class="lineNum">     205 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     206 </span>            : 
+<span class="lineNum">     207 </span><span class="lineCov"> 2125026425 : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_scan_process_reference, TYPE_POINTER, obj, TYPE_POINTER, ptr, TYPE_POINTER, value)</span>
+<span class="lineNum">     208 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     209 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     210 </span>            : MATCH_INDEX (ptr == entry-&gt;obj ? 0 : ptr == entry-&gt;ptr ? 1 : ptr == entry-&gt;value ? 2 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     211 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="212"><span class="lineNum">     212 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     213 </span>            : 
+<span class="lineNum">     214 </span><span class="lineCov">    1671716 : BEGIN_PROTOCOL_ENTRY_HEAVY4 (binary_protocol_scan_stack, TYPE_POINTER, thread, TYPE_POINTER, stack_start, TYPE_POINTER, stack_end, TYPE_INT, skip_reason)</span>
+<span class="lineNum">     215 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     216 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     217 </span>            : MATCH_INDEX (ptr == entry-&gt;thread ? 0 : (ptr &gt;= entry-&gt;stack_start &amp;&amp; ptr &lt; entry-&gt;stack_end) ? 1 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     218 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="219"><span class="lineNum">     219 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     220 </span>            : 
+<span class="lineNum">     221 </span><span class="lineCov">  601948051 : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_wbarrier, TYPE_POINTER, ptr, TYPE_POINTER, value, TYPE_POINTER, value_vtable)</span>
+<span class="lineNum">     222 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     223 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     224 </span>            : MATCH_INDEX (ptr == entry-&gt;ptr ? 0 : ptr == entry-&gt;value ? 1 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     225 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;value_vtable)
+<a name="226"><span class="lineNum">     226 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span><span class="lineCov">   21184849 : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_global_remset, TYPE_POINTER, ptr, TYPE_POINTER, value, TYPE_POINTER, value_vtable)</span>
+<span class="lineNum">     229 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     230 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     231 </span>            : MATCH_INDEX (ptr == entry-&gt;ptr ? 0 : ptr == entry-&gt;value ? 1 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     232 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;value_vtable)
+<span class="lineNum">     233 </span>            : END_PROTOCOL_ENTRY_HEAVY
+<span class="lineNum">     234 </span>            : 
+<span class="lineNum">     235 </span>            : BEGIN_PROTOCOL_ENTRY_HEAVY5 (binary_protocol_ptr_update, TYPE_POINTER, ptr, TYPE_POINTER, old_value, TYPE_POINTER, new_value, TYPE_POINTER, vtable, TYPE_SIZE, size)
+<span class="lineNum">     236 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     237 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     238 </span>            : MATCH_INDEX (ptr == entry-&gt;ptr ? 0 : matches_interval (ptr, entry-&gt;old_value, entry-&gt;size) ? 1 : matches_interval (ptr, entry-&gt;new_value, entry-&gt;size) ? 2 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     239 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<a name="240"><span class="lineNum">     240 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span><span class="lineCov">  105182442 : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_cleanup, TYPE_POINTER, ptr, TYPE_POINTER, vtable, TYPE_SIZE, size)</span>
+<span class="lineNum">     243 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     244 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     245 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;ptr, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     246 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<a name="247"><span class="lineNum">     247 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     248 </span>            : 
+<span class="lineNum">     249 </span><span class="lineCov">   22266292 : BEGIN_PROTOCOL_ENTRY_HEAVY2 (binary_protocol_empty, TYPE_POINTER, start, TYPE_SIZE, size)</span>
+<span class="lineNum">     250 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     251 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     252 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;start, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     253 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="254"><span class="lineNum">     254 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     255 </span>            : 
+<span class="lineNum">     256 </span><span class="lineCov">     460331 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_thread_suspend, TYPE_POINTER, thread, TYPE_POINTER, stopped_ip)</span>
+<span class="lineNum">     257 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     258 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     259 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     260 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="261"><span class="lineNum">     261 </span><span class="lineCov">     460331 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     262 </span>            : 
+<span class="lineNum">     263 </span><span class="lineCov">     460331 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_thread_restart, TYPE_POINTER, thread)</span>
+<span class="lineNum">     264 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     265 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     266 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     267 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="268"><span class="lineNum">     268 </span><span class="lineCov">     460331 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span><span class="lineCov">      21155 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_thread_register, TYPE_POINTER, thread)</span>
+<span class="lineNum">     271 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     272 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     273 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     274 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="275"><span class="lineNum">     275 </span><span class="lineCov">      21155 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span><span class="lineCov">      17806 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_thread_unregister, TYPE_POINTER, thread)</span>
+<span class="lineNum">     278 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     279 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     280 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     281 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="282"><span class="lineNum">     282 </span><span class="lineCov">      17806 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     283 </span>            : 
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 : BEGIN_PROTOCOL_ENTRY6 (binary_protocol_missing_remset, TYPE_POINTER, obj, TYPE_POINTER, obj_vtable, TYPE_INT, offset, TYPE_POINTER, value, TYPE_POINTER, value_vtable, TYPE_BOOL, value_pinned)</span>
+<span class="lineNum">     285 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     286 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     287 </span>            : MATCH_INDEX (ptr == entry-&gt;obj ? 0 : ptr == entry-&gt;value ? 3 : ptr == entry-&gt;obj + entry-&gt;offset ? BINARY_PROTOCOL_MATCH : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     288 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;obj_vtable || ptr == entry-&gt;value_vtable)
+<a name="289"><span class="lineNum">     289 </span><span class="lineNoCov">          0 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span><span class="lineCov">    7380503 : BEGIN_PROTOCOL_ENTRY_HEAVY4 (binary_protocol_alloc_pinned, TYPE_POINTER, obj, TYPE_POINTER, vtable, TYPE_SIZE, size, TYPE_POINTER, provenance)</span>
+<span class="lineNum">     292 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     293 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     294 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;obj, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     295 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<a name="296"><span class="lineNum">     296 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     297 </span>            : 
+<span class="lineNum">     298 </span><span class="lineNoCov">          0 : BEGIN_PROTOCOL_ENTRY_HEAVY4 (binary_protocol_alloc_degraded, TYPE_POINTER, obj, TYPE_POINTER, vtable, TYPE_SIZE, size, TYPE_POINTER, provenance)</span>
+<span class="lineNum">     299 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     300 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     301 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;obj, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     302 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<a name="303"><span class="lineNum">     303 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     304 </span>            : 
+<span class="lineNum">     305 </span><span class="lineCov">   14094401 : BEGIN_PROTOCOL_ENTRY_HEAVY2 (binary_protocol_card_scan, TYPE_POINTER, start, TYPE_SIZE, size)</span>
+<span class="lineNum">     306 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     307 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     308 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;start, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     309 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="310"><span class="lineNum">     310 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span><span class="lineCov">       1119 : BEGIN_PROTOCOL_ENTRY3 (binary_protocol_cement, TYPE_POINTER, obj, TYPE_POINTER, vtable, TYPE_SIZE, size)</span>
+<span class="lineNum">     313 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     314 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     315 </span>            : MATCH_INDEX (matches_interval (ptr, entry-&gt;obj, entry-&gt;size) ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     316 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;vtable)
+<a name="317"><span class="lineNum">     317 </span><span class="lineCov">       1119 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     318 </span>            : 
+<span class="lineNum">     319 </span><span class="lineCov">     179770 : BEGIN_PROTOCOL_ENTRY0 (binary_protocol_cement_reset)</span>
+<span class="lineNum">     320 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     321 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     322 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     323 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="324"><span class="lineNum">     324 </span><span class="lineCov">     179770 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     325 </span>            : 
+<span class="lineNum">     326 </span><span class="lineCov">    2469457 : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_dislink_add, TYPE_POINTER, link, TYPE_POINTER, obj, TYPE_BOOL, track)</span>
+<span class="lineNum">     327 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     328 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     329 </span>            : MATCH_INDEX (ptr == entry-&gt;link ? 0 : ptr == entry-&gt;obj ? 1 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     330 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="331"><span class="lineNum">     331 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     332 </span>            : 
+<span class="lineNum">     333 </span><span class="lineCov">     528594 : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_dislink_update, TYPE_POINTER, link, TYPE_POINTER, obj, TYPE_BOOL, track)</span>
+<span class="lineNum">     334 </span>            : CUSTOM_PRINT(entry-&gt;obj ? printf (&quot;link 0x%&quot;MWORD_FORMAT_SPEC_P&quot; obj 0x%&quot;MWORD_FORMAT_SPEC_P&quot; track %d&quot;, entry-&gt;link, entry-&gt;obj, entry-&gt;track) : printf (&quot;link 0x%&quot;MWORD_FORMAT_SPEC_P&quot; obj 0x%&quot;MWORD_FORMAT_SPEC_P, entry-&gt;link, entry-&gt;obj))
+<span class="lineNum">     335 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     336 </span>            : MATCH_INDEX (ptr == entry-&gt;link ? 0 : ptr == entry-&gt;obj ? 1 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     337 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="338"><span class="lineNum">     338 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     339 </span>            : 
+<span class="lineNum">     340 </span><span class="lineCov">    2469395 : BEGIN_PROTOCOL_ENTRY_HEAVY2 (binary_protocol_dislink_remove, TYPE_POINTER, link, TYPE_BOOL, track)</span>
+<span class="lineNum">     341 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     342 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     343 </span>            : MATCH_INDEX (ptr == entry-&gt;link ? 0 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     344 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="345"><span class="lineNum">     345 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     346 </span>            : 
+<span class="lineNum">     347 </span><span class="lineCov">       3485 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_domain_unload_begin, TYPE_POINTER, domain)</span>
+<span class="lineNum">     348 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     349 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     350 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     351 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="352"><span class="lineNum">     352 </span><span class="lineCov">       3485 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     353 </span>            : 
+<span class="lineNum">     354 </span><span class="lineCov">       3485 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_domain_unload_end, TYPE_POINTER, domain)</span>
+<span class="lineNum">     355 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     356 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     357 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     358 </span>            : IS_VTABLE_MATCH (FALSE)
+<span class="lineNum">     359 </span><span class="lineCov">       3485 : END_PROTOCOL_ENTRY</span>
+<span class="lineNum">     360 </span>            : 
+<span class="lineNum">     361 </span>            : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_gray_enqueue, TYPE_POINTER, queue, TYPE_POINTER, cursor, TYPE_POINTER, value)
+<span class="lineNum">     362 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     363 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     364 </span>            : MATCH_INDEX (ptr == entry-&gt;cursor ? 1 : ptr == entry-&gt;value ? 2 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     365 </span>            : IS_VTABLE_MATCH (FALSE)
+<span class="lineNum">     366 </span>            : END_PROTOCOL_ENTRY_HEAVY
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span>            : BEGIN_PROTOCOL_ENTRY_HEAVY3 (binary_protocol_gray_dequeue, TYPE_POINTER, queue, TYPE_POINTER, cursor, TYPE_POINTER, value)
+<span class="lineNum">     369 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     370 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     371 </span>            : MATCH_INDEX (ptr == entry-&gt;cursor ? 1 : ptr == entry-&gt;value ? 2 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     372 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="373"><span class="lineNum">     373 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span><span class="lineCov">   10006476 : BEGIN_PROTOCOL_ENTRY_HEAVY4 (binary_protocol_mod_union_remset, TYPE_POINTER, obj, TYPE_POINTER, ptr, TYPE_POINTER, value, TYPE_POINTER, value_vtable)</span>
+<span class="lineNum">     376 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     377 </span>            : IS_ALWAYS_MATCH (FALSE)
+<span class="lineNum">     378 </span>            : MATCH_INDEX (ptr == entry-&gt;obj ? 0 : ptr == entry-&gt;ptr ? 1 : ptr == entry-&gt;value ? 2 : BINARY_PROTOCOL_NO_MATCH)
+<span class="lineNum">     379 </span>            : IS_VTABLE_MATCH (ptr == entry-&gt;value_vtable)
+<a name="380"><span class="lineNum">     380 </span>            : END_PROTOCOL_ENTRY_HEAVY</a>
+<span class="lineNum">     381 </span>            : 
+<span class="lineNum">     382 </span><span class="lineCov">      10424 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_major_card_table_scan_start, TYPE_LONGLONG, timestamp, TYPE_BOOL, mod_union)</span>
+<span class="lineNum">     383 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     384 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     385 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     386 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="387"><span class="lineNum">     387 </span><span class="lineCov">      10424 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     388 </span>            : 
+<span class="lineNum">     389 </span><span class="lineCov">      10424 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_major_card_table_scan_end, TYPE_LONGLONG, timestamp, TYPE_BOOL, mod_union)</span>
+<span class="lineNum">     390 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     391 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     392 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     393 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="394"><span class="lineNum">     394 </span><span class="lineCov">      10424 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineCov">      10424 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_los_card_table_scan_start, TYPE_LONGLONG, timestamp, TYPE_BOOL, mod_union)</span>
+<span class="lineNum">     397 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     398 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     399 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     400 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="401"><span class="lineNum">     401 </span><span class="lineCov">      10424 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     402 </span>            : 
+<span class="lineNum">     403 </span><span class="lineCov">      10424 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_los_card_table_scan_end, TYPE_LONGLONG, timestamp, TYPE_BOOL, mod_union)</span>
+<span class="lineNum">     404 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     405 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     406 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     407 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="408"><span class="lineNum">     408 </span><span class="lineCov">      10424 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     409 </span>            : 
+<span class="lineNum">     410 </span><span class="lineCov">     189716 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_finish_gray_stack_start, TYPE_LONGLONG, timestamp, TYPE_INT, generation)</span>
+<span class="lineNum">     411 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     412 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     413 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     414 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="415"><span class="lineNum">     415 </span><span class="lineCov">     189716 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     416 </span>            : 
+<span class="lineNum">     417 </span><span class="lineCov">     189716 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_finish_gray_stack_end, TYPE_LONGLONG, timestamp, TYPE_INT, generation)</span>
+<span class="lineNum">     418 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     419 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     420 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     421 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="422"><span class="lineNum">     422 </span><span class="lineCov">     189716 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     423 </span>            : 
+<span class="lineNum">     424 </span><span class="lineCov">        281 : BEGIN_PROTOCOL_ENTRY2 (binary_protocol_worker_finish, TYPE_LONGLONG, timestamp, TYPE_BOOL, forced)</span>
+<span class="lineNum">     425 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     426 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     427 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     428 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="429"><span class="lineNum">     429 </span><span class="lineCov">        281 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     430 </span>            : 
+<span class="lineNum">     431 </span><span class="lineCov">        204 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_evacuating_blocks, TYPE_SIZE, block_size)</span>
+<span class="lineNum">     432 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     433 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     434 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     435 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="436"><span class="lineNum">     436 </span><span class="lineCov">        204 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     437 </span>            : 
+<span class="lineNum">     438 </span><span class="lineCov">     179770 : BEGIN_PROTOCOL_ENTRY1 (binary_protocol_concurrent_sweep_end, TYPE_LONGLONG, timestamp)</span>
+<span class="lineNum">     439 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     440 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     441 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     442 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="443"><span class="lineNum">     443 </span><span class="lineCov">     179770 : END_PROTOCOL_ENTRY</span></a>
+<span class="lineNum">     444 </span>            : 
+<span class="lineNum">     445 </span><span class="lineNoCov">          0 : BEGIN_PROTOCOL_ENTRY4 (binary_protocol_header, TYPE_LONGLONG, check, TYPE_INT, version, TYPE_INT, ptr_size, TYPE_BOOL, little_endian)</span>
+<span class="lineNum">     446 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     447 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     448 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     449 </span>            : IS_VTABLE_MATCH (FALSE)
+<a name="450"><span class="lineNum">     450 </span><span class="lineNoCov">          0 : END_PROTOCOL_ENTRY_FLUSH</span></a>
+<span class="lineNum">     451 </span>            : 
+<span class="lineNum">     452 </span><span class="lineCov">     193237 : BEGIN_PROTOCOL_ENTRY4 (binary_protocol_pin_stats, TYPE_INT, objects_pinned_in_nursery, TYPE_SIZE, bytes_pinned_in_nursery, TYPE_INT, objects_pinned_in_major, TYPE_SIZE, bytes_pinned_in_major)</span>
+<span class="lineNum">     453 </span>            : DEFAULT_PRINT ()
+<span class="lineNum">     454 </span>            : IS_ALWAYS_MATCH (TRUE)
+<span class="lineNum">     455 </span>            : MATCH_INDEX (BINARY_PROTOCOL_MATCH)
+<span class="lineNum">     456 </span>            : IS_VTABLE_MATCH (FALSE)
+<span class="lineNum">     457 </span><span class="lineCov">     193237 : END_PROTOCOL_ENTRY</span>
+<span class="lineNum">     458 </span>            : 
+<span class="lineNum">     459 </span>            : #undef BEGIN_PROTOCOL_ENTRY0
+<span class="lineNum">     460 </span>            : #undef BEGIN_PROTOCOL_ENTRY1
+<span class="lineNum">     461 </span>            : #undef BEGIN_PROTOCOL_ENTRY2
+<span class="lineNum">     462 </span>            : #undef BEGIN_PROTOCOL_ENTRY3
+<span class="lineNum">     463 </span>            : #undef BEGIN_PROTOCOL_ENTRY4
+<span class="lineNum">     464 </span>            : #undef BEGIN_PROTOCOL_ENTRY5
+<span class="lineNum">     465 </span>            : #undef BEGIN_PROTOCOL_ENTRY6
+<span class="lineNum">     466 </span>            : #undef BEGIN_PROTOCOL_ENTRY_HEAVY0
+<span class="lineNum">     467 </span>            : #undef BEGIN_PROTOCOL_ENTRY_HEAVY1
+<span class="lineNum">     468 </span>            : #undef BEGIN_PROTOCOL_ENTRY_HEAVY2
+<span class="lineNum">     469 </span>            : #undef BEGIN_PROTOCOL_ENTRY_HEAVY3
+<span class="lineNum">     470 </span>            : #undef BEGIN_PROTOCOL_ENTRY_HEAVY4
+<span class="lineNum">     471 </span>            : #undef BEGIN_PROTOCOL_ENTRY_HEAVY5
+<span class="lineNum">     472 </span>            : #undef BEGIN_PROTOCOL_ENTRY_HEAVY6
+<span class="lineNum">     473 </span>            : 
+<span class="lineNum">     474 </span>            : #undef DEFAULT_PRINT
+<span class="lineNum">     475 </span>            : #undef CUSTOM_PRINT
+<span class="lineNum">     476 </span>            : 
+<span class="lineNum">     477 </span>            : #undef IS_ALWAYS_MATCH
+<span class="lineNum">     478 </span>            : #undef MATCH_INDEX
+<span class="lineNum">     479 </span>            : #undef IS_VTABLE_MATCH
+<span class="lineNum">     480 </span>            : 
+<span class="lineNum">     481 </span>            : #undef END_PROTOCOL_ENTRY
+<span class="lineNum">     482 </span>            : #undef END_PROTOCOL_ENTRY_FLUSH
+<span class="lineNum">     483 </span>            : #undef END_PROTOCOL_ENTRY_HEAVY
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

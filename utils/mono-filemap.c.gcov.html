@@ -1,0 +1,203 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-filemap.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-filemap.c<span style="font-size: 80%;"> (source / <a href="mono-filemap.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntry">30</td>
+            <td class="headerCovTableEntryLo">33.3 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">7</td>
+            <td class="headerCovTableEntryLo">57.1 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-filemap.c: Unix/Windows implementation for filemap.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2008-2008 Novell, Inc.
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #if HAVE_SYS_STAT_H
+<span class="lineNum">      14 </span>            : #include &lt;sys/stat.h&gt;
+<span class="lineNum">      15 </span>            : #endif
+<span class="lineNum">      16 </span>            : #include &lt;fcntl.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      18 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">      19 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      20 </span>            : #endif
+<span class="lineNum">      21 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #include &quot;mono-mmap.h&quot;
+<a name="25"><span class="lineNum">      25 </span>            : </a>
+<span class="lineNum">      26 </span>            : MonoFileMap *
+<span class="lineNum">      27 </span>            : mono_file_map_open (const char* name)
+<span class="lineNum">      28 </span>            : {
+<span class="lineNum">      29 </span>            : #ifdef WIN32
+<span class="lineNum">      30 </span>            :         gunichar2 *wname = g_utf8_to_utf16 (name, -1, 0, 0, 0);
+<span class="lineNum">      31 </span>            :         MonoFileMap *result;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            :         if (wname == NULL)
+<span class="lineNum">      34 </span>            :                 return NULL;
+<span class="lineNum">      35 </span>            :         result = (MonoFileMap *) _wfopen ((wchar_t *) wname, L&quot;rb&quot;);
+<span class="lineNum">      36 </span>            :         g_free (wname);
+<span class="lineNum">      37 </span>            :         return result;
+<span class="lineNum">      38 </span>            : #else
+<span class="lineNum">      39 </span><span class="lineCov">     182112 :         int fd = open (name, O_RDONLY);</span>
+<span class="lineNum">      40 </span><span class="lineCov">     182112 :         if (fd &lt; 0)</span>
+<span class="lineNum">      41 </span><span class="lineCov">     136580 :                 return NULL;</span>
+<span class="lineNum">      42 </span><span class="lineCov">      45533 :         return (MonoFileMap *)(size_t)fd;</span>
+<span class="lineNum">      43 </span>            : #endif
+<span class="lineNum">      44 </span><span class="lineCov">     182115 : }</span>
+<a name="45"><span class="lineNum">      45 </span>            : </a>
+<span class="lineNum">      46 </span>            : guint64 
+<span class="lineNum">      47 </span>            : mono_file_map_size (MonoFileMap *fmap)
+<span class="lineNum">      48 </span>            : {
+<span class="lineNum">      49 </span>            :         struct stat stat_buf;
+<span class="lineNum">      50 </span><span class="lineCov">      45533 :         if (fstat (mono_file_map_fd (fmap), &amp;stat_buf) &lt; 0)</span>
+<span class="lineNum">      51 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">      52 </span><span class="lineCov">      45533 :         return stat_buf.st_size;</span>
+<span class="lineNum">      53 </span><span class="lineCov">      45533 : }</span>
+<a name="54"><span class="lineNum">      54 </span>            : </a>
+<span class="lineNum">      55 </span>            : int
+<span class="lineNum">      56 </span>            : mono_file_map_fd (MonoFileMap *fmap)
+<span class="lineNum">      57 </span>            : {
+<span class="lineNum">      58 </span>            : #ifdef WIN32
+<span class="lineNum">      59 </span>            :         return fileno ((FILE*)fmap);
+<span class="lineNum">      60 </span>            : #else
+<span class="lineNum">      61 </span><span class="lineCov">     136594 :         return (int)(size_t)fmap;</span>
+<span class="lineNum">      62 </span>            : #endif
+<span class="lineNum">      63 </span>            : }
+<a name="64"><span class="lineNum">      64 </span>            : </a>
+<span class="lineNum">      65 </span>            : int 
+<span class="lineNum">      66 </span>            : mono_file_map_close (MonoFileMap *fmap)
+<span class="lineNum">      67 </span>            : {
+<span class="lineNum">      68 </span>            : #ifdef WIN32
+<span class="lineNum">      69 </span>            :         return fclose ((FILE*)fmap);
+<span class="lineNum">      70 </span>            : #else
+<span class="lineNum">      71 </span><span class="lineCov">      45530 :         return close (mono_file_map_fd (fmap));</span>
+<span class="lineNum">      72 </span>            : #endif
+<span class="lineNum">      73 </span>            : }
+<span class="lineNum">      74 </span>            : 
+<span class="lineNum">      75 </span>            : #if !defined (HOST_WIN32)
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span>            : static mono_file_map_alloc_fn alloc_fn = (mono_file_map_alloc_fn) malloc;
+<span class="lineNum">      78 </span>            : static mono_file_map_release_fn release_fn = (mono_file_map_release_fn) free;
+<a name="79"><span class="lineNum">      79 </span>            : </a>
+<span class="lineNum">      80 </span>            : void
+<span class="lineNum">      81 </span>            : mono_file_map_set_allocator (mono_file_map_alloc_fn alloc, mono_file_map_release_fn release)
+<span class="lineNum">      82 </span>            : {
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 :         alloc_fn = alloc == NULL     ? (mono_file_map_alloc_fn) malloc : alloc;</span>
+<span class="lineNum">      84 </span><span class="lineNoCov">          0 :         release_fn = release == NULL ? (mono_file_map_release_fn) free : release;</span>
+<span class="lineNum">      85 </span><span class="lineNoCov">          0 : }</span>
+<a name="86"><span class="lineNum">      86 </span>            : </a>
+<span class="lineNum">      87 </span>            : void *
+<span class="lineNum">      88 </span>            : mono_file_map_fileio (size_t length, int flags, int fd, guint64 offset, void **ret_handle)
+<span class="lineNum">      89 </span>            : {
+<span class="lineNum">      90 </span>            :         guint64 cur_offset;
+<span class="lineNum">      91 </span>            :         size_t bytes_read;
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :         void *ptr = (*alloc_fn) (length);</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :         if (!ptr)</span>
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :         cur_offset = lseek (fd, 0, SEEK_CUR);</span>
+<span class="lineNum">      96 </span><span class="lineNoCov">          0 :         if (lseek (fd, offset, SEEK_SET) != offset) {</span>
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :                 (*release_fn) (ptr);</span>
+<span class="lineNum">      98 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">      99 </span>            :         }
+<span class="lineNum">     100 </span><span class="lineNoCov">          0 :         bytes_read = read (fd, ptr, length);</span>
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :         if (bytes_read != length)</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :         lseek (fd, cur_offset, SEEK_SET);</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         *ret_handle = NULL;</span>
+<span class="lineNum">     105 </span><span class="lineNoCov">          0 :         return ptr;</span>
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 : }</span>
+<a name="107"><span class="lineNum">     107 </span>            : </a>
+<span class="lineNum">     108 </span>            : int
+<span class="lineNum">     109 </span>            : mono_file_unmap_fileio (void *addr, void *handle)
+<span class="lineNum">     110 </span>            : {
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :         (*release_fn) (addr);</span>
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :         return 0;</span>
+<span class="lineNum">     113 </span>            : }
+<span class="lineNum">     114 </span>            : #if !defined(HAVE_MMAP)
+<span class="lineNum">     115 </span>            : void *
+<span class="lineNum">     116 </span>            : mono_file_map (size_t length, int flags, int fd, guint64 offset, void **ret_handle)
+<span class="lineNum">     117 </span>            : {
+<span class="lineNum">     118 </span>            :         return mono_file_map_fileio (length, flags, fd, offset, ret_handle);
+<span class="lineNum">     119 </span>            : }
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span>            : int
+<span class="lineNum">     122 </span>            : mono_file_unmap (void *addr, void *handle)
+<span class="lineNum">     123 </span>            : {
+<span class="lineNum">     124 </span>            :         return mono_file_unmap_fileio(addr, handle);
+<span class="lineNum">     125 </span>            : }
+<span class="lineNum">     126 </span>            : #endif
+<span class="lineNum">     127 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

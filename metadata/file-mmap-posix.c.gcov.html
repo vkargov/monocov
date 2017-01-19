@@ -1,0 +1,627 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/file-mmap-posix.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - file-mmap-posix.c<span style="font-size: 80%;"> (source / <a href="file-mmap-posix.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">239</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">18</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * file-mmap-posix.c: File mmap internal calls
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Rodrigo Kumpera
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2014 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #ifndef HOST_WIN32
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      18 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">      19 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      20 </span>            : #endif
+<span class="lineNum">      21 </span>            : #ifdef HAVE_SYS_STAT_H
+<span class="lineNum">      22 </span>            : #include &lt;sys/stat.h&gt;
+<span class="lineNum">      23 </span>            : #endif
+<span class="lineNum">      24 </span>            : #ifdef HAVE_SYS_TYPES_H
+<span class="lineNum">      25 </span>            : #include &lt;sys/types.h&gt;
+<span class="lineNum">      26 </span>            : #endif
+<span class="lineNum">      27 </span>            : #if HAVE_SYS_MMAN_H
+<span class="lineNum">      28 </span>            : #include &lt;sys/mman.h&gt;
+<span class="lineNum">      29 </span>            : #endif
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : #include &lt;fcntl.h&gt;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : #include &lt;mono/metadata/object.h&gt;
+<span class="lineNum">      35 </span>            : #include &lt;mono/metadata/file-io.h&gt;
+<span class="lineNum">      36 </span>            : #include &lt;mono/metadata/file-mmap.h&gt;
+<span class="lineNum">      37 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">      38 </span>            : #include &lt;mono/utils/mono-memory-model.h&gt;
+<span class="lineNum">      39 </span>            : #include &lt;mono/utils/mono-mmap.h&gt;
+<span class="lineNum">      40 </span>            : #include &lt;mono/utils/mono-coop-mutex.h&gt;
+<span class="lineNum">      41 </span>            : #include &lt;mono/utils/mono-threads.h&gt;
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : typedef struct {
+<span class="lineNum">      44 </span>            :         int kind;
+<span class="lineNum">      45 </span>            :         int ref_count;
+<span class="lineNum">      46 </span>            :         size_t capacity;
+<span class="lineNum">      47 </span>            :         char *name;
+<span class="lineNum">      48 </span>            :         int fd;
+<span class="lineNum">      49 </span>            : } MmapHandle;
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : typedef struct {
+<span class="lineNum">      52 </span>            :         void *address;
+<span class="lineNum">      53 </span>            :         void *free_handle;
+<span class="lineNum">      54 </span>            :         size_t length;
+<span class="lineNum">      55 </span>            : } MmapInstance;
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : enum {
+<span class="lineNum">      58 </span>            :         BAD_CAPACITY_FOR_FILE_BACKED = 1,
+<span class="lineNum">      59 </span>            :         CAPACITY_SMALLER_THAN_FILE_SIZE,
+<span class="lineNum">      60 </span>            :         FILE_NOT_FOUND,
+<span class="lineNum">      61 </span>            :         FILE_ALREADY_EXISTS,
+<span class="lineNum">      62 </span>            :         PATH_TOO_LONG,
+<span class="lineNum">      63 </span>            :         COULD_NOT_OPEN,
+<span class="lineNum">      64 </span>            :         CAPACITY_MUST_BE_POSITIVE,
+<span class="lineNum">      65 </span>            :         INVALID_FILE_MODE,
+<span class="lineNum">      66 </span>            :         COULD_NOT_MAP_MEMORY,
+<span class="lineNum">      67 </span>            :         ACCESS_DENIED,
+<span class="lineNum">      68 </span>            :         CAPACITY_LARGER_THAN_LOGICAL_ADDRESS_SPACE
+<span class="lineNum">      69 </span>            : };
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span>            : enum {
+<span class="lineNum">      72 </span>            :         FILE_MODE_CREATE_NEW = 1,
+<span class="lineNum">      73 </span>            :         FILE_MODE_CREATE = 2,
+<span class="lineNum">      74 </span>            :         FILE_MODE_OPEN = 3,
+<span class="lineNum">      75 </span>            :         FILE_MODE_OPEN_OR_CREATE = 4,
+<span class="lineNum">      76 </span>            :         FILE_MODE_TRUNCATE = 5,
+<span class="lineNum">      77 </span>            :         FILE_MODE_APPEND = 6,
+<span class="lineNum">      78 </span>            : };
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span>            : enum {
+<span class="lineNum">      81 </span>            :         MMAP_FILE_ACCESS_READ_WRITE = 0,
+<span class="lineNum">      82 </span>            :         MMAP_FILE_ACCESS_READ = 1,
+<span class="lineNum">      83 </span>            :         MMAP_FILE_ACCESS_WRITE = 2,
+<span class="lineNum">      84 </span>            :         MMAP_FILE_ACCESS_COPY_ON_WRITE = 3,
+<span class="lineNum">      85 </span>            :         MMAP_FILE_ACCESS_READ_EXECUTE = 4,
+<span class="lineNum">      86 </span>            :         MMAP_FILE_ACCESS_READ_WRITE_EXECUTE = 5,
+<span class="lineNum">      87 </span>            : };
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : #ifdef DEFFILEMODE
+<span class="lineNum">      90 </span>            : #define DEFAULT_FILEMODE DEFFILEMODE
+<span class="lineNum">      91 </span>            : #else
+<span class="lineNum">      92 </span>            : #define DEFAULT_FILEMODE 0666
+<span class="lineNum">      93 </span>            : #endif
+<span class="lineNum">      94 </span>            : 
+<span class="lineNum">      95 </span>            : static int mmap_init_state;
+<span class="lineNum">      96 </span>            : static MonoCoopMutex named_regions_mutex;
+<span class="lineNum">      97 </span>            : static GHashTable *named_regions;
+<span class="lineNum">      98 </span>            : 
+<a name="99"><span class="lineNum">      99 </span>            : </a>
+<span class="lineNum">     100 </span>            : static gint64
+<span class="lineNum">     101 </span>            : align_up_to_page_size (gint64 size)
+<span class="lineNum">     102 </span>            : {
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :         gint64 page_size = mono_pagesize ();</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         return (size + page_size - 1) &amp; ~(page_size - 1);</span>
+<span class="lineNum">     105 </span>            : }
+<a name="106"><span class="lineNum">     106 </span>            : </a>
+<span class="lineNum">     107 </span>            : static gint64
+<span class="lineNum">     108 </span>            : align_down_to_page_size (gint64 size)
+<span class="lineNum">     109 </span>            : {
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :         gint64 page_size = mono_pagesize ();</span>
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :         return size &amp; ~(page_size - 1);</span>
+<span class="lineNum">     112 </span>            : }
+<a name="113"><span class="lineNum">     113 </span>            : </a>
+<span class="lineNum">     114 </span>            : static void
+<span class="lineNum">     115 </span>            : file_mmap_init (void)
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 : {</span>
+<span class="lineNum">     117 </span>            : retry:  
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :         switch (mmap_init_state) {</span>
+<span class="lineNum">     119 </span>            :         case  0:
+<span class="lineNum">     120 </span><span class="lineNoCov">          0 :                 if (InterlockedCompareExchange (&amp;mmap_init_state, 1, 0) != 0)</span>
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :                         goto retry;</span>
+<span class="lineNum">     122 </span><span class="lineNoCov">          0 :                 named_regions = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, NULL);</span>
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :                 mono_coop_mutex_init (&amp;named_regions_mutex);</span>
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span><span class="lineNoCov">          0 :                 mono_atomic_store_release (&amp;mmap_init_state, 2);</span>
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            :         case 1:
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :                 do {</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :                         mono_thread_info_sleep (1, NULL); /* Been init'd by other threads, this is very rare. */</span>
+<span class="lineNum">     131 </span><span class="lineNoCov">          0 :                 } while (mmap_init_state != 2);</span>
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     133 </span>            :         case 2:
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     135 </span>            :         default:
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :                 g_error (&quot;Invalid init state %d&quot;, mmap_init_state);</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 : }</span>
+<a name="139"><span class="lineNum">     139 </span>            : </a>
+<span class="lineNum">     140 </span>            : static void
+<span class="lineNum">     141 </span>            : named_regions_lock (void)
+<span class="lineNum">     142 </span>            : {
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :         file_mmap_init ();</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :         mono_coop_mutex_lock (&amp;named_regions_mutex);</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 : }</span>
+<a name="146"><span class="lineNum">     146 </span>            : </a>
+<span class="lineNum">     147 </span>            : static void
+<span class="lineNum">     148 </span>            : named_regions_unlock (void)
+<span class="lineNum">     149 </span>            : {
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :         mono_coop_mutex_unlock (&amp;named_regions_mutex);</span>
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     152 </span>            : 
+<a name="153"><span class="lineNum">     153 </span>            : </a>
+<span class="lineNum">     154 </span>            : static int
+<span class="lineNum">     155 </span>            : file_mode_to_unix (int mode)
+<span class="lineNum">     156 </span>            : {
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :         switch (mode) {</span>
+<span class="lineNum">     158 </span>            :         case FILE_MODE_CREATE_NEW:
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :         return O_CREAT | O_EXCL; </span>
+<span class="lineNum">     160 </span>            :         case FILE_MODE_CREATE:
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         return O_CREAT | O_TRUNC;</span>
+<span class="lineNum">     162 </span>            :         case FILE_MODE_OPEN:
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">     164 </span>            :         case FILE_MODE_OPEN_OR_CREATE:
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :         return O_CREAT;</span>
+<span class="lineNum">     166 </span>            :         case FILE_MODE_TRUNCATE:
+<span class="lineNum">     167 </span><span class="lineNoCov">          0 :         return O_TRUNC;</span>
+<span class="lineNum">     168 </span>            :         case FILE_MODE_APPEND:
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :                 return O_APPEND;</span>
+<span class="lineNum">     170 </span>            :         default:
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :                 g_error (&quot;unknown FileMode %d&quot;, mode);</span>
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 : }</span>
+<a name="174"><span class="lineNum">     174 </span>            : </a>
+<span class="lineNum">     175 </span>            : static int
+<span class="lineNum">     176 </span>            : access_mode_to_unix (int access)
+<span class="lineNum">     177 </span>            : {
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 :         switch (access) {</span>
+<span class="lineNum">     179 </span>            :         case MMAP_FILE_ACCESS_READ_WRITE:
+<span class="lineNum">     180 </span>            :         case MMAP_FILE_ACCESS_COPY_ON_WRITE:
+<span class="lineNum">     181 </span>            :         case MMAP_FILE_ACCESS_READ_WRITE_EXECUTE:
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :                 return O_RDWR;</span>
+<span class="lineNum">     183 </span>            :         case MMAP_FILE_ACCESS_READ:
+<span class="lineNum">     184 </span>            :         case MMAP_FILE_ACCESS_READ_EXECUTE:
+<span class="lineNum">     185 </span><span class="lineNoCov">          0 :                 return O_RDONLY;</span>
+<span class="lineNum">     186 </span>            :         case MMAP_FILE_ACCESS_WRITE:
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :                 return O_WRONLY;</span>
+<span class="lineNum">     188 </span>            :         default:
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                 g_error (&quot;unknown MemoryMappedFileAccess %d&quot;, access);</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 : }</span>
+<a name="192"><span class="lineNum">     192 </span>            : </a>
+<span class="lineNum">     193 </span>            : static int
+<span class="lineNum">     194 </span>            : acess_to_mmap_flags (int access)
+<span class="lineNum">     195 </span>            : {
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :         switch (access) {</span>
+<span class="lineNum">     197 </span>            :         case MMAP_FILE_ACCESS_READ_WRITE:
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :         return MONO_MMAP_WRITE | MONO_MMAP_READ | MONO_MMAP_SHARED;</span>
+<span class="lineNum">     199 </span>            :         
+<span class="lineNum">     200 </span>            :         case MMAP_FILE_ACCESS_WRITE:
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :         return MONO_MMAP_WRITE | MONO_MMAP_SHARED;</span>
+<span class="lineNum">     202 </span>            :         
+<span class="lineNum">     203 </span>            :         case MMAP_FILE_ACCESS_COPY_ON_WRITE:
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :         return MONO_MMAP_WRITE | MONO_MMAP_READ | MONO_MMAP_PRIVATE;</span>
+<span class="lineNum">     205 </span>            :         
+<span class="lineNum">     206 </span>            :         case MMAP_FILE_ACCESS_READ_EXECUTE:
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :         return MONO_MMAP_EXEC | MONO_MMAP_PRIVATE | MONO_MMAP_SHARED;</span>
+<span class="lineNum">     208 </span>            :         
+<span class="lineNum">     209 </span>            :         case MMAP_FILE_ACCESS_READ_WRITE_EXECUTE:
+<span class="lineNum">     210 </span><span class="lineNoCov">          0 :         return MONO_MMAP_WRITE | MONO_MMAP_READ | MONO_MMAP_EXEC | MONO_MMAP_SHARED;</span>
+<span class="lineNum">     211 </span>            :         
+<span class="lineNum">     212 </span>            :         case MMAP_FILE_ACCESS_READ:
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :         return MONO_MMAP_READ | MONO_MMAP_SHARED;</span>
+<span class="lineNum">     214 </span>            :         default:
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 :                 g_error (&quot;unknown MemoryMappedFileAccess %d&quot;, access);</span>
+<span class="lineNum">     216 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span>            : /*
+<span class="lineNum">     220 </span>            : This allow us to special case zero size files that can be arbitrarily mapped.
+<a name="221"><span class="lineNum">     221 </span>            : */</a>
+<span class="lineNum">     222 </span>            : static gboolean
+<span class="lineNum">     223 </span>            : is_special_zero_size_file (struct stat *buf)
+<span class="lineNum">     224 </span>            : {
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :         return buf-&gt;st_size == 0 &amp;&amp; (buf-&gt;st_mode &amp; (S_IFCHR | S_IFBLK | S_IFIFO | S_IFSOCK)) != 0;</span>
+<span class="lineNum">     226 </span>            : }
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span>            : /*
+<span class="lineNum">     229 </span>            : XXX implement options
+<a name="230"><span class="lineNum">     230 </span>            : */</a>
+<span class="lineNum">     231 </span>            : static void*
+<span class="lineNum">     232 </span>            : open_file_map (const char *c_path, int input_fd, int mode, gint64 *capacity, int access, int options, int *ioerror)
+<span class="lineNum">     233 </span>            : {
+<span class="lineNum">     234 </span>            :         struct stat buf;
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :         MmapHandle *handle = NULL;</span>
+<span class="lineNum">     236 </span>            :         int result, fd;
+<span class="lineNum">     237 </span>            : 
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :         if (c_path)</span>
+<span class="lineNum">     239 </span><span class="lineNoCov">          0 :                 result = stat (c_path, &amp;buf);</span>
+<span class="lineNum">     240 </span>            :         else
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                 result = fstat (input_fd, &amp;buf);</span>
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :         if (mode == FILE_MODE_TRUNCATE || mode == FILE_MODE_APPEND || mode == FILE_MODE_OPEN) {</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :                 if (result == -1) { //XXX translate errno?</span>
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :                         *ioerror = FILE_NOT_FOUND;</span>
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">     247 </span>            :                 }
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     249 </span>            : 
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :         if (mode == FILE_MODE_CREATE_NEW &amp;&amp; result == 0) {</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :                 *ioerror = FILE_ALREADY_EXISTS;</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :                 goto done;</span>
+<span class="lineNum">     253 </span>            :         }
+<span class="lineNum">     254 </span>            : 
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :         if (result == 0) {</span>
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :                 if (*capacity == 0) {</span>
+<span class="lineNum">     257 </span>            :                         /**
+<span class="lineNum">     258 </span>            :                          * Special files such as FIFOs, sockets, and devices can have a size of 0. Specifying a capacity for these
+<span class="lineNum">     259 </span>            :                          * also makes little sense, so don't do the check if th file is one of these.
+<span class="lineNum">     260 </span>            :                          */
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :                         if (buf.st_size == 0 &amp;&amp; !is_special_zero_size_file (&amp;buf)) {</span>
+<span class="lineNum">     262 </span><span class="lineNoCov">          0 :                                 *ioerror = CAPACITY_SMALLER_THAN_FILE_SIZE;</span>
+<span class="lineNum">     263 </span><span class="lineNoCov">          0 :                                 goto done;</span>
+<span class="lineNum">     264 </span>            :                         }
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :                         *capacity = buf.st_size;</span>
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :                 } else if (*capacity &lt; buf.st_size) {</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :                         *ioerror = CAPACITY_SMALLER_THAN_FILE_SIZE;</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">     269 </span>            :                 }
+<span class="lineNum">     270 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                 if (mode == FILE_MODE_CREATE_NEW &amp;&amp; *capacity == 0) {</span>
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :                         *ioerror = CAPACITY_SMALLER_THAN_FILE_SIZE;</span>
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">     274 </span>            :                 }
+<span class="lineNum">     275 </span>            :         }
+<span class="lineNum">     276 </span>            : 
+<span class="lineNum">     277 </span><span class="lineNoCov">          0 :         if (c_path) //FIXME use io portability?</span>
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :                 fd = open (c_path, file_mode_to_unix (mode) | access_mode_to_unix (access), DEFAULT_FILEMODE);</span>
+<span class="lineNum">     279 </span>            :         else
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :                 fd = dup (input_fd);</span>
+<span class="lineNum">     281 </span>            : 
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :         if (fd == -1) { //XXX translate errno?</span>
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :                 *ioerror = COULD_NOT_OPEN;</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                 goto done;</span>
+<span class="lineNum">     285 </span>            :         }
+<span class="lineNum">     286 </span>            : 
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :         if (result != 0 || *capacity &gt; buf.st_size) {</span>
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :                 int unused G_GNUC_UNUSED = ftruncate (fd, (off_t)*capacity);</span>
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :         handle = g_new0 (MmapHandle, 1);</span>
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :         handle-&gt;ref_count = 1;</span>
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :         handle-&gt;capacity = *capacity;</span>
+<span class="lineNum">     294 </span><span class="lineNoCov">          0 :         handle-&gt;fd = fd;</span>
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span>            : done:
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :         return (void*)handle;</span>
+<span class="lineNum">     298 </span>            : }
+<span class="lineNum">     299 </span>            : 
+<a name="300"><span class="lineNum">     300 </span>            : #define MONO_ANON_FILE_TEMPLATE &quot;/mono.anonmap.XXXXXXXXX&quot;</a>
+<span class="lineNum">     301 </span>            : static void*
+<span class="lineNum">     302 </span>            : open_memory_map (const char *c_mapName, int mode, gint64 *capacity, int access, int options, int *ioerror)
+<span class="lineNum">     303 </span>            : {
+<span class="lineNum">     304 </span>            :         MmapHandle *handle;
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :         if (*capacity &lt;= 0) {</span>
+<span class="lineNum">     306 </span><span class="lineNoCov">          0 :                 *ioerror = CAPACITY_MUST_BE_POSITIVE;</span>
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     308 </span>            :         }
+<span class="lineNum">     309 </span>            : #if SIZEOF_VOID_P == 4
+<span class="lineNum">     310 </span>            :         if (*capacity &gt; UINT32_MAX) {
+<span class="lineNum">     311 </span>            :                 *ioerror = CAPACITY_LARGER_THAN_LOGICAL_ADDRESS_SPACE;
+<span class="lineNum">     312 </span>            :                 return NULL;
+<span class="lineNum">     313 </span>            :         }
+<span class="lineNum">     314 </span>            : #endif
+<span class="lineNum">     315 </span>            : 
+<span class="lineNum">     316 </span><span class="lineNoCov">          0 :         if (!(mode == FILE_MODE_CREATE_NEW || mode == FILE_MODE_OPEN_OR_CREATE || mode == FILE_MODE_OPEN)) {</span>
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :                 *ioerror = INVALID_FILE_MODE;</span>
+<span class="lineNum">     318 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     319 </span>            :         }
+<span class="lineNum">     320 </span>            : 
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :         named_regions_lock ();</span>
+<span class="lineNum">     322 </span><span class="lineNoCov">          0 :         handle = (MmapHandle*)g_hash_table_lookup (named_regions, c_mapName);</span>
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :         if (handle) {</span>
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :                 if (mode == FILE_MODE_CREATE_NEW) {</span>
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :                         *ioerror = FILE_ALREADY_EXISTS;</span>
+<span class="lineNum">     326 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">     327 </span>            :                 }
+<span class="lineNum">     328 </span>            : 
+<span class="lineNum">     329 </span><span class="lineNoCov">          0 :                 handle-&gt;ref_count++;</span>
+<span class="lineNum">     330 </span>            :                 //XXX should we ftruncate if the file is smaller than capacity?
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     332 </span>            :                 int fd;
+<span class="lineNum">     333 </span>            :                 char *file_name;
+<span class="lineNum">     334 </span>            :                 const char *tmp_dir;
+<span class="lineNum">     335 </span>            :                 int unused G_GNUC_UNUSED, alloc_size;
+<span class="lineNum">     336 </span>            : 
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :                 if (mode == FILE_MODE_OPEN) {</span>
+<span class="lineNum">     338 </span><span class="lineNoCov">          0 :                         *ioerror = FILE_NOT_FOUND;</span>
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">     340 </span>            :                 }
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :                 *capacity = align_up_to_page_size (*capacity);</span>
+<span class="lineNum">     342 </span>            : 
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :                 tmp_dir = g_get_tmp_dir ();</span>
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 :                 alloc_size = strlen (tmp_dir) + strlen (MONO_ANON_FILE_TEMPLATE) + 1;</span>
+<span class="lineNum">     345 </span><span class="lineNoCov">          0 :                 if (alloc_size &gt; 1024) {//rather fail that stack overflow</span>
+<span class="lineNum">     346 </span><span class="lineNoCov">          0 :                         *ioerror = COULD_NOT_MAP_MEMORY;</span>
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">     348 </span>            :                 }
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                 file_name = (char *)alloca (alloc_size);</span>
+<span class="lineNum">     350 </span><span class="lineNoCov">          0 :                 strcpy (file_name, tmp_dir);</span>
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                 strcat (file_name, MONO_ANON_FILE_TEMPLATE);</span>
+<span class="lineNum">     352 </span>            : 
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :                 fd = mkstemp (file_name);</span>
+<span class="lineNum">     354 </span><span class="lineNoCov">          0 :                 if (fd == -1) {</span>
+<span class="lineNum">     355 </span><span class="lineNoCov">          0 :                         *ioerror = COULD_NOT_MAP_MEMORY;</span>
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :                         goto done;</span>
+<span class="lineNum">     357 </span>            :                 }
+<span class="lineNum">     358 </span>            : 
+<span class="lineNum">     359 </span><span class="lineNoCov">          0 :                 unlink (file_name);</span>
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 :                 unused = ftruncate (fd, (off_t)*capacity);</span>
+<span class="lineNum">     361 </span>            : 
+<span class="lineNum">     362 </span><span class="lineNoCov">          0 :                 handle = g_new0 (MmapHandle, 1);</span>
+<span class="lineNum">     363 </span><span class="lineNoCov">          0 :                 handle-&gt;ref_count = 1;</span>
+<span class="lineNum">     364 </span><span class="lineNoCov">          0 :                 handle-&gt;capacity = *capacity;</span>
+<span class="lineNum">     365 </span><span class="lineNoCov">          0 :                 handle-&gt;fd = fd;</span>
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 :                 handle-&gt;name = g_strdup (c_mapName);</span>
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span><span class="lineNoCov">          0 :                 g_hash_table_insert (named_regions, handle-&gt;name, handle);</span>
+<span class="lineNum">     369 </span>            : 
+<span class="lineNum">     370 </span>            :         }
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span>            : done:
+<span class="lineNum">     373 </span><span class="lineNoCov">          0 :         named_regions_unlock ();</span>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span><span class="lineNoCov">          0 :         return handle;</span>
+<span class="lineNum">     376 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     377 </span>            : 
+<span class="lineNum">     378 </span>            : 
+<a name="379"><span class="lineNum">     379 </span>            : /* This is an icall */</a>
+<span class="lineNum">     380 </span>            : void *
+<span class="lineNum">     381 </span>            : mono_mmap_open_file (MonoString *path, int mode, MonoString *mapName, gint64 *capacity, int access, int options, int *ioerror)
+<span class="lineNum">     382 </span>            : {
+<span class="lineNum">     383 </span>            :         MonoError error;
+<span class="lineNum">     384 </span><span class="lineNoCov">          0 :         MmapHandle *handle = NULL;</span>
+<span class="lineNum">     385 </span><span class="lineNoCov">          0 :         g_assert (path || mapName);</span>
+<span class="lineNum">     386 </span>            : 
+<span class="lineNum">     387 </span><span class="lineNoCov">          0 :         if (!mapName) {</span>
+<span class="lineNum">     388 </span><span class="lineNoCov">          0 :                 char * c_path = mono_string_to_utf8_checked (path, &amp;error);</span>
+<span class="lineNum">     389 </span><span class="lineNoCov">          0 :                 if (mono_error_set_pending_exception (&amp;error))</span>
+<span class="lineNum">     390 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     391 </span><span class="lineNoCov">          0 :                 handle = open_file_map (c_path, -1, mode, capacity, access, options, ioerror);</span>
+<span class="lineNum">     392 </span><span class="lineNoCov">          0 :                 g_free (c_path);</span>
+<span class="lineNum">     393 </span><span class="lineNoCov">          0 :                 return handle;</span>
+<span class="lineNum">     394 </span>            :         }
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineNoCov">          0 :         char *c_mapName = mono_string_to_utf8_checked (mapName, &amp;error);</span>
+<span class="lineNum">     397 </span><span class="lineNoCov">          0 :         if (mono_error_set_pending_exception (&amp;error))</span>
+<span class="lineNum">     398 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     399 </span>            : 
+<span class="lineNum">     400 </span><span class="lineNoCov">          0 :         if (path) {</span>
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :                 named_regions_lock ();</span>
+<span class="lineNum">     402 </span><span class="lineNoCov">          0 :                 handle = (MmapHandle*)g_hash_table_lookup (named_regions, c_mapName);</span>
+<span class="lineNum">     403 </span><span class="lineNoCov">          0 :                 if (handle) {</span>
+<span class="lineNum">     404 </span><span class="lineNoCov">          0 :                         *ioerror = FILE_ALREADY_EXISTS;</span>
+<span class="lineNum">     405 </span><span class="lineNoCov">          0 :                         handle = NULL;</span>
+<span class="lineNum">     406 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     407 </span><span class="lineNoCov">          0 :                         char *c_path = mono_string_to_utf8_checked (path, &amp;error);</span>
+<span class="lineNum">     408 </span><span class="lineNoCov">          0 :                         if (is_ok (&amp;error)) {</span>
+<span class="lineNum">     409 </span><span class="lineNoCov">          0 :                                 handle = (MmapHandle *)open_file_map (c_path, -1, mode, capacity, access, options, ioerror);</span>
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 :                                 if (handle) {</span>
+<span class="lineNum">     411 </span><span class="lineNoCov">          0 :                                         handle-&gt;name = g_strdup (c_mapName);</span>
+<span class="lineNum">     412 </span><span class="lineNoCov">          0 :                                         g_hash_table_insert (named_regions, handle-&gt;name, handle);</span>
+<span class="lineNum">     413 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     414 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     415 </span><span class="lineNoCov">          0 :                                 handle = NULL;</span>
+<span class="lineNum">     416 </span>            :                         }
+<span class="lineNum">     417 </span><span class="lineNoCov">          0 :                         g_free (c_path);</span>
+<span class="lineNum">     418 </span>            :                 }
+<span class="lineNum">     419 </span><span class="lineNoCov">          0 :                 named_regions_unlock ();</span>
+<span class="lineNum">     420 </span><span class="lineNoCov">          0 :         } else</span>
+<span class="lineNum">     421 </span><span class="lineNoCov">          0 :                 handle = open_memory_map (c_mapName, mode, capacity, access, options, ioerror);</span>
+<span class="lineNum">     422 </span>            : 
+<span class="lineNum">     423 </span><span class="lineNoCov">          0 :         g_free (c_mapName);</span>
+<span class="lineNum">     424 </span><span class="lineNoCov">          0 :         return handle;</span>
+<span class="lineNum">     425 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     426 </span>            : 
+<a name="427"><span class="lineNum">     427 </span>            : /* this is an icall */</a>
+<span class="lineNum">     428 </span>            : void *
+<span class="lineNum">     429 </span>            : mono_mmap_open_handle (void *input_fd, MonoString *mapName, gint64 *capacity, int access, int options, int *ioerror)
+<span class="lineNum">     430 </span>            : {
+<span class="lineNum">     431 </span>            :         MonoError error;
+<span class="lineNum">     432 </span>            :         MmapHandle *handle;
+<span class="lineNum">     433 </span><span class="lineNoCov">          0 :         if (!mapName) {</span>
+<span class="lineNum">     434 </span><span class="lineNoCov">          0 :                 handle = (MmapHandle *)open_file_map (NULL, GPOINTER_TO_INT (input_fd), FILE_MODE_OPEN, capacity, access, options, ioerror);</span>
+<span class="lineNum">     435 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 :                 char *c_mapName = mono_string_to_utf8_checked (mapName, &amp;error);</span>
+<span class="lineNum">     437 </span><span class="lineNoCov">          0 :                 if (mono_error_set_pending_exception (&amp;error))</span>
+<span class="lineNum">     438 </span><span class="lineNoCov">          0 :                         return NULL;</span>
+<span class="lineNum">     439 </span>            : 
+<span class="lineNum">     440 </span><span class="lineNoCov">          0 :                 named_regions_lock ();</span>
+<span class="lineNum">     441 </span><span class="lineNoCov">          0 :                 handle = (MmapHandle*)g_hash_table_lookup (named_regions, c_mapName);</span>
+<span class="lineNum">     442 </span><span class="lineNoCov">          0 :                 if (handle) {</span>
+<span class="lineNum">     443 </span><span class="lineNoCov">          0 :                         *ioerror = FILE_ALREADY_EXISTS;</span>
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :                         handle = NULL;</span>
+<span class="lineNum">     445 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     446 </span>            :                         //XXX we're exploiting wapi HANDLE == FD equivalence. THIS IS FRAGILE, create a _wapi_handle_to_fd call
+<span class="lineNum">     447 </span><span class="lineNoCov">          0 :                         handle = (MmapHandle *)open_file_map (NULL, GPOINTER_TO_INT (input_fd), FILE_MODE_OPEN, capacity, access, options, ioerror);</span>
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :                         handle-&gt;name = g_strdup (c_mapName);</span>
+<span class="lineNum">     449 </span><span class="lineNoCov">          0 :                         g_hash_table_insert (named_regions, handle-&gt;name, handle);</span>
+<span class="lineNum">     450 </span>            :                 }
+<span class="lineNum">     451 </span><span class="lineNoCov">          0 :                 named_regions_unlock ();</span>
+<span class="lineNum">     452 </span>            : 
+<span class="lineNum">     453 </span><span class="lineNoCov">          0 :                 g_free (c_mapName);</span>
+<span class="lineNum">     454 </span>            :         }
+<span class="lineNum">     455 </span><span class="lineNoCov">          0 :         return handle;</span>
+<span class="lineNum">     456 </span><span class="lineNoCov">          0 : }</span>
+<a name="457"><span class="lineNum">     457 </span>            : </a>
+<span class="lineNum">     458 </span>            : void
+<span class="lineNum">     459 </span>            : mono_mmap_close (void *mmap_handle)
+<span class="lineNum">     460 </span>            : {
+<span class="lineNum">     461 </span><span class="lineNoCov">          0 :         MmapHandle *handle = (MmapHandle *)mmap_handle;</span>
+<span class="lineNum">     462 </span>            : 
+<span class="lineNum">     463 </span><span class="lineNoCov">          0 :         named_regions_lock ();</span>
+<span class="lineNum">     464 </span><span class="lineNoCov">          0 :         --handle-&gt;ref_count;</span>
+<span class="lineNum">     465 </span><span class="lineNoCov">          0 :         if (handle-&gt;ref_count == 0) {</span>
+<span class="lineNum">     466 </span><span class="lineNoCov">          0 :                 if (handle-&gt;name)</span>
+<span class="lineNum">     467 </span><span class="lineNoCov">          0 :                         g_hash_table_remove (named_regions, handle-&gt;name);</span>
+<span class="lineNum">     468 </span>            : 
+<span class="lineNum">     469 </span><span class="lineNoCov">          0 :                 g_free (handle-&gt;name);</span>
+<span class="lineNum">     470 </span><span class="lineNoCov">          0 :                 close (handle-&gt;fd);</span>
+<span class="lineNum">     471 </span><span class="lineNoCov">          0 :                 g_free (handle);</span>
+<span class="lineNum">     472 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     473 </span><span class="lineNoCov">          0 :         named_regions_unlock ();</span>
+<span class="lineNum">     474 </span><span class="lineNoCov">          0 : }</span>
+<a name="475"><span class="lineNum">     475 </span>            : </a>
+<span class="lineNum">     476 </span>            : void
+<span class="lineNum">     477 </span>            : mono_mmap_configure_inheritability (void *mmap_handle, gboolean inheritability)
+<span class="lineNum">     478 </span>            : {
+<span class="lineNum">     479 </span><span class="lineNoCov">          0 :         MmapHandle *h = (MmapHandle *)mmap_handle;</span>
+<span class="lineNum">     480 </span>            :         int fd, flags;
+<span class="lineNum">     481 </span>            : 
+<span class="lineNum">     482 </span><span class="lineNoCov">          0 :         fd = h-&gt;fd;</span>
+<span class="lineNum">     483 </span><span class="lineNoCov">          0 :         flags = fcntl (fd, F_GETFD, 0);</span>
+<span class="lineNum">     484 </span><span class="lineNoCov">          0 :         if (inheritability)</span>
+<span class="lineNum">     485 </span><span class="lineNoCov">          0 :                 flags &amp;= ~FD_CLOEXEC;</span>
+<span class="lineNum">     486 </span>            :         else
+<span class="lineNum">     487 </span><span class="lineNoCov">          0 :                 flags |= FD_CLOEXEC;</span>
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :         fcntl (fd, F_SETFD, flags);     </span>
+<span class="lineNum">     489 </span><span class="lineNoCov">          0 : }</span>
+<a name="490"><span class="lineNum">     490 </span>            : </a>
+<span class="lineNum">     491 </span>            : void
+<span class="lineNum">     492 </span>            : mono_mmap_flush (void *mmap_handle)
+<span class="lineNum">     493 </span>            : {
+<span class="lineNum">     494 </span><span class="lineNoCov">          0 :         MmapInstance *h = (MmapInstance *)mmap_handle;</span>
+<span class="lineNum">     495 </span>            : 
+<span class="lineNum">     496 </span><span class="lineNoCov">          0 :         if (h)</span>
+<span class="lineNum">     497 </span><span class="lineNoCov">          0 :                 msync (h-&gt;address, h-&gt;length, MS_SYNC);</span>
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 : }</span>
+<a name="499"><span class="lineNum">     499 </span>            : </a>
+<span class="lineNum">     500 </span>            : int
+<span class="lineNum">     501 </span>            : mono_mmap_map (void *handle, gint64 offset, gint64 *size, int access, void **mmap_handle, void **base_address)
+<span class="lineNum">     502 </span>            : {
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :         gint64 mmap_offset = 0;</span>
+<span class="lineNum">     504 </span><span class="lineNoCov">          0 :         MmapHandle *fh = (MmapHandle *)handle;</span>
+<span class="lineNum">     505 </span><span class="lineNoCov">          0 :         MmapInstance res = { 0 };</span>
+<span class="lineNum">     506 </span><span class="lineNoCov">          0 :         size_t eff_size = *size;</span>
+<span class="lineNum">     507 </span><span class="lineNoCov">          0 :         struct stat buf = { 0 };</span>
+<span class="lineNum">     508 </span><span class="lineNoCov">          0 :         fstat (fh-&gt;fd, &amp;buf); //FIXME error handling</span>
+<span class="lineNum">     509 </span>            : 
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :         *mmap_handle = NULL;</span>
+<span class="lineNum">     511 </span><span class="lineNoCov">          0 :         *base_address = NULL;</span>
+<span class="lineNum">     512 </span>            : 
+<span class="lineNum">     513 </span><span class="lineNoCov">          0 :         if (offset &gt; buf.st_size || ((eff_size + offset) &gt; buf.st_size &amp;&amp; !is_special_zero_size_file (&amp;buf)))</span>
+<span class="lineNum">     514 </span><span class="lineNoCov">          0 :                 return ACCESS_DENIED;</span>
+<span class="lineNum">     515 </span>            :         /**
+<span class="lineNum">     516 </span>            :           * We use the file size if one of the following conditions is true:
+<span class="lineNum">     517 </span>            :           *  -input size is zero
+<span class="lineNum">     518 </span>            :           *  -input size is bigger than the file and the file is not a magical zero size file such as /dev/mem.
+<span class="lineNum">     519 </span>            :           */
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :         if (eff_size == 0)</span>
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 :                 eff_size = align_up_to_page_size (buf.st_size) - offset;</span>
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :         *size = eff_size;</span>
+<span class="lineNum">     523 </span>            : 
+<span class="lineNum">     524 </span><span class="lineNoCov">          0 :         mmap_offset = align_down_to_page_size (offset);</span>
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :         eff_size += (offset - mmap_offset);</span>
+<span class="lineNum">     526 </span>            :         //FIXME translate some interesting errno values
+<span class="lineNum">     527 </span><span class="lineNoCov">          0 :         res.address = mono_file_map ((size_t)eff_size, acess_to_mmap_flags (access), fh-&gt;fd, mmap_offset, &amp;res.free_handle);</span>
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :         res.length = eff_size;</span>
+<span class="lineNum">     529 </span>            : 
+<span class="lineNum">     530 </span><span class="lineNoCov">          0 :         if (res.address) {</span>
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :                 *mmap_handle = g_memdup (&amp;res, sizeof (MmapInstance));</span>
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :                 *base_address = (char*)res.address + (offset - mmap_offset);</span>
+<span class="lineNum">     533 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">     534 </span>            :         }
+<span class="lineNum">     535 </span>            : 
+<span class="lineNum">     536 </span><span class="lineNoCov">          0 :         return COULD_NOT_MAP_MEMORY;</span>
+<span class="lineNum">     537 </span><span class="lineNoCov">          0 : }</span>
+<a name="538"><span class="lineNum">     538 </span>            : </a>
+<span class="lineNum">     539 </span>            : gboolean
+<span class="lineNum">     540 </span>            : mono_mmap_unmap (void *mmap_handle)
+<span class="lineNum">     541 </span>            : {
+<span class="lineNum">     542 </span><span class="lineNoCov">          0 :         int res = 0;</span>
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :         MmapInstance *h = (MmapInstance *)mmap_handle;</span>
+<span class="lineNum">     544 </span>            : 
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 :         res = mono_file_unmap (h-&gt;address, h-&gt;free_handle);</span>
+<span class="lineNum">     546 </span>            : 
+<span class="lineNum">     547 </span><span class="lineNoCov">          0 :         g_free (h);</span>
+<span class="lineNum">     548 </span><span class="lineNoCov">          0 :         return res == 0;</span>
+<span class="lineNum">     549 </span>            : }
+<span class="lineNum">     550 </span>            : 
+<span class="lineNum">     551 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

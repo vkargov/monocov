@@ -1,0 +1,420 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-threads-posix.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-threads-posix.c<span style="font-size: 80%;"> (source / <a href="mono-threads-posix.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">46</td>
+            <td class="headerCovTableEntry">68</td>
+            <td class="headerCovTableEntryLo">67.6 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">11</td>
+            <td class="headerCovTableEntry">12</td>
+            <td class="headerCovTableEntryHi">91.7 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-threads-posix.c: Low-level threading, posix version
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Rodrigo Kumpera (kumpera@gmail.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2011 Novell, Inc
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : /* For pthread_main_np, pthread_get_stackaddr_np and pthread_get_stacksize_np */
+<span class="lineNum">      13 </span>            : #if defined (__MACH__)
+<span class="lineNum">      14 </span>            : #define _DARWIN_C_SOURCE 1
+<span class="lineNum">      15 </span>            : #endif
+<span class="lineNum">      16 </span>            : 
+<span class="lineNum">      17 </span>            : #include &lt;mono/utils/mono-threads.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/utils/mono-coop-semaphore.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/gc-internals.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/utils/mono-threads-debug.h&gt;
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #if defined(PLATFORM_ANDROID) &amp;&amp; !defined(TARGET_ARM64) &amp;&amp; !defined(TARGET_AMD64)
+<span class="lineNum">      25 </span>            : #define USE_TKILL_ON_ANDROID 1
+<span class="lineNum">      26 </span>            : #endif
+<span class="lineNum">      27 </span>            : 
+<span class="lineNum">      28 </span>            : #ifdef USE_TKILL_ON_ANDROID
+<span class="lineNum">      29 </span>            : extern int tkill (pid_t tid, int signal);
+<span class="lineNum">      30 </span>            : #endif
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : #if defined(_POSIX_VERSION) || defined(__native_client__)
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : #include &lt;pthread.h&gt;
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : #include &lt;sys/resource.h&gt;
+<a name="37"><span class="lineNum">      37 </span>            : </a>
+<span class="lineNum">      38 </span>            : int
+<span class="lineNum">      39 </span>            : mono_threads_platform_create_thread (MonoThreadStart thread_fn, gpointer thread_data, gsize* const stack_size, MonoNativeThreadId *out_tid)
+<span class="lineNum">      40 </span>            : {
+<span class="lineNum">      41 </span>            :         pthread_attr_t attr;
+<span class="lineNum">      42 </span>            :         pthread_t thread;
+<span class="lineNum">      43 </span>            :         int policy;
+<span class="lineNum">      44 </span>            :         struct sched_param param;
+<span class="lineNum">      45 </span>            :         gint res;
+<span class="lineNum">      46 </span>            :         gsize set_stack_size;
+<span class="lineNum">      47 </span>            :         size_t min_size;
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span><span class="lineCov">      16812 :         res = pthread_attr_init (&amp;attr);</span>
+<span class="lineNum">      50 </span><span class="lineCov">      50436 :         g_assert (!res);</span>
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span><span class="lineCov">      16812 :         if (stack_size)</span>
+<span class="lineNum">      53 </span><span class="lineCov">      16599 :                 set_stack_size = *stack_size;</span>
+<span class="lineNum">      54 </span>            :         else
+<span class="lineNum">      55 </span><span class="lineCov">        213 :                 set_stack_size = 0;</span>
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : #ifdef HAVE_PTHREAD_ATTR_SETSTACKSIZE
+<span class="lineNum">      58 </span><span class="lineCov">      16812 :         if (set_stack_size == 0) {</span>
+<span class="lineNum">      59 </span>            : #if HAVE_VALGRIND_MEMCHECK_H
+<span class="lineNum">      60 </span>            :                 if (RUNNING_ON_VALGRIND)
+<span class="lineNum">      61 </span>            :                         set_stack_size = 1 &lt;&lt; 20;
+<span class="lineNum">      62 </span>            :                 else
+<span class="lineNum">      63 </span>            :                         set_stack_size = (SIZEOF_VOID_P / 4) * 1024 * 1024;
+<span class="lineNum">      64 </span>            : #else
+<span class="lineNum">      65 </span><span class="lineCov">      16812 :                 set_stack_size = (SIZEOF_VOID_P / 4) * 1024 * 1024;</span>
+<span class="lineNum">      66 </span>            : #endif
+<span class="lineNum">      67 </span><span class="lineCov">      16812 :         }</span>
+<span class="lineNum">      68 </span>            : 
+<span class="lineNum">      69 </span>            : #ifdef PTHREAD_STACK_MIN
+<span class="lineNum">      70 </span><span class="lineCov">      16812 :         if (set_stack_size &lt; PTHREAD_STACK_MIN)</span>
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :                 set_stack_size = PTHREAD_STACK_MIN;</span>
+<span class="lineNum">      72 </span>            : #endif
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span><span class="lineCov">      16812 :         res = pthread_attr_setstacksize (&amp;attr, set_stack_size);</span>
+<span class="lineNum">      75 </span><span class="lineCov">      50436 :         g_assert (!res);</span>
+<span class="lineNum">      76 </span>            : #endif /* HAVE_PTHREAD_ATTR_SETSTACKSIZE */
+<span class="lineNum">      77 </span>            : 
+<span class="lineNum">      78 </span><span class="lineCov">      16812 :         memset (&amp;param, 0, sizeof (param));</span>
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span><span class="lineCov">      16812 :         res = pthread_attr_getschedpolicy (&amp;attr, &amp;policy);</span>
+<span class="lineNum">      81 </span><span class="lineCov">      16812 :         if (res != 0)</span>
+<span class="lineNum">      82 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_attr_getschedpolicy failed, error: \&quot;%s\&quot; (%d)&quot;, g_strerror (res), res);</span>
+<span class="lineNum">      83 </span>            : 
+<span class="lineNum">      84 </span>            : #ifdef _POSIX_PRIORITY_SCHEDULING
+<span class="lineNum">      85 </span>            :         int max, min;
+<span class="lineNum">      86 </span>            : 
+<span class="lineNum">      87 </span>            :         /* Necessary to get valid priority range */
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span><span class="lineCov">      16812 :         min = sched_get_priority_min (policy);</span>
+<span class="lineNum">      90 </span><span class="lineCov">      16812 :         max = sched_get_priority_max (policy);</span>
+<span class="lineNum">      91 </span>            : 
+<span class="lineNum">      92 </span><span class="lineCov">      50436 :         if (max &gt; 0 &amp;&amp; min &gt;= 0 &amp;&amp; max &gt; min)</span>
+<span class="lineNum">      93 </span><span class="lineCov">      16812 :                 param.sched_priority = (max - min) / 2 + min;</span>
+<span class="lineNum">      94 </span>            :         else
+<span class="lineNum">      95 </span>            : #endif
+<span class="lineNum">      96 </span>            :         {
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :                 switch (policy) {</span>
+<span class="lineNum">      98 </span>            :                 case SCHED_FIFO:
+<span class="lineNum">      99 </span>            :                 case SCHED_RR:
+<span class="lineNum">     100 </span><span class="lineNoCov">          0 :                         param.sched_priority = 50;</span>
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     102 </span>            : #ifdef SCHED_BATCH
+<span class="lineNum">     103 </span>            :                 case SCHED_BATCH:
+<span class="lineNum">     104 </span>            : #endif
+<span class="lineNum">     105 </span>            :                 case SCHED_OTHER:
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :                         param.sched_priority = 0;</span>
+<span class="lineNum">     107 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     108 </span>            :                 default:
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :                         g_error (&quot;%s: unknown policy %d&quot;, __func__, policy);</span>
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     111 </span>            :         }
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span><span class="lineCov">      16812 :         res = pthread_attr_setschedparam (&amp;attr, &amp;param);</span>
+<span class="lineNum">     114 </span><span class="lineCov">      16812 :         if (res != 0)</span>
+<span class="lineNum">     115 </span><span class="lineNoCov">          0 :                 g_error (&quot;%s: pthread_attr_setschedparam failed, error: \&quot;%s\&quot; (%d)&quot;, g_strerror (res), res);</span>
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span><span class="lineCov">      16812 :         if (stack_size) {</span>
+<span class="lineNum">     118 </span><span class="lineCov">      16599 :                 res = pthread_attr_getstacksize (&amp;attr, &amp;min_size);</span>
+<span class="lineNum">     119 </span><span class="lineCov">      16599 :                 if (res != 0)</span>
+<span class="lineNum">     120 </span><span class="lineNoCov">          0 :                         g_error (&quot;%s: pthread_attr_getstacksize failed, error: \&quot;%s\&quot; (%d)&quot;, g_strerror (res), res);</span>
+<span class="lineNum">     121 </span>            :                 else
+<span class="lineNum">     122 </span><span class="lineCov">      16599 :                         *stack_size = min_size;</span>
+<span class="lineNum">     123 </span><span class="lineCov">      16599 :         }</span>
+<span class="lineNum">     124 </span>            : 
+<span class="lineNum">     125 </span>            :         /* Actually start the thread */
+<span class="lineNum">     126 </span><span class="lineCov">      16812 :         res = mono_gc_pthread_create (&amp;thread, &amp;attr, (gpointer (*)(gpointer)) thread_fn, thread_data);</span>
+<span class="lineNum">     127 </span><span class="lineCov">      16812 :         if (res)</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 :                 return -1;</span>
+<span class="lineNum">     129 </span>            : 
+<span class="lineNum">     130 </span><span class="lineCov">      16812 :         if (out_tid)</span>
+<span class="lineNum">     131 </span><span class="lineCov">      16812 :                 *out_tid = thread;</span>
+<span class="lineNum">     132 </span>            : 
+<span class="lineNum">     133 </span><span class="lineCov">      16812 :         return 0;</span>
+<span class="lineNum">     134 </span><span class="lineCov">      16812 : }</span>
+<a name="135"><span class="lineNum">     135 </span>            : </a>
+<span class="lineNum">     136 </span>            : void
+<span class="lineNum">     137 </span>            : mono_threads_platform_init (void)
+<span class="lineNum">     138 </span>            : {
+<span class="lineNum">     139 </span><span class="lineCov">       3289 : }</span>
+<a name="140"><span class="lineNum">     140 </span>            : </a>
+<span class="lineNum">     141 </span>            : gboolean
+<span class="lineNum">     142 </span>            : mono_threads_platform_in_critical_region (MonoNativeThreadId tid)
+<span class="lineNum">     143 </span>            : {
+<span class="lineNum">     144 </span><span class="lineCov">     547886 :         return FALSE;</span>
+<span class="lineNum">     145 </span>            : }
+<a name="146"><span class="lineNum">     146 </span>            : </a>
+<span class="lineNum">     147 </span>            : gboolean
+<span class="lineNum">     148 </span>            : mono_threads_platform_yield (void)
+<span class="lineNum">     149 </span>            : {
+<span class="lineNum">     150 </span><span class="lineCov">     921805 :         return sched_yield () == 0;</span>
+<span class="lineNum">     151 </span>            : }
+<a name="152"><span class="lineNum">     152 </span>            : </a>
+<span class="lineNum">     153 </span>            : void
+<span class="lineNum">     154 </span>            : mono_threads_platform_exit (gsize exit_code)
+<span class="lineNum">     155 </span>            : {
+<span class="lineNum">     156 </span><span class="lineCov">      16742 :         pthread_exit ((gpointer) exit_code);</span>
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 : }</span>
+<a name="158"><span class="lineNum">     158 </span>            : </a>
+<span class="lineNum">     159 </span>            : int
+<span class="lineNum">     160 </span>            : mono_threads_get_max_stack_size (void)
+<span class="lineNum">     161 </span>            : {
+<span class="lineNum">     162 </span>            :         struct rlimit lim;
+<span class="lineNum">     163 </span>            : 
+<span class="lineNum">     164 </span>            :         /* If getrlimit fails, we don't enforce any limits. */
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :         if (getrlimit (RLIMIT_STACK, &amp;lim))</span>
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :                 return INT_MAX;</span>
+<span class="lineNum">     167 </span>            :         /* rlim_t is an unsigned long long on 64bits OSX but we want an int response. */
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :         if (lim.rlim_max &gt; (rlim_t)INT_MAX)</span>
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :                 return INT_MAX;</span>
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :         return (int)lim.rlim_max;</span>
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 : }</span>
+<a name="172"><span class="lineNum">     172 </span>            : </a>
+<span class="lineNum">     173 </span>            : int
+<span class="lineNum">     174 </span>            : mono_threads_pthread_kill (MonoThreadInfo *info, int signum)
+<span class="lineNum">     175 </span>            : {
+<span class="lineNum">     176 </span>            :         THREADS_SUSPEND_DEBUG (&quot;sending signal %d to %p[%p]\n&quot;, signum, info, mono_thread_info_get_tid (info));
+<span class="lineNum">     177 </span>            : #ifdef USE_TKILL_ON_ANDROID
+<span class="lineNum">     178 </span>            :         int result, old_errno = errno;
+<span class="lineNum">     179 </span>            :         result = tkill (info-&gt;native_handle, signum);
+<span class="lineNum">     180 </span>            :         if (result &lt; 0) {
+<span class="lineNum">     181 </span>            :                 result = errno;
+<span class="lineNum">     182 </span>            :                 errno = old_errno;
+<span class="lineNum">     183 </span>            :         }
+<span class="lineNum">     184 </span>            :         return result;
+<span class="lineNum">     185 </span>            : #elif defined(__native_client__)
+<span class="lineNum">     186 </span>            :         /* Workaround pthread_kill abort() in NaCl glibc. */
+<span class="lineNum">     187 </span>            :         return 0;
+<span class="lineNum">     188 </span>            : #elif !defined(HAVE_PTHREAD_KILL)
+<span class="lineNum">     189 </span>            :         g_error (&quot;pthread_kill() is not supported by this platform&quot;);
+<span class="lineNum">     190 </span>            : #else
+<span class="lineNum">     191 </span><span class="lineCov">        470 :         return pthread_kill (mono_thread_info_get_tid (info), signum);</span>
+<span class="lineNum">     192 </span>            : #endif
+<span class="lineNum">     193 </span>            : }
+<a name="194"><span class="lineNum">     194 </span>            : </a>
+<span class="lineNum">     195 </span>            : MonoNativeThreadId
+<span class="lineNum">     196 </span>            : mono_native_thread_id_get (void)
+<span class="lineNum">     197 </span>            : {
+<span class="lineNum">     198 </span><span class="lineCov">   40962585 :         return pthread_self ();</span>
+<span class="lineNum">     199 </span>            : }
+<a name="200"><span class="lineNum">     200 </span>            : </a>
+<span class="lineNum">     201 </span>            : gboolean
+<span class="lineNum">     202 </span>            : mono_native_thread_id_equals (MonoNativeThreadId id1, MonoNativeThreadId id2)
+<span class="lineNum">     203 </span>            : {
+<span class="lineNum">     204 </span><span class="lineCov">    6466531 :         return pthread_equal (id1, id2);</span>
+<span class="lineNum">     205 </span>            : }
+<span class="lineNum">     206 </span>            : 
+<span class="lineNum">     207 </span>            : /*
+<span class="lineNum">     208 </span>            :  * mono_native_thread_create:
+<span class="lineNum">     209 </span>            :  *
+<span class="lineNum">     210 </span>            :  *   Low level thread creation function without any GC wrappers.
+<a name="211"><span class="lineNum">     211 </span>            :  */</a>
+<span class="lineNum">     212 </span>            : gboolean
+<span class="lineNum">     213 </span>            : mono_native_thread_create (MonoNativeThreadId *tid, gpointer func, gpointer arg)
+<span class="lineNum">     214 </span>            : {
+<span class="lineNum">     215 </span><span class="lineCov">       3341 :         return pthread_create (tid, NULL, (void *(*)(void *)) func, arg) == 0;</span>
+<span class="lineNum">     216 </span>            : }
+<a name="217"><span class="lineNum">     217 </span>            : </a>
+<span class="lineNum">     218 </span>            : void
+<span class="lineNum">     219 </span>            : mono_native_thread_set_name (MonoNativeThreadId tid, const char *name)
+<span class="lineNum">     220 </span>            : {
+<span class="lineNum">     221 </span>            : #ifdef __MACH__
+<span class="lineNum">     222 </span>            :         /*
+<span class="lineNum">     223 </span>            :          * We can't set the thread name for other threads, but we can at least make
+<span class="lineNum">     224 </span>            :          * it work for threads that try to change their own name.
+<span class="lineNum">     225 </span>            :          */
+<span class="lineNum">     226 </span><span class="lineCov">      16157 :         if (tid != mono_native_thread_id_get ())</span>
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     228 </span>            : 
+<span class="lineNum">     229 </span><span class="lineCov">      16157 :         if (!name) {</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :                 pthread_setname_np (&quot;&quot;);</span>
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     232 </span>            :                 char n [63];
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span><span class="lineCov">      16157 :                 strncpy (n, name, 63);</span>
+<span class="lineNum">     235 </span><span class="lineCov">      16157 :                 n [62] = '\0';</span>
+<span class="lineNum">     236 </span><span class="lineCov">      16157 :                 pthread_setname_np (n);</span>
+<span class="lineNum">     237 </span>            :         }
+<span class="lineNum">     238 </span>            : #elif defined (__NetBSD__)
+<span class="lineNum">     239 </span>            :         if (!name) {
+<span class="lineNum">     240 </span>            :                 pthread_setname_np (tid, &quot;%s&quot;, (void*)&quot;&quot;);
+<span class="lineNum">     241 </span>            :         } else {
+<span class="lineNum">     242 </span>            :                 char n [PTHREAD_MAX_NAMELEN_NP];
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span>            :                 strncpy (n, name, PTHREAD_MAX_NAMELEN_NP);
+<span class="lineNum">     245 </span>            :                 n [PTHREAD_MAX_NAMELEN_NP - 1] = '\0';
+<span class="lineNum">     246 </span>            :                 pthread_setname_np (tid, &quot;%s&quot;, (void*)n);
+<span class="lineNum">     247 </span>            :         }
+<span class="lineNum">     248 </span>            : #elif defined (HAVE_PTHREAD_SETNAME_NP)
+<span class="lineNum">     249 </span>            :         if (!name) {
+<span class="lineNum">     250 </span>            :                 pthread_setname_np (tid, &quot;&quot;);
+<span class="lineNum">     251 </span>            :         } else {
+<span class="lineNum">     252 </span>            :                 char n [16];
+<span class="lineNum">     253 </span>            : 
+<span class="lineNum">     254 </span>            :                 strncpy (n, name, 16);
+<span class="lineNum">     255 </span>            :                 n [15] = '\0';
+<span class="lineNum">     256 </span>            :                 pthread_setname_np (tid, n);
+<span class="lineNum">     257 </span>            :         }
+<span class="lineNum">     258 </span>            : #endif
+<span class="lineNum">     259 </span><span class="lineCov">      16157 : }</span>
+<a name="260"><span class="lineNum">     260 </span>            : </a>
+<span class="lineNum">     261 </span>            : gboolean
+<span class="lineNum">     262 </span>            : mono_native_thread_join (MonoNativeThreadId tid)
+<span class="lineNum">     263 </span>            : {
+<span class="lineNum">     264 </span>            :         void *res;
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span><span class="lineCov">      13540 :         return !pthread_join (tid, &amp;res);</span>
+<span class="lineNum">     267 </span>            : }
+<span class="lineNum">     268 </span>            : 
+<span class="lineNum">     269 </span>            : #endif /* defined(_POSIX_VERSION) || defined(__native_client__) */
+<span class="lineNum">     270 </span>            : 
+<span class="lineNum">     271 </span>            : #if defined(USE_POSIX_BACKEND)
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span>            : gboolean
+<span class="lineNum">     274 </span>            : mono_threads_suspend_begin_async_suspend (MonoThreadInfo *info, gboolean interrupt_kernel)
+<span class="lineNum">     275 </span>            : {
+<span class="lineNum">     276 </span>            :         int sig = interrupt_kernel ? mono_threads_suspend_get_abort_signal () :  mono_threads_suspend_get_suspend_signal ();
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span>            :         if (!mono_threads_pthread_kill (info, sig)) {
+<span class="lineNum">     279 </span>            :                 mono_threads_add_to_pending_operation_set (info);
+<span class="lineNum">     280 </span>            :                 return TRUE;
+<span class="lineNum">     281 </span>            :         }
+<span class="lineNum">     282 </span>            :         return FALSE;
+<span class="lineNum">     283 </span>            : }
+<span class="lineNum">     284 </span>            : 
+<span class="lineNum">     285 </span>            : gboolean
+<span class="lineNum">     286 </span>            : mono_threads_suspend_check_suspend_result (MonoThreadInfo *info)
+<span class="lineNum">     287 </span>            : {
+<span class="lineNum">     288 </span>            :         return info-&gt;suspend_can_continue;
+<span class="lineNum">     289 </span>            : }
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span>            : /*
+<span class="lineNum">     292 </span>            : This begins async resume. This function must do the following:
+<span class="lineNum">     293 </span>            : 
+<span class="lineNum">     294 </span>            : - Install an async target if one was requested.
+<span class="lineNum">     295 </span>            : - Notify the target to resume.
+<span class="lineNum">     296 </span>            : */
+<span class="lineNum">     297 </span>            : gboolean
+<span class="lineNum">     298 </span>            : mono_threads_suspend_begin_async_resume (MonoThreadInfo *info)
+<span class="lineNum">     299 </span>            : {
+<span class="lineNum">     300 </span>            :         int sig = mono_threads_suspend_get_restart_signal ();
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span>            :         if (!mono_threads_pthread_kill (info, sig)) {
+<span class="lineNum">     303 </span>            :                 mono_threads_add_to_pending_operation_set (info);
+<span class="lineNum">     304 </span>            :                 return TRUE;
+<span class="lineNum">     305 </span>            :         }
+<span class="lineNum">     306 </span>            :         return FALSE;
+<span class="lineNum">     307 </span>            : }
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span>            : void
+<span class="lineNum">     310 </span>            : mono_threads_suspend_abort_syscall (MonoThreadInfo *info)
+<span class="lineNum">     311 </span>            : {
+<span class="lineNum">     312 </span>            :         /* We signal a thread to break it from the current syscall.
+<span class="lineNum">     313 </span>            :          * This signal should not be interpreted as a suspend request. */
+<span class="lineNum">     314 </span>            :         info-&gt;syscall_break_signal = TRUE;
+<span class="lineNum">     315 </span>            :         if (mono_threads_pthread_kill (info, mono_threads_suspend_get_abort_signal ()) == 0) {
+<span class="lineNum">     316 </span>            :                 mono_threads_add_to_pending_operation_set (info);
+<span class="lineNum">     317 </span>            :         }
+<span class="lineNum">     318 </span>            : }
+<span class="lineNum">     319 </span>            : 
+<span class="lineNum">     320 </span>            : gboolean
+<span class="lineNum">     321 </span>            : mono_threads_suspend_needs_abort_syscall (void)
+<span class="lineNum">     322 </span>            : {
+<span class="lineNum">     323 </span>            :         return TRUE;
+<span class="lineNum">     324 </span>            : }
+<span class="lineNum">     325 </span>            : 
+<span class="lineNum">     326 </span>            : void
+<span class="lineNum">     327 </span>            : mono_threads_suspend_register (MonoThreadInfo *info)
+<span class="lineNum">     328 </span>            : {
+<span class="lineNum">     329 </span>            : #if defined (PLATFORM_ANDROID)
+<span class="lineNum">     330 </span>            :         info-&gt;native_handle = gettid ();
+<span class="lineNum">     331 </span>            : #endif
+<span class="lineNum">     332 </span>            : }
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span>            : void
+<span class="lineNum">     335 </span>            : mono_threads_suspend_free (MonoThreadInfo *info)
+<span class="lineNum">     336 </span>            : {
+<span class="lineNum">     337 </span>            : }
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span>            : void
+<span class="lineNum">     340 </span>            : mono_threads_suspend_init (void)
+<span class="lineNum">     341 </span>            : {
+<span class="lineNum">     342 </span>            : }
+<span class="lineNum">     343 </span>            : 
+<span class="lineNum">     344 </span>            : #endif /* defined(USE_POSIX_BACKEND) */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

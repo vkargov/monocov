@@ -1,0 +1,560 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - sgen/sgen-protocol.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">sgen</a> - sgen-protocol.c<span style="font-size: 80%;"> (source / <a href="sgen-protocol.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntry">148</td>
+            <td class="headerCovTableEntryLo">5.4 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">15</td>
+            <td class="headerCovTableEntryLo">20.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-protocol.c: Binary protocol of internal activity, to aid
+<span class="lineNum">       3 </span>            :  * debugging.
+<span class="lineNum">       4 </span>            :  *
+<span class="lineNum">       5 </span>            :  * Copyright 2001-2003 Ximian, Inc
+<span class="lineNum">       6 </span>            :  * Copyright 2003-2010 Novell, Inc.
+<span class="lineNum">       7 </span>            :  * Copyright (C) 2012 Xamarin Inc
+<span class="lineNum">       8 </span>            :  *
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      15 </span>            : #include &quot;sgen-conf.h&quot;
+<span class="lineNum">      16 </span>            : #include &quot;sgen-gc.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;sgen-protocol.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;sgen-memory-governor.h&quot;
+<span class="lineNum">      19 </span>            : #include &quot;sgen-thread-pool.h&quot;
+<span class="lineNum">      20 </span>            : #include &quot;sgen-client.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;mono/utils/mono-membar.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;mono/utils/mono-proclib.h&quot;
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      26 </span>            : #if defined(HAVE_UNISTD_H)
+<span class="lineNum">      27 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;fcntl.h&gt;
+<span class="lineNum">      29 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">      30 </span>            : #include &lt;windows.h&gt;
+<span class="lineNum">      31 </span>            : #endif
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : #if defined(HOST_WIN32)
+<span class="lineNum">      34 </span>            : static const HANDLE invalid_file_value = INVALID_HANDLE_VALUE;
+<span class="lineNum">      35 </span>            : /* If valid, dump binary protocol to this file */
+<span class="lineNum">      36 </span>            : static HANDLE binary_protocol_file = INVALID_HANDLE_VALUE;
+<span class="lineNum">      37 </span>            : #else
+<span class="lineNum">      38 </span>            : static const int invalid_file_value = -1;
+<span class="lineNum">      39 </span>            : static int binary_protocol_file = -1;
+<span class="lineNum">      40 </span>            : #endif
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : /* We set this to -1 to indicate an exclusive lock */
+<span class="lineNum">      43 </span>            : static volatile int binary_protocol_use_count = 0;
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            : #define BINARY_PROTOCOL_BUFFER_SIZE     (65536 - 2 * 8)
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : typedef struct _BinaryProtocolBuffer BinaryProtocolBuffer;
+<span class="lineNum">      48 </span>            : struct _BinaryProtocolBuffer {
+<span class="lineNum">      49 </span>            :         BinaryProtocolBuffer * volatile next;
+<span class="lineNum">      50 </span>            :         volatile int index;
+<span class="lineNum">      51 </span>            :         unsigned char buffer [BINARY_PROTOCOL_BUFFER_SIZE];
+<span class="lineNum">      52 </span>            : };
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span>            : static BinaryProtocolBuffer * volatile binary_protocol_buffers = NULL;
+<span class="lineNum">      55 </span>            : 
+<span class="lineNum">      56 </span>            : static char* filename_or_prefix = NULL;
+<span class="lineNum">      57 </span>            : static int current_file_index = 0;
+<span class="lineNum">      58 </span>            : static long long current_file_size = 0;
+<span class="lineNum">      59 </span>            : static long long file_size_limit;
+<a name="60"><span class="lineNum">      60 </span>            : </a>
+<span class="lineNum">      61 </span>            : static char*
+<span class="lineNum">      62 </span>            : filename_for_index (int index)
+<span class="lineNum">      63 </span>            : {
+<span class="lineNum">      64 </span>            :         char *filename;
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span><span class="lineNoCov">          0 :         SGEN_ASSERT (0, file_size_limit &gt; 0, &quot;Indexed binary protocol filename must only be used with file size limit&quot;);</span>
+<span class="lineNum">      67 </span>            : 
+<span class="lineNum">      68 </span><span class="lineNoCov">          0 :         filename = (char *)sgen_alloc_internal_dynamic (strlen (filename_or_prefix) + 32, INTERNAL_MEM_BINARY_PROTOCOL, TRUE);</span>
+<span class="lineNum">      69 </span><span class="lineNoCov">          0 :         sprintf (filename, &quot;%s.%d&quot;, filename_or_prefix, index);</span>
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :         return filename;</span>
+<span class="lineNum">      72 </span>            : }
+<a name="73"><span class="lineNum">      73 </span>            : </a>
+<span class="lineNum">      74 </span>            : static void
+<span class="lineNum">      75 </span>            : free_filename (char *filename)
+<span class="lineNum">      76 </span>            : {
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :         SGEN_ASSERT (0, file_size_limit &gt; 0, &quot;Indexed binary protocol filename must only be used with file size limit&quot;);</span>
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (filename, strlen (filename_or_prefix) + 32, INTERNAL_MEM_BINARY_PROTOCOL);</span>
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 : }</span>
+<a name="81"><span class="lineNum">      81 </span>            : </a>
+<span class="lineNum">      82 </span>            : static void
+<span class="lineNum">      83 </span>            : binary_protocol_open_file (gboolean assert_on_failure)
+<span class="lineNum">      84 </span>            : {
+<span class="lineNum">      85 </span>            :         char *filename;
+<span class="lineNum">      86 </span>            : #ifdef F_SETLK
+<span class="lineNum">      87 </span>            :         struct flock lock;
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 :         lock.l_type = F_WRLCK;</span>
+<span class="lineNum">      89 </span><span class="lineNoCov">          0 :         lock.l_whence = SEEK_SET;</span>
+<span class="lineNum">      90 </span><span class="lineNoCov">          0 :         lock.l_start = 0;</span>
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 :         lock.l_len = 0;</span>
+<span class="lineNum">      92 </span>            : #endif
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 :         if (file_size_limit &gt; 0)</span>
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :                 filename = filename_for_index (current_file_index);</span>
+<span class="lineNum">      96 </span>            :         else
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :                 filename = filename_or_prefix;</span>
+<span class="lineNum">      98 </span>            : 
+<span class="lineNum">      99 </span>            : #if defined(HAVE_UNISTD_H)
+<span class="lineNum">     100 </span><span class="lineNoCov">          0 :         do {</span>
+<span class="lineNum">     101 </span><span class="lineNoCov">          0 :                 binary_protocol_file = open (filename, O_CREAT | O_WRONLY, 0644);</span>
+<span class="lineNum">     102 </span><span class="lineNoCov">          0 :                 if (binary_protocol_file == -1) {</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :                         if (errno != EINTR)</span>
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :                                 break; /* Failed */</span>
+<span class="lineNum">     105 </span>            : #ifdef F_SETLK
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :                 } else if (fcntl (binary_protocol_file, F_SETLK, &amp;lock) == -1) {</span>
+<span class="lineNum">     107 </span>            :                         /* The lock for the file is already taken. Fail */
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :                         close (binary_protocol_file);</span>
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :                         binary_protocol_file = -1;</span>
+<span class="lineNum">     110 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     111 </span>            : #endif
+<span class="lineNum">     112 </span>            :                 } else {
+<span class="lineNum">     113 </span>            :                         /* We have acquired the lock. Truncate the file */
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :                         ftruncate (binary_protocol_file, 0);</span>
+<span class="lineNum">     115 </span>            :                 }
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :         } while (binary_protocol_file == -1);</span>
+<span class="lineNum">     117 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">     118 </span>            :         binary_protocol_file = CreateFileA (filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+<span class="lineNum">     119 </span>            : #else
+<span class="lineNum">     120 </span>            :         g_error (&quot;sgen binary protocol: not supported&quot;);
+<span class="lineNum">     121 </span>            : #endif
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :         if (binary_protocol_file == invalid_file_value &amp;&amp; assert_on_failure)</span>
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :                 g_error (&quot;sgen binary protocol: failed to open file&quot;);</span>
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span><span class="lineNoCov">          0 :         if (file_size_limit &gt; 0)</span>
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :                 free_filename (filename);</span>
+<span class="lineNum">     128 </span><span class="lineNoCov">          0 : }</span>
+<a name="129"><span class="lineNum">     129 </span>            : </a>
+<span class="lineNum">     130 </span>            : void
+<span class="lineNum">     131 </span>            : binary_protocol_init (const char *filename, long long limit)
+<span class="lineNum">     132 </span>            : {
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :         file_size_limit = limit;</span>
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span>            :         /* Original name length + . + pid length in hex + null terminator */
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         filename_or_prefix = g_strdup_printf (&quot;%s&quot;, filename);</span>
+<span class="lineNum">     137 </span><span class="lineNoCov">          0 :         binary_protocol_open_file (FALSE);</span>
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :         if (binary_protocol_file == invalid_file_value) {</span>
+<span class="lineNum">     140 </span>            :                 /* Another process owns the file, try adding the pid suffix to the filename */
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :                 gint32 pid = mono_process_current_pid ();</span>
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :                 g_free (filename_or_prefix);</span>
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :                 filename_or_prefix = g_strdup_printf (&quot;%s.%x&quot;, filename, pid);</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :                 binary_protocol_open_file (TRUE);</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     146 </span>            : 
+<span class="lineNum">     147 </span>            :         /* If we have a file size limit, we might need to open additional files */
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :         if (file_size_limit == 0)</span>
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :                 g_free (filename_or_prefix);</span>
+<span class="lineNum">     150 </span>            : 
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 :         binary_protocol_header (PROTOCOL_HEADER_CHECK, PROTOCOL_HEADER_VERSION, SIZEOF_VOID_P, G_BYTE_ORDER == G_LITTLE_ENDIAN);</span>
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 : }</span>
+<a name="153"><span class="lineNum">     153 </span>            : </a>
+<span class="lineNum">     154 </span>            : gboolean
+<span class="lineNum">     155 </span>            : binary_protocol_is_enabled (void)
+<span class="lineNum">     156 </span>            : {
+<span class="lineNum">     157 </span><span class="lineCov">    4455719 :         return binary_protocol_file != invalid_file_value;</span>
+<span class="lineNum">     158 </span>            : }
+<a name="159"><span class="lineNum">     159 </span>            : </a>
+<span class="lineNum">     160 </span>            : static void
+<span class="lineNum">     161 </span>            : close_binary_protocol_file (void)
+<span class="lineNum">     162 </span>            : {
+<span class="lineNum">     163 </span>            : #if defined(HAVE_UNISTD_H)
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :         while (close (binary_protocol_file) == -1 &amp;&amp; errno == EINTR)</span>
+<span class="lineNum">     165 </span>            :                 ;
+<span class="lineNum">     166 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">     167 </span>            :         CloseHandle (binary_protocol_file);
+<span class="lineNum">     168 </span>            : #endif
+<span class="lineNum">     169 </span><span class="lineNoCov">          0 :         binary_protocol_file = invalid_file_value;</span>
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 : }</span>
+<a name="171"><span class="lineNum">     171 </span>            : </a>
+<span class="lineNum">     172 </span>            : static gboolean
+<span class="lineNum">     173 </span>            : try_lock_exclusive (void)
+<span class="lineNum">     174 </span>            : {
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :         do {</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :                 if (binary_protocol_use_count)</span>
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 :         } while (InterlockedCompareExchange (&amp;binary_protocol_use_count, -1, 0) != 0);</span>
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :         mono_memory_barrier ();</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 : }</span>
+<a name="182"><span class="lineNum">     182 </span>            : </a>
+<span class="lineNum">     183 </span>            : static void
+<span class="lineNum">     184 </span>            : unlock_exclusive (void)
+<span class="lineNum">     185 </span>            : {
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :         mono_memory_barrier ();</span>
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :         SGEN_ASSERT (0, binary_protocol_use_count == -1, &quot;Exclusively locked count must be -1&quot;);</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :         if (InterlockedCompareExchange (&amp;binary_protocol_use_count, 0, -1) != -1)</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                 SGEN_ASSERT (0, FALSE, &quot;Somebody messed with the exclusive lock&quot;);</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 : }</span>
+<a name="191"><span class="lineNum">     191 </span>            : </a>
+<span class="lineNum">     192 </span>            : static void
+<span class="lineNum">     193 </span>            : lock_recursive (void)
+<span class="lineNum">     194 </span>            : {
+<span class="lineNum">     195 </span>            :         int old_count;
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :         do {</span>
+<span class="lineNum">     197 </span>            :         retry:
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                 old_count = binary_protocol_use_count;</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :                 if (old_count &lt; 0) {</span>
+<span class="lineNum">     200 </span>            :                         /* Exclusively locked - retry */
+<span class="lineNum">     201 </span>            :                         /* FIXME: short back-off */
+<span class="lineNum">     202 </span><span class="lineNoCov">          0 :                         goto retry;</span>
+<span class="lineNum">     203 </span>            :                 }
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :         } while (InterlockedCompareExchange (&amp;binary_protocol_use_count, old_count + 1, old_count) != old_count);</span>
+<span class="lineNum">     205 </span><span class="lineNoCov">          0 :         mono_memory_barrier ();</span>
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 : }</span>
+<a name="207"><span class="lineNum">     207 </span>            : </a>
+<span class="lineNum">     208 </span>            : static void
+<span class="lineNum">     209 </span>            : unlock_recursive (void)
+<span class="lineNum">     210 </span>            : {
+<span class="lineNum">     211 </span>            :         int old_count;
+<span class="lineNum">     212 </span><span class="lineNoCov">          0 :         mono_memory_barrier ();</span>
+<span class="lineNum">     213 </span><span class="lineNoCov">          0 :         do {</span>
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                 old_count = binary_protocol_use_count;</span>
+<span class="lineNum">     215 </span><span class="lineNoCov">          0 :                 SGEN_ASSERT (0, old_count &gt; 0, &quot;Locked use count must be at least 1&quot;);</span>
+<span class="lineNum">     216 </span><span class="lineNoCov">          0 :         } while (InterlockedCompareExchange (&amp;binary_protocol_use_count, old_count - 1, old_count) != old_count);</span>
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 : }</span>
+<a name="218"><span class="lineNum">     218 </span>            : </a>
+<span class="lineNum">     219 </span>            : static void
+<span class="lineNum">     220 </span>            : binary_protocol_flush_buffer (BinaryProtocolBuffer *buffer)
+<span class="lineNum">     221 </span>            : {
+<span class="lineNum">     222 </span>            :         ssize_t ret;
+<span class="lineNum">     223 </span><span class="lineNoCov">          0 :         size_t to_write = buffer-&gt;index;</span>
+<span class="lineNum">     224 </span><span class="lineNoCov">          0 :         size_t written = 0;</span>
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :         g_assert (buffer-&gt;index &gt; 0);</span>
+<span class="lineNum">     226 </span>            : 
+<span class="lineNum">     227 </span><span class="lineNoCov">          0 :         while (written &lt; to_write) {</span>
+<span class="lineNum">     228 </span>            : #if defined(HAVE_UNISTD_H)
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :                 ret = write (binary_protocol_file, buffer-&gt;buffer + written, to_write - written);</span>
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :                 if (ret &gt;= 0)</span>
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :                         written += ret;</span>
+<span class="lineNum">     232 </span><span class="lineNoCov">          0 :                 else if (errno == EINTR)</span>
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     234 </span>            :                 else
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :                         close_binary_protocol_file ();</span>
+<span class="lineNum">     236 </span>            : #elif defined(HOST_WIN32)
+<span class="lineNum">     237 </span>            :                 int tmp_written;
+<span class="lineNum">     238 </span>            :                 if (WriteFile (binary_protocol_file, buffer-&gt;buffer + written, to_write - written, &amp;tmp_written, NULL))
+<span class="lineNum">     239 </span>            :                         written += tmp_written;
+<span class="lineNum">     240 </span>            :                 else
+<span class="lineNum">     241 </span>            :                         close_binary_protocol_file ();
+<span class="lineNum">     242 </span>            : #endif
+<span class="lineNum">     243 </span>            :         }
+<span class="lineNum">     244 </span>            : 
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :         current_file_size += buffer-&gt;index;</span>
+<span class="lineNum">     246 </span>            : 
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :         sgen_free_os_memory (buffer, sizeof (BinaryProtocolBuffer), SGEN_ALLOC_INTERNAL, MONO_MEM_ACCOUNT_SGEN_BINARY_PROTOCOL);</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 : }</span>
+<a name="249"><span class="lineNum">     249 </span>            : </a>
+<span class="lineNum">     250 </span>            : static void
+<span class="lineNum">     251 </span>            : binary_protocol_check_file_overflow (void)
+<span class="lineNum">     252 </span>            : {
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :         if (file_size_limit &lt;= 0 || current_file_size &lt; file_size_limit)</span>
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     255 </span>            : 
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :         close_binary_protocol_file ();</span>
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :         if (current_file_index &gt; 0) {</span>
+<span class="lineNum">     259 </span><span class="lineNoCov">          0 :                 char *filename = filename_for_index (current_file_index - 1);</span>
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :                 unlink (filename);</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :                 free_filename (filename);</span>
+<span class="lineNum">     262 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     263 </span>            : 
+<span class="lineNum">     264 </span><span class="lineNoCov">          0 :         ++current_file_index;</span>
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :         current_file_size = 0;</span>
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :         binary_protocol_open_file (TRUE);</span>
+<span class="lineNum">     268 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span>            : /*
+<span class="lineNum">     271 </span>            :  * Flushing buffers takes an exclusive lock, so it must only be done when the world is
+<span class="lineNum">     272 </span>            :  * stopped, otherwise we might end up with a deadlock because a stopped thread owns the
+<span class="lineNum">     273 </span>            :  * lock.
+<span class="lineNum">     274 </span>            :  *
+<span class="lineNum">     275 </span>            :  * The protocol entries that do flush have `FLUSH()` in their definition.
+<a name="276"><span class="lineNum">     276 </span>            :  */</a>
+<span class="lineNum">     277 </span>            : gboolean
+<span class="lineNum">     278 </span>            : binary_protocol_flush_buffers (gboolean force)
+<span class="lineNum">     279 </span>            : {
+<span class="lineNum">     280 </span><span class="lineCov">     572633 :         int num_buffers = 0, i;</span>
+<span class="lineNum">     281 </span>            :         BinaryProtocolBuffer *header;
+<span class="lineNum">     282 </span>            :         BinaryProtocolBuffer *buf;
+<span class="lineNum">     283 </span>            :         BinaryProtocolBuffer **bufs;
+<span class="lineNum">     284 </span>            : 
+<span class="lineNum">     285 </span><span class="lineCov">     572633 :         if (binary_protocol_file == invalid_file_value)</span>
+<span class="lineNum">     286 </span><span class="lineCov">     572633 :                 return FALSE;</span>
+<span class="lineNum">     287 </span>            : 
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :         if (!force &amp;&amp; !try_lock_exclusive ())</span>
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     290 </span>            : 
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :         header = binary_protocol_buffers;</span>
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :         for (buf = header; buf != NULL; buf = buf-&gt;next)</span>
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :                 ++num_buffers;</span>
+<span class="lineNum">     294 </span><span class="lineNoCov">          0 :         bufs = (BinaryProtocolBuffer **)sgen_alloc_internal_dynamic (num_buffers * sizeof (BinaryProtocolBuffer*), INTERNAL_MEM_BINARY_PROTOCOL, TRUE);</span>
+<span class="lineNum">     295 </span><span class="lineNoCov">          0 :         for (buf = header, i = 0; buf != NULL; buf = buf-&gt;next, i++)</span>
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :                 bufs [i] = buf;</span>
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :         SGEN_ASSERT (0, i == num_buffers, &quot;Binary protocol buffer count error&quot;);</span>
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span>            :         /*
+<span class="lineNum">     300 </span>            :          * This might be incorrect when forcing, but all bets are off in that case, anyway,
+<span class="lineNum">     301 </span>            :          * because we're trying to figure out a bug in the debugger.
+<span class="lineNum">     302 </span>            :          */
+<span class="lineNum">     303 </span><span class="lineNoCov">          0 :         binary_protocol_buffers = NULL;</span>
+<span class="lineNum">     304 </span>            : 
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :         for (i = num_buffers - 1; i &gt;= 0; --i) {</span>
+<span class="lineNum">     306 </span><span class="lineNoCov">          0 :                 binary_protocol_flush_buffer (bufs [i]);</span>
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :                 binary_protocol_check_file_overflow ();</span>
+<span class="lineNum">     308 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span><span class="lineNoCov">          0 :         sgen_free_internal_dynamic (buf, num_buffers * sizeof (BinaryProtocolBuffer*), INTERNAL_MEM_BINARY_PROTOCOL);</span>
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span><span class="lineNoCov">          0 :         if (!force)</span>
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :                 unlock_exclusive ();</span>
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     316 </span><span class="lineCov">     572633 : }</span>
+<a name="317"><span class="lineNum">     317 </span>            : </a>
+<span class="lineNum">     318 </span>            : static BinaryProtocolBuffer*
+<span class="lineNum">     319 </span>            : binary_protocol_get_buffer (int length)
+<span class="lineNum">     320 </span>            : {
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :         BinaryProtocolBuffer *buffer, *new_buffer;</span>
+<span class="lineNum">     322 </span>            :  retry:
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :         buffer = binary_protocol_buffers;</span>
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :         if (buffer &amp;&amp; buffer-&gt;index + length &lt;= BINARY_PROTOCOL_BUFFER_SIZE)</span>
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :                 return buffer;</span>
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span><span class="lineNoCov">          0 :         new_buffer = (BinaryProtocolBuffer *)sgen_alloc_os_memory (sizeof (BinaryProtocolBuffer), (SgenAllocFlags)(SGEN_ALLOC_INTERNAL | SGEN_ALLOC_ACTIVATE), &quot;debugging memory&quot;, MONO_MEM_ACCOUNT_SGEN_BINARY_PROTOCOL);</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :         new_buffer-&gt;next = buffer;</span>
+<span class="lineNum">     329 </span><span class="lineNoCov">          0 :         new_buffer-&gt;index = 0;</span>
+<span class="lineNum">     330 </span>            : 
+<span class="lineNum">     331 </span><span class="lineNoCov">          0 :         if (InterlockedCompareExchangePointer ((void**)&amp;binary_protocol_buffers, new_buffer, buffer) != buffer) {</span>
+<span class="lineNum">     332 </span><span class="lineNoCov">          0 :                 sgen_free_os_memory (new_buffer, sizeof (BinaryProtocolBuffer), SGEN_ALLOC_INTERNAL, MONO_MEM_ACCOUNT_SGEN_BINARY_PROTOCOL);</span>
+<span class="lineNum">     333 </span><span class="lineNoCov">          0 :                 goto retry;</span>
+<span class="lineNum">     334 </span>            :         }
+<span class="lineNum">     335 </span>            : 
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :         return new_buffer;</span>
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 : }</span>
+<a name="338"><span class="lineNum">     338 </span>            : </a>
+<span class="lineNum">     339 </span>            : static void
+<span class="lineNum">     340 </span>            : protocol_entry (unsigned char type, gpointer data, int size)
+<span class="lineNum">     341 </span>            : {
+<span class="lineNum">     342 </span>            :         int index;
+<span class="lineNum">     343 </span>            :         BinaryProtocolBuffer *buffer;
+<span class="lineNum">     344 </span>            : 
+<span class="lineNum">     345 </span><span class="lineCov">    3644669 :         if (binary_protocol_file == invalid_file_value)</span>
+<span class="lineNum">     346 </span><span class="lineCov">    3644670 :                 return;</span>
+<span class="lineNum">     347 </span>            : 
+<span class="lineNum">     348 </span><span class="lineNoCov">          0 :         if (sgen_thread_pool_is_thread_pool_thread (mono_native_thread_id_get ()))</span>
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                 type |= 0x80;</span>
+<span class="lineNum">     350 </span>            : 
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :         lock_recursive ();</span>
+<span class="lineNum">     352 </span>            : 
+<span class="lineNum">     353 </span>            :  retry:
+<span class="lineNum">     354 </span><span class="lineNoCov">          0 :         buffer = binary_protocol_get_buffer (size + 1);</span>
+<span class="lineNum">     355 </span>            :  retry_same_buffer:
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :         index = buffer-&gt;index;</span>
+<span class="lineNum">     357 </span><span class="lineNoCov">          0 :         if (index + 1 + size &gt; BINARY_PROTOCOL_BUFFER_SIZE)</span>
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :                 goto retry;</span>
+<span class="lineNum">     359 </span>            : 
+<span class="lineNum">     360 </span><span class="lineNoCov">          0 :         if (InterlockedCompareExchange (&amp;buffer-&gt;index, index + 1 + size, index) != index)</span>
+<span class="lineNum">     361 </span><span class="lineNoCov">          0 :                 goto retry_same_buffer;</span>
+<span class="lineNum">     362 </span>            : 
+<span class="lineNum">     363 </span>            :         /* FIXME: if we're interrupted at this point, we have a buffer
+<span class="lineNum">     364 </span>            :            entry that contains random data. */
+<span class="lineNum">     365 </span>            : 
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 :         buffer-&gt;buffer [index++] = type;</span>
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :         memcpy (buffer-&gt;buffer + index, data, size);</span>
+<span class="lineNum">     368 </span><span class="lineNoCov">          0 :         index += size;</span>
+<span class="lineNum">     369 </span>            : 
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :         g_assert (index &lt;= BINARY_PROTOCOL_BUFFER_SIZE);</span>
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span><span class="lineNoCov">          0 :         unlock_recursive ();</span>
+<span class="lineNum">     373 </span><span class="lineCov">    3644669 : }</span>
+<span class="lineNum">     374 </span>            : 
+<span class="lineNum">     375 </span>            : #define TYPE_INT int
+<span class="lineNum">     376 </span>            : #define TYPE_LONGLONG long long
+<span class="lineNum">     377 </span>            : #define TYPE_SIZE size_t
+<span class="lineNum">     378 </span>            : #define TYPE_POINTER gpointer
+<span class="lineNum">     379 </span>            : #define TYPE_BOOL gboolean
+<span class="lineNum">     380 </span>            : 
+<span class="lineNum">     381 </span>            : #define BEGIN_PROTOCOL_ENTRY0(method) \
+<span class="lineNum">     382 </span>            :         void method (void) { \
+<span class="lineNum">     383 </span>            :                 int __type = PROTOCOL_ID(method); \
+<span class="lineNum">     384 </span>            :                 gpointer __data = NULL; \
+<span class="lineNum">     385 </span>            :                 int __size = 0; \
+<span class="lineNum">     386 </span>            :                 CLIENT_PROTOCOL_NAME (method) ();
+<span class="lineNum">     387 </span>            : #define BEGIN_PROTOCOL_ENTRY1(method,t1,f1) \
+<span class="lineNum">     388 </span>            :         void method (t1 f1) { \
+<span class="lineNum">     389 </span>            :                 PROTOCOL_STRUCT(method) __entry = { f1 }; \
+<span class="lineNum">     390 </span>            :                 int __type = PROTOCOL_ID(method); \
+<span class="lineNum">     391 </span>            :                 gpointer __data = &amp;__entry; \
+<span class="lineNum">     392 </span>            :                 int __size = sizeof (PROTOCOL_STRUCT(method)); \
+<span class="lineNum">     393 </span>            :                 CLIENT_PROTOCOL_NAME (method) (f1);
+<span class="lineNum">     394 </span>            : #define BEGIN_PROTOCOL_ENTRY2(method,t1,f1,t2,f2) \
+<span class="lineNum">     395 </span>            :         void method (t1 f1, t2 f2) { \
+<span class="lineNum">     396 </span>            :                 PROTOCOL_STRUCT(method) __entry = { f1, f2 }; \
+<span class="lineNum">     397 </span>            :                 int __type = PROTOCOL_ID(method); \
+<span class="lineNum">     398 </span>            :                 gpointer __data = &amp;__entry; \
+<span class="lineNum">     399 </span>            :                 int __size = sizeof (PROTOCOL_STRUCT(method)); \
+<span class="lineNum">     400 </span>            :                 CLIENT_PROTOCOL_NAME (method) (f1, f2);
+<span class="lineNum">     401 </span>            : #define BEGIN_PROTOCOL_ENTRY3(method,t1,f1,t2,f2,t3,f3) \
+<span class="lineNum">     402 </span>            :         void method (t1 f1, t2 f2, t3 f3) { \
+<span class="lineNum">     403 </span>            :                 PROTOCOL_STRUCT(method) __entry = { f1, f2, f3 }; \
+<span class="lineNum">     404 </span>            :                 int __type = PROTOCOL_ID(method); \
+<span class="lineNum">     405 </span>            :                 gpointer __data = &amp;__entry; \
+<span class="lineNum">     406 </span>            :                 int __size = sizeof (PROTOCOL_STRUCT(method)); \
+<span class="lineNum">     407 </span>            :                 CLIENT_PROTOCOL_NAME (method) (f1, f2, f3);
+<span class="lineNum">     408 </span>            : #define BEGIN_PROTOCOL_ENTRY4(method,t1,f1,t2,f2,t3,f3,t4,f4) \
+<span class="lineNum">     409 </span>            :         void method (t1 f1, t2 f2, t3 f3, t4 f4) { \
+<span class="lineNum">     410 </span>            :                 PROTOCOL_STRUCT(method) __entry = { f1, f2, f3, f4 }; \
+<span class="lineNum">     411 </span>            :                 int __type = PROTOCOL_ID(method); \
+<span class="lineNum">     412 </span>            :                 gpointer __data = &amp;__entry; \
+<span class="lineNum">     413 </span>            :                 int __size = sizeof (PROTOCOL_STRUCT(method)); \
+<span class="lineNum">     414 </span>            :                 CLIENT_PROTOCOL_NAME (method) (f1, f2, f3, f4);
+<span class="lineNum">     415 </span>            : #define BEGIN_PROTOCOL_ENTRY5(method,t1,f1,t2,f2,t3,f3,t4,f4,t5,f5) \
+<span class="lineNum">     416 </span>            :         void method (t1 f1, t2 f2, t3 f3, t4 f4, t5 f5) { \
+<span class="lineNum">     417 </span>            :                 PROTOCOL_STRUCT(method) __entry = { f1, f2, f3, f4, f5 }; \
+<span class="lineNum">     418 </span>            :                 int __type = PROTOCOL_ID(method); \
+<span class="lineNum">     419 </span>            :                 gpointer __data = &amp;__entry; \
+<span class="lineNum">     420 </span>            :                 int __size = sizeof (PROTOCOL_STRUCT(method)); \
+<span class="lineNum">     421 </span>            :                 CLIENT_PROTOCOL_NAME (method) (f1, f2, f3, f4, f5);
+<span class="lineNum">     422 </span>            : #define BEGIN_PROTOCOL_ENTRY6(method,t1,f1,t2,f2,t3,f3,t4,f4,t5,f5,t6,f6) \
+<span class="lineNum">     423 </span>            :         void method (t1 f1, t2 f2, t3 f3, t4 f4, t5 f5, t6 f6) { \
+<span class="lineNum">     424 </span>            :                 PROTOCOL_STRUCT(method) __entry = { f1, f2, f3, f4, f5, f6 }; \
+<span class="lineNum">     425 </span>            :                 int __type = PROTOCOL_ID(method); \
+<span class="lineNum">     426 </span>            :                 gpointer __data = &amp;__entry; \
+<span class="lineNum">     427 </span>            :                 int __size = sizeof (PROTOCOL_STRUCT(method)); \
+<span class="lineNum">     428 </span>            :                 CLIENT_PROTOCOL_NAME (method) (f1, f2, f3, f4, f5, f6);
+<span class="lineNum">     429 </span>            : 
+<span class="lineNum">     430 </span>            : #define DEFAULT_PRINT()
+<span class="lineNum">     431 </span>            : #define CUSTOM_PRINT(_)
+<span class="lineNum">     432 </span>            : 
+<span class="lineNum">     433 </span>            : #define IS_ALWAYS_MATCH(_)
+<span class="lineNum">     434 </span>            : #define MATCH_INDEX(_)
+<span class="lineNum">     435 </span>            : #define IS_VTABLE_MATCH(_)
+<span class="lineNum">     436 </span>            : 
+<span class="lineNum">     437 </span>            : #define END_PROTOCOL_ENTRY \
+<span class="lineNum">     438 </span>            :                 protocol_entry (__type, __data, __size); \
+<span class="lineNum">     439 </span>            :         }
+<span class="lineNum">     440 </span>            : 
+<span class="lineNum">     441 </span>            : #define END_PROTOCOL_ENTRY_FLUSH \
+<span class="lineNum">     442 </span>            :                 protocol_entry (__type, __data, __size); \
+<span class="lineNum">     443 </span>            :                 binary_protocol_flush_buffers (FALSE); \
+<span class="lineNum">     444 </span>            :         }
+<span class="lineNum">     445 </span>            : 
+<span class="lineNum">     446 </span>            : #ifdef SGEN_HEAVY_BINARY_PROTOCOL
+<span class="lineNum">     447 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY0(method) \
+<span class="lineNum">     448 </span>            :         BEGIN_PROTOCOL_ENTRY0 (method)
+<span class="lineNum">     449 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY1(method,t1,f1) \
+<span class="lineNum">     450 </span>            :         BEGIN_PROTOCOL_ENTRY1 (method,t1,f1)
+<span class="lineNum">     451 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY2(method,t1,f1,t2,f2) \
+<span class="lineNum">     452 </span>            :         BEGIN_PROTOCOL_ENTRY2 (method,t1,f1,t2,f2)
+<span class="lineNum">     453 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY3(method,t1,f1,t2,f2,t3,f3) \
+<span class="lineNum">     454 </span>            :         BEGIN_PROTOCOL_ENTRY3 (method,t1,f1,t2,f2,t3,f3)
+<span class="lineNum">     455 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY4(method,t1,f1,t2,f2,t3,f3,t4,f4) \
+<span class="lineNum">     456 </span>            :         BEGIN_PROTOCOL_ENTRY4 (method,t1,f1,t2,f2,t3,f3,t4,f4)
+<span class="lineNum">     457 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY5(method,t1,f1,t2,f2,t3,f3,t4,f4,t5,f5) \
+<span class="lineNum">     458 </span>            :         BEGIN_PROTOCOL_ENTRY5 (method,t1,f1,t2,f2,t3,f3,t4,f4,t5,f5)
+<span class="lineNum">     459 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY6(method,t1,f1,t2,f2,t3,f3,t4,f4,t5,f5,t6,f6) \
+<span class="lineNum">     460 </span>            :         BEGIN_PROTOCOL_ENTRY6 (method,t1,f1,t2,f2,t3,f3,t4,f4,t5,f5,t6,f6)
+<span class="lineNum">     461 </span>            : 
+<span class="lineNum">     462 </span>            : #define END_PROTOCOL_ENTRY_HEAVY \
+<span class="lineNum">     463 </span>            :         END_PROTOCOL_ENTRY
+<span class="lineNum">     464 </span>            : #else
+<span class="lineNum">     465 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY0(method)
+<span class="lineNum">     466 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY1(method,t1,f1)
+<span class="lineNum">     467 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY2(method,t1,f1,t2,f2)
+<span class="lineNum">     468 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY3(method,t1,f1,t2,f2,t3,f3)
+<span class="lineNum">     469 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY4(method,t1,f1,t2,f2,t3,f3,t4,f4)
+<span class="lineNum">     470 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY5(method,t1,f1,t2,f2,t3,f3,t4,f4,t5,f5)
+<span class="lineNum">     471 </span>            : #define BEGIN_PROTOCOL_ENTRY_HEAVY6(method,t1,f1,t2,f2,t3,f3,t4,f4,t5,f5,t6,f6)
+<span class="lineNum">     472 </span>            : 
+<span class="lineNum">     473 </span>            : #define END_PROTOCOL_ENTRY_HEAVY
+<span class="lineNum">     474 </span>            : #endif
+<span class="lineNum">     475 </span>            : 
+<span class="lineNum">     476 </span>            : #include &quot;sgen-protocol-def.h&quot;
+<span class="lineNum">     477 </span>            : 
+<span class="lineNum">     478 </span>            : #undef TYPE_INT
+<span class="lineNum">     479 </span>            : #undef TYPE_LONGLONG
+<span class="lineNum">     480 </span>            : #undef TYPE_SIZE
+<span class="lineNum">     481 </span>            : #undef TYPE_POINTER
+<span class="lineNum">     482 </span>            : #undef TYPE_BOOL
+<span class="lineNum">     483 </span>            : 
+<span class="lineNum">     484 </span>            : #endif /* HAVE_SGEN_GC */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

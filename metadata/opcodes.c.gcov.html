@@ -1,0 +1,169 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/opcodes.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - opcodes.c<span style="font-size: 80%;"> (source / <a href="opcodes.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">16</td>
+            <td class="headerCovTableEntry">19</td>
+            <td class="headerCovTableEntryMed">84.2 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * opcodes.c: CIL instruction information
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2002-2003 Ximian, Inc (http://www.ximian.com)
+<span class="lineNum">       8 </span>            :  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : #include &lt;mono/metadata/opcodes.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;stddef.h&gt; /* for NULL */
+<span class="lineNum">      13 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      14 </span>            : 
+<span class="lineNum">      15 </span>            : #define MONO_PREFIX1_OFFSET MONO_CEE_ARGLIST
+<span class="lineNum">      16 </span>            : #define MONO_CUSTOM_PREFIX_OFFSET MONO_CEE_MONO_ICALL
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #define OPDEF(a,b,c,d,e,f,g,h,i,j) \
+<span class="lineNum">      19 </span>            :         { Mono ## e, MONO_FLOW_ ## j, MONO_ ## a },
+<span class="lineNum">      20 </span>            : 
+<span class="lineNum">      21 </span>            : const MonoOpcode
+<span class="lineNum">      22 </span>            : mono_opcodes [MONO_CEE_LAST + 1] = {
+<span class="lineNum">      23 </span>            : #include &quot;mono/cil/opcode.def&quot;
+<span class="lineNum">      24 </span>            :         {0}
+<span class="lineNum">      25 </span>            : };
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : #undef OPDEF
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : #ifdef HAVE_ARRAY_ELEM_INIT
+<span class="lineNum">      30 </span>            : #define MSGSTRFIELD(line) MSGSTRFIELD1(line)
+<span class="lineNum">      31 </span>            : #define MSGSTRFIELD1(line) str##line
+<span class="lineNum">      32 </span>            : static const struct msgstr_t {
+<span class="lineNum">      33 </span>            : #define OPDEF(a,b,c,d,e,f,g,h,i,j) char MSGSTRFIELD(__LINE__) [sizeof (b)];
+<span class="lineNum">      34 </span>            : #include &quot;mono/cil/opcode.def&quot;
+<span class="lineNum">      35 </span>            : #undef OPDEF
+<span class="lineNum">      36 </span>            : } opstr = {
+<span class="lineNum">      37 </span>            : #define OPDEF(a,b,c,d,e,f,g,h,i,j) b,
+<span class="lineNum">      38 </span>            : #include &quot;mono/cil/opcode.def&quot;
+<span class="lineNum">      39 </span>            : #undef OPDEF
+<span class="lineNum">      40 </span>            : };
+<span class="lineNum">      41 </span>            : static const int16_t opidx [] = {
+<span class="lineNum">      42 </span>            : #define OPDEF(a,b,c,d,e,f,g,h,i,j) [MONO_ ## a] = offsetof (struct msgstr_t, MSGSTRFIELD(__LINE__)),
+<span class="lineNum">      43 </span>            : #include &quot;mono/cil/opcode.def&quot;
+<span class="lineNum">      44 </span>            : #undef OPDEF
+<span class="lineNum">      45 </span>            : };
+<a name="46"><span class="lineNum">      46 </span>            : </a>
+<span class="lineNum">      47 </span>            : const char*
+<span class="lineNum">      48 </span>            : mono_opcode_name (int opcode)
+<span class="lineNum">      49 </span>            : {
+<span class="lineNum">      50 </span><span class="lineCov">   10125534 :         return (const char*)&amp;opstr + opidx [opcode];</span>
+<span class="lineNum">      51 </span>            : }
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : #else
+<span class="lineNum">      54 </span>            : #define OPDEF(a,b,c,d,e,f,g,h,i,j) b,
+<span class="lineNum">      55 </span>            : static const char* const
+<span class="lineNum">      56 </span>            : mono_opcode_names [MONO_CEE_LAST + 1] = {
+<span class="lineNum">      57 </span>            : #include &quot;mono/cil/opcode.def&quot;
+<span class="lineNum">      58 </span>            :         NULL
+<span class="lineNum">      59 </span>            : };
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span>            : const char*
+<span class="lineNum">      62 </span>            : mono_opcode_name (int opcode)
+<span class="lineNum">      63 </span>            : {
+<span class="lineNum">      64 </span>            :         return mono_opcode_names [opcode];
+<span class="lineNum">      65 </span>            : }
+<span class="lineNum">      66 </span>            : 
+<span class="lineNum">      67 </span>            : #endif
+<a name="68"><span class="lineNum">      68 </span>            : </a>
+<span class="lineNum">      69 </span>            : MonoOpcodeEnum
+<span class="lineNum">      70 </span>            : mono_opcode_value (const mono_byte **ip, const mono_byte *end)
+<span class="lineNum">      71 </span>            : {
+<span class="lineNum">      72 </span>            :         MonoOpcodeEnum res;
+<span class="lineNum">      73 </span><span class="lineCov"> 1219003097 :         const mono_byte *p = *ip;</span>
+<span class="lineNum">      74 </span>            : 
+<span class="lineNum">      75 </span><span class="lineCov"> 1219003097 :         if (p &gt;= end)</span>
+<span class="lineNum">      76 </span><span class="lineNoCov">          0 :                 return (MonoOpcodeEnum)-1;</span>
+<span class="lineNum">      77 </span><span class="lineCov"> 1219474381 :         if (*p == 0xfe) {</span>
+<span class="lineNum">      78 </span><span class="lineCov">   14935187 :                 ++p;</span>
+<span class="lineNum">      79 </span><span class="lineCov">   14935187 :                 if (p &gt;= end)</span>
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :                         return (MonoOpcodeEnum)-1;</span>
+<span class="lineNum">      81 </span><span class="lineCov">   14935288 :                 res = (MonoOpcodeEnum)(*p + MONO_PREFIX1_OFFSET);</span>
+<span class="lineNum">      82 </span><span class="lineCov"> 1219629242 :         } else if (*p == MONO_CUSTOM_PREFIX) {</span>
+<span class="lineNum">      83 </span><span class="lineCov">    3963623 :                 ++p;</span>
+<span class="lineNum">      84 </span><span class="lineCov">    3963623 :                 if (p &gt;= end)</span>
+<span class="lineNum">      85 </span><span class="lineNoCov">          0 :                         return (MonoOpcodeEnum)-1;</span>
+<span class="lineNum">      86 </span><span class="lineCov">    3963645 :                 res = (MonoOpcodeEnum)(*p + MONO_CUSTOM_PREFIX_OFFSET);</span>
+<span class="lineNum">      87 </span><span class="lineCov">    3963645 :         } else {</span>
+<span class="lineNum">      88 </span><span class="lineCov"> 1200941259 :                 res = (MonoOpcodeEnum)*p;</span>
+<span class="lineNum">      89 </span>            :         }
+<span class="lineNum">      90 </span><span class="lineCov"> 1219830461 :         *ip = p;</span>
+<span class="lineNum">      91 </span><span class="lineCov"> 1219830461 :         return res;</span>
+<span class="lineNum">      92 </span><span class="lineCov"> 1219850643 : }</span>
+<span class="lineNum">      93 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

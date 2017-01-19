@@ -1,0 +1,191 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - io-layer/posix.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">io-layer</a> - posix.c<span style="font-size: 80%;"> (source / <a href="posix.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">29</td>
+            <td class="headerCovTableEntry">36</td>
+            <td class="headerCovTableEntryMed">80.6 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * posix.c:  Posix-specific support.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Dick Porter (dick@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2002 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  * Copyright (c) 2002-2009 Novell, Inc.
+<span class="lineNum">       9 </span>            :  * Copyright 2011 Xamarin Inc
+<span class="lineNum">      10 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      11 </span>            :  */
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;fcntl.h&gt;
+<span class="lineNum">      16 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;sys/stat.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;sys/types.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      22 </span>            : 
+<span class="lineNum">      23 </span>            : #include &lt;mono/io-layer/wapi.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;mono/io-layer/wapi-private.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;mono/io-layer/io-private.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/io-layer/io-trace.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;mono/utils/mono-logger-internals.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;mono/metadata/w32handle.h&gt;
+<a name="29"><span class="lineNum">      29 </span>            : </a>
+<span class="lineNum">      30 </span>            : static guint32
+<span class="lineNum">      31 </span>            : convert_from_flags(int flags)
+<span class="lineNum">      32 </span>            : {
+<span class="lineNum">      33 </span><span class="lineCov">       6036 :         guint32 fileaccess=0;</span>
+<span class="lineNum">      34 </span>            :         
+<span class="lineNum">      35 </span>            : #ifndef O_ACCMODE
+<span class="lineNum">      36 </span>            : #define O_ACCMODE (O_RDONLY|O_WRONLY|O_RDWR)
+<span class="lineNum">      37 </span>            : #endif
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span><span class="lineCov">       6036 :         if((flags &amp; O_ACCMODE) == O_RDONLY) {</span>
+<span class="lineNum">      40 </span><span class="lineCov">        200 :                 fileaccess=GENERIC_READ;</span>
+<span class="lineNum">      41 </span><span class="lineCov">       6036 :         } else if ((flags &amp; O_ACCMODE) == O_WRONLY) {</span>
+<span class="lineNum">      42 </span><span class="lineCov">       1348 :                 fileaccess=GENERIC_WRITE;</span>
+<span class="lineNum">      43 </span><span class="lineCov">       5836 :         } else if ((flags &amp; O_ACCMODE) == O_RDWR) {</span>
+<span class="lineNum">      44 </span><span class="lineCov">       4488 :                 fileaccess=GENERIC_READ|GENERIC_WRITE;</span>
+<span class="lineNum">      45 </span><span class="lineCov">       4488 :         } else {</span>
+<span class="lineNum">      46 </span><span class="lineNoCov">          0 :                 MONO_TRACE (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: Can't figure out flags 0x%x&quot;, __func__, flags);</span>
+<span class="lineNum">      47 </span>            :         }
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span>            :         /* Maybe sort out create mode too */
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span><span class="lineCov">       6036 :         return(fileaccess);</span>
+<span class="lineNum">      52 </span>            : }
+<a name="53"><span class="lineNum">      53 </span>            : </a>
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : gpointer _wapi_stdhandle_create (int fd, const gchar *name)
+<span class="lineNum">      56 </span>            : {
+<span class="lineNum">      57 </span><span class="lineCov">       6036 :         struct _WapiHandle_file file_handle = {0};</span>
+<span class="lineNum">      58 </span>            :         gpointer handle;
+<span class="lineNum">      59 </span>            :         int flags;
+<span class="lineNum">      60 </span>            :         
+<span class="lineNum">      61 </span><span class="lineCov">       6036 :         MONO_TRACE (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: creating standard handle type %s, fd %d&quot;, __func__,</span>
+<span class="lineNum">      62 </span>            :                   name, fd);
+<span class="lineNum">      63 </span>            : 
+<span class="lineNum">      64 </span>            : #if !defined(__native_client__) 
+<span class="lineNum">      65 </span>            :         /* Check if fd is valid */
+<span class="lineNum">      66 </span><span class="lineCov">       6036 :         do {</span>
+<span class="lineNum">      67 </span><span class="lineCov">       6036 :                 flags=fcntl(fd, F_GETFL);</span>
+<span class="lineNum">      68 </span><span class="lineCov">      18108 :         } while (flags == -1 &amp;&amp; errno == EINTR);</span>
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span><span class="lineCov">       6036 :         if(flags==-1) {</span>
+<span class="lineNum">      71 </span>            :                 /* Invalid fd.  Not really much point checking for EBADF
+<span class="lineNum">      72 </span>            :                  * specifically
+<span class="lineNum">      73 </span>            :                  */
+<span class="lineNum">      74 </span><span class="lineNoCov">          0 :                 MONO_TRACE (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: fcntl error on fd %d: %s&quot;, __func__, fd,</span>
+<span class="lineNum">      75 </span>            :                           strerror(errno));
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :                 SetLastError (_wapi_get_win32_file_error (errno));</span>
+<span class="lineNum">      78 </span><span class="lineNoCov">          0 :                 return(INVALID_HANDLE_VALUE);</span>
+<span class="lineNum">      79 </span>            :         }
+<span class="lineNum">      80 </span><span class="lineCov">       6036 :         file_handle.fileaccess=convert_from_flags(flags);</span>
+<span class="lineNum">      81 </span>            : #else
+<span class="lineNum">      82 </span>            :         /* 
+<span class="lineNum">      83 </span>            :          * fcntl will return -1 in nacl, as there is no real file system API. 
+<span class="lineNum">      84 </span>            :          * Yet, standard streams are available.
+<span class="lineNum">      85 </span>            :          */
+<span class="lineNum">      86 </span>            :         file_handle.fileaccess = (fd == STDIN_FILENO) ? GENERIC_READ : GENERIC_WRITE;
+<span class="lineNum">      87 </span>            : #endif
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span><span class="lineCov">       6036 :         file_handle.fd = fd;</span>
+<span class="lineNum">      90 </span><span class="lineCov">       6036 :         file_handle.filename = g_strdup(name);</span>
+<span class="lineNum">      91 </span>            :         /* some default security attributes might be needed */
+<span class="lineNum">      92 </span><span class="lineCov">       6036 :         file_handle.security_attributes=0;</span>
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span>            :         /* Apparently input handles can't be written to.  (I don't
+<span class="lineNum">      95 </span>            :          * know if output or error handles can't be read from.)
+<span class="lineNum">      96 </span>            :          */
+<span class="lineNum">      97 </span><span class="lineCov">       6036 :         if (fd == 0) {</span>
+<span class="lineNum">      98 </span><span class="lineCov">       2012 :                 file_handle.fileaccess &amp;= ~GENERIC_WRITE;</span>
+<span class="lineNum">      99 </span><span class="lineCov">       2012 :         }</span>
+<span class="lineNum">     100 </span>            :         
+<span class="lineNum">     101 </span><span class="lineCov">       6036 :         file_handle.sharemode=0;</span>
+<span class="lineNum">     102 </span><span class="lineCov">       6036 :         file_handle.attrs=0;</span>
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineCov">       6036 :         handle = mono_w32handle_new_fd (MONO_W32HANDLE_CONSOLE, fd, &amp;file_handle);</span>
+<span class="lineNum">     105 </span><span class="lineCov">       6036 :         if (handle == INVALID_HANDLE_VALUE) {</span>
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :                 g_warning (&quot;%s: error creating file handle&quot;, __func__);</span>
+<span class="lineNum">     107 </span><span class="lineNoCov">          0 :                 SetLastError (ERROR_GEN_FAILURE);</span>
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :                 return(INVALID_HANDLE_VALUE);</span>
+<span class="lineNum">     109 </span>            :         }
+<span class="lineNum">     110 </span>            :         
+<span class="lineNum">     111 </span><span class="lineCov">       6036 :         MONO_TRACE (G_LOG_LEVEL_DEBUG, MONO_TRACE_IO_LAYER, &quot;%s: returning handle %p&quot;, __func__, handle);</span>
+<span class="lineNum">     112 </span>            : 
+<span class="lineNum">     113 </span><span class="lineCov">       6036 :         return(handle);</span>
+<span class="lineNum">     114 </span><span class="lineCov">       6036 : }</span>
+<span class="lineNum">     115 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

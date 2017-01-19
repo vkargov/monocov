@@ -1,0 +1,1092 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/local-propagation.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - local-propagation.c<span style="font-size: 80%;"> (source / <a href="local-propagation.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">442</td>
+            <td class="headerCovTableEntry">456</td>
+            <td class="headerCovTableEntryHi">96.9 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntry">10</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * local-propagation.c: Local constant, copy and tree propagation.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * To make some sense of the tree mover, read mono/docs/tree-mover.txt
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Author:
+<span class="lineNum">       7 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       8 </span>            :  *   Dietmar Maurer (dietmar@ximian.com)
+<span class="lineNum">       9 </span>            :  *   Massimiliano Mantione (massi@ximian.com)
+<span class="lineNum">      10 </span>            :  *
+<span class="lineNum">      11 </span>            :  * (C) 2006 Novell, Inc.  http://www.novell.com
+<span class="lineNum">      12 </span>            :  * Copyright 2011 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">      13 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      14 </span>            :  */
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #ifndef DISABLE_JIT
+<span class="lineNum">      20 </span>            : 
+<span class="lineNum">      21 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">      23 </span>            : #ifdef HAVE_ALLOCA_H
+<span class="lineNum">      24 </span>            : #include &lt;alloca.h&gt;
+<span class="lineNum">      25 </span>            : #endif
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : #include &lt;mono/metadata/debug-helpers.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;mono/metadata/mempool.h&gt;
+<span class="lineNum">      29 </span>            : #include &lt;mono/metadata/opcodes.h&gt;
+<span class="lineNum">      30 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      31 </span>            : #include &quot;ir-emit.h&quot;
+<span class="lineNum">      32 </span>            : 
+<span class="lineNum">      33 </span>            : #ifndef MONO_ARCH_IS_OP_MEMBASE
+<span class="lineNum">      34 </span>            : #define MONO_ARCH_IS_OP_MEMBASE(opcode) FALSE
+<span class="lineNum">      35 </span>            : #endif
+<a name="36"><span class="lineNum">      36 </span>            : </a>
+<span class="lineNum">      37 </span>            : static inline MonoBitSet* 
+<span class="lineNum">      38 </span>            : mono_bitset_mp_new_noinit (MonoMemPool *mp,  guint32 max_size)
+<span class="lineNum">      39 </span>            : {
+<span class="lineNum">      40 </span><span class="lineCov">   67679815 :         int size = mono_bitset_alloc_size (max_size, 0);</span>
+<span class="lineNum">      41 </span>            :         gpointer mem;
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span><span class="lineCov">   67679815 :         mem = mono_mempool_alloc (mp, size);</span>
+<span class="lineNum">      44 </span><span class="lineCov">   67679815 :         return mono_bitset_mem_new (mem, max_size, MONO_BITSET_DONT_FREE);</span>
+<span class="lineNum">      45 </span>            : }
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : struct magic_unsigned {
+<span class="lineNum">      48 </span>            :         guint32 magic_number;
+<span class="lineNum">      49 </span>            :         gboolean addition;
+<span class="lineNum">      50 </span>            :         int shift;
+<span class="lineNum">      51 </span>            : };
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : struct magic_signed {
+<span class="lineNum">      54 </span>            :         gint32 magic_number;
+<span class="lineNum">      55 </span>            :         int shift;
+<span class="lineNum">      56 </span>            : };
+<span class="lineNum">      57 </span>            : 
+<a name="58"><span class="lineNum">      58 </span>            : /* http://www.hackersdelight.org/hdcodetxt/magicu.c.txt */</a>
+<span class="lineNum">      59 </span>            : static struct magic_unsigned
+<span class="lineNum">      60 </span>            : compute_magic_unsigned (guint32 divisor) {
+<span class="lineNum">      61 </span>            :         guint32 nc, delta, q1, r1, q2, r2;
+<span class="lineNum">      62 </span>            :         struct magic_unsigned magu;
+<span class="lineNum">      63 </span><span class="lineCov">       5718 :         gboolean gt = FALSE;</span>
+<span class="lineNum">      64 </span>            :         int p;
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span><span class="lineCov">       5718 :         magu.addition = 0;</span>
+<span class="lineNum">      67 </span><span class="lineCov">       5718 :         nc = -1 - (-divisor) % divisor;</span>
+<span class="lineNum">      68 </span><span class="lineCov">       5718 :         p = 31;</span>
+<span class="lineNum">      69 </span><span class="lineCov">       5718 :         q1 = 0x80000000 / nc;</span>
+<span class="lineNum">      70 </span><span class="lineCov">       5718 :         r1 = 0x80000000 - q1 * nc;</span>
+<span class="lineNum">      71 </span><span class="lineCov">       5718 :         q2 = 0x7FFFFFFF / divisor;</span>
+<span class="lineNum">      72 </span><span class="lineCov">       5718 :         r2 = 0x7FFFFFFF - q2 * divisor;</span>
+<span class="lineNum">      73 </span><span class="lineCov">       5718 :         do {</span>
+<span class="lineNum">      74 </span><span class="lineCov">     165980 :                 p = p + 1;</span>
+<span class="lineNum">      75 </span><span class="lineCov">     165980 :                 if (q1 &gt;= 0x80000000)</span>
+<span class="lineNum">      76 </span><span class="lineCov">        406 :                         gt = TRUE;</span>
+<span class="lineNum">      77 </span><span class="lineCov">     165980 :                 if (r1 &gt;= nc - r1) {</span>
+<span class="lineNum">      78 </span><span class="lineCov">      79272 :                         q1 = 2 * q1 + 1;</span>
+<span class="lineNum">      79 </span><span class="lineCov">      79272 :                         r1 = 2 * r1 - nc;</span>
+<span class="lineNum">      80 </span><span class="lineCov">      79272 :                 } else {</span>
+<span class="lineNum">      81 </span><span class="lineCov">      86708 :                         q1 = 2 * q1;</span>
+<span class="lineNum">      82 </span><span class="lineCov">      86708 :                         r1 = 2 * r1;</span>
+<span class="lineNum">      83 </span>            :                 }
+<span class="lineNum">      84 </span><span class="lineCov">     165980 :                 if (r2 + 1 &gt;= divisor - r2) {</span>
+<span class="lineNum">      85 </span><span class="lineCov">      78867 :                         if (q2 &gt;= 0x7FFFFFFF)</span>
+<span class="lineNum">      86 </span><span class="lineNoCov">          0 :                                 magu.addition = 1;</span>
+<span class="lineNum">      87 </span><span class="lineCov">      78867 :                         q2 = 2 * q2 + 1;</span>
+<span class="lineNum">      88 </span><span class="lineCov">      78867 :                         r2 = 2 * r2 + 1 - divisor;</span>
+<span class="lineNum">      89 </span><span class="lineCov">      78867 :                 } else {</span>
+<span class="lineNum">      90 </span><span class="lineCov">      87113 :                         if (q2 &gt;= 0x80000000)</span>
+<span class="lineNum">      91 </span><span class="lineCov">        950 :                                 magu.addition = 1;</span>
+<span class="lineNum">      92 </span><span class="lineCov">      87113 :                         q2 = 2 * q2;</span>
+<span class="lineNum">      93 </span><span class="lineCov">      87113 :                         r2 = 2 * r2 + 1;</span>
+<span class="lineNum">      94 </span>            :                 }
+<span class="lineNum">      95 </span><span class="lineCov">     165980 :                 delta = divisor - 1 - r2;</span>
+<span class="lineNum">      96 </span><span class="lineCov">     674138 :         } while (!gt &amp;&amp; (q1 &lt; delta || (q1 == delta &amp;&amp; r1 == 0)));</span>
+<span class="lineNum">      97 </span>            : 
+<span class="lineNum">      98 </span><span class="lineCov">       5718 :         magu.magic_number = q2 + 1;</span>
+<span class="lineNum">      99 </span><span class="lineCov">       5718 :         magu.shift = p - 32;</span>
+<span class="lineNum">     100 </span><span class="lineCov">       5718 :         return magu;</span>
+<span class="lineNum">     101 </span>            : }
+<span class="lineNum">     102 </span>            : 
+<a name="103"><span class="lineNum">     103 </span>            : /* http://www.hackersdelight.org/hdcodetxt/magic.c.txt */</a>
+<span class="lineNum">     104 </span>            : static struct magic_signed
+<span class="lineNum">     105 </span>            : compute_magic_signed (gint32 divisor) {
+<span class="lineNum">     106 </span>            :         int p;
+<span class="lineNum">     107 </span>            :         guint32 ad, anc, delta, q1, r1, q2, r2, t;
+<span class="lineNum">     108 </span><span class="lineCov">      14448 :         const guint32 two31 = 0x80000000;</span>
+<span class="lineNum">     109 </span>            :         struct magic_signed mag;
+<span class="lineNum">     110 </span>            : 
+<span class="lineNum">     111 </span><span class="lineCov">      14448 :         ad = abs (divisor);</span>
+<span class="lineNum">     112 </span><span class="lineCov">      14448 :         t = two31 + ((unsigned)divisor &gt;&gt; 31);</span>
+<span class="lineNum">     113 </span><span class="lineCov">      14448 :         anc = t - 1 - t % ad;</span>
+<span class="lineNum">     114 </span><span class="lineCov">      14448 :         p = 31;</span>
+<span class="lineNum">     115 </span><span class="lineCov">      14448 :         q1 = two31 / anc;</span>
+<span class="lineNum">     116 </span><span class="lineCov">      14448 :         r1 = two31 - q1 * anc;</span>
+<span class="lineNum">     117 </span><span class="lineCov">      14448 :         q2 = two31 / ad;</span>
+<span class="lineNum">     118 </span><span class="lineCov">      14448 :         r2 = two31 - q2 * ad;</span>
+<span class="lineNum">     119 </span><span class="lineCov">      14448 :         do {</span>
+<span class="lineNum">     120 </span><span class="lineCov">     176588 :                 p++;</span>
+<span class="lineNum">     121 </span><span class="lineCov">     176588 :                 q1 *= 2;</span>
+<span class="lineNum">     122 </span><span class="lineCov">     176588 :                 r1 *= 2;</span>
+<span class="lineNum">     123 </span><span class="lineCov">     176588 :                 if (r1 &gt;= anc) {</span>
+<span class="lineNum">     124 </span><span class="lineCov">      54821 :                         q1++;</span>
+<span class="lineNum">     125 </span><span class="lineCov">      54821 :                         r1 -= anc;</span>
+<span class="lineNum">     126 </span><span class="lineCov">      54821 :                 }</span>
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span><span class="lineCov">     176593 :                 q2 *= 2;</span>
+<span class="lineNum">     129 </span><span class="lineCov">     176593 :                 r2 *= 2;</span>
+<span class="lineNum">     130 </span>            : 
+<span class="lineNum">     131 </span><span class="lineCov">     176593 :                 if (r2 &gt;= ad) {</span>
+<span class="lineNum">     132 </span><span class="lineCov">      83305 :                         q2++;</span>
+<span class="lineNum">     133 </span><span class="lineCov">      83305 :                         r2 -= ad;</span>
+<span class="lineNum">     134 </span><span class="lineCov">      83305 :                 }</span>
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineCov">     176588 :                 delta = ad - r2;</span>
+<span class="lineNum">     137 </span><span class="lineCov">     562799 :         } while (q1 &lt; delta || (q1 == delta &amp;&amp; r1 == 0));</span>
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span><span class="lineCov">      14448 :         mag.magic_number = q2 + 1;</span>
+<span class="lineNum">     140 </span><span class="lineCov">      14448 :         if (divisor &lt; 0)</span>
+<span class="lineNum">     141 </span><span class="lineCov">       2178 :                 mag.magic_number = -mag.magic_number;</span>
+<span class="lineNum">     142 </span><span class="lineCov">      14448 :         mag.shift = p - 32;</span>
+<span class="lineNum">     143 </span><span class="lineCov">      14448 :         return mag;</span>
+<span class="lineNum">     144 </span>            : }
+<a name="145"><span class="lineNum">     145 </span>            : </a>
+<span class="lineNum">     146 </span>            : static gboolean
+<span class="lineNum">     147 </span>            : mono_strength_reduction_division (MonoCompile *cfg, MonoInst *ins)
+<span class="lineNum">     148 </span>            : {
+<span class="lineNum">     149 </span><span class="lineCov">     160593 :         gboolean allocated_vregs = FALSE;</span>
+<span class="lineNum">     150 </span>            :         /*
+<span class="lineNum">     151 </span>            :          * We don't use it on 32bit systems because on those
+<span class="lineNum">     152 </span>            :          * platforms we emulate long multiplication, driving the
+<span class="lineNum">     153 </span>            :          * performance back down.
+<span class="lineNum">     154 </span>            :          */
+<span class="lineNum">     155 </span><span class="lineCov">     160593 :         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     156 </span>            :                 case OP_IDIV_UN_IMM: {
+<span class="lineNum">     157 </span>            :                         guint32 tmp_regl;
+<span class="lineNum">     158 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     159 </span>            :                         guint32 dividend_reg;
+<span class="lineNum">     160 </span>            : #else
+<span class="lineNum">     161 </span>            :                         guint32 tmp_regi;
+<span class="lineNum">     162 </span>            : #endif
+<span class="lineNum">     163 </span>            :                         struct magic_unsigned mag;
+<span class="lineNum">     164 </span><span class="lineCov">       6408 :                         int power2 = mono_is_power_of_two (ins-&gt;inst_imm);</span>
+<span class="lineNum">     165 </span>            : 
+<span class="lineNum">     166 </span>            :                         /* The decomposition doesn't handle exception throwing */
+<span class="lineNum">     167 </span><span class="lineCov">       6408 :                         if (ins-&gt;inst_imm == 0)</span>
+<span class="lineNum">     168 </span><span class="lineCov">         72 :                                 break;</span>
+<span class="lineNum">     169 </span>            : 
+<span class="lineNum">     170 </span><span class="lineCov">       6336 :                         if (power2 &gt;= 0) {</span>
+<span class="lineNum">     171 </span><span class="lineCov">        618 :                                 ins-&gt;opcode = OP_ISHR_UN_IMM;</span>
+<span class="lineNum">     172 </span><span class="lineCov">        618 :                                 ins-&gt;sreg2 = -1;</span>
+<span class="lineNum">     173 </span><span class="lineCov">        618 :                                 ins-&gt;inst_imm = power2;</span>
+<span class="lineNum">     174 </span><span class="lineCov">        618 :                                 break;</span>
+<span class="lineNum">     175 </span>            :                         }
+<span class="lineNum">     176 </span><span class="lineCov">       5718 :                         if (cfg-&gt;backend-&gt;disable_div_with_mul)</span>
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     178 </span><span class="lineCov">       5718 :                         allocated_vregs = TRUE;</span>
+<span class="lineNum">     179 </span>            :                         /*
+<span class="lineNum">     180 </span>            :                          * Replacement of unsigned division with multiplication,
+<span class="lineNum">     181 </span>            :                          * shifts and additions Hacker's Delight, chapter 10-10.
+<span class="lineNum">     182 </span>            :                          */
+<span class="lineNum">     183 </span><span class="lineCov">       5718 :                         mag = compute_magic_unsigned (ins-&gt;inst_imm);</span>
+<span class="lineNum">     184 </span><span class="lineCov">       5718 :                         tmp_regl = alloc_lreg (cfg);</span>
+<span class="lineNum">     185 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     186 </span><span class="lineCov">       5718 :                         dividend_reg = alloc_lreg (cfg);</span>
+<span class="lineNum">     187 </span><span class="lineCov">      57180 :                         MONO_EMIT_NEW_I8CONST (cfg, tmp_regl, mag.magic_number);</span>
+<span class="lineNum">     188 </span><span class="lineCov">      80052 :                         MONO_EMIT_NEW_UNALU (cfg, OP_ZEXT_I4, dividend_reg, ins-&gt;sreg1);</span>
+<span class="lineNum">     189 </span><span class="lineCov">      57180 :                         MONO_EMIT_NEW_BIALU (cfg, OP_LMUL, tmp_regl, dividend_reg, tmp_regl);</span>
+<span class="lineNum">     190 </span><span class="lineCov">       5718 :                         if (mag.addition) {</span>
+<span class="lineNum">     191 </span><span class="lineCov">       9500 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_UN_IMM, tmp_regl, tmp_regl, 32);</span>
+<span class="lineNum">     192 </span><span class="lineCov">       9500 :                                 MONO_EMIT_NEW_BIALU (cfg, OP_LADD, tmp_regl, tmp_regl, dividend_reg);</span>
+<span class="lineNum">     193 </span><span class="lineCov">       9500 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_UN_IMM, ins-&gt;dreg, tmp_regl, mag.shift);</span>
+<span class="lineNum">     194 </span><span class="lineCov">        950 :                         } else {</span>
+<span class="lineNum">     195 </span><span class="lineCov">      47680 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_UN_IMM, ins-&gt;dreg, tmp_regl, 32 + mag.shift);</span>
+<span class="lineNum">     196 </span>            :                         }
+<span class="lineNum">     197 </span>            : #else
+<span class="lineNum">     198 </span>            :                         tmp_regi = alloc_ireg (cfg);
+<span class="lineNum">     199 </span>            :                         MONO_EMIT_NEW_ICONST (cfg, tmp_regi, mag.magic_number);
+<span class="lineNum">     200 </span>            :                         MONO_EMIT_NEW_BIALU (cfg, OP_BIGMUL_UN, tmp_regl, ins-&gt;sreg1, tmp_regi);
+<span class="lineNum">     201 </span>            :                         /* Long shifts below will be decomposed during cprop */
+<span class="lineNum">     202 </span>            :                         if (mag.addition) {
+<span class="lineNum">     203 </span>            :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_UN_IMM, tmp_regl, tmp_regl, 32);
+<span class="lineNum">     204 </span>            :                                 MONO_EMIT_NEW_BIALU (cfg, OP_IADDCC, MONO_LVREG_LS (tmp_regl), MONO_LVREG_LS (tmp_regl), ins-&gt;sreg1);
+<span class="lineNum">     205 </span>            :                                 /* MONO_LVREG_MS (tmp_reg) is 0, save in it the carry */
+<span class="lineNum">     206 </span>            :                                 MONO_EMIT_NEW_BIALU (cfg, OP_IADC, MONO_LVREG_MS (tmp_regl), MONO_LVREG_MS (tmp_regl), MONO_LVREG_MS (tmp_regl));
+<span class="lineNum">     207 </span>            :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_UN_IMM, tmp_regl, tmp_regl, mag.shift);
+<span class="lineNum">     208 </span>            :                         } else {
+<span class="lineNum">     209 </span>            :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_UN_IMM, tmp_regl, tmp_regl, 32 + mag.shift);
+<span class="lineNum">     210 </span>            :                         }
+<span class="lineNum">     211 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, ins-&gt;dreg, MONO_LVREG_LS (tmp_regl));
+<span class="lineNum">     212 </span>            : #endif
+<span class="lineNum">     213 </span><span class="lineCov">       5718 :                         mono_jit_stats.optimized_divisions++;</span>
+<span class="lineNum">     214 </span><span class="lineCov">       5718 :                         break;</span>
+<span class="lineNum">     215 </span>            :                 }
+<span class="lineNum">     216 </span>            :                 case OP_IDIV_IMM: {
+<span class="lineNum">     217 </span>            :                         guint32 tmp_regl;
+<span class="lineNum">     218 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     219 </span>            :                         guint32 dividend_reg;
+<span class="lineNum">     220 </span>            : #else
+<span class="lineNum">     221 </span>            :                         guint32 tmp_regi;
+<span class="lineNum">     222 </span>            : #endif
+<span class="lineNum">     223 </span>            :                         struct magic_signed mag;
+<span class="lineNum">     224 </span><span class="lineCov">      73892 :                         int power2 = mono_is_power_of_two (ins-&gt;inst_imm);</span>
+<span class="lineNum">     225 </span>            :                         /* The decomposition doesn't handle exception throwing */
+<span class="lineNum">     226 </span>            :                         /* Optimization with MUL does not apply for -1, 0 and 1 divisors */
+<span class="lineNum">     227 </span><span class="lineCov">     147655 :                         if (ins-&gt;inst_imm == 0 || ins-&gt;inst_imm == -1) {</span>
+<span class="lineNum">     228 </span><span class="lineCov">        273 :                                 break;</span>
+<span class="lineNum">     229 </span><span class="lineCov">      73624 :                         } else if (ins-&gt;inst_imm == 1) {</span>
+<span class="lineNum">     230 </span><span class="lineCov">         48 :                                 ins-&gt;opcode = OP_MOVE;</span>
+<span class="lineNum">     231 </span><span class="lineCov">         48 :                                 ins-&gt;inst_imm = 0;</span>
+<span class="lineNum">     232 </span><span class="lineCov">         48 :                                 break;</span>
+<span class="lineNum">     233 </span>            :                         }
+<span class="lineNum">     234 </span><span class="lineCov">      73579 :                         allocated_vregs = TRUE;</span>
+<span class="lineNum">     235 </span><span class="lineCov">      73579 :                         if (power2 == 1) {</span>
+<span class="lineNum">     236 </span><span class="lineCov">      36812 :                                 guint32 r1 = alloc_ireg (cfg);</span>
+<span class="lineNum">     237 </span><span class="lineCov">     368002 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_UN_IMM, r1, ins-&gt;sreg1, 31);</span>
+<span class="lineNum">     238 </span><span class="lineCov">     368038 :                                 MONO_EMIT_NEW_BIALU (cfg, OP_IADD, r1, r1, ins-&gt;sreg1);</span>
+<span class="lineNum">     239 </span><span class="lineCov">     368079 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, ins-&gt;dreg, r1, 1);</span>
+<span class="lineNum">     240 </span><span class="lineCov">      36809 :                                 break;</span>
+<span class="lineNum">     241 </span><span class="lineCov">      59136 :                         } else if (power2 &gt; 0 &amp;&amp; power2 &lt; 31) {</span>
+<span class="lineNum">     242 </span><span class="lineCov">      22321 :                                 guint32 r1 = alloc_ireg (cfg);</span>
+<span class="lineNum">     243 </span><span class="lineCov">     223196 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, r1, ins-&gt;sreg1, 31);</span>
+<span class="lineNum">     244 </span><span class="lineCov">     223190 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_UN_IMM, r1, r1, (32 - power2));</span>
+<span class="lineNum">     245 </span><span class="lineCov">     223191 :                                 MONO_EMIT_NEW_BIALU (cfg, OP_IADD, r1, r1, ins-&gt;sreg1);</span>
+<span class="lineNum">     246 </span><span class="lineCov">     223194 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, ins-&gt;dreg, r1, power2);</span>
+<span class="lineNum">     247 </span><span class="lineCov">      22321 :                                 break;</span>
+<span class="lineNum">     248 </span>            :                         }
+<span class="lineNum">     249 </span>            : 
+<span class="lineNum">     250 </span><span class="lineCov">      14448 :                         if (cfg-&gt;backend-&gt;disable_div_with_mul)</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     252 </span>            :                         /*
+<span class="lineNum">     253 </span>            :                          * Replacement of signed division with multiplication,
+<span class="lineNum">     254 </span>            :                          * shifts and additions Hacker's Delight, chapter 10-6.
+<span class="lineNum">     255 </span>            :                          */
+<span class="lineNum">     256 </span><span class="lineCov">      14448 :                         mag = compute_magic_signed (ins-&gt;inst_imm);</span>
+<span class="lineNum">     257 </span><span class="lineCov">      14448 :                         tmp_regl = alloc_lreg (cfg);</span>
+<span class="lineNum">     258 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     259 </span><span class="lineCov">      14448 :                         dividend_reg = alloc_lreg (cfg);</span>
+<span class="lineNum">     260 </span><span class="lineCov">     144480 :                         MONO_EMIT_NEW_I8CONST (cfg, tmp_regl, mag.magic_number);</span>
+<span class="lineNum">     261 </span><span class="lineCov">     202272 :                         MONO_EMIT_NEW_UNALU (cfg, OP_SEXT_I4, dividend_reg, ins-&gt;sreg1);</span>
+<span class="lineNum">     262 </span><span class="lineCov">     144479 :                         MONO_EMIT_NEW_BIALU (cfg, OP_LMUL, tmp_regl, dividend_reg, tmp_regl);</span>
+<span class="lineNum">     263 </span><span class="lineCov">      42172 :                         if ((ins-&gt;inst_imm &gt; 0 &amp;&amp; mag.magic_number &lt; 0) || (ins-&gt;inst_imm &lt; 0 &amp;&amp; mag.magic_number &gt; 0)) {</span>
+<span class="lineNum">     264 </span><span class="lineCov">      17130 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_IMM, tmp_regl, tmp_regl, 32);</span>
+<span class="lineNum">     265 </span><span class="lineCov">       2882 :                                 if (ins-&gt;inst_imm &gt; 0 &amp;&amp; mag.magic_number &lt; 0) {</span>
+<span class="lineNum">     266 </span><span class="lineCov">      11690 :                                         MONO_EMIT_NEW_BIALU (cfg, OP_LADD, tmp_regl, tmp_regl, dividend_reg);</span>
+<span class="lineNum">     267 </span><span class="lineCov">       2257 :                                 } else if (ins-&gt;inst_imm &lt; 0 &amp;&amp; mag.magic_number &gt; 0) {</span>
+<span class="lineNum">     268 </span><span class="lineCov">       5440 :                                         MONO_EMIT_NEW_BIALU (cfg, OP_LSUB, tmp_regl, tmp_regl, dividend_reg);</span>
+<span class="lineNum">     269 </span><span class="lineCov">        544 :                                 }</span>
+<span class="lineNum">     270 </span><span class="lineCov">      17130 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_IMM, tmp_regl, tmp_regl, mag.shift);</span>
+<span class="lineNum">     271 </span><span class="lineCov">       1713 :                         } else {</span>
+<span class="lineNum">     272 </span><span class="lineCov">     127349 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_IMM, tmp_regl, tmp_regl, 32 + mag.shift);</span>
+<span class="lineNum">     273 </span>            :                         }
+<span class="lineNum">     274 </span><span class="lineCov">     144469 :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_LSHR_UN_IMM, ins-&gt;dreg, tmp_regl, SIZEOF_REGISTER * 8 - 1);</span>
+<span class="lineNum">     275 </span><span class="lineCov">     144465 :                         MONO_EMIT_NEW_BIALU (cfg, OP_LADD, ins-&gt;dreg, ins-&gt;dreg, tmp_regl);</span>
+<span class="lineNum">     276 </span>            : #else
+<span class="lineNum">     277 </span>            :                         tmp_regi = alloc_ireg (cfg);
+<span class="lineNum">     278 </span>            :                         MONO_EMIT_NEW_ICONST (cfg, tmp_regi, mag.magic_number);
+<span class="lineNum">     279 </span>            :                         MONO_EMIT_NEW_BIALU (cfg, OP_BIGMUL, tmp_regl, ins-&gt;sreg1, tmp_regi);
+<span class="lineNum">     280 </span>            :                         if ((ins-&gt;inst_imm &gt; 0 &amp;&amp; mag.magic_number &lt; 0) || (ins-&gt;inst_imm &lt; 0 &amp;&amp; mag.magic_number &gt; 0)) {
+<span class="lineNum">     281 </span>            :                                 if (ins-&gt;inst_imm &gt; 0 &amp;&amp; mag.magic_number &lt; 0) {
+<span class="lineNum">     282 </span>            :                                         /* Opposite sign, cannot overflow */
+<span class="lineNum">     283 </span>            :                                         MONO_EMIT_NEW_BIALU (cfg, OP_IADD, tmp_regi, MONO_LVREG_MS (tmp_regl), ins-&gt;sreg1);
+<span class="lineNum">     284 </span>            :                                 } else if (ins-&gt;inst_imm &lt; 0 &amp;&amp; mag.magic_number &gt; 0) {
+<span class="lineNum">     285 </span>            :                                         /* Same sign, cannot overflow */
+<span class="lineNum">     286 </span>            :                                         MONO_EMIT_NEW_BIALU (cfg, OP_ISUB, tmp_regi, MONO_LVREG_MS (tmp_regl), ins-&gt;sreg1);
+<span class="lineNum">     287 </span>            :                                 }
+<span class="lineNum">     288 </span>            :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, tmp_regi, tmp_regi, mag.shift);
+<span class="lineNum">     289 </span>            :                         } else {
+<span class="lineNum">     290 </span>            :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, tmp_regi, MONO_LVREG_MS (tmp_regl), mag.shift);
+<span class="lineNum">     291 </span>            :                         }
+<span class="lineNum">     292 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_UN_IMM, ins-&gt;dreg, tmp_regi, SIZEOF_REGISTER * 8 - 1);
+<span class="lineNum">     293 </span>            :                         MONO_EMIT_NEW_BIALU (cfg, OP_IADD, ins-&gt;dreg, ins-&gt;dreg, tmp_regi);
+<span class="lineNum">     294 </span>            : #endif
+<span class="lineNum">     295 </span><span class="lineCov">      14447 :                         mono_jit_stats.optimized_divisions++;</span>
+<span class="lineNum">     296 </span><span class="lineCov">      14447 :                         break;</span>
+<span class="lineNum">     297 </span>            :                 }
+<span class="lineNum">     298 </span>            :         }
+<span class="lineNum">     299 </span><span class="lineCov">      80295 :         return allocated_vregs;</span>
+<span class="lineNum">     300 </span>            : }
+<span class="lineNum">     301 </span>            : 
+<span class="lineNum">     302 </span>            : /*
+<span class="lineNum">     303 </span>            :  * Replaces ins with optimized opcodes.
+<span class="lineNum">     304 </span>            :  *
+<span class="lineNum">     305 </span>            :  * We can emit to cbb the equivalent instructions which will be used as
+<span class="lineNum">     306 </span>            :  * replacement for ins, or simply change the fields of ins. Spec needs to
+<span class="lineNum">     307 </span>            :  * be updated if we silently change the opcode of ins.
+<span class="lineNum">     308 </span>            :  *
+<span class="lineNum">     309 </span>            :  * Returns TRUE if additional vregs were allocated.
+<a name="310"><span class="lineNum">     310 </span>            :  */</a>
+<span class="lineNum">     311 </span>            : static gboolean
+<span class="lineNum">     312 </span>            : mono_strength_reduction_ins (MonoCompile *cfg, MonoInst *ins, const char **spec)
+<span class="lineNum">     313 </span>            : {
+<span class="lineNum">     314 </span><span class="lineCov"> 2593132769 :         gboolean allocated_vregs = FALSE;</span>
+<span class="lineNum">     315 </span>            : 
+<span class="lineNum">     316 </span>            :         /* FIXME: Add long/float */
+<span class="lineNum">     317 </span><span class="lineCov"> 2593132769 :         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     318 </span>            :         case OP_MOVE:
+<span class="lineNum">     319 </span>            :         case OP_XMOVE:
+<span class="lineNum">     320 </span><span class="lineCov">  589829630 :                 if (ins-&gt;dreg == ins-&gt;sreg1) {</span>
+<span class="lineNum">     321 </span><span class="lineCov">   11687933 :                         NULLIFY_INS (ins);</span>
+<span class="lineNum">     322 </span><span class="lineCov">    2922637 :                 }</span>
+<span class="lineNum">     323 </span><span class="lineCov">  590367052 :                 break;</span>
+<span class="lineNum">     324 </span>            :         case OP_ADD_IMM:
+<span class="lineNum">     325 </span>            :         case OP_IADD_IMM:
+<span class="lineNum">     326 </span>            :         case OP_SUB_IMM:
+<span class="lineNum">     327 </span>            :         case OP_ISUB_IMM:
+<span class="lineNum">     328 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     329 </span>            :         case OP_LADD_IMM:
+<span class="lineNum">     330 </span>            :         case OP_LSUB_IMM:
+<span class="lineNum">     331 </span>            : #endif
+<span class="lineNum">     332 </span><span class="lineCov">   85355421 :                 if (ins-&gt;inst_imm == 0) {</span>
+<span class="lineNum">     333 </span><span class="lineCov">    5182824 :                         ins-&gt;opcode = OP_MOVE;</span>
+<span class="lineNum">     334 </span><span class="lineCov">    5182824 :                 }</span>
+<span class="lineNum">     335 </span><span class="lineCov">   85358834 :                 break;</span>
+<span class="lineNum">     336 </span>            :         case OP_MUL_IMM:
+<span class="lineNum">     337 </span>            :         case OP_IMUL_IMM:
+<span class="lineNum">     338 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     339 </span>            :         case OP_LMUL_IMM:
+<span class="lineNum">     340 </span>            : #endif
+<span class="lineNum">     341 </span><span class="lineCov">    3601298 :                 if (ins-&gt;inst_imm == 0) {</span>
+<span class="lineNum">     342 </span><span class="lineCov">        124 :                         ins-&gt;opcode = (ins-&gt;opcode == OP_LMUL_IMM) ? OP_I8CONST : OP_ICONST;</span>
+<span class="lineNum">     343 </span><span class="lineCov">        124 :                         ins-&gt;inst_c0 = 0;</span>
+<span class="lineNum">     344 </span><span class="lineCov">        124 :                         ins-&gt;sreg1 = -1;</span>
+<span class="lineNum">     345 </span><span class="lineCov">    3601592 :                 } else if (ins-&gt;inst_imm == 1) {</span>
+<span class="lineNum">     346 </span><span class="lineCov">       3869 :                         ins-&gt;opcode = OP_MOVE;</span>
+<span class="lineNum">     347 </span><span class="lineCov">    4026855 :                 } else if ((ins-&gt;opcode == OP_IMUL_IMM) &amp;&amp; (ins-&gt;inst_imm == -1)) {</span>
+<span class="lineNum">     348 </span><span class="lineCov">        254 :                         ins-&gt;opcode = OP_INEG;</span>
+<span class="lineNum">     349 </span><span class="lineCov">    3618753 :                 } else if ((ins-&gt;opcode == OP_LMUL_IMM) &amp;&amp; (ins-&gt;inst_imm == -1)) {</span>
+<span class="lineNum">     350 </span><span class="lineNoCov">          0 :                         ins-&gt;opcode = OP_LNEG;</span>
+<span class="lineNum">     351 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     352 </span><span class="lineCov">    3597827 :                         int power2 = mono_is_power_of_two (ins-&gt;inst_imm);</span>
+<span class="lineNum">     353 </span><span class="lineCov">    3597827 :                         if (power2 &gt;= 0) {</span>
+<span class="lineNum">     354 </span><span class="lineCov">    2250968 :                                 ins-&gt;opcode = (ins-&gt;opcode == OP_MUL_IMM) ? OP_SHL_IMM : ((ins-&gt;opcode == OP_LMUL_IMM) ? OP_LSHL_IMM : OP_ISHL_IMM);</span>
+<span class="lineNum">     355 </span><span class="lineCov">     750258 :                                 ins-&gt;inst_imm = power2;</span>
+<span class="lineNum">     356 </span><span class="lineCov">     750258 :                         }</span>
+<span class="lineNum">     357 </span>            :                 }
+<span class="lineNum">     358 </span><span class="lineCov">    3602167 :                 break;</span>
+<span class="lineNum">     359 </span>            :         case OP_IREM_UN_IMM: {
+<span class="lineNum">     360 </span><span class="lineCov">       1357 :                 int power2 = mono_is_power_of_two (ins-&gt;inst_imm);</span>
+<span class="lineNum">     361 </span>            : 
+<span class="lineNum">     362 </span><span class="lineCov">       1357 :                 if (power2 &gt;= 0) {</span>
+<span class="lineNum">     363 </span><span class="lineCov">       1298 :                         ins-&gt;opcode = OP_IAND_IMM;</span>
+<span class="lineNum">     364 </span><span class="lineCov">       1298 :                         ins-&gt;sreg2 = -1;</span>
+<span class="lineNum">     365 </span><span class="lineCov">       1298 :                         ins-&gt;inst_imm = (1 &lt;&lt; power2) - 1;</span>
+<span class="lineNum">     366 </span><span class="lineCov">       1298 :                 }</span>
+<span class="lineNum">     367 </span><span class="lineCov">       1357 :                 break;</span>
+<span class="lineNum">     368 </span>            :         }
+<span class="lineNum">     369 </span>            :         case OP_IDIV_UN_IMM:
+<span class="lineNum">     370 </span>            :         case OP_IDIV_IMM: {
+<span class="lineNum">     371 </span><span class="lineCov">      81249 :                 if (!COMPILE_LLVM (cfg))</span>
+<span class="lineNum">     372 </span><span class="lineCov">      80307 :                         allocated_vregs = mono_strength_reduction_division (cfg, ins);</span>
+<span class="lineNum">     373 </span><span class="lineCov">      81237 :                 break;</span>
+<span class="lineNum">     374 </span>            :         }
+<span class="lineNum">     375 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     376 </span>            :         case OP_LREM_IMM:
+<span class="lineNum">     377 </span>            : #endif
+<span class="lineNum">     378 </span>            :         case OP_IREM_IMM: {
+<span class="lineNum">     379 </span><span class="lineCov">     121737 :                 int power = mono_is_power_of_two (ins-&gt;inst_imm);</span>
+<span class="lineNum">     380 </span><span class="lineCov">     121737 :                 if (ins-&gt;inst_imm == 1) {</span>
+<span class="lineNum">     381 </span><span class="lineCov">         96 :                         ins-&gt;opcode = OP_ICONST;</span>
+<span class="lineNum">     382 </span><span class="lineCov">        192 :                         MONO_INST_NULLIFY_SREGS (ins);</span>
+<span class="lineNum">     383 </span><span class="lineCov">         96 :                         ins-&gt;inst_c0 = 0;</span>
+<span class="lineNum">     384 </span>            : #if __s390__
+<span class="lineNum">     385 </span>            :                 }
+<span class="lineNum">     386 </span>            : #else
+<span class="lineNum">     387 </span><span class="lineCov">     364757 :                 } else if ((ins-&gt;inst_imm &gt; 0) &amp;&amp; (ins-&gt;inst_imm &lt; (1LL &lt;&lt; 32)) &amp;&amp; (power != -1)) {</span>
+<span class="lineNum">     388 </span><span class="lineCov">      24177 :                         gboolean is_long = ins-&gt;opcode == OP_LREM_IMM;</span>
+<span class="lineNum">     389 </span><span class="lineCov">      24177 :                         int compensator_reg = alloc_ireg (cfg);</span>
+<span class="lineNum">     390 </span>            :                         int intermediate_reg;
+<span class="lineNum">     391 </span>            : 
+<span class="lineNum">     392 </span>            :                         /* Based on gcc code */
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span>            :                         /* Add compensation for negative numerators */
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span><span class="lineCov">      24177 :                         if (power &gt; 1) {</span>
+<span class="lineNum">     397 </span><span class="lineCov">      19796 :                                 intermediate_reg = compensator_reg;</span>
+<span class="lineNum">     398 </span><span class="lineCov">     197936 :                                 MONO_EMIT_NEW_BIALU_IMM (cfg, is_long ? OP_LSHR_IMM : OP_ISHR_IMM, intermediate_reg, ins-&gt;sreg1, is_long ? 63 : 31);</span>
+<span class="lineNum">     399 </span><span class="lineCov">      19798 :                         } else {</span>
+<span class="lineNum">     400 </span><span class="lineCov">       4382 :                                 intermediate_reg = ins-&gt;sreg1;</span>
+<span class="lineNum">     401 </span>            :                         }
+<span class="lineNum">     402 </span>            : 
+<span class="lineNum">     403 </span><span class="lineCov">     241785 :                         MONO_EMIT_NEW_BIALU_IMM (cfg, is_long ? OP_LSHR_UN_IMM : OP_ISHR_UN_IMM, compensator_reg, intermediate_reg, (is_long ? 64 : 32) - power);</span>
+<span class="lineNum">     404 </span><span class="lineCov">     241801 :                         MONO_EMIT_NEW_BIALU (cfg, is_long ? OP_LADD : OP_IADD, ins-&gt;dreg, ins-&gt;sreg1, compensator_reg);</span>
+<span class="lineNum">     405 </span>            :                         /* Compute remainder */
+<span class="lineNum">     406 </span><span class="lineCov">     241761 :                         MONO_EMIT_NEW_BIALU_IMM (cfg, is_long ? OP_LAND_IMM : OP_AND_IMM, ins-&gt;dreg, ins-&gt;dreg, (1 &lt;&lt; power) - 1);</span>
+<span class="lineNum">     407 </span>            :                         /* Remove compensation */
+<span class="lineNum">     408 </span><span class="lineCov">     241732 :                         MONO_EMIT_NEW_BIALU (cfg, is_long ? OP_LSUB : OP_ISUB, ins-&gt;dreg, ins-&gt;dreg, compensator_reg);</span>
+<span class="lineNum">     409 </span>            : 
+<span class="lineNum">     410 </span><span class="lineCov">      24177 :                         allocated_vregs = TRUE;</span>
+<span class="lineNum">     411 </span><span class="lineCov">      24177 :                 }</span>
+<span class="lineNum">     412 </span>            : #endif
+<span class="lineNum">     413 </span><span class="lineCov">     121731 :                 break;</span>
+<span class="lineNum">     414 </span>            :         }
+<span class="lineNum">     415 </span>            : #if SIZEOF_REGISTER == 4
+<span class="lineNum">     416 </span>            :         case OP_LSHR_IMM: {
+<span class="lineNum">     417 </span>            :                 if (COMPILE_LLVM (cfg))
+<span class="lineNum">     418 </span>            :                         break;
+<span class="lineNum">     419 </span>            :                 if (ins-&gt;inst_c1 == 32) {
+<span class="lineNum">     420 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1));
+<span class="lineNum">     421 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1), 31);
+<span class="lineNum">     422 </span>            :                 } else if (ins-&gt;inst_c1 == 0) {
+<span class="lineNum">     423 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;sreg1));
+<span class="lineNum">     424 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1));
+<span class="lineNum">     425 </span>            :                 } else if (ins-&gt;inst_c1 &gt; 32) {
+<span class="lineNum">     426 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1), ins-&gt;inst_c1 - 32);
+<span class="lineNum">     427 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1), 31);
+<span class="lineNum">     428 </span>            :                 } else {
+<span class="lineNum">     429 </span>            :                         guint32 tmpreg = alloc_ireg (cfg);
+<span class="lineNum">     430 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHL_IMM, tmpreg, MONO_LVREG_MS (ins-&gt;sreg1), 32 - ins-&gt;inst_c1);
+<span class="lineNum">     431 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_IMM, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1), ins-&gt;inst_c1);
+<span class="lineNum">     432 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_UN_IMM, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;sreg1), ins-&gt;inst_c1);
+<span class="lineNum">     433 </span>            :                         MONO_EMIT_NEW_BIALU (cfg, OP_IOR, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;dreg), tmpreg);
+<span class="lineNum">     434 </span>            :                         allocated_vregs = TRUE;
+<span class="lineNum">     435 </span>            :                 }
+<span class="lineNum">     436 </span>            :                 break;
+<span class="lineNum">     437 </span>            :         }
+<span class="lineNum">     438 </span>            :         case OP_LSHR_UN_IMM: {
+<span class="lineNum">     439 </span>            :                 if (COMPILE_LLVM (cfg))
+<span class="lineNum">     440 </span>            :                         break;
+<span class="lineNum">     441 </span>            :                 if (ins-&gt;inst_c1 == 32) {
+<span class="lineNum">     442 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1));
+<span class="lineNum">     443 </span>            :                         MONO_EMIT_NEW_ICONST (cfg, MONO_LVREG_MS (ins-&gt;dreg), 0);
+<span class="lineNum">     444 </span>            :                 } else if (ins-&gt;inst_c1 == 0) {
+<span class="lineNum">     445 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;sreg1));
+<span class="lineNum">     446 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1));
+<span class="lineNum">     447 </span>            :                 } else if (ins-&gt;inst_c1 &gt; 32) {
+<span class="lineNum">     448 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_UN_IMM, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1), ins-&gt;inst_c1 - 32);
+<span class="lineNum">     449 </span>            :                         MONO_EMIT_NEW_ICONST (cfg, MONO_LVREG_MS (ins-&gt;dreg), 0);
+<span class="lineNum">     450 </span>            :                 } else {
+<span class="lineNum">     451 </span>            :                         guint32 tmpreg = alloc_ireg (cfg);
+<span class="lineNum">     452 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHL_IMM, tmpreg, MONO_LVREG_MS (ins-&gt;sreg1), 32 - ins-&gt;inst_c1);
+<span class="lineNum">     453 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_UN_IMM, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1), ins-&gt;inst_c1);
+<span class="lineNum">     454 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_UN_IMM, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;sreg1), ins-&gt;inst_c1);
+<span class="lineNum">     455 </span>            :                         MONO_EMIT_NEW_BIALU (cfg, OP_IOR, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;dreg), tmpreg);
+<span class="lineNum">     456 </span>            :                         allocated_vregs = TRUE;
+<span class="lineNum">     457 </span>            :                 }
+<span class="lineNum">     458 </span>            :                 break;
+<span class="lineNum">     459 </span>            :         }
+<span class="lineNum">     460 </span>            :         case OP_LSHL_IMM: {
+<span class="lineNum">     461 </span>            :                 if (COMPILE_LLVM (cfg))
+<span class="lineNum">     462 </span>            :                         break;
+<span class="lineNum">     463 </span>            :                 if (ins-&gt;inst_c1 == 32) {
+<span class="lineNum">     464 </span>            :                         /* just move the lower half to the upper and zero the lower word */
+<span class="lineNum">     465 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;sreg1));
+<span class="lineNum">     466 </span>            :                         MONO_EMIT_NEW_ICONST (cfg, MONO_LVREG_LS (ins-&gt;dreg), 0);
+<span class="lineNum">     467 </span>            :                 } else if (ins-&gt;inst_c1 == 0) {
+<span class="lineNum">     468 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;sreg1));
+<span class="lineNum">     469 </span>            :                         MONO_EMIT_NEW_UNALU (cfg, OP_MOVE, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1));
+<span class="lineNum">     470 </span>            :                 } else if (ins-&gt;inst_c1 &gt; 32) {
+<span class="lineNum">     471 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHL_IMM, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;sreg1), ins-&gt;inst_c1 - 32);
+<span class="lineNum">     472 </span>            :                         MONO_EMIT_NEW_ICONST (cfg, MONO_LVREG_LS (ins-&gt;dreg), 0);
+<span class="lineNum">     473 </span>            :                 } else {
+<span class="lineNum">     474 </span>            :                         guint32 tmpreg = alloc_ireg (cfg);
+<span class="lineNum">     475 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHR_UN_IMM, tmpreg, MONO_LVREG_LS (ins-&gt;sreg1), 32 - ins-&gt;inst_c1);
+<span class="lineNum">     476 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHL_IMM, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;sreg1), ins-&gt;inst_c1);
+<span class="lineNum">     477 </span>            :                         MONO_EMIT_NEW_BIALU_IMM (cfg, OP_ISHL_IMM, MONO_LVREG_LS (ins-&gt;dreg), MONO_LVREG_LS (ins-&gt;sreg1), ins-&gt;inst_c1);
+<span class="lineNum">     478 </span>            :                         MONO_EMIT_NEW_BIALU (cfg, OP_IOR, MONO_LVREG_MS (ins-&gt;dreg), MONO_LVREG_MS (ins-&gt;dreg), tmpreg);
+<span class="lineNum">     479 </span>            :                         allocated_vregs = TRUE;
+<span class="lineNum">     480 </span>            :                 }
+<span class="lineNum">     481 </span>            :                 break;
+<span class="lineNum">     482 </span>            :         }
+<span class="lineNum">     483 </span>            : #endif
+<span class="lineNum">     484 </span>            : 
+<span class="lineNum">     485 </span>            :         default:
+<span class="lineNum">     486 </span><span class="lineCov"> 1918799457 :                 break;</span>
+<span class="lineNum">     487 </span>            :         }
+<span class="lineNum">     488 </span>            : 
+<span class="lineNum">     489 </span><span class="lineCov"> 2586100174 :         *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     490 </span><span class="lineCov"> 2586100174 :         return allocated_vregs;</span>
+<span class="lineNum">     491 </span>            : }
+<span class="lineNum">     492 </span>            : 
+<span class="lineNum">     493 </span>            : /*
+<span class="lineNum">     494 </span>            :  * mono_local_cprop:
+<span class="lineNum">     495 </span>            :  *
+<span class="lineNum">     496 </span>            :  *  A combined local copy and constant propagation pass.
+<a name="497"><span class="lineNum">     497 </span>            :  */</a>
+<span class="lineNum">     498 </span>            : void
+<span class="lineNum">     499 </span>            : mono_local_cprop (MonoCompile *cfg)
+<span class="lineNum">     500 </span>            : {
+<span class="lineNum">     501 </span>            :         MonoBasicBlock *bb, *bb_opt;
+<span class="lineNum">     502 </span>            :         MonoInst **defs;
+<span class="lineNum">     503 </span>            :         gint32 *def_index;
+<span class="lineNum">     504 </span>            :         int max;
+<span class="lineNum">     505 </span><span class="lineCov">   33190289 :         int filter = FILTER_IL_SEQ_POINT;</span>
+<span class="lineNum">     506 </span><span class="lineCov">   33190289 :         int initial_max_vregs = cfg-&gt;next_vreg;</span>
+<span class="lineNum">     507 </span>            : 
+<span class="lineNum">     508 </span><span class="lineCov">   33190289 :         max = cfg-&gt;next_vreg;</span>
+<span class="lineNum">     509 </span><span class="lineCov">   33190289 :         defs = (MonoInst **)mono_mempool_alloc (cfg-&gt;mempool, sizeof (MonoInst*) * cfg-&gt;next_vreg);</span>
+<span class="lineNum">     510 </span><span class="lineCov">   33190289 :         def_index = (gint32 *)mono_mempool_alloc (cfg-&gt;mempool, sizeof (guint32) * cfg-&gt;next_vreg);</span>
+<span class="lineNum">     511 </span><span class="lineCov">   33190289 :         cfg-&gt;cbb = bb_opt = mono_mempool_alloc0 ((cfg)-&gt;mempool, sizeof (MonoBasicBlock));</span>
+<span class="lineNum">     512 </span>            : 
+<span class="lineNum">     513 </span><span class="lineCov">  691661683 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     514 </span>            :                 MonoInst *ins;
+<span class="lineNum">     515 </span>            :                 int ins_index;
+<span class="lineNum">     516 </span>            :                 int last_call_index;
+<span class="lineNum">     517 </span>            : 
+<span class="lineNum">     518 </span>            :                 /* Manually init the defs entries used by the bblock */
+<span class="lineNum">     519 </span><span class="lineCov"> 6000199452 :                 MONO_BB_FOR_EACH_INS (bb, ins) {</span>
+<span class="lineNum">     520 </span>            :                         int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     521 </span>            :                         int num_sregs, i;
+<span class="lineNum">     522 </span>            : 
+<span class="lineNum">     523 </span><span class="lineCov"> 2696166703 :                         if (ins-&gt;dreg != -1) {</span>
+<span class="lineNum">     524 </span>            : #if SIZEOF_REGISTER == 4
+<span class="lineNum">     525 </span>            :                                 const char *spec = INS_INFO (ins-&gt;opcode);
+<span class="lineNum">     526 </span>            :                                 if (spec [MONO_INST_DEST] == 'l') {
+<span class="lineNum">     527 </span>            :                                         defs [ins-&gt;dreg + 1] = NULL;
+<span class="lineNum">     528 </span>            :                                         defs [ins-&gt;dreg + 2] = NULL;
+<span class="lineNum">     529 </span>            :                                 }
+<span class="lineNum">     530 </span>            : #endif
+<span class="lineNum">     531 </span><span class="lineCov"> 1559738804 :                                 defs [ins-&gt;dreg] = NULL;</span>
+<span class="lineNum">     532 </span><span class="lineCov"> 1559738804 :                         }</span>
+<span class="lineNum">     533 </span>            : 
+<span class="lineNum">     534 </span><span class="lineCov"> 2687761016 :                         num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     535 </span><span class="lineCov"> 8522355078 :                         for (i = 0; i &lt; num_sregs; ++i) {</span>
+<span class="lineNum">     536 </span><span class="lineCov"> 1574174364 :                                 int sreg = sregs [i];</span>
+<span class="lineNum">     537 </span>            : #if SIZEOF_REGISTER == 4
+<span class="lineNum">     538 </span>            :                                 const char *spec = INS_INFO (ins-&gt;opcode);
+<span class="lineNum">     539 </span>            :                                 if (spec [MONO_INST_SRC1 + i] == 'l') {
+<span class="lineNum">     540 </span>            :                                         defs [sreg + 1] = NULL;
+<span class="lineNum">     541 </span>            :                                         defs [sreg + 2] = NULL;
+<span class="lineNum">     542 </span>            :                                 }
+<span class="lineNum">     543 </span>            : #endif
+<span class="lineNum">     544 </span><span class="lineCov"> 1574174364 :                                 defs [sreg] = NULL;</span>
+<span class="lineNum">     545 </span><span class="lineCov"> 1574174364 :                         }</span>
+<span class="lineNum">     546 </span><span class="lineCov"> 2686867021 :                 }</span>
+<span class="lineNum">     547 </span>            : 
+<span class="lineNum">     548 </span><span class="lineCov">  312340655 :                 ins_index = 0;</span>
+<span class="lineNum">     549 </span><span class="lineCov">  312340655 :                 last_call_index = -1;</span>
+<span class="lineNum">     550 </span><span class="lineCov"> 5992350790 :                 MONO_BB_FOR_EACH_INS (bb, ins) {</span>
+<span class="lineNum">     551 </span><span class="lineCov"> 2685834763 :                         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     552 </span>            :                         int regtype, srcindex, sreg;
+<span class="lineNum">     553 </span>            :                         int num_sregs;
+<span class="lineNum">     554 </span>            :                         int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     555 </span>            : 
+<span class="lineNum">     556 </span><span class="lineCov"> 2685834763 :                         if (ins-&gt;opcode == OP_NOP) {</span>
+<span class="lineNum">     557 </span><span class="lineCov"> 1350277044 :                                 MONO_DELETE_INS (bb, ins);</span>
+<span class="lineNum">     558 </span><span class="lineCov">   96460441 :                                 continue;</span>
+<span class="lineNum">     559 </span>            :                         }
+<span class="lineNum">     560 </span>            : 
+<span class="lineNum">     561 </span><span class="lineCov"> 7765431990 :                         g_assert (ins-&gt;opcode &gt; MONO_CEE_LAST);</span>
+<span class="lineNum">     562 </span>            : 
+<span class="lineNum">     563 </span>            :                         /* FIXME: Optimize this */
+<span class="lineNum">     564 </span><span class="lineCov"> 2589829467 :                         if (ins-&gt;opcode == OP_LDADDR) {</span>
+<span class="lineNum">     565 </span><span class="lineCov">   24186694 :                                 MonoInst *var = (MonoInst *)ins-&gt;inst_p0;</span>
+<span class="lineNum">     566 </span>            : 
+<span class="lineNum">     567 </span><span class="lineCov">   24186694 :                                 defs [var-&gt;dreg] = NULL;</span>
+<span class="lineNum">     568 </span>            :                                 /*
+<span class="lineNum">     569 </span>            :                                 if (!MONO_TYPE_ISSTRUCT (var-&gt;inst_vtype))
+<span class="lineNum">     570 </span>            :                                         break;
+<span class="lineNum">     571 </span>            :                                 */
+<span class="lineNum">     572 </span><span class="lineCov">   24186694 :                         }</span>
+<span class="lineNum">     573 </span>            : 
+<span class="lineNum">     574 </span><span class="lineCov"> 6618379204 :                         if (MONO_IS_STORE_MEMBASE (ins)) {</span>
+<span class="lineNum">     575 </span><span class="lineCov">  110498828 :                                 sreg = ins-&gt;dreg;</span>
+<span class="lineNum">     576 </span><span class="lineCov">  110498828 :                                 regtype = 'i';</span>
+<span class="lineNum">     577 </span>            : 
+<span class="lineNum">     578 </span><span class="lineCov">  331513940 :                                 if ((regtype == 'i') &amp;&amp; (sreg != -1) &amp;&amp; defs [sreg]) {</span>
+<span class="lineNum">     579 </span><span class="lineCov">   71381416 :                                         MonoInst *def = defs [sreg];</span>
+<span class="lineNum">     580 </span>            : 
+<span class="lineNum">     581 </span><span class="lineCov">  189714638 :                                         if ((def-&gt;opcode == OP_MOVE) &amp;&amp; (!defs [def-&gt;sreg1] || (def_index [def-&gt;sreg1] &lt; def_index [sreg])) &amp;&amp; !vreg_is_volatile (cfg, def-&gt;sreg1)) {</span>
+<span class="lineNum">     582 </span><span class="lineCov">   15275082 :                                                 int vreg = def-&gt;sreg1;</span>
+<span class="lineNum">     583 </span><span class="lineCov">   15536212 :                                                 if (cfg-&gt;verbose_level &gt; 2) printf (&quot;CCOPY: R%d -&gt; R%d\n&quot;, sreg, vreg);</span>
+<span class="lineNum">     584 </span><span class="lineCov">   15274734 :                                                 ins-&gt;dreg = vreg;</span>
+<span class="lineNum">     585 </span><span class="lineCov">   15274734 :                                         }</span>
+<span class="lineNum">     586 </span><span class="lineCov">   71374393 :                                 }</span>
+<span class="lineNum">     587 </span><span class="lineCov">  110489957 :                         }</span>
+<span class="lineNum">     588 </span>            : 
+<span class="lineNum">     589 </span><span class="lineCov"> 2589724182 :                         num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     590 </span><span class="lineCov"> 8789936300 :                         for (srcindex = 0; srcindex &lt; num_sregs; ++srcindex) {</span>
+<span class="lineNum">     591 </span>            :                                 MonoInst *def;
+<span class="lineNum">     592 </span>            : 
+<span class="lineNum">     593 </span><span class="lineCov"> 1812509080 :                                 mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     594 </span>            : 
+<span class="lineNum">     595 </span><span class="lineCov"> 1812509080 :                                 regtype = spec [MONO_INST_SRC1 + srcindex];</span>
+<span class="lineNum">     596 </span><span class="lineCov"> 1812509080 :                                 sreg = sregs [srcindex];</span>
+<span class="lineNum">     597 </span>            : 
+<span class="lineNum">     598 </span><span class="lineCov"> 5430580558 :                                 if ((regtype == ' ') || (sreg == -1) || (!defs [sreg]))</span>
+<span class="lineNum">     599 </span><span class="lineCov">  667536420 :                                         continue;</span>
+<span class="lineNum">     600 </span>            : 
+<span class="lineNum">     601 </span><span class="lineCov"> 1157274515 :                                 def = defs [sreg];</span>
+<span class="lineNum">     602 </span>            : 
+<span class="lineNum">     603 </span>            :                                 /* Copy propagation */
+<span class="lineNum">     604 </span>            :                                 /* 
+<span class="lineNum">     605 </span>            :                                  * The first check makes sure the source of the copy did not change since 
+<span class="lineNum">     606 </span>            :                                  * the copy was made.
+<span class="lineNum">     607 </span>            :                                  * The second check avoids volatile variables.
+<span class="lineNum">     608 </span>            :                                  * The third check avoids copy propagating local vregs through a call, 
+<span class="lineNum">     609 </span>            :                                  * since the lvreg will be spilled 
+<span class="lineNum">     610 </span>            :                                  * The fourth check avoids copy propagating a vreg in cases where
+<span class="lineNum">     611 </span>            :                                  * it would be eliminated anyway by reverse copy propagation later,
+<span class="lineNum">     612 </span>            :                                  * because propagating it would create another use for it, thus making 
+<span class="lineNum">     613 </span>            :                                  * it impossible to use reverse copy propagation.
+<span class="lineNum">     614 </span>            :                                  */
+<span class="lineNum">     615 </span>            :                                 /* Enabling this for floats trips up the fp stack */
+<span class="lineNum">     616 </span>            :                                 /* 
+<span class="lineNum">     617 </span>            :                                  * Enabling this for floats on amd64 seems to cause a failure in 
+<span class="lineNum">     618 </span>            :                                  * basic-math.cs, most likely because it gets rid of some r8-&gt;r4 
+<span class="lineNum">     619 </span>            :                                  * conversions.
+<span class="lineNum">     620 </span>            :                                  */
+<span class="lineNum">     621 </span><span class="lineCov"> 4455254333 :                                 if (MONO_IS_MOVE (def) &amp;&amp;</span>
+<span class="lineNum">     622 </span><span class="lineCov">  568349734 :                                         (!defs [def-&gt;sreg1] || (def_index [def-&gt;sreg1] &lt; def_index [sreg])) &amp;&amp;</span>
+<span class="lineNum">     623 </span><span class="lineCov"> 2003562904 :                                         !vreg_is_volatile (cfg, def-&gt;sreg1) &amp;&amp;</span>
+<span class="lineNum">     624 </span>            :                                         /* This avoids propagating local vregs across calls */
+<span class="lineNum">     625 </span><span class="lineCov">  963133284 :                                         ((get_vreg_to_inst (cfg, def-&gt;sreg1) || !defs [def-&gt;sreg1] || (def_index [def-&gt;sreg1] &gt;= last_call_index) || (def-&gt;opcode == OP_VMOVE))) &amp;&amp;</span>
+<span class="lineNum">     626 </span><span class="lineCov">  462789566 :                                         !(defs [def-&gt;sreg1] &amp;&amp; mono_inst_next (defs [def-&gt;sreg1], filter) == def) &amp;&amp;</span>
+<span class="lineNum">     627 </span><span class="lineCov">  144103054 :                                         (!MONO_ARCH_USE_FPSTACK || (def-&gt;opcode != OP_FMOVE)) &amp;&amp;</span>
+<span class="lineNum">     628 </span><span class="lineCov">  208555342 :                                         (def-&gt;opcode != OP_FMOVE)) {</span>
+<span class="lineNum">     629 </span><span class="lineCov">  208321832 :                                         int vreg = def-&gt;sreg1;</span>
+<span class="lineNum">     630 </span>            : 
+<span class="lineNum">     631 </span><span class="lineCov">  210935768 :                                         if (cfg-&gt;verbose_level &gt; 2) printf (&quot;CCOPY/2: R%d -&gt; R%d\n&quot;, sreg, vreg);</span>
+<span class="lineNum">     632 </span><span class="lineCov">  208335146 :                                         sregs [srcindex] = vreg;</span>
+<span class="lineNum">     633 </span><span class="lineCov">  208335146 :                                         mono_inst_set_src_registers (ins, sregs);</span>
+<span class="lineNum">     634 </span>            : 
+<span class="lineNum">     635 </span>            :                                         /* Allow further iterations */
+<span class="lineNum">     636 </span><span class="lineCov">  208335146 :                                         srcindex = -1;</span>
+<span class="lineNum">     637 </span><span class="lineCov">  208335146 :                                         continue;</span>
+<span class="lineNum">     638 </span>            :                                 }
+<span class="lineNum">     639 </span>            : 
+<span class="lineNum">     640 </span>            :                                 /* Constant propagation */
+<span class="lineNum">     641 </span>            :                                 /* FIXME: Make is_inst_imm a macro */
+<span class="lineNum">     642 </span>            :                                 /* FIXME: Make is_inst_imm take an opcode argument */
+<span class="lineNum">     643 </span>            :                                 /* is_inst_imm is only needed for binops */
+<span class="lineNum">     644 </span><span class="lineCov"> 3520582203 :                                 if ((((def-&gt;opcode == OP_ICONST) || ((sizeof (gpointer) == 8) &amp;&amp; (def-&gt;opcode == OP_I8CONST)) || (def-&gt;opcode == OP_PCONST)) &amp;&amp;</span>
+<span class="lineNum">     645 </span><span class="lineCov">  222506428 :                                          (((srcindex == 0) &amp;&amp; (ins-&gt;sreg2 == -1)) || mono_arch_is_inst_imm (def-&gt;inst_c0))) || </span>
+<span class="lineNum">     646 </span><span class="lineCov">  842946837 :                                         (!MONO_ARCH_USE_FPSTACK &amp;&amp; (def-&gt;opcode == OP_R8CONST))) {</span>
+<span class="lineNum">     647 </span>            :                                         guint32 opcode2;
+<span class="lineNum">     648 </span>            : 
+<span class="lineNum">     649 </span>            :                                         /* srcindex == 1 -&gt; binop, ins-&gt;sreg2 == -1 -&gt; unop */
+<span class="lineNum">     650 </span><span class="lineCov">  137181312 :                                         if ((srcindex == 1) &amp;&amp; (ins-&gt;sreg1 != -1) &amp;&amp; defs [ins-&gt;sreg1] &amp;&amp;</span>
+<span class="lineNum">     651 </span><span class="lineCov">   19220711 :                                                 ((defs [ins-&gt;sreg1]-&gt;opcode == OP_ICONST) || defs [ins-&gt;sreg1]-&gt;opcode == OP_PCONST) &amp;&amp;</span>
+<span class="lineNum">     652 </span><span class="lineCov">     843243 :                                                 defs [ins-&gt;sreg2]) {</span>
+<span class="lineNum">     653 </span>            :                                                 /* Both arguments are constants, perform cfold */
+<span class="lineNum">     654 </span><span class="lineCov">     843206 :                                                 mono_constant_fold_ins (cfg, ins, defs [ins-&gt;sreg1], defs [ins-&gt;sreg2], TRUE);</span>
+<span class="lineNum">     655 </span><span class="lineCov">  198110282 :                                         } else if ((srcindex == 0) &amp;&amp; (ins-&gt;sreg2 != -1) &amp;&amp; defs [ins-&gt;sreg2]) {</span>
+<span class="lineNum">     656 </span>            :                                                 /* Arg 1 is constant, swap arguments if possible */
+<span class="lineNum">     657 </span><span class="lineCov">    1332937 :                                                 int opcode = ins-&gt;opcode;</span>
+<span class="lineNum">     658 </span><span class="lineCov">    1332937 :                                                 mono_constant_fold_ins (cfg, ins, defs [ins-&gt;sreg1], defs [ins-&gt;sreg2], TRUE);</span>
+<span class="lineNum">     659 </span><span class="lineCov">    1332937 :                                                 if (ins-&gt;opcode != opcode) {</span>
+<span class="lineNum">     660 </span>            :                                                         /* Allow further iterations */
+<span class="lineNum">     661 </span><span class="lineCov">     236780 :                                                         srcindex = -1;</span>
+<span class="lineNum">     662 </span><span class="lineCov">     236780 :                                                         continue;</span>
+<span class="lineNum">     663 </span>            :                                                 }
+<span class="lineNum">     664 </span><span class="lineCov">  194257282 :                                         } else if ((srcindex == 0) &amp;&amp; (ins-&gt;sreg2 == -1)) {</span>
+<span class="lineNum">     665 </span>            :                                                 /* Constant unop, perform cfold */
+<span class="lineNum">     666 </span><span class="lineCov">   89171679 :                                                 mono_constant_fold_ins (cfg, ins, defs [ins-&gt;sreg1], NULL, TRUE);</span>
+<span class="lineNum">     667 </span><span class="lineCov">   89171679 :                                         }</span>
+<span class="lineNum">     668 </span>            : 
+<span class="lineNum">     669 </span><span class="lineCov">  105774032 :                                         opcode2 = mono_op_to_op_imm (ins-&gt;opcode);</span>
+<span class="lineNum">     670 </span><span class="lineCov">  151047698 :                                         if ((opcode2 != -1) &amp;&amp; mono_arch_is_inst_imm (def-&gt;inst_c0) &amp;&amp; ((srcindex == 1) || (ins-&gt;sreg2 == -1))) {</span>
+<span class="lineNum">     671 </span><span class="lineCov">   17743829 :                                                 ins-&gt;opcode = opcode2;</span>
+<span class="lineNum">     672 </span><span class="lineCov">   20826237 :                                                 if ((def-&gt;opcode == OP_I8CONST) &amp;&amp; (sizeof (gpointer) == 4)) {</span>
+<span class="lineNum">     673 </span><span class="lineNoCov">          0 :                                                         ins-&gt;inst_ls_word = def-&gt;inst_ls_word;</span>
+<span class="lineNum">     674 </span><span class="lineNoCov">          0 :                                                         ins-&gt;inst_ms_word = def-&gt;inst_ms_word;</span>
+<span class="lineNum">     675 </span><span class="lineNoCov">          0 :                                                 } else {</span>
+<span class="lineNum">     676 </span><span class="lineCov">   17743814 :                                                         ins-&gt;inst_imm = def-&gt;inst_c0;</span>
+<span class="lineNum">     677 </span>            :                                                 }
+<span class="lineNum">     678 </span><span class="lineCov">   17741984 :                                                 sregs [srcindex] = -1;</span>
+<span class="lineNum">     679 </span><span class="lineCov">   17741984 :                                                 mono_inst_set_src_registers (ins, sregs);</span>
+<span class="lineNum">     680 </span>            : 
+<span class="lineNum">     681 </span><span class="lineCov">   70970969 :                                                 if ((opcode2 == OP_VOIDCALL) || (opcode2 == OP_CALL) || (opcode2 == OP_LCALL) || (opcode2 == OP_FCALL))</span>
+<span class="lineNum">     682 </span><span class="lineNoCov">          0 :                                                         ((MonoCallInst*)ins)-&gt;fptr = (gpointer)ins-&gt;inst_imm;</span>
+<span class="lineNum">     683 </span>            : 
+<span class="lineNum">     684 </span>            :                                                 /* Allow further iterations */
+<span class="lineNum">     685 </span><span class="lineCov">   17743475 :                                                 srcindex = -1;</span>
+<span class="lineNum">     686 </span><span class="lineCov">   17743475 :                                                 continue;</span>
+<span class="lineNum">     687 </span>            :                                         }
+<span class="lineNum">     688 </span>            :                                         else {
+<span class="lineNum">     689 </span>            :                                                 /* Special cases */
+<span class="lineNum">     690 </span>            : #if defined(TARGET_X86) || defined(TARGET_AMD64)
+<span class="lineNum">     691 </span><span class="lineCov">   88037412 :                                                 if ((ins-&gt;opcode == OP_X86_LEA) &amp;&amp; (srcindex == 1)) {</span>
+<span class="lineNum">     692 </span>            : #if SIZEOF_REGISTER == 8
+<span class="lineNum">     693 </span>            :                                                         /* FIXME: Use OP_PADD_IMM when the new JIT is done */
+<span class="lineNum">     694 </span><span class="lineCov">        900 :                                                         ins-&gt;opcode = OP_LADD_IMM;</span>
+<span class="lineNum">     695 </span>            : #else
+<span class="lineNum">     696 </span>            :                                                         ins-&gt;opcode = OP_ADD_IMM;
+<span class="lineNum">     697 </span>            : #endif
+<span class="lineNum">     698 </span><span class="lineCov">        900 :                                                         ins-&gt;inst_imm += def-&gt;inst_c0 &lt;&lt; ins-&gt;backend.shift_amount;</span>
+<span class="lineNum">     699 </span><span class="lineCov">        900 :                                                         ins-&gt;sreg2 = -1;</span>
+<span class="lineNum">     700 </span><span class="lineCov">        900 :                                                 }</span>
+<span class="lineNum">     701 </span>            : #endif
+<span class="lineNum">     702 </span><span class="lineCov">   88030171 :                                                 opcode2 = mono_load_membase_to_load_mem (ins-&gt;opcode);</span>
+<span class="lineNum">     703 </span><span class="lineCov">  181632444 :                                                 if ((srcindex == 0) &amp;&amp; (opcode2 != -1) &amp;&amp; mono_arch_is_inst_imm (def-&gt;inst_c0)) {</span>
+<span class="lineNum">     704 </span><span class="lineCov">         38 :                                                         ins-&gt;opcode = opcode2;</span>
+<span class="lineNum">     705 </span><span class="lineCov">         38 :                                                         ins-&gt;inst_imm = def-&gt;inst_c0 + ins-&gt;inst_offset;</span>
+<span class="lineNum">     706 </span><span class="lineCov">         38 :                                                         ins-&gt;sreg1 = -1;</span>
+<span class="lineNum">     707 </span><span class="lineCov">         38 :                                                 }</span>
+<span class="lineNum">     708 </span>            :                                         }
+<span class="lineNum">     709 </span><span class="lineCov">   88035890 :                                 }</span>
+<span class="lineNum">     710 </span><span class="lineCov"> 1833475553 :                                 else if (((def-&gt;opcode == OP_ADD_IMM) || (def-&gt;opcode == OP_LADD_IMM)) &amp;&amp; (MONO_IS_LOAD_MEMBASE (ins) || MONO_ARCH_IS_OP_MEMBASE (ins-&gt;opcode))) {</span>
+<span class="lineNum">     711 </span>            :                                         /* ADD_IMM is created by spill_global_vars */
+<span class="lineNum">     712 </span>            :                                         /* 
+<span class="lineNum">     713 </span>            :                                          * We have to guarantee that def-&gt;sreg1 haven't changed since def-&gt;dreg
+<span class="lineNum">     714 </span>            :                                          * was defined. cfg-&gt;frame_reg is assumed to remain constant.
+<span class="lineNum">     715 </span>            :                                          */
+<span class="lineNum">     716 </span><span class="lineCov">   44925323 :                                         if ((def-&gt;sreg1 == cfg-&gt;frame_reg) || ((mono_inst_next (def, filter) == ins) &amp;&amp; (def-&gt;dreg != def-&gt;sreg1))) {</span>
+<span class="lineNum">     717 </span><span class="lineCov">   31116087 :                                                 ins-&gt;inst_basereg = def-&gt;sreg1;</span>
+<span class="lineNum">     718 </span><span class="lineCov">   31116087 :                                                 ins-&gt;inst_offset += def-&gt;inst_imm;</span>
+<span class="lineNum">     719 </span><span class="lineCov">   31116087 :                                         }</span>
+<span class="lineNum">     720 </span><span class="lineCov">  844961652 :                                 } else if ((ins-&gt;opcode == OP_ISUB_IMM) &amp;&amp; (def-&gt;opcode == OP_IADD_IMM) &amp;&amp; (mono_inst_next (def, filter) == ins) &amp;&amp; (def-&gt;dreg != def-&gt;sreg1)) {</span>
+<span class="lineNum">     721 </span><span class="lineCov">         49 :                                         ins-&gt;sreg1 = def-&gt;sreg1;</span>
+<span class="lineNum">     722 </span><span class="lineCov">         49 :                                         ins-&gt;inst_imm -= def-&gt;inst_imm;</span>
+<span class="lineNum">     723 </span><span class="lineCov">  811460968 :                                 } else if ((ins-&gt;opcode == OP_IADD_IMM) &amp;&amp; (def-&gt;opcode == OP_ISUB_IMM) &amp;&amp; (mono_inst_next (def, filter) == ins) &amp;&amp; (def-&gt;dreg != def-&gt;sreg1)) {</span>
+<span class="lineNum">     724 </span><span class="lineCov">      12407 :                                         ins-&gt;sreg1 = def-&gt;sreg1;</span>
+<span class="lineNum">     725 </span><span class="lineCov">      12407 :                                         ins-&gt;inst_imm -= def-&gt;inst_imm;</span>
+<span class="lineNum">     726 </span><span class="lineCov">  808263845 :                                 } else if (ins-&gt;opcode == OP_STOREI1_MEMBASE_REG &amp;&amp;</span>
+<span class="lineNum">     727 </span><span class="lineCov">   27371576 :                                                    (def-&gt;opcode == OP_ICONV_TO_U1 || def-&gt;opcode == OP_ICONV_TO_I1 || def-&gt;opcode == OP_SEXT_I4 || (SIZEOF_REGISTER == 8 &amp;&amp; def-&gt;opcode == OP_LCONV_TO_U1)) &amp;&amp;</span>
+<span class="lineNum">     728 </span><span class="lineCov">     951236 :                                                    (!defs [def-&gt;sreg1] || (def_index [def-&gt;sreg1] &lt; def_index [sreg]))) {</span>
+<span class="lineNum">     729 </span>            :                                         /* Avoid needless sign extension */
+<span class="lineNum">     730 </span><span class="lineCov">     508542 :                                         ins-&gt;sreg1 = def-&gt;sreg1;</span>
+<span class="lineNum">     731 </span><span class="lineCov">  808077282 :                                 } else if (ins-&gt;opcode == OP_STOREI2_MEMBASE_REG &amp;&amp;</span>
+<span class="lineNum">     732 </span><span class="lineCov">    2443027 :                                                    (def-&gt;opcode == OP_ICONV_TO_U2 || def-&gt;opcode == OP_ICONV_TO_I2 || def-&gt;opcode == OP_SEXT_I4 || (SIZEOF_REGISTER == 8 &amp;&amp; def-&gt;opcode == OP_LCONV_TO_I2)) &amp;&amp;</span>
+<span class="lineNum">     733 </span><span class="lineCov">     548230 :                                                    (!defs [def-&gt;sreg1] || (def_index [def-&gt;sreg1] &lt; def_index [sreg]))) {</span>
+<span class="lineNum">     734 </span>            :                                         /* Avoid needless sign extension */
+<span class="lineNum">     735 </span><span class="lineCov">     291723 :                                         ins-&gt;sreg1 = def-&gt;sreg1;</span>
+<span class="lineNum">     736 </span><span class="lineCov">  817109940 :                                 } else if (ins-&gt;opcode == OP_COMPARE_IMM &amp;&amp; def-&gt;opcode == OP_LDADDR &amp;&amp; ins-&gt;inst_imm == 0) {</span>
+<span class="lineNum">     737 </span>            :                                         MonoInst dummy_arg1;
+<span class="lineNum">     738 </span>            : 
+<span class="lineNum">     739 </span><span class="lineNoCov">          0 :                                         memset (&amp;dummy_arg1, 0, sizeof (MonoInst));</span>
+<span class="lineNum">     740 </span><span class="lineNoCov">          0 :                                         dummy_arg1.opcode = OP_ICONST;</span>
+<span class="lineNum">     741 </span><span class="lineNoCov">          0 :                                         dummy_arg1.inst_c0 = 1;</span>
+<span class="lineNum">     742 </span>            : 
+<span class="lineNum">     743 </span><span class="lineNoCov">          0 :                                         mono_constant_fold_ins (cfg, ins, &amp;dummy_arg1, NULL, TRUE);</span>
+<span class="lineNum">     744 </span><span class="lineCov"> 1561352976 :                                 } else if (srcindex == 0 &amp;&amp; ins-&gt;opcode == OP_COMPARE &amp;&amp; defs [ins-&gt;sreg1]-&gt;opcode == OP_PCONST &amp;&amp; defs [ins-&gt;sreg2] &amp;&amp; defs [ins-&gt;sreg2]-&gt;opcode == OP_PCONST) {</span>
+<span class="lineNum">     745 </span>            :                                         /* typeof(T) == typeof(..) */
+<span class="lineNum">     746 </span><span class="lineCov">     139511 :                                         mono_constant_fold_ins (cfg, ins, defs [ins-&gt;sreg1], defs [ins-&gt;sreg2], TRUE);</span>
+<span class="lineNum">     747 </span><span class="lineCov">     139511 :                                 }</span>
+<span class="lineNum">     748 </span><span class="lineCov">  930986050 :                         }</span>
+<span class="lineNum">     749 </span>            : 
+<span class="lineNum">     750 </span><span class="lineCov"> 7745695405 :                         g_assert (cfg-&gt;cbb == bb_opt);</span>
+<span class="lineNum">     751 </span><span class="lineCov"> 7766741128 :                         g_assert (!bb_opt-&gt;code);</span>
+<span class="lineNum">     752 </span>            :                         /* Do strength reduction here */
+<span class="lineNum">     753 </span><span class="lineCov"> 2584975873 :                         if (mono_strength_reduction_ins (cfg, ins, &amp;spec) &amp;&amp; max &lt; cfg-&gt;next_vreg) {</span>
+<span class="lineNum">     754 </span><span class="lineCov">      72018 :                                 MonoInst **defs_prev = defs;</span>
+<span class="lineNum">     755 </span><span class="lineCov">      72018 :                                 gint32 *def_index_prev = def_index;</span>
+<span class="lineNum">     756 </span><span class="lineCov">      72018 :                                 guint32 prev_max = max;</span>
+<span class="lineNum">     757 </span><span class="lineCov">      72018 :                                 guint32 additional_vregs = cfg-&gt;next_vreg - initial_max_vregs;</span>
+<span class="lineNum">     758 </span>            : 
+<span class="lineNum">     759 </span>            :                                 /* We have more vregs so we need to reallocate defs and def_index arrays */
+<span class="lineNum">     760 </span><span class="lineCov">      72018 :                                 max  = initial_max_vregs + additional_vregs * 2;</span>
+<span class="lineNum">     761 </span><span class="lineCov">      72018 :                                 defs = (MonoInst **)mono_mempool_alloc (cfg-&gt;mempool, sizeof (MonoInst*) * max);</span>
+<span class="lineNum">     762 </span><span class="lineCov">      72018 :                                 def_index = (gint32 *)mono_mempool_alloc (cfg-&gt;mempool, sizeof (guint32) * max);</span>
+<span class="lineNum">     763 </span>            : 
+<span class="lineNum">     764 </span>            :                                 /* Keep the entries for the previous vregs, zero the rest */
+<span class="lineNum">     765 </span><span class="lineCov">      72018 :                                 memcpy (defs, defs_prev, sizeof (MonoInst*) * prev_max);</span>
+<span class="lineNum">     766 </span><span class="lineCov">      72018 :                                 memset (defs + prev_max, 0, sizeof (MonoInst*) * (max - prev_max));</span>
+<span class="lineNum">     767 </span><span class="lineCov">      72018 :                                 memcpy (def_index, def_index_prev, sizeof (guint32) * prev_max);</span>
+<span class="lineNum">     768 </span><span class="lineCov">      72018 :                                 memset (def_index + prev_max, 0, sizeof (guint32) * (max - prev_max));</span>
+<span class="lineNum">     769 </span><span class="lineCov">      72018 :                         }</span>
+<span class="lineNum">     770 </span>            : 
+<span class="lineNum">     771 </span><span class="lineCov"> 5175075928 :                         if (cfg-&gt;cbb-&gt;code || (cfg-&gt;cbb != bb_opt)) {</span>
+<span class="lineNum">     772 </span><span class="lineCov">     103477 :                                 MonoInst *saved_prev = ins-&gt;prev;</span>
+<span class="lineNum">     773 </span>            : 
+<span class="lineNum">     774 </span>            :                                 /* If we have code in cbb, we need to replace ins with the decomposition */
+<span class="lineNum">     775 </span><span class="lineCov">     103477 :                                 mono_replace_ins (cfg, bb, ins, &amp;ins-&gt;prev, bb_opt, cfg-&gt;cbb);</span>
+<span class="lineNum">     776 </span><span class="lineCov">     103477 :                                 bb_opt-&gt;code = bb_opt-&gt;last_ins = NULL;</span>
+<span class="lineNum">     777 </span><span class="lineCov">     103477 :                                 bb_opt-&gt;in_count = bb_opt-&gt;out_count = 0;</span>
+<span class="lineNum">     778 </span><span class="lineCov">     103477 :                                 cfg-&gt;cbb = bb_opt;</span>
+<span class="lineNum">     779 </span>            : 
+<span class="lineNum">     780 </span>            :                                 /* ins is hanging, continue scanning the emitted code */
+<span class="lineNum">     781 </span><span class="lineCov">     103477 :                                 ins = saved_prev;</span>
+<span class="lineNum">     782 </span><span class="lineCov">     103477 :                                 continue;</span>
+<span class="lineNum">     783 </span>            :                         }
+<span class="lineNum">     784 </span>            : 
+<span class="lineNum">     785 </span><span class="lineCov"> 2602844789 :                         if (spec [MONO_INST_DEST] != ' ') {</span>
+<span class="lineNum">     786 </span><span class="lineCov"> 1559386930 :                                 MonoInst *def = defs [ins-&gt;dreg];</span>
+<span class="lineNum">     787 </span>            : 
+<span class="lineNum">     788 </span><span class="lineCov"> 1727278933 :                                 if (def &amp;&amp; (def-&gt;opcode == OP_ADD_IMM) &amp;&amp; (def-&gt;sreg1 == cfg-&gt;frame_reg) &amp;&amp; (MONO_IS_STORE_MEMBASE (ins))) {</span>
+<span class="lineNum">     789 </span>            :                                         /* ADD_IMM is created by spill_global_vars */
+<span class="lineNum">     790 </span>            :                                         /* cfg-&gt;frame_reg is assumed to remain constant */
+<span class="lineNum">     791 </span><span class="lineCov">   32524848 :                                         ins-&gt;inst_destbasereg = def-&gt;sreg1;</span>
+<span class="lineNum">     792 </span><span class="lineCov">   32524848 :                                         ins-&gt;inst_offset += def-&gt;inst_imm;</span>
+<span class="lineNum">     793 </span><span class="lineCov">   32524848 :                                 }</span>
+<span class="lineNum">     794 </span>            : 
+<span class="lineNum">     795 </span><span class="lineCov"> 9169614187 :                                 if (!MONO_IS_STORE_MEMBASE (ins) &amp;&amp; !vreg_is_volatile (cfg, ins-&gt;dreg)) {</span>
+<span class="lineNum">     796 </span><span class="lineCov"> 1384868849 :                                         defs [ins-&gt;dreg] = ins;</span>
+<span class="lineNum">     797 </span><span class="lineCov"> 1384868849 :                                         def_index [ins-&gt;dreg] = ins_index;</span>
+<span class="lineNum">     798 </span><span class="lineCov"> 1384868849 :                                 }</span>
+<span class="lineNum">     799 </span><span class="lineCov"> 1559423353 :                         }</span>
+<span class="lineNum">     800 </span>            :                         
+<span class="lineNum">     801 </span><span class="lineCov"> 6906265473 :                         if (MONO_IS_CALL (ins))</span>
+<span class="lineNum">     802 </span><span class="lineCov">  173413405 :                                 last_call_index = ins_index;</span>
+<span class="lineNum">     803 </span>            : 
+<span class="lineNum">     804 </span><span class="lineCov"> 2592785519 :                         ins_index ++;</span>
+<span class="lineNum">     805 </span><span class="lineCov"> 2592785519 :                 }</span>
+<span class="lineNum">     806 </span><span class="lineCov">  312626480 :         }</span>
+<span class="lineNum">     807 </span><span class="lineCov">   33214786 : }</span>
+<a name="808"><span class="lineNum">     808 </span>            : </a>
+<span class="lineNum">     809 </span>            : static inline gboolean
+<span class="lineNum">     810 </span>            : reg_is_softreg_no_fpstack (int reg, const char spec)
+<span class="lineNum">     811 </span>            : {
+<span class="lineNum">     812 </span><span class="lineCov"> 6838421865 :         return (spec == 'i' &amp;&amp; reg &gt;= MONO_MAX_IREGS)</span>
+<span class="lineNum">     813 </span><span class="lineCov"> 2770402321 :                 || ((spec == 'f' &amp;&amp; reg &gt;= MONO_MAX_FREGS) &amp;&amp; !MONO_ARCH_USE_FPSTACK)</span>
+<span class="lineNum">     814 </span>            : #ifdef MONO_ARCH_SIMD_INTRINSICS
+<span class="lineNum">     815 </span><span class="lineCov"> 1295996889 :                 || (spec == 'x' &amp;&amp; reg &gt;= MONO_MAX_XREGS)</span>
+<span class="lineNum">     816 </span>            : #endif
+<span class="lineNum">     817 </span><span class="lineCov"> 3969474341 :                 || (spec == 'v');</span>
+<span class="lineNum">     818 </span>            : }
+<a name="819"><span class="lineNum">     819 </span>            :                 </a>
+<span class="lineNum">     820 </span>            : static inline gboolean
+<span class="lineNum">     821 </span>            : reg_is_softreg (int reg, const char spec)
+<span class="lineNum">     822 </span>            : {
+<span class="lineNum">     823 </span><span class="lineCov">  273552792 :         return (spec == 'i' &amp;&amp; reg &gt;= MONO_MAX_IREGS)</span>
+<span class="lineNum">     824 </span><span class="lineCov">   95236999 :                 || (spec == 'f' &amp;&amp; reg &gt;= MONO_MAX_FREGS)</span>
+<span class="lineNum">     825 </span>            : #ifdef MONO_ARCH_SIMD_INTRINSICS
+<span class="lineNum">     826 </span><span class="lineCov">    9550218 :                 || (spec == 'x' &amp;&amp; reg &gt;= MONO_MAX_XREGS)</span>
+<span class="lineNum">     827 </span>            : #endif
+<span class="lineNum">     828 </span><span class="lineCov">  103470895 :                 || (spec == 'v');</span>
+<span class="lineNum">     829 </span>            : }
+<a name="830"><span class="lineNum">     830 </span>            : </a>
+<span class="lineNum">     831 </span>            : static inline gboolean
+<span class="lineNum">     832 </span>            : mono_is_simd_accessor (MonoInst *ins)
+<span class="lineNum">     833 </span>            : {
+<span class="lineNum">     834 </span><span class="lineCov">   92580121 :         switch (ins-&gt;opcode) {</span>
+<span class="lineNum">     835 </span>            : #ifdef MONO_ARCH_SIMD_INTRINSICS
+<span class="lineNum">     836 </span>            :         case OP_INSERT_I1:
+<span class="lineNum">     837 </span>            :         case OP_INSERT_I2:
+<span class="lineNum">     838 </span>            :         case OP_INSERT_I4:
+<span class="lineNum">     839 </span>            :         case OP_INSERT_I8:
+<span class="lineNum">     840 </span>            :         case OP_INSERT_R4:
+<span class="lineNum">     841 </span>            :         case OP_INSERT_R8:
+<span class="lineNum">     842 </span>            : 
+<span class="lineNum">     843 </span>            :         case OP_INSERTX_U1_SLOW:
+<span class="lineNum">     844 </span>            :         case OP_INSERTX_I4_SLOW:
+<span class="lineNum">     845 </span>            :         case OP_INSERTX_R4_SLOW:
+<span class="lineNum">     846 </span>            :         case OP_INSERTX_R8_SLOW:
+<span class="lineNum">     847 </span>            :         case OP_INSERTX_I8_SLOW:
+<span class="lineNum">     848 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     849 </span>            : #endif
+<span class="lineNum">     850 </span>            :         default:
+<span class="lineNum">     851 </span><span class="lineCov">   92593959 :                 return FALSE;</span>
+<span class="lineNum">     852 </span>            :         }
+<span class="lineNum">     853 </span><span class="lineCov">   92595896 : }</span>
+<span class="lineNum">     854 </span>            : 
+<span class="lineNum">     855 </span>            : /**
+<span class="lineNum">     856 </span>            :  * mono_local_deadce:
+<span class="lineNum">     857 </span>            :  *
+<span class="lineNum">     858 </span>            :  *   Get rid of the dead assignments to local vregs like the ones created by the 
+<span class="lineNum">     859 </span>            :  * copyprop pass.
+<a name="860"><span class="lineNum">     860 </span>            :  */</a>
+<span class="lineNum">     861 </span>            : void
+<span class="lineNum">     862 </span>            : mono_local_deadce (MonoCompile *cfg)
+<span class="lineNum">     863 </span>            : {
+<span class="lineNum">     864 </span>            :         MonoBasicBlock *bb;
+<span class="lineNum">     865 </span>            :         MonoInst *ins, *prev;
+<span class="lineNum">     866 </span>            :         MonoBitSet *used, *defined;
+<span class="lineNum">     867 </span>            : 
+<span class="lineNum">     868 </span>            :         //mono_print_code (cfg, &quot;BEFORE LOCAL-DEADCE&quot;);
+<span class="lineNum">     869 </span>            : 
+<span class="lineNum">     870 </span>            :         /*
+<span class="lineNum">     871 </span>            :          * Assignments to global vregs can't be eliminated so this pass must come
+<span class="lineNum">     872 </span>            :          * after the handle_global_vregs () pass.
+<span class="lineNum">     873 </span>            :          */
+<span class="lineNum">     874 </span>            : 
+<span class="lineNum">     875 </span><span class="lineCov">   33857699 :         used = mono_bitset_mp_new_noinit (cfg-&gt;mempool, cfg-&gt;next_vreg + 1);</span>
+<span class="lineNum">     876 </span><span class="lineCov">   33857699 :         defined = mono_bitset_mp_new_noinit (cfg-&gt;mempool, cfg-&gt;next_vreg + 1);</span>
+<span class="lineNum">     877 </span>            : 
+<span class="lineNum">     878 </span>            :         /* First pass: collect liveness info */
+<span class="lineNum">     879 </span><span class="lineCov">  696995135 :         for (bb = cfg-&gt;bb_entry; bb; bb = bb-&gt;next_bb) {</span>
+<span class="lineNum">     880 </span>            :                 /* Manually init the defs entries used by the bblock */
+<span class="lineNum">     881 </span><span class="lineCov"> 6031415358 :                 MONO_BB_FOR_EACH_INS (bb, ins) {</span>
+<span class="lineNum">     882 </span><span class="lineCov"> 2711019391 :                         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     883 </span>            :                         int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     884 </span>            :                         int num_sregs, i;
+<span class="lineNum">     885 </span>            : 
+<span class="lineNum">     886 </span><span class="lineCov"> 2711019391 :                         if (spec [MONO_INST_DEST] != ' ') {</span>
+<span class="lineNum">     887 </span><span class="lineCov"> 3219902151 :                                 mono_bitset_clear_fast (used, ins-&gt;dreg);</span>
+<span class="lineNum">     888 </span><span class="lineCov"> 3220797191 :                                 mono_bitset_clear_fast (defined, ins-&gt;dreg);</span>
+<span class="lineNum">     889 </span>            : #if SIZEOF_REGISTER == 4
+<span class="lineNum">     890 </span>            :                                 /* Regpairs */
+<span class="lineNum">     891 </span>            :                                 mono_bitset_clear_fast (used, ins-&gt;dreg + 1);
+<span class="lineNum">     892 </span>            :                                 mono_bitset_clear_fast (defined, ins-&gt;dreg + 1);
+<span class="lineNum">     893 </span>            : #endif
+<span class="lineNum">     894 </span><span class="lineCov"> 1610934081 :                         }</span>
+<span class="lineNum">     895 </span><span class="lineCov"> 2700536171 :                         num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     896 </span><span class="lineCov"> 8531685216 :                         for (i = 0; i &lt; num_sregs; ++i) {</span>
+<span class="lineNum">     897 </span><span class="lineCov"> 3127733631 :                                 mono_bitset_clear_fast (used, sregs [i]);</span>
+<span class="lineNum">     898 </span>            : #if SIZEOF_REGISTER == 4
+<span class="lineNum">     899 </span>            :                                 mono_bitset_clear_fast (used, sregs [i] + 1);
+<span class="lineNum">     900 </span>            : #endif
+<span class="lineNum">     901 </span><span class="lineCov"> 1565065101 :                         }</span>
+<span class="lineNum">     902 </span><span class="lineCov"> 2702176625 :                 }</span>
+<span class="lineNum">     903 </span>            : 
+<span class="lineNum">     904 </span>            :                 /*
+<span class="lineNum">     905 </span>            :                  * Make a reverse pass over the instruction list
+<span class="lineNum">     906 </span>            :                  */
+<span class="lineNum">     907 </span><span class="lineCov">12086065219 :                 MONO_BB_FOR_EACH_INS_REVERSE_SAFE (bb, prev, ins) {</span>
+<span class="lineNum">     908 </span><span class="lineCov"> 2691714043 :                         const char *spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     909 </span>            :                         int sregs [MONO_MAX_SRC_REGS];
+<span class="lineNum">     910 </span>            :                         int num_sregs, i;
+<span class="lineNum">     911 </span><span class="lineCov"> 2691714043 :                         MonoInst *prev_f = mono_inst_prev (ins, FILTER_NOP | FILTER_IL_SEQ_POINT);</span>
+<span class="lineNum">     912 </span>            : 
+<span class="lineNum">     913 </span><span class="lineCov"> 2691714043 :                         if (ins-&gt;opcode == OP_NOP) {</span>
+<span class="lineNum">     914 </span><span class="lineCov">  258137534 :                                 MONO_DELETE_INS (bb, ins);</span>
+<span class="lineNum">     915 </span><span class="lineCov">   18439878 :                                 continue;</span>
+<span class="lineNum">     916 </span>            :                         }
+<span class="lineNum">     917 </span>            : 
+<span class="lineNum">     918 </span><span class="lineCov"> 8025669802 :                         g_assert (ins-&gt;opcode &gt; MONO_CEE_LAST);</span>
+<span class="lineNum">     919 </span>            : 
+<span class="lineNum">     920 </span><span class="lineCov"> 7451360874 :                         if (MONO_IS_NON_FP_MOVE (ins) &amp;&amp; prev_f) {</span>
+<span class="lineNum">     921 </span>            :                                 MonoInst *def;
+<span class="lineNum">     922 </span>            :                                 const char *spec2;
+<span class="lineNum">     923 </span>            : 
+<span class="lineNum">     924 </span><span class="lineCov">  535949634 :                                 def = prev_f;</span>
+<span class="lineNum">     925 </span><span class="lineCov">  535949634 :                                 spec2 = INS_INFO (def-&gt;opcode);</span>
+<span class="lineNum">     926 </span>            : 
+<span class="lineNum">     927 </span>            :                                 /* 
+<span class="lineNum">     928 </span>            :                                  * Perform a limited kind of reverse copy propagation, i.e.
+<span class="lineNum">     929 </span>            :                                  * transform B &lt;- FOO; A &lt;- B into A &lt;- FOO
+<span class="lineNum">     930 </span>            :                                  * This isn't copyprop, not deadce, but it can only be performed
+<span class="lineNum">     931 </span>            :                                  * after handle_global_vregs () has run.
+<span class="lineNum">     932 </span>            :                                  */
+<span class="lineNum">     933 </span><span class="lineCov"> 2209078844 :                                 if (!get_vreg_to_inst (cfg, ins-&gt;sreg1) &amp;&amp; (spec2 [MONO_INST_DEST] != ' ') &amp;&amp; (def-&gt;dreg == ins-&gt;sreg1) &amp;&amp; !mono_bitset_test_fast (used, ins-&gt;sreg1) &amp;&amp; !MONO_IS_STORE_MEMBASE (def) &amp;&amp; reg_is_softreg (ins-&gt;sreg1, spec [MONO_INST_DEST]) &amp;&amp; !mono_is_simd_accessor (def)) {</span>
+<span class="lineNum">     934 </span><span class="lineCov">   92604333 :                                         if (cfg-&gt;verbose_level &gt; 2) {</span>
+<span class="lineNum">     935 </span><span class="lineCov">    1210656 :                                                 printf (&quot;\tReverse copyprop in BB%d on &quot;, bb-&gt;block_num);</span>
+<span class="lineNum">     936 </span><span class="lineCov">    1210656 :                                                 mono_print_ins (ins);</span>
+<span class="lineNum">     937 </span><span class="lineCov">    1210656 :                                         }</span>
+<span class="lineNum">     938 </span>            : 
+<span class="lineNum">     939 </span><span class="lineCov">   92605484 :                                         def-&gt;dreg = ins-&gt;dreg;</span>
+<span class="lineNum">     940 </span><span class="lineCov"> 1296874763 :                                         MONO_DELETE_INS (bb, ins);</span>
+<span class="lineNum">     941 </span><span class="lineCov">   92646224 :                                         spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     942 </span><span class="lineCov">   92646224 :                                 }</span>
+<span class="lineNum">     943 </span><span class="lineCov">  535718640 :                         }</span>
+<span class="lineNum">     944 </span>            : 
+<span class="lineNum">     945 </span>            :                         /* Enabling this on x86 could screw up the fp stack */
+<span class="lineNum">     946 </span><span class="lineCov"> 2691167375 :                         if (reg_is_softreg_no_fpstack (ins-&gt;dreg, spec [MONO_INST_DEST])) {</span>
+<span class="lineNum">     947 </span>            :                                 /* 
+<span class="lineNum">     948 </span>            :                                  * Assignments to global vregs can only be eliminated if there is another
+<span class="lineNum">     949 </span>            :                                  * assignment to the same vreg later in the same bblock.
+<span class="lineNum">     950 </span>            :                                  */
+<span class="lineNum">     951 </span><span class="lineCov"> 1465486413 :                                 if (!mono_bitset_test_fast (used, ins-&gt;dreg) &amp;&amp; </span>
+<span class="lineNum">     952 </span><span class="lineCov"> 1972545932 :                                         (!get_vreg_to_inst (cfg, ins-&gt;dreg) || (!bb-&gt;extended &amp;&amp; !vreg_is_volatile (cfg, ins-&gt;dreg) &amp;&amp; mono_bitset_test_fast (defined, ins-&gt;dreg))) &amp;&amp;</span>
+<span class="lineNum">     953 </span><span class="lineCov"> 1726415824 :                                         MONO_INS_HAS_NO_SIDE_EFFECT (ins)) {</span>
+<span class="lineNum">     954 </span>            :                                         /* Happens with CMOV instructions */
+<span class="lineNum">     955 </span><span class="lineCov">  499240884 :                                         if (prev_f &amp;&amp; prev_f-&gt;opcode == OP_ICOMPARE_IMM) {</span>
+<span class="lineNum">     956 </span><span class="lineCov">     116051 :                                                 MonoInst *prev = prev_f;</span>
+<span class="lineNum">     957 </span>            :                                                 /* 
+<span class="lineNum">     958 </span>            :                                                  * Can't use DELETE_INS since that would interfere with the
+<span class="lineNum">     959 </span>            :                                                  * FOR_EACH_INS loop.
+<span class="lineNum">     960 </span>            :                                                  */
+<span class="lineNum">     961 </span><span class="lineCov">     464205 :                                                 NULLIFY_INS (prev);</span>
+<span class="lineNum">     962 </span><span class="lineCov">     116052 :                                         }</span>
+<span class="lineNum">     963 </span>            :                                         //printf (&quot;DEADCE: &quot;); mono_print_ins (ins);
+<span class="lineNum">     964 </span><span class="lineCov"> 4008598345 :                                         MONO_DELETE_INS (bb, ins);</span>
+<span class="lineNum">     965 </span><span class="lineCov">  286375546 :                                         spec = INS_INFO (ins-&gt;opcode);</span>
+<span class="lineNum">     966 </span><span class="lineCov">  286375546 :                                 }</span>
+<span class="lineNum">     967 </span>            : 
+<span class="lineNum">     968 </span><span class="lineCov"> 1445248606 :                                 if (spec [MONO_INST_DEST] != ' ')</span>
+<span class="lineNum">     969 </span><span class="lineCov"> 3477444515 :                                         mono_bitset_clear_fast (used, ins-&gt;dreg);</span>
+<span class="lineNum">     970 </span><span class="lineCov"> 1442583124 :                         }</span>
+<span class="lineNum">     971 </span>            : 
+<span class="lineNum">     972 </span><span class="lineCov"> 2691717509 :                         if (spec [MONO_INST_DEST] != ' ')</span>
+<span class="lineNum">     973 </span><span class="lineCov"> 3711294902 :                                 mono_bitset_set_fast (defined, ins-&gt;dreg);</span>
+<span class="lineNum">     974 </span><span class="lineCov"> 2678953490 :                         num_sregs = mono_inst_get_src_registers (ins, sregs);</span>
+<span class="lineNum">     975 </span><span class="lineCov"> 7886890674 :                         for (i = 0; i &lt; num_sregs; ++i)</span>
+<span class="lineNum">     976 </span><span class="lineCov"> 3789460371 :                                 mono_bitset_set_fast (used, sregs [i]);</span>
+<span class="lineNum">     977 </span><span class="lineCov"> 6494801312 :                         if (MONO_IS_STORE_MEMBASE (ins))</span>
+<span class="lineNum">     978 </span><span class="lineCov">  329993414 :                                 mono_bitset_set_fast (used, ins-&gt;dreg);</span>
+<span class="lineNum">     979 </span>            : 
+<span class="lineNum">     980 </span><span class="lineCov"> 6772864573 :                         if (MONO_IS_CALL (ins)) {</span>
+<span class="lineNum">     981 </span><span class="lineCov">  181397134 :                                 MonoCallInst *call = (MonoCallInst*)ins;</span>
+<span class="lineNum">     982 </span>            :                                 GSList *l;
+<span class="lineNum">     983 </span>            : 
+<span class="lineNum">     984 </span><span class="lineCov">  181397134 :                                 if (call-&gt;out_ireg_args) {</span>
+<span class="lineNum">     985 </span><span class="lineCov"> 1079052472 :                                         for (l = call-&gt;out_ireg_args; l; l = l-&gt;next) {</span>
+<span class="lineNum">     986 </span>            :                                                 guint32 regpair, reg;
+<span class="lineNum">     987 </span>            : 
+<span class="lineNum">     988 </span><span class="lineCov">  364340320 :                                                 regpair = (guint32)(gssize)(l-&gt;data);</span>
+<span class="lineNum">     989 </span><span class="lineCov">  364340320 :                                                 reg = regpair &amp; 0xffffff;</span>
+<span class="lineNum">     990 </span>            :                                         
+<span class="lineNum">     991 </span><span class="lineCov">  728696482 :                                                 mono_bitset_set_fast (used, reg);</span>
+<span class="lineNum">     992 </span><span class="lineCov">  364350279 :                                         }</span>
+<span class="lineNum">     993 </span><span class="lineCov">  175175767 :                                 }</span>
+<span class="lineNum">     994 </span>            : 
+<span class="lineNum">     995 </span><span class="lineCov">  181386699 :                                 if (call-&gt;out_freg_args) {</span>
+<span class="lineNum">     996 </span><span class="lineCov">     567727 :                                         for (l = call-&gt;out_freg_args; l; l = l-&gt;next) {</span>
+<span class="lineNum">     997 </span>            :                                                 guint32 regpair, reg;
+<span class="lineNum">     998 </span>            : 
+<span class="lineNum">     999 </span><span class="lineCov">     173716 :                                                 regpair = (guint32)(gssize)(l-&gt;data);</span>
+<span class="lineNum">    1000 </span><span class="lineCov">     173716 :                                                 reg = regpair &amp; 0xffffff;</span>
+<span class="lineNum">    1001 </span>            :                                         
+<span class="lineNum">    1002 </span><span class="lineCov">     347430 :                                                 mono_bitset_set_fast (used, reg);</span>
+<span class="lineNum">    1003 </span><span class="lineCov">     173715 :                                         }</span>
+<span class="lineNum">    1004 </span><span class="lineCov">     110148 :                                 }</span>
+<span class="lineNum">    1005 </span><span class="lineCov">  181388855 :                         }</span>
+<span class="lineNum">    1006 </span><span class="lineCov"> 2686905501 :                 }</span>
+<span class="lineNum">    1007 </span><span class="lineCov">  314617432 :         }</span>
+<span class="lineNum">    1008 </span>            : 
+<span class="lineNum">    1009 </span>            :         //mono_print_code (cfg, &quot;AFTER LOCAL-DEADCE&quot;);
+<span class="lineNum">    1010 </span><span class="lineCov">   33870481 : }</span>
+<span class="lineNum">    1011 </span>            : 
+<span class="lineNum">    1012 </span>            : #else /* !DISABLE_JIT */
+<span class="lineNum">    1013 </span>            : 
+<span class="lineNum">    1014 </span>            : MONO_EMPTY_SOURCE_FILE (local_propagation);
+<span class="lineNum">    1015 </span>            : 
+<span class="lineNum">    1016 </span>            : #endif /* !DISABLE_JIT */
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

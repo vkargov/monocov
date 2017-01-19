@@ -1,0 +1,415 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/genmdesc.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - genmdesc.c<span style="font-size: 80%;"> (source / <a href="genmdesc.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">110</td>
+            <td class="headerCovTableEntry">186</td>
+            <td class="headerCovTableEntryLo">59.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">7</td>
+            <td class="headerCovTableEntry">8</td>
+            <td class="headerCovTableEntryMed">87.5 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * genmdesc: Generates the machine description
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *   Paolo Molaro (lupus@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2003 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">      10 </span>            : #include &lt;ctype.h&gt;
+<span class="lineNum">      11 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;mono/metadata/opcodes.h&gt;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #if defined(__native_client__) || defined(__native_client_codegen__)
+<span class="lineNum">      15 </span>            : volatile int __nacl_thread_suspension_needed = 0;
+<span class="lineNum">      16 </span>            : void __nacl_suspend_thread_if_needed() {}
+<span class="lineNum">      17 </span>            : #endif
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : #define MINI_OP(a,b,dest,src1,src2) b,
+<span class="lineNum">      20 </span>            : #define MINI_OP3(a,b,dest,src1,src2,src3) b,
+<span class="lineNum">      21 </span>            : /* keep in sync with the enum in mini.h */
+<span class="lineNum">      22 </span>            : static const char* const
+<span class="lineNum">      23 </span>            : opnames[] = {
+<span class="lineNum">      24 </span>            : #include &quot;mini-ops.h&quot;
+<span class="lineNum">      25 </span>            : };
+<span class="lineNum">      26 </span>            : #undef MINI_OP
+<span class="lineNum">      27 </span>            : #undef MINI_OP3
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : /*
+<span class="lineNum">      30 </span>            :  * Duplicate this from helpers.c, so the opcode name array can be omitted when 
+<span class="lineNum">      31 </span>            :  * DISABLE_JIT is set.
+<a name="32"><span class="lineNum">      32 </span>            :  */</a>
+<span class="lineNum">      33 </span>            : static const char*
+<span class="lineNum">      34 </span>            : inst_name (int op) {
+<span class="lineNum">      35 </span><span class="lineCov">       1732 :         if (op &gt;= OP_LOAD &amp;&amp; op &lt;= OP_LAST)</span>
+<span class="lineNum">      36 </span><span class="lineCov">        866 :                 return opnames [op - OP_LOAD];</span>
+<span class="lineNum">      37 </span><span class="lineNoCov">          0 :         if (op &lt; OP_LOAD)</span>
+<span class="lineNum">      38 </span><span class="lineNoCov">          0 :                 return mono_opcode_name (op);</span>
+<span class="lineNum">      39 </span><span class="lineNoCov">          0 :         g_error (&quot;unknown opcode name for %d&quot;, op);</span>
+<span class="lineNum">      40 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">      41 </span><span class="lineCov">        866 : }</span>
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : typedef struct {
+<span class="lineNum">      44 </span>            :         int num;
+<span class="lineNum">      45 </span>            :         const char *name;
+<span class="lineNum">      46 </span>            :         char *desc;
+<span class="lineNum">      47 </span>            :         char *comment;
+<span class="lineNum">      48 </span>            :         char spec [MONO_INST_MAX];
+<span class="lineNum">      49 </span>            : } OpDesc;
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : static int nacl = 0;
+<span class="lineNum">      52 </span>            : static GHashTable *table;
+<span class="lineNum">      53 </span>            : static GHashTable *template_table;
+<span class="lineNum">      54 </span>            : 
+<span class="lineNum">      55 </span>            : #define eat_whitespace(s) while (*(s) &amp;&amp; isspace (*(s))) s++;
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : // Per spec isalnum() expects input in the range 0-255
+<a name="58"><span class="lineNum">      58 </span>            : // and can misbehave if you pass in a signed char.</a>
+<span class="lineNum">      59 </span>            : static int
+<span class="lineNum">      60 </span>            : isalnum_char(char c)
+<span class="lineNum">      61 </span>            : {
+<span class="lineNum">      62 </span><span class="lineCov">       3828 :         return isalnum ((unsigned char)c);</span>
+<span class="lineNum">      63 </span>            : }
+<a name="64"><span class="lineNum">      64 </span>            : </a>
+<span class="lineNum">      65 </span>            : static int
+<span class="lineNum">      66 </span>            : load_file (const char *name) {
+<span class="lineNum">      67 </span>            :         FILE *f;
+<span class="lineNum">      68 </span>            :         char buf [256];
+<span class="lineNum">      69 </span>            :         char *str, *p;
+<span class="lineNum">      70 </span>            :         int line;
+<span class="lineNum">      71 </span>            :         OpDesc *desc;
+<span class="lineNum">      72 </span>            :         GString *comment;
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span><span class="lineCov">          1 :         if (!(f = fopen (name, &quot;r&quot;)))</span>
+<span class="lineNum">      75 </span><span class="lineNoCov">          0 :                 g_error (&quot;Cannot open file '%s'&quot;, name);</span>
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span><span class="lineCov">          1 :         comment = g_string_new (&quot;&quot;);</span>
+<span class="lineNum">      78 </span>            :         /*
+<span class="lineNum">      79 </span>            :          * The format of the lines are:
+<span class="lineNum">      80 </span>            :          * # comment
+<span class="lineNum">      81 </span>            :          * opcode: [dest:format] [src1:format] [src2:format] [flags:format] [clob:format] 
+<span class="lineNum">      82 </span>            :          *      [cost:num] [res:format] [delay:num] [len:num] [nacl:num]
+<span class="lineNum">      83 </span>            :          * format is a single letter that depends on the field
+<span class="lineNum">      84 </span>            :          * NOTE: no space between the field name and the ':'
+<span class="lineNum">      85 </span>            :          *
+<span class="lineNum">      86 </span>            :          * len: maximum instruction length
+<span class="lineNum">      87 </span>            :          */
+<span class="lineNum">      88 </span><span class="lineCov">          1 :         line = 0;</span>
+<span class="lineNum">      89 </span><span class="lineCov">       1434 :         while ((str = fgets (buf, sizeof (buf), f))) {</span>
+<span class="lineNum">      90 </span><span class="lineCov">        794 :                 gboolean is_template = FALSE;</span>
+<span class="lineNum">      91 </span><span class="lineCov">        794 :                 gboolean nacl_length_set = FALSE;</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span><span class="lineCov">        794 :                 ++line;</span>
+<span class="lineNum">      94 </span><span class="lineCov">       3464 :                 eat_whitespace (str);</span>
+<span class="lineNum">      95 </span><span class="lineCov">        794 :                 if (!str [0])</span>
+<span class="lineNum">      96 </span><span class="lineCov">         96 :                         continue;</span>
+<span class="lineNum">      97 </span><span class="lineCov">        698 :                 if (str [0] == '#') {</span>
+<span class="lineNum">      98 </span><span class="lineCov">         60 :                         g_string_append (comment, str);</span>
+<span class="lineNum">      99 </span><span class="lineCov">         60 :                         continue;</span>
+<span class="lineNum">     100 </span>            :                 }
+<span class="lineNum">     101 </span><span class="lineCov">        638 :                 p = strchr (str, ':');</span>
+<span class="lineNum">     102 </span><span class="lineCov">        638 :                 if (!p)</span>
+<span class="lineNum">     103 </span><span class="lineNoCov">          0 :                         g_error (&quot;Invalid format at line %d in %s\n&quot;, line, name);</span>
+<span class="lineNum">     104 </span><span class="lineCov">        638 :                 *p++ = 0;</span>
+<span class="lineNum">     105 </span><span class="lineCov">       5107 :                 eat_whitespace (p);</span>
+<span class="lineNum">     106 </span><span class="lineCov">        638 :                 if (strcmp (str, &quot;template&quot;) == 0) {</span>
+<span class="lineNum">     107 </span><span class="lineNoCov">          0 :                         is_template = TRUE;</span>
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :                         desc = g_new0 (OpDesc, 1);</span>
+<span class="lineNum">     109 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     110 </span><span class="lineCov">        638 :                         desc = (OpDesc *)g_hash_table_lookup (table, str);</span>
+<span class="lineNum">     111 </span><span class="lineCov">        638 :                         if (!desc)</span>
+<span class="lineNum">     112 </span><span class="lineNoCov">          0 :                                 g_error (&quot;Invalid opcode '%s' at line %d in %s\n&quot;, str, line, name);</span>
+<span class="lineNum">     113 </span><span class="lineCov">        638 :                         if (desc-&gt;desc)</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :                                 g_error (&quot;Duplicated opcode %s at line %d in %s\n&quot;, str, line, name);</span>
+<span class="lineNum">     115 </span>            :                 }
+<span class="lineNum">     116 </span><span class="lineCov">        638 :                 desc-&gt;desc = g_strdup (p);</span>
+<span class="lineNum">     117 </span><span class="lineCov">        638 :                 desc-&gt;comment = g_strdup (comment-&gt;str);</span>
+<span class="lineNum">     118 </span><span class="lineCov">        638 :                 g_string_truncate (comment, 0);</span>
+<span class="lineNum">     119 </span><span class="lineCov">       5604 :                 while (*p) {</span>
+<span class="lineNum">     120 </span><span class="lineCov">       2164 :                         if (strncmp (p, &quot;dest:&quot;, 5) == 0) {</span>
+<span class="lineNum">     121 </span><span class="lineCov">        483 :                                 desc-&gt;spec [MONO_INST_DEST] = p [5];</span>
+<span class="lineNum">     122 </span><span class="lineCov">        483 :                                 p += 6;</span>
+<span class="lineNum">     123 </span><span class="lineCov">       2164 :                         } else if (strncmp (p, &quot;src1:&quot;, 5) == 0) {</span>
+<span class="lineNum">     124 </span><span class="lineCov">        504 :                                 desc-&gt;spec [MONO_INST_SRC1] = p [5];</span>
+<span class="lineNum">     125 </span><span class="lineCov">        504 :                                 p += 6;</span>
+<span class="lineNum">     126 </span><span class="lineCov">       1681 :                         } else if (strncmp (p, &quot;src2:&quot;, 5) == 0) {</span>
+<span class="lineNum">     127 </span><span class="lineCov">        252 :                                 desc-&gt;spec [MONO_INST_SRC2] = p [5];</span>
+<span class="lineNum">     128 </span><span class="lineCov">        252 :                                 p += 6;</span>
+<span class="lineNum">     129 </span><span class="lineCov">       1177 :                         } else if (strncmp (p, &quot;src3:&quot;, 5) == 0) {</span>
+<span class="lineNum">     130 </span><span class="lineCov">          2 :                                 desc-&gt;spec [MONO_INST_SRC3] = p [5];</span>
+<span class="lineNum">     131 </span><span class="lineCov">          2 :                                 p += 6;</span>
+<span class="lineNum">     132 </span><span class="lineCov">        925 :                         } else if (strncmp (p, &quot;clob:&quot;, 5) == 0) {</span>
+<span class="lineNum">     133 </span><span class="lineCov">        286 :                                 desc-&gt;spec [MONO_INST_CLOB] = p [5];</span>
+<span class="lineNum">     134 </span><span class="lineCov">        286 :                                 p += 6;</span>
+<span class="lineNum">     135 </span>            :                                 /* Currently unused fields
+<span class="lineNum">     136 </span>            :                         } else if (strncmp (p, &quot;cost:&quot;, 5) == 0) {
+<span class="lineNum">     137 </span>            :                                 desc-&gt;spec [MONO_INST_COST] = p [5];
+<span class="lineNum">     138 </span>            :                                 p += 6;
+<span class="lineNum">     139 </span>            :                         } else if (strncmp (p, &quot;res:&quot;, 4) == 0) {
+<span class="lineNum">     140 </span>            :                                 desc-&gt;spec [MONO_INST_RES] = p [4];
+<span class="lineNum">     141 </span>            :                                 p += 5;
+<span class="lineNum">     142 </span>            :                         } else if (strncmp (p, &quot;flags:&quot;, 6) == 0) {
+<span class="lineNum">     143 </span>            :                                 desc-&gt;spec [MONO_INST_FLAGS] = p [6];
+<span class="lineNum">     144 </span>            :                                 p += 7;
+<span class="lineNum">     145 </span>            :                         } else if (strncmp (p, &quot;delay:&quot;, 6) == 0) {
+<span class="lineNum">     146 </span>            :                                 desc-&gt;spec [MONO_INST_DELAY] = p [6];
+<span class="lineNum">     147 </span>            :                                 p += 7;
+<span class="lineNum">     148 </span>            :                                 */
+<span class="lineNum">     149 </span><span class="lineCov">        923 :                         } else if (strncmp (p, &quot;len:&quot;, 4) == 0) {</span>
+<span class="lineNum">     150 </span>            :                                 unsigned long size;
+<span class="lineNum">     151 </span>            :                                 char* endptr;
+<span class="lineNum">     152 </span><span class="lineCov">        637 :                                 p += 4;</span>
+<span class="lineNum">     153 </span><span class="lineCov">        637 :                                 size = strtoul (p, &amp;endptr, 10);</span>
+<span class="lineNum">     154 </span><span class="lineCov">        652 :                                 if (size == 0 &amp;&amp; p == endptr)</span>
+<span class="lineNum">     155 </span><span class="lineNoCov">          0 :                                         g_error (&quot;Invalid length '%s' at line %d in %s\n&quot;, p, line, name);</span>
+<span class="lineNum">     156 </span><span class="lineCov">        637 :                                 p = endptr;</span>
+<span class="lineNum">     157 </span><span class="lineCov">        637 :                                 if (!nacl_length_set) {</span>
+<span class="lineNum">     158 </span><span class="lineCov">        637 :                                         desc-&gt;spec [MONO_INST_LEN] = size;</span>
+<span class="lineNum">     159 </span><span class="lineCov">        637 :                                 }</span>
+<span class="lineNum">     160 </span><span class="lineCov">        637 :                         } else if (strncmp (p, &quot;nacl:&quot;, 5) == 0) {</span>
+<span class="lineNum">     161 </span>            :                                 unsigned long size;
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :                                 p += 5;</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :                                 size = strtoul (p, &amp;p, 10);</span>
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :                                 if (nacl) {</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :                                         desc-&gt;spec [MONO_INST_LEN] = size;</span>
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :                                         nacl_length_set = TRUE;</span>
+<span class="lineNum">     167 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     168 </span><span class="lineNoCov">          0 :                         } else if (strncmp (p, &quot;template:&quot;, 9) == 0) {</span>
+<span class="lineNum">     169 </span>            :                                 char *tname;
+<span class="lineNum">     170 </span>            :                                 int i;
+<span class="lineNum">     171 </span>            :                                 OpDesc *tdesc;
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :                                 p += 9;</span>
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :                                 tname = p;</span>
+<span class="lineNum">     174 </span><span class="lineNoCov">          0 :                                 while (*p &amp;&amp; isalnum_char (*p)) ++p;</span>
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :                                 *p++ = 0;</span>
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :                                 tdesc = (OpDesc *)g_hash_table_lookup (template_table, tname);</span>
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :                                 if (!tdesc)</span>
+<span class="lineNum">     178 </span><span class="lineNoCov">          0 :                                         g_error (&quot;Invalid template name %s at '%s' at line %d in %s\n&quot;, tname, p, line, name);</span>
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :                                 for (i = 0; i &lt; MONO_INST_MAX; ++i) {</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :                                         if (desc-&gt;spec [i])</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :                                                 g_error (&quot;The template overrides any previous value set at line %d in %s\n&quot;, line, name);</span>
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">     183 </span><span class="lineNoCov">          0 :                                 memcpy (desc-&gt;spec, tdesc-&gt;spec, sizeof (desc-&gt;spec));</span>
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :                         } else if (strncmp (p, &quot;name:&quot;, 5) == 0) {</span>
+<span class="lineNum">     185 </span>            :                                 char *tname;
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 :                                 if (!is_template)</span>
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :                                         g_error (&quot;name tag only valid in templates at '%s' at line %d in %s\n&quot;, p, line, name);</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :                                 if (desc-&gt;name)</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :                                         g_error (&quot;Duplicated name tag in template %s at '%s' at line %d in %s\n&quot;, desc-&gt;name, p, line, name);</span>
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 :                                 p += 5;</span>
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :                                 tname = p;</span>
+<span class="lineNum">     192 </span><span class="lineNoCov">          0 :                                 while (*p &amp;&amp; isalnum_char (*p)) ++p;</span>
+<span class="lineNum">     193 </span><span class="lineNoCov">          0 :                                 *p++ = 0;</span>
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 :                                 if (g_hash_table_lookup (template_table, tname))</span>
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :                                         g_error (&quot;Duplicated template %s at line %d in %s\n&quot;, tname, line, name);</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :                                 desc-&gt;name = g_strdup (tname);</span>
+<span class="lineNum">     197 </span><span class="lineNoCov">          0 :                                 g_hash_table_insert (template_table, (void*)desc-&gt;name, desc);</span>
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :                                 g_error (&quot;Parse error at '%s' at line %d in %s\n&quot;, p, line, name);</span>
+<span class="lineNum">     200 </span>            :                         }
+<span class="lineNum">     201 </span><span class="lineCov">      16699 :                         eat_whitespace (p);</span>
+<span class="lineNum">     202 </span>            :                 }
+<span class="lineNum">     203 </span><span class="lineCov">        638 :                 if (is_template &amp;&amp; !desc-&gt;name)</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :                         g_error (&quot;Template without name at line %d in %s\n&quot;, line, name);</span>
+<span class="lineNum">     205 </span>            :         }
+<span class="lineNum">     206 </span><span class="lineCov">          1 :         g_string_free (comment,TRUE);</span>
+<span class="lineNum">     207 </span><span class="lineCov">          1 :         fclose (f);</span>
+<span class="lineNum">     208 </span><span class="lineCov">          1 :         return 0;</span>
+<span class="lineNum">     209 </span>            : }
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span>            : static OpDesc *opcodes = NULL;
+<a name="212"><span class="lineNum">     212 </span>            : </a>
+<span class="lineNum">     213 </span>            : static void
+<span class="lineNum">     214 </span>            : init_table (void) {
+<span class="lineNum">     215 </span>            :         int i;
+<span class="lineNum">     216 </span>            :         OpDesc *desc;
+<span class="lineNum">     217 </span>            : 
+<span class="lineNum">     218 </span><span class="lineCov">          1 :         template_table = g_hash_table_new (g_str_hash, g_str_equal);</span>
+<span class="lineNum">     219 </span><span class="lineCov">          1 :         table = g_hash_table_new (g_str_hash, g_str_equal);</span>
+<span class="lineNum">     220 </span>            : 
+<span class="lineNum">     221 </span><span class="lineCov">          1 :         opcodes = g_new0 (OpDesc, OP_LAST);</span>
+<span class="lineNum">     222 </span><span class="lineCov">       1734 :         for (i = OP_LOAD; i &lt; OP_LAST; ++i) {</span>
+<span class="lineNum">     223 </span><span class="lineCov">        866 :                 desc = opcodes + i;</span>
+<span class="lineNum">     224 </span><span class="lineCov">        866 :                 desc-&gt;num = i;</span>
+<span class="lineNum">     225 </span><span class="lineCov">        866 :                 desc-&gt;name = inst_name (i);</span>
+<span class="lineNum">     226 </span><span class="lineCov">        866 :                 g_hash_table_insert (table, (char *)desc-&gt;name, desc);</span>
+<span class="lineNum">     227 </span><span class="lineCov">        866 :         }</span>
+<span class="lineNum">     228 </span><span class="lineCov">          1 : }</span>
+<a name="229"><span class="lineNum">     229 </span>            : </a>
+<span class="lineNum">     230 </span>            : static void
+<span class="lineNum">     231 </span>            : output_char (FILE *f, char c) {
+<span class="lineNum">     232 </span><span class="lineCov">       3828 :         if (isalnum_char (c))</span>
+<span class="lineNum">     233 </span><span class="lineCov">       1541 :                 fprintf (f, &quot;%c&quot;, c);</span>
+<span class="lineNum">     234 </span>            :         else
+<span class="lineNum">     235 </span><span class="lineCov">       2287 :                 fprintf (f, &quot;\\x%x\&quot; \&quot;&quot;, (guint8)c);</span>
+<span class="lineNum">     236 </span><span class="lineCov">       3828 : }</span>
+<a name="237"><span class="lineNum">     237 </span>            : </a>
+<span class="lineNum">     238 </span>            : static void
+<span class="lineNum">     239 </span>            : build_table (const char *fname, const char *name) {
+<span class="lineNum">     240 </span>            :         FILE *f;
+<span class="lineNum">     241 </span>            :         int i, j, idx;
+<span class="lineNum">     242 </span>            :         OpDesc *desc;
+<span class="lineNum">     243 </span><span class="lineCov">          1 :         GString *idx_array =  g_string_new (&quot;&quot;);</span>
+<span class="lineNum">     244 </span>            :         /* use this to remove duplicates */
+<span class="lineNum">     245 </span><span class="lineCov">          1 :         GHashTable *desc_ht = g_hash_table_new (g_str_hash, g_str_equal);</span>
+<span class="lineNum">     246 </span>            : 
+<span class="lineNum">     247 </span><span class="lineCov">          1 :         if (!(f = fopen (fname, &quot;w&quot;)))</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :                 g_error (&quot;Cannot open file '%s'&quot;, fname);</span>
+<span class="lineNum">     249 </span><span class="lineCov">          1 :         fprintf (f, &quot;/* File automatically generated by genmdesc, don't change */\n\n&quot;);</span>
+<span class="lineNum">     250 </span><span class="lineCov">          1 :         fprintf (f, &quot;const char mono_%s [] = {\n&quot;, name);</span>
+<span class="lineNum">     251 </span><span class="lineCov">          1 :         fprintf (f, &quot;\t\&quot;&quot;);</span>
+<span class="lineNum">     252 </span><span class="lineCov">         14 :         for (j = 0; j &lt; MONO_INST_MAX; ++j)</span>
+<span class="lineNum">     253 </span><span class="lineCov">          6 :                 fprintf (f, &quot;\\x0&quot;);</span>
+<span class="lineNum">     254 </span><span class="lineCov">          1 :         fprintf (f, &quot;\&quot;\t/* null entry */\n&quot;);</span>
+<span class="lineNum">     255 </span><span class="lineCov">          1 :         idx = 1;</span>
+<span class="lineNum">     256 </span><span class="lineCov">          1 :         g_string_append_printf (idx_array, &quot;const guint16 mono_%s_idx [] = {\n&quot;, name);</span>
+<span class="lineNum">     257 </span>            : 
+<span class="lineNum">     258 </span><span class="lineCov">       1734 :         for (i = OP_LOAD; i &lt; OP_LAST; ++i) {</span>
+<span class="lineNum">     259 </span><span class="lineCov">        866 :                 desc = opcodes + i;</span>
+<span class="lineNum">     260 </span><span class="lineCov">        866 :                 if (!desc-&gt;desc)</span>
+<span class="lineNum">     261 </span><span class="lineCov">        684 :                         g_string_append_printf (idx_array, &quot;\t0,\t/* %s */\n&quot;, desc-&gt;name ? desc-&gt;name : &quot;&quot;);</span>
+<span class="lineNum">     262 </span>            :                 else {
+<span class="lineNum">     263 </span><span class="lineCov">        638 :                         fprintf (f, &quot;\t\&quot;&quot;);</span>
+<span class="lineNum">     264 </span><span class="lineCov">       8932 :                         for (j = 0; j &lt; MONO_INST_MAX; ++j)</span>
+<span class="lineNum">     265 </span><span class="lineCov">       3828 :                                 output_char (f, desc-&gt;spec [j]);</span>
+<span class="lineNum">     266 </span><span class="lineCov">        638 :                         fprintf (f, &quot;\&quot;\t/* %s */\n&quot;, desc-&gt;name);</span>
+<span class="lineNum">     267 </span><span class="lineCov">        638 :                         g_string_append_printf (idx_array, &quot;\t%d,\t/* %s */\n&quot;, idx * MONO_INST_MAX, desc-&gt;name);</span>
+<span class="lineNum">     268 </span><span class="lineCov">        638 :                         ++idx;</span>
+<span class="lineNum">     269 </span>            :                 }
+<span class="lineNum">     270 </span><span class="lineCov">        866 :         }</span>
+<span class="lineNum">     271 </span><span class="lineCov">          1 :         fprintf (f, &quot;};\n\n&quot;);</span>
+<span class="lineNum">     272 </span><span class="lineCov">          1 :         fprintf (f, &quot;%s};\n\n&quot;, idx_array-&gt;str);</span>
+<span class="lineNum">     273 </span><span class="lineCov">          1 :         fclose (f);</span>
+<span class="lineNum">     274 </span><span class="lineCov">          1 :         g_string_free (idx_array, TRUE);</span>
+<span class="lineNum">     275 </span><span class="lineCov">          1 :         g_hash_table_destroy (desc_ht);</span>
+<span class="lineNum">     276 </span><span class="lineCov">          1 : }</span>
+<a name="277"><span class="lineNum">     277 </span>            : </a>
+<span class="lineNum">     278 </span>            : static void
+<span class="lineNum">     279 </span>            : dump (void) {
+<span class="lineNum">     280 </span>            :         int i;
+<span class="lineNum">     281 </span>            :         OpDesc *desc;
+<span class="lineNum">     282 </span>            :         
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; MONO_CEE_LAST; ++i) {</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                 desc = opcodes + i;</span>
+<span class="lineNum">     285 </span><span class="lineNoCov">          0 :                 if (desc-&gt;comment)</span>
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :                         g_print (&quot;%s&quot;, desc-&gt;comment);</span>
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :                 if (!desc-&gt;desc)</span>
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :                         g_print (&quot;%s:\n&quot;, desc-&gt;name);</span>
+<span class="lineNum">     289 </span>            :                 else {
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :                         g_print (&quot;%s: %s&quot;, desc-&gt;name, desc-&gt;desc);</span>
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :                         if (!strchr (desc-&gt;desc, '\n'))</span>
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :                                 g_print (&quot;\n&quot;);</span>
+<span class="lineNum">     293 </span>            :                 }
+<span class="lineNum">     294 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     295 </span><span class="lineNoCov">          0 :         for (i = OP_LOAD; i &lt; OP_LAST; ++i) {</span>
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :                 desc = opcodes + i;</span>
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 :                 if (!desc-&gt;desc)</span>
+<span class="lineNum">     298 </span><span class="lineNoCov">          0 :                         g_print (&quot;%s:\n&quot;, desc-&gt;name);</span>
+<span class="lineNum">     299 </span>            :                 else {
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :                         g_print (&quot;%s: %s&quot;, desc-&gt;name, desc-&gt;desc);</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :                         if (!strchr (desc-&gt;desc, '\n'))</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :                                 g_print (&quot;\n&quot;);</span>
+<span class="lineNum">     303 </span>            :                 }
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     306 </span>            : 
+<span class="lineNum">     307 </span>            : /*
+<span class="lineNum">     308 </span>            :  * TODO: output the table (possibly merged), in the input format 
+<a name="309"><span class="lineNum">     309 </span>            :  */</a>
+<span class="lineNum">     310 </span>            : int 
+<span class="lineNum">     311 </span>            : main (int argc, char* argv [])
+<span class="lineNum">     312 </span>            : {
+<span class="lineNum">     313 </span><span class="lineCov">          1 :         init_table ();</span>
+<span class="lineNum">     314 </span><span class="lineCov">          1 :         if (argc == 2) {</span>
+<span class="lineNum">     315 </span>            :                 /* useful to get a new file when some opcodes are added: looses the comments, though */
+<span class="lineNum">     316 </span><span class="lineNoCov">          0 :                 load_file (argv [1]);</span>
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :                 dump ();</span>
+<span class="lineNum">     318 </span><span class="lineCov">          1 :         } else if (argc &lt; 4) {</span>
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :                 g_print (&quot;Usage: genmdesc arguments\n&quot;);</span>
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                 g_print (&quot;\tgenmdesc desc     Output to stdout the description file.\n&quot;);</span>
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :                 g_print (&quot;\tgenmdesc [--nacl] output name desc [desc1...]\n&quot;</span>
+<span class="lineNum">     322 </span>            :                         &quot;                     Write to output the description in a table named 'name',\n&quot;
+<span class="lineNum">     323 </span>            :                         &quot;                     use --nacl to generate Google NativeClient code\n&quot;);
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :                 return 1;</span>
+<span class="lineNum">     325 </span>            :         } else {
+<span class="lineNum">     326 </span><span class="lineCov">          1 :                 int i = 3;</span>
+<span class="lineNum">     327 </span><span class="lineCov">          1 :                 if (strcmp (argv [1], &quot;--nacl&quot;) == 0) {</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :                         nacl = 1;</span>
+<span class="lineNum">     329 </span><span class="lineNoCov">          0 :                         i++;</span>
+<span class="lineNum">     330 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     331 </span>            :                 
+<span class="lineNum">     332 </span><span class="lineCov">          4 :                 for (; i &lt; argc; ++i)</span>
+<span class="lineNum">     333 </span><span class="lineCov">          1 :                         load_file (argv [i]);</span>
+<span class="lineNum">     334 </span>            :                 
+<span class="lineNum">     335 </span><span class="lineCov">          1 :                 build_table (argv [1 + nacl], argv [2 + nacl]);</span>
+<span class="lineNum">     336 </span>            :         }
+<span class="lineNum">     337 </span><span class="lineCov">          1 :         return 0;</span>
+<span class="lineNum">     338 </span><span class="lineCov">          1 : }</span>
+<span class="lineNum">     339 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

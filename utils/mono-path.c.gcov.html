@@ -1,0 +1,254 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-path.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-path.c<span style="font-size: 80%;"> (source / <a href="mono-path.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">73</td>
+            <td class="headerCovTableEntry">75</td>
+            <td class="headerCovTableEntryHi">97.3 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntry">3</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * mono-path.c: Routines for handling path names.
+<span class="lineNum">       3 </span>            :  * 
+<span class="lineNum">       4 </span>            :  * Authors:
+<span class="lineNum">       5 </span>            :  *      Gonzalo Paniagua Javier (gonzalo@novell.com)
+<span class="lineNum">       6 </span>            :  *      Miguel de Icaza (miguel@novell.com)
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * (C) 2006 Novell, Inc.  http://www.novell.com
+<span class="lineNum">       9 </span>            :  *
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      15 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      16 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">      17 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      18 </span>            : #endif
+<span class="lineNum">      19 </span>            : /* This is only needed for the mono_path_canonicalize code, MAXSYMLINKS, could be moved */
+<span class="lineNum">      20 </span>            : #ifdef HAVE_SYS_PARAM_H
+<span class="lineNum">      21 </span>            : #include &lt;sys/param.h&gt;
+<span class="lineNum">      22 </span>            : #endif
+<span class="lineNum">      23 </span>            : 
+<span class="lineNum">      24 </span>            : #include &quot;mono-path.h&quot;
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : /* Embedded systems lack MAXSYMLINKS */
+<span class="lineNum">      27 </span>            : #ifndef MAXSYMLINKS
+<span class="lineNum">      28 </span>            : #define MAXSYMLINKS 3
+<span class="lineNum">      29 </span>            : #endif
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : /* Resolves '..' and '.' references in a path. If the path provided is relative,
+<span class="lineNum">      32 </span>            :  * it will be relative to the current directory */
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : /* For Native Client, the above is not true.  Since there is no getcwd we fill */
+<span class="lineNum">      35 </span>            : /* in the file being passed in relative to '.' and don't resolve it            */
+<span class="lineNum">      36 </span>            : 
+<a name="37"><span class="lineNum">      37 </span>            : /* There are a couple of tests for this method in mono/test/mono-path.cs */</a>
+<span class="lineNum">      38 </span>            : gchar *
+<span class="lineNum">      39 </span>            : mono_path_canonicalize (const char *path)
+<span class="lineNum">      40 </span>            : {
+<span class="lineNum">      41 </span>            :         gchar *abspath, *pos, *lastpos, *dest;
+<span class="lineNum">      42 </span>            :         int backc;
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span><span class="lineCov">     775410 :         if (g_path_is_absolute (path)) {</span>
+<span class="lineNum">      45 </span><span class="lineCov">     766092 :                 abspath = g_strdup (path);</span>
+<span class="lineNum">      46 </span><span class="lineCov">     766092 :         } else {</span>
+<span class="lineNum">      47 </span><span class="lineCov">       9321 :                 gchar *tmpdir = g_get_current_dir ();</span>
+<span class="lineNum">      48 </span><span class="lineCov">       9321 :                 abspath = g_build_filename (tmpdir, path, NULL);</span>
+<span class="lineNum">      49 </span><span class="lineCov">       9321 :                 g_free (tmpdir);</span>
+<span class="lineNum">      50 </span>            :         }
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span>            : #ifdef HOST_WIN32
+<span class="lineNum">      53 </span>            :         g_strdelimit (abspath, &quot;/&quot;, '\\');
+<span class="lineNum">      54 </span>            : #endif
+<span class="lineNum">      55 </span><span class="lineCov">     775433 :         abspath = g_strreverse (abspath);</span>
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span><span class="lineCov">     775433 :         backc = 0;</span>
+<span class="lineNum">      58 </span><span class="lineCov">     775433 :         dest = lastpos = abspath;</span>
+<span class="lineNum">      59 </span><span class="lineCov">     775433 :         pos = strchr (lastpos, G_DIR_SEPARATOR);</span>
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span><span class="lineCov">   11625222 :         while (pos != NULL) {</span>
+<span class="lineNum">      62 </span><span class="lineCov">    5037160 :                 int len = pos - lastpos;</span>
+<span class="lineNum">      63 </span><span class="lineCov">    5040478 :                 if (len == 1 &amp;&amp; lastpos [0] == '.') {</span>
+<span class="lineNum">      64 </span>            :                         // nop
+<span class="lineNum">      65 </span><span class="lineCov">    5052709 :                 } else if (len == 2 &amp;&amp; lastpos [0] == '.' &amp;&amp; lastpos [1] == '.') {</span>
+<span class="lineNum">      66 </span><span class="lineCov">       7649 :                         backc++;</span>
+<span class="lineNum">      67 </span><span class="lineCov">    5033927 :                 } else if (len &gt; 0) {</span>
+<span class="lineNum">      68 </span><span class="lineCov">    4955321 :                         if (backc &gt; 0) {</span>
+<span class="lineNum">      69 </span><span class="lineCov">       7635 :                                 backc--;</span>
+<span class="lineNum">      70 </span><span class="lineCov">       7635 :                         } else {</span>
+<span class="lineNum">      71 </span><span class="lineCov">    4947912 :                                 if (dest != lastpos) </span>
+<span class="lineNum">      72 </span>            :                                         /* The two strings can overlap */
+<span class="lineNum">      73 </span><span class="lineCov">     592306 :                                         memmove (dest, lastpos, len + 1);</span>
+<span class="lineNum">      74 </span><span class="lineCov">    4947670 :                                 dest += len + 1;</span>
+<span class="lineNum">      75 </span>            :                         }
+<span class="lineNum">      76 </span><span class="lineCov">    4955324 :                 }</span>
+<span class="lineNum">      77 </span><span class="lineCov">    5037220 :                 lastpos = pos + 1;</span>
+<span class="lineNum">      78 </span><span class="lineCov">    5037220 :                 pos = strchr (lastpos, G_DIR_SEPARATOR);</span>
+<span class="lineNum">      79 </span>            :         }
+<span class="lineNum">      80 </span>            : 
+<span class="lineNum">      81 </span>            : #ifdef HOST_WIN32
+<span class="lineNum">      82 </span>            :         /* Avoid removing the first '\' for UNC paths. We must make sure that it's indeed an UNC path
+<span class="lineNum">      83 </span>            :         by checking if the \\ pair happens exactly at the end of the string.
+<span class="lineNum">      84 </span>            :         */
+<span class="lineNum">      85 </span>            :         if (*(lastpos-1) == G_DIR_SEPARATOR &amp;&amp; *(lastpos-2) == G_DIR_SEPARATOR &amp;&amp; *lastpos == 0)
+<span class="lineNum">      86 </span>            :                 lastpos = lastpos-1;
+<span class="lineNum">      87 </span>            : #endif
+<span class="lineNum">      88 </span>            :         
+<span class="lineNum">      89 </span><span class="lineCov">     850930 :         if (dest != lastpos) strcpy (dest, lastpos);</span>
+<span class="lineNum">      90 </span>            :         
+<span class="lineNum">      91 </span><span class="lineCov">     775447 :         g_strreverse (abspath);</span>
+<span class="lineNum">      92 </span>            : 
+<span class="lineNum">      93 </span>            :         /* We strip away all trailing dir separators. This is not correct for the root directory,
+<span class="lineNum">      94 </span>            :          * since we'll return an empty string, so re-append a dir separator if there is none in the
+<span class="lineNum">      95 </span>            :          * result */
+<span class="lineNum">      96 </span><span class="lineCov">     775447 :         if (strchr (abspath, G_DIR_SEPARATOR) == NULL) {</span>
+<span class="lineNum">      97 </span><span class="lineCov">          8 :                 int len = strlen (abspath);</span>
+<span class="lineNum">      98 </span><span class="lineCov">          8 :                 abspath = (gchar *) g_realloc (abspath, len + 2);</span>
+<span class="lineNum">      99 </span><span class="lineCov">          8 :                 abspath [len] = G_DIR_SEPARATOR;</span>
+<span class="lineNum">     100 </span><span class="lineCov">          8 :                 abspath [len+1] = 0;</span>
+<span class="lineNum">     101 </span><span class="lineCov">          8 :         }</span>
+<span class="lineNum">     102 </span>            : 
+<span class="lineNum">     103 </span><span class="lineCov">     775444 :         return abspath;</span>
+<span class="lineNum">     104 </span>            : }
+<span class="lineNum">     105 </span>            : 
+<span class="lineNum">     106 </span>            : /*
+<span class="lineNum">     107 </span>            :  * This ensures that the path that we store points to the final file
+<span class="lineNum">     108 </span>            :  * not a path to a symlink.
+<span class="lineNum">     109 </span>            :  */
+<a name="110"><span class="lineNum">     110 </span>            : #if !defined(PLATFORM_NO_SYMLINKS)</a>
+<span class="lineNum">     111 </span>            : static gchar *
+<span class="lineNum">     112 </span>            : resolve_symlink (const char *path)
+<span class="lineNum">     113 </span>            : {
+<span class="lineNum">     114 </span>            :         char *p, *concat, *dir;
+<span class="lineNum">     115 </span>            :         char buffer [PATH_MAX+1];
+<span class="lineNum">     116 </span><span class="lineCov">     542448 :         int n, iterations = 0;</span>
+<span class="lineNum">     117 </span>            : 
+<span class="lineNum">     118 </span><span class="lineCov">     542448 :         p = g_strdup (path);</span>
+<span class="lineNum">     119 </span><span class="lineCov">     542448 :         do {</span>
+<span class="lineNum">     120 </span><span class="lineCov">     558792 :                 iterations++;</span>
+<span class="lineNum">     121 </span><span class="lineCov">     558792 :                 n = readlink (p, buffer, sizeof (buffer)-1);</span>
+<span class="lineNum">     122 </span><span class="lineCov">     558792 :                 if (n &lt; 0){</span>
+<span class="lineNum">     123 </span><span class="lineCov">     542445 :                         char *copy = p;</span>
+<span class="lineNum">     124 </span><span class="lineCov">     542445 :                         p = mono_path_canonicalize (copy);</span>
+<span class="lineNum">     125 </span><span class="lineCov">     542445 :                         g_free (copy);</span>
+<span class="lineNum">     126 </span><span class="lineCov">     542445 :                         return p;</span>
+<span class="lineNum">     127 </span>            :                 }
+<span class="lineNum">     128 </span>            :                 
+<span class="lineNum">     129 </span><span class="lineCov">      16344 :                 buffer [n] = 0;</span>
+<span class="lineNum">     130 </span><span class="lineCov">      16344 :                 if (!g_path_is_absolute (buffer)) {</span>
+<span class="lineNum">     131 </span><span class="lineCov">      16344 :                         dir = g_path_get_dirname (p);</span>
+<span class="lineNum">     132 </span><span class="lineCov">      16344 :                         concat = g_build_filename (dir, buffer, NULL);</span>
+<span class="lineNum">     133 </span><span class="lineCov">      16344 :                         g_free (dir);</span>
+<span class="lineNum">     134 </span><span class="lineCov">      16344 :                 } else {</span>
+<span class="lineNum">     135 </span><span class="lineNoCov">          0 :                         concat = g_strdup (buffer);</span>
+<span class="lineNum">     136 </span>            :                 }
+<span class="lineNum">     137 </span><span class="lineCov">      16344 :                 g_free (p);</span>
+<span class="lineNum">     138 </span><span class="lineCov">      16344 :                 p = mono_path_canonicalize (concat);</span>
+<span class="lineNum">     139 </span><span class="lineCov">      16344 :                 g_free (concat);</span>
+<span class="lineNum">     140 </span><span class="lineCov">      32688 :         } while (iterations &lt; MAXSYMLINKS);</span>
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :         return p;</span>
+<span class="lineNum">     143 </span><span class="lineCov">     542447 : }</span>
+<span class="lineNum">     144 </span>            : #endif
+<a name="145"><span class="lineNum">     145 </span>            : </a>
+<span class="lineNum">     146 </span>            : gchar *
+<span class="lineNum">     147 </span>            : mono_path_resolve_symlinks (const char *path)
+<span class="lineNum">     148 </span>            : {
+<span class="lineNum">     149 </span>            : #if defined(PLATFORM_NO_SYMLINKS)
+<span class="lineNum">     150 </span>            :         return mono_path_canonicalize (path);
+<span class="lineNum">     151 </span>            : #else
+<span class="lineNum">     152 </span><span class="lineCov">      62080 :         gchar **split = g_strsplit (path, G_DIR_SEPARATOR_S, -1);</span>
+<span class="lineNum">     153 </span><span class="lineCov">      62080 :         gchar *p = g_strdup (&quot;&quot;);</span>
+<span class="lineNum">     154 </span>            :         int i;
+<span class="lineNum">     155 </span>            : 
+<span class="lineNum">     156 </span><span class="lineCov">    1377695 :         for (i = 0; split [i] != NULL; i++) {</span>
+<span class="lineNum">     157 </span><span class="lineCov">     626774 :                 gchar *tmp = NULL;</span>
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span>            :                 // resolve_symlink of &quot;&quot; goes into canonicalize which resolves to cwd
+<span class="lineNum">     160 </span><span class="lineCov">     626774 :                 if (strcmp (split [i], &quot;&quot;) != 0) {</span>
+<span class="lineNum">     161 </span><span class="lineCov">     542456 :                         tmp = g_strdup_printf (&quot;%s%s&quot;, p, split [i]);</span>
+<span class="lineNum">     162 </span><span class="lineCov">     542456 :                         g_free (p);</span>
+<span class="lineNum">     163 </span><span class="lineCov">     542456 :                         p = resolve_symlink (tmp);</span>
+<span class="lineNum">     164 </span><span class="lineCov">     542456 :                         g_free (tmp);</span>
+<span class="lineNum">     165 </span><span class="lineCov">     542456 :                 }</span>
+<span class="lineNum">     166 </span>            : 
+<span class="lineNum">     167 </span><span class="lineCov">     626769 :                 if (split [i+1] != NULL) {</span>
+<span class="lineNum">     168 </span><span class="lineCov">     564692 :                         tmp = g_strdup_printf (&quot;%s%s&quot;, p, G_DIR_SEPARATOR_S);</span>
+<span class="lineNum">     169 </span><span class="lineCov">     564692 :                         g_free (p);</span>
+<span class="lineNum">     170 </span><span class="lineCov">     564692 :                         p = tmp;</span>
+<span class="lineNum">     171 </span><span class="lineCov">     564692 :                 }</span>
+<span class="lineNum">     172 </span><span class="lineCov">     626768 :         }</span>
+<span class="lineNum">     173 </span>            : 
+<span class="lineNum">     174 </span><span class="lineCov">      62079 :         g_strfreev (split);</span>
+<span class="lineNum">     175 </span><span class="lineCov">      62079 :         return p;</span>
+<span class="lineNum">     176 </span>            : #endif
+<span class="lineNum">     177 </span>            : }
+<span class="lineNum">     178 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - mini/mini-cross-helpers.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">mini</a> - mini-cross-helpers.c<span style="font-size: 80%;"> (source / <a href="mini-cross-helpers.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">39</td>
+            <td class="headerCovTableEntryLo">5.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">1</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntryLo">50.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : #include &quot;config.h&quot;</a>
+<span class="lineNum">       2 </span>            : 
+<span class="lineNum">       3 </span>            : #include &lt;stdio.h&gt;
+<span class="lineNum">       4 </span>            : 
+<span class="lineNum">       5 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">       6 </span>            : 
+<span class="lineNum">       7 </span>            : #include &quot;mini.h&quot;
+<span class="lineNum">       8 </span>            : #include &quot;tasklets.h&quot;
+<span class="lineNum">       9 </span>            : #include &lt;mono/metadata/abi-details.h&gt;
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : void
+<span class="lineNum">      12 </span>            : mono_dump_metadata_offsets (void);
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : void
+<span class="lineNum">      15 </span>            : mono_metadata_cross_helpers_run (void);
+<span class="lineNum">      16 </span>            : 
+<a name="17"><span class="lineNum">      17 </span>            : </a>
+<span class="lineNum">      18 </span>            : static void
+<span class="lineNum">      19 </span>            : mono_dump_jit_offsets (void)
+<span class="lineNum">      20 </span>            : {
+<span class="lineNum">      21 </span>            : #ifdef USED_CROSS_COMPILER_OFFSETS
+<span class="lineNum">      22 </span>            :         g_print (&quot;#error not using native offsets\n&quot;);
+<span class="lineNum">      23 </span>            : #else
+<span class="lineNum">      24 </span><span class="lineNoCov">          0 :         mono_dump_metadata_offsets ();</span>
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span><span class="lineNoCov">          0 :         g_print (&quot;#ifndef DISABLE_JIT_OFFSETS\n&quot;);</span>
+<span class="lineNum">      27 </span><span class="lineNoCov">          0 :         g_print (&quot;#define USED_CROSS_COMPILER_OFFSETS\n&quot;);</span>
+<span class="lineNum">      28 </span>            : #define DISABLE_METADATA_OFFSETS
+<span class="lineNum">      29 </span>            : #define DECL_OFFSET2(struct,field,offset) this_should_not_happen
+<span class="lineNum">      30 </span>            : #define DECL_ALIGN2(type,size) this_should_not_happen
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : #define DECL_OFFSET(struct,field) g_print (&quot;DECL_OFFSET2(%s,%s,%d)\n&quot;, #struct, #field, (int)MONO_STRUCT_OFFSET (struct, field));
+<span class="lineNum">      33 </span>            : #define DECL_ALIGN(type)
+<span class="lineNum">      34 </span>            : #define DECL_SIZE2(type,size) this_should_not_happen
+<span class="lineNum">      35 </span>            : #define DECL_SIZE(type)
+<span class="lineNum">      36 </span>            : #include &lt;mono/metadata/object-offsets.h&gt;
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span><span class="lineNoCov">          0 :         g_print (&quot;#endif //disable jit check\n&quot;);</span>
+<span class="lineNum">      39 </span><span class="lineNoCov">          0 :         g_print (&quot;#endif //cross compiler checks\n&quot;);</span>
+<span class="lineNum">      40 </span><span class="lineNoCov">          0 :         g_print (&quot;#endif //gc check\n&quot;);</span>
+<span class="lineNum">      41 </span><span class="lineNoCov">          0 :         g_print (&quot;#endif //os check\n&quot;);</span>
+<span class="lineNum">      42 </span><span class="lineNoCov">          0 :         g_print (&quot;#endif //arch check\n&quot;);</span>
+<span class="lineNum">      43 </span><span class="lineNoCov">          0 :         g_print (&quot;#endif //USED_CROSS_COMPILER_OFFSETS check\n&quot;);</span>
+<span class="lineNum">      44 </span>            : #endif
+<span class="lineNum">      45 </span><span class="lineNoCov">          0 : }</span>
+<a name="46"><span class="lineNum">      46 </span>            : </a>
+<span class="lineNum">      47 </span>            : void
+<span class="lineNum">      48 </span>            : mono_cross_helpers_run (void)
+<span class="lineNum">      49 </span>            : {
+<span class="lineNum">      50 </span>            : #if defined (HAS_CROSS_COMPILER_OFFSETS) &amp;&amp; !defined (MONO_CROSS_COMPILE)
+<span class="lineNum">      51 </span>            :         gboolean is_broken = FALSE;
+<span class="lineNum">      52 </span>            : #endif
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span>            : #ifndef USED_CROSS_COMPILER_OFFSETS
+<span class="lineNum">      55 </span><span class="lineCov">       3285 :         if (g_getenv (&quot;DUMP_CROSS_OFFSETS&quot;))</span>
+<span class="lineNum">      56 </span><span class="lineNoCov">          0 :                 mono_dump_jit_offsets ();</span>
+<span class="lineNum">      57 </span>            : #endif
+<span class="lineNum">      58 </span>            :         
+<span class="lineNum">      59 </span>            : #if defined (HAS_CROSS_COMPILER_OFFSETS) &amp;&amp; !defined (MONO_CROSS_COMPILE)
+<span class="lineNum">      60 </span>            :         mono_metadata_cross_helpers_run ();
+<span class="lineNum">      61 </span>            : 
+<span class="lineNum">      62 </span>            : #define DISABLE_METADATA_OFFSETS
+<span class="lineNum">      63 </span>            : #define USE_CROSS_COMPILE_OFFSETS
+<span class="lineNum">      64 </span>            : #define DECL_OFFSET(struct,field) this_should_not_happen_for_cross_fields
+<span class="lineNum">      65 </span>            : #define DECL_OFFSET2(struct,field,offset) \
+<span class="lineNum">      66 </span>            :          if ((int)G_STRUCT_OFFSET (struct, field) != offset) { \
+<span class="lineNum">      67 </span>            :                 g_print (#struct &quot;:&quot; #field &quot; invalid struct offset %d (expected %d)\n&quot;,    \
+<span class="lineNum">      68 </span>            :                         offset, \
+<span class="lineNum">      69 </span>            :                         (int)G_STRUCT_OFFSET (struct, field));  \
+<span class="lineNum">      70 </span>            :                 is_broken = TRUE;       \
+<span class="lineNum">      71 </span>            :         }
+<span class="lineNum">      72 </span>            : #define DECL_ALIGN(name,type) this_should_not_happen_for_cross_align
+<span class="lineNum">      73 </span>            : #define DECL_ALIGN2(name,size) \
+<span class="lineNum">      74 </span>            :          if (MONO_ALIGN_ ## name != size) { \
+<span class="lineNum">      75 </span>            :                 g_print (#name &quot;: invalid alignment %d (expected %d)\n&quot;,      \
+<span class="lineNum">      76 </span>            :                 size,   \
+<span class="lineNum">      77 </span>            :                 MONO_ALIGN_ ## name);   \
+<span class="lineNum">      78 </span>            :                 is_broken = TRUE;       \
+<span class="lineNum">      79 </span>            :         }
+<span class="lineNum">      80 </span>            : #define DECL_SIZE(type) this_should_not_happen_for_cross_size
+<span class="lineNum">      81 </span>            : #define DECL_SIZE2(name,size) \
+<span class="lineNum">      82 </span>            :          if (MONO_SIZEOF_ ## name != size) { \
+<span class="lineNum">      83 </span>            :                 g_print (#name &quot;: invalid size %d (expected %d)\n&quot;,   \
+<span class="lineNum">      84 </span>            :                 size,   \
+<span class="lineNum">      85 </span>            :                 MONO_SIZEOF_ ## name);  \
+<span class="lineNum">      86 </span>            :                 is_broken = TRUE;       \
+<span class="lineNum">      87 </span>            :         }
+<span class="lineNum">      88 </span>            : 
+<span class="lineNum">      89 </span>            : #include &lt;mono/metadata/object-offsets.h&gt;
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span>            :         g_assert (!is_broken);
+<span class="lineNum">      92 </span>            : #endif
+<span class="lineNum">      93 </span><span class="lineCov">       3285 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

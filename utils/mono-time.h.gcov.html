@@ -1,0 +1,136 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-time.h</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-time.h<span style="font-size: 80%;"> (source / <a href="mono-time.h.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">7</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : #ifndef __UTILS_MONO_TIME_H__</a>
+<span class="lineNum">       2 </span>            : #define __UTILS_MONO_TIME_H__
+<span class="lineNum">       3 </span>            : 
+<span class="lineNum">       4 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">       5 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">       6 </span>            : 
+<span class="lineNum">       7 </span>            : #ifdef HAVE_SYS_TIME_H
+<span class="lineNum">       8 </span>            : #include &lt;sys/time.h&gt;
+<span class="lineNum">       9 </span>            : #endif
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : /* Returns the number of milliseconds from boot time: this should be monotonic
+<span class="lineNum">      12 </span>            :  *
+<span class="lineNum">      13 </span>            :  * Prefer to use mono_msec_ticks for elapsed time calculation. */
+<span class="lineNum">      14 </span>            : gint64 mono_msec_boottime (void);
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : /* Returns the number of milliseconds ticks from unspecified time: this should be monotonic */
+<span class="lineNum">      17 </span>            : gint64 mono_msec_ticks (void);
+<span class="lineNum">      18 </span>            : 
+<span class="lineNum">      19 </span>            : /* Returns the number of 100ns ticks from unspecified time: this should be monotonic */
+<span class="lineNum">      20 </span>            : gint64 mono_100ns_ticks (void);
+<span class="lineNum">      21 </span>            : 
+<span class="lineNum">      22 </span>            : /* Returns the number of 100ns ticks since 1/1/1601, UTC timezone */
+<span class="lineNum">      23 </span>            : gint64 mono_100ns_datetime (void);
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : #ifndef HOST_WIN32
+<span class="lineNum">      26 </span>            : gint64 mono_100ns_datetime_from_timeval (struct timeval tv);
+<span class="lineNum">      27 </span>            : #endif
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : /* Stopwatch class for internal runtime use */
+<span class="lineNum">      30 </span>            : typedef struct {
+<span class="lineNum">      31 </span>            :         gint64 start, stop;
+<span class="lineNum">      32 </span>            : } MonoStopwatch;
+<a name="33"><span class="lineNum">      33 </span>            : </a>
+<span class="lineNum">      34 </span>            : static inline void
+<span class="lineNum">      35 </span>            : mono_stopwatch_start (MonoStopwatch *w)
+<span class="lineNum">      36 </span>            : {
+<span class="lineNum">      37 </span><span class="lineNoCov">          0 :         w-&gt;start = mono_100ns_ticks ();</span>
+<span class="lineNum">      38 </span><span class="lineNoCov">          0 :         w-&gt;stop = 0;</span>
+<span class="lineNum">      39 </span><span class="lineNoCov">          0 : }</span>
+<a name="40"><span class="lineNum">      40 </span>            : </a>
+<span class="lineNum">      41 </span>            : static inline void
+<span class="lineNum">      42 </span>            : mono_stopwatch_stop (MonoStopwatch *w)
+<span class="lineNum">      43 </span>            : {
+<span class="lineNum">      44 </span><span class="lineNoCov">          0 :         w-&gt;stop = mono_100ns_ticks ();</span>
+<span class="lineNum">      45 </span><span class="lineNoCov">          0 : }</span>
+<a name="46"><span class="lineNum">      46 </span>            : </a>
+<span class="lineNum">      47 </span>            : static inline guint64
+<span class="lineNum">      48 </span>            : mono_stopwatch_elapsed (MonoStopwatch *w)
+<span class="lineNum">      49 </span>            : {
+<span class="lineNum">      50 </span><span class="lineNoCov">          0 :         return (w-&gt;stop - w-&gt;start) / 10;</span>
+<span class="lineNum">      51 </span>            : }
+<a name="52"><span class="lineNum">      52 </span>            : </a>
+<span class="lineNum">      53 </span>            : static inline guint64
+<span class="lineNum">      54 </span>            : mono_stopwatch_elapsed_ms (MonoStopwatch *w)
+<span class="lineNum">      55 </span>            : {
+<span class="lineNum">      56 </span><span class="lineNoCov">          0 :         return (mono_stopwatch_elapsed (w) + 500) / 1000;</span>
+<span class="lineNum">      57 </span>            : }
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span>            : #endif /* __UTILS_MONO_TIME_H__ */
+<span class="lineNum">      60 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

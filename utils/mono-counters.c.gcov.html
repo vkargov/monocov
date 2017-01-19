@@ -1,0 +1,806 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-counters.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-counters.c<span style="font-size: 80%;"> (source / <a href="mono-counters.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">125</td>
+            <td class="headerCovTableEntry">228</td>
+            <td class="headerCovTableEntryLo">54.8 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">27</td>
+            <td class="headerCovTableEntry">34</td>
+            <td class="headerCovTableEntryMed">79.4 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * Copyright 2006-2010 Novell
+<span class="lineNum">       3 </span>            :  * Copyright 2011 Xamarin Inc
+<span class="lineNum">       4 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       5 </span>            :  */
+<span class="lineNum">       6 </span>            : 
+<span class="lineNum">       7 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">       8 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">       9 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      10 </span>            : #include &quot;mono-counters.h&quot;
+<span class="lineNum">      11 </span>            : #include &quot;mono-proclib.h&quot;
+<span class="lineNum">      12 </span>            : #include &quot;mono-os-mutex.h&quot;
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #ifdef HAVE_UNISTD_H
+<span class="lineNum">      15 </span>            : #include &lt;unistd.h&gt;
+<span class="lineNum">      16 </span>            : #endif
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : struct _MonoCounter {
+<span class="lineNum">      19 </span>            :         MonoCounter *next;
+<span class="lineNum">      20 </span>            :         const char *name;
+<span class="lineNum">      21 </span>            :         void *addr;
+<span class="lineNum">      22 </span>            :         int type;
+<span class="lineNum">      23 </span>            :         size_t size;
+<span class="lineNum">      24 </span>            : };
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : static MonoCounter *counters = NULL;
+<span class="lineNum">      27 </span>            : static mono_mutex_t counters_mutex;
+<span class="lineNum">      28 </span>            : 
+<span class="lineNum">      29 </span>            : static volatile gboolean initialized = FALSE;
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : static int valid_mask = 0;
+<span class="lineNum">      32 </span>            : static int set_mask = 0;
+<span class="lineNum">      33 </span>            : 
+<span class="lineNum">      34 </span>            : static GSList *register_callbacks = NULL;
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : static void initialize_system_counters (void);
+<span class="lineNum">      37 </span>            : 
+<span class="lineNum">      38 </span>            : /**
+<span class="lineNum">      39 </span>            :  * mono_counter_get_variance:
+<span class="lineNum">      40 </span>            :  * @counter: counter to get the variance
+<span class="lineNum">      41 </span>            :  *
+<span class="lineNum">      42 </span>            :  * Variance specifies how the counter value is expected to behave between any two samplings.
+<span class="lineNum">      43 </span>            :  *
+<span class="lineNum">      44 </span>            :  * Returns: the monotonicity of the counter.
+<a name="45"><span class="lineNum">      45 </span>            :  */</a>
+<span class="lineNum">      46 </span>            : int
+<span class="lineNum">      47 </span>            : mono_counter_get_variance (MonoCounter *counter)
+<span class="lineNum">      48 </span>            : {
+<span class="lineNum">      49 </span><span class="lineCov">       3968 :         return counter-&gt;type &amp; MONO_COUNTER_VARIANCE_MASK;</span>
+<span class="lineNum">      50 </span>            : }
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span>            : /**
+<span class="lineNum">      53 </span>            :  * mono_counter_get_unit:
+<span class="lineNum">      54 </span>            :  * @counter: counter to get the unit
+<span class="lineNum">      55 </span>            :  *
+<span class="lineNum">      56 </span>            :  * The unit gives a high level view of the unit that the counter is measuring.
+<span class="lineNum">      57 </span>            :  *
+<span class="lineNum">      58 </span>            :  * Returns: the unit of the counter.
+<a name="59"><span class="lineNum">      59 </span>            :  */</a>
+<span class="lineNum">      60 </span>            : int
+<span class="lineNum">      61 </span>            : mono_counter_get_unit (MonoCounter *counter)
+<span class="lineNum">      62 </span>            : {
+<span class="lineNum">      63 </span><span class="lineCov">       3968 :         return counter-&gt;type &amp; MONO_COUNTER_UNIT_MASK;</span>
+<span class="lineNum">      64 </span>            : }
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span>            : /**
+<span class="lineNum">      67 </span>            :  * mono_counter_get_section:
+<span class="lineNum">      68 </span>            :  * @counter: counter to get the section
+<span class="lineNum">      69 </span>            :  *
+<span class="lineNum">      70 </span>            :  * Sections are the unit of organization between all counters.
+<span class="lineNum">      71 </span>            :  *
+<span class="lineNum">      72 </span>            :  * Returns: the section of the counter.
+<span class="lineNum">      73 </span>            :  */
+<a name="74"><span class="lineNum">      74 </span>            : </a>
+<span class="lineNum">      75 </span>            : int
+<span class="lineNum">      76 </span>            : mono_counter_get_section (MonoCounter *counter)
+<span class="lineNum">      77 </span>            : {
+<span class="lineNum">      78 </span><span class="lineCov">       3968 :         return counter-&gt;type &amp; MONO_COUNTER_SECTION_MASK;</span>
+<span class="lineNum">      79 </span>            : }
+<span class="lineNum">      80 </span>            : 
+<span class="lineNum">      81 </span>            : /**
+<span class="lineNum">      82 </span>            :  * mono_counter_get_type:
+<span class="lineNum">      83 </span>            :  * @counter: counter to get the type
+<span class="lineNum">      84 </span>            :  *
+<span class="lineNum">      85 </span>            :  * Returns the type used to strong the value of the counter.
+<span class="lineNum">      86 </span>            :  *
+<span class="lineNum">      87 </span>            :  * Returns:the type of the counter.
+<a name="88"><span class="lineNum">      88 </span>            :  */</a>
+<span class="lineNum">      89 </span>            : int
+<span class="lineNum">      90 </span>            : mono_counter_get_type (MonoCounter *counter)
+<span class="lineNum">      91 </span>            : {
+<span class="lineNum">      92 </span><span class="lineCov">      22752 :         return counter-&gt;type &amp; MONO_COUNTER_TYPE_MASK;</span>
+<span class="lineNum">      93 </span>            : }
+<span class="lineNum">      94 </span>            : 
+<span class="lineNum">      95 </span>            : /**
+<span class="lineNum">      96 </span>            :  * mono_counter_get_name:
+<span class="lineNum">      97 </span>            :  * @counter: counter to get the name
+<span class="lineNum">      98 </span>            :  *
+<span class="lineNum">      99 </span>            :  * Returns the counter name. The string should not be freed.
+<span class="lineNum">     100 </span>            :  *
+<span class="lineNum">     101 </span>            :  * Returns the name of the counter.
+<span class="lineNum">     102 </span>            :  */
+<a name="103"><span class="lineNum">     103 </span>            : </a>
+<span class="lineNum">     104 </span>            : const char*
+<span class="lineNum">     105 </span>            : mono_counter_get_name (MonoCounter *counter)
+<span class="lineNum">     106 </span>            : {
+<span class="lineNum">     107 </span><span class="lineCov">       7936 :         return counter-&gt;name;</span>
+<span class="lineNum">     108 </span>            : }
+<span class="lineNum">     109 </span>            : 
+<span class="lineNum">     110 </span>            : /**
+<span class="lineNum">     111 </span>            :  * mono_counter_get_size:
+<span class="lineNum">     112 </span>            :  * @counter: counter to get the max size of the counter
+<span class="lineNum">     113 </span>            :  *
+<span class="lineNum">     114 </span>            :  * Use the returned size to create the buffer used with mono_counters_sample
+<span class="lineNum">     115 </span>            :  *
+<span class="lineNum">     116 </span>            :  * Returns: the max size of the counter data.
+<a name="117"><span class="lineNum">     117 </span>            :  */</a>
+<span class="lineNum">     118 </span>            : size_t
+<span class="lineNum">     119 </span>            : mono_counter_get_size (MonoCounter *counter)
+<span class="lineNum">     120 </span>            : {
+<span class="lineNum">     121 </span><span class="lineCov">      18784 :         return counter-&gt;size;</span>
+<span class="lineNum">     122 </span>            : }
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span>            : /**
+<span class="lineNum">     125 </span>            :  * mono_counters_enable:
+<span class="lineNum">     126 </span>            :  * @section_mask: a mask listing the sections that will be displayed
+<span class="lineNum">     127 </span>            :  *
+<span class="lineNum">     128 </span>            :  * This is used to track which counters will be displayed.
+<a name="129"><span class="lineNum">     129 </span>            :  */</a>
+<span class="lineNum">     130 </span>            : void
+<span class="lineNum">     131 </span>            : mono_counters_enable (int section_mask)
+<span class="lineNum">     132 </span>            : {
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :         valid_mask = section_mask &amp; MONO_COUNTER_SECTION_MASK;</span>
+<span class="lineNum">     134 </span><span class="lineNoCov">          0 : }</span>
+<a name="135"><span class="lineNum">     135 </span>            : </a>
+<span class="lineNum">     136 </span>            : void
+<span class="lineNum">     137 </span>            : mono_counters_init (void)
+<span class="lineNum">     138 </span>            : {
+<span class="lineNum">     139 </span><span class="lineCov">      16425 :         if (initialized)</span>
+<span class="lineNum">     140 </span><span class="lineCov">      13140 :                 return;</span>
+<span class="lineNum">     141 </span>            : 
+<span class="lineNum">     142 </span><span class="lineCov">       3285 :         mono_os_mutex_init (&amp;counters_mutex);</span>
+<span class="lineNum">     143 </span>            : 
+<span class="lineNum">     144 </span><span class="lineCov">       3285 :         initialize_system_counters ();</span>
+<span class="lineNum">     145 </span>            : 
+<span class="lineNum">     146 </span><span class="lineCov">       3285 :         initialized = TRUE;</span>
+<span class="lineNum">     147 </span><span class="lineCov">      19710 : }</span>
+<a name="148"><span class="lineNum">     148 </span>            : </a>
+<span class="lineNum">     149 </span>            : static void
+<span class="lineNum">     150 </span>            : register_internal (const char *name, int type, void *addr, int size)
+<span class="lineNum">     151 </span>            : {
+<span class="lineNum">     152 </span>            :         MonoCounter *counter;
+<span class="lineNum">     153 </span>            :         GSList *register_callback;
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span><span class="lineCov">    1671000 :         g_assert (size &gt;= 0);</span>
+<span class="lineNum">     156 </span><span class="lineCov">     557000 :         if ((type &amp; MONO_COUNTER_VARIANCE_MASK) == 0)</span>
+<span class="lineNum">     157 </span><span class="lineCov">     467361 :                 type |= MONO_COUNTER_MONOTONIC;</span>
+<span class="lineNum">     158 </span>            : 
+<span class="lineNum">     159 </span><span class="lineCov">     557000 :         mono_os_mutex_lock (&amp;counters_mutex);</span>
+<span class="lineNum">     160 </span>            : 
+<span class="lineNum">     161 </span><span class="lineCov">   95054818 :         for (counter = counters; counter; counter = counter-&gt;next) {</span>
+<span class="lineNum">     162 </span><span class="lineCov">   46970409 :                 if (counter-&gt;addr == addr) {</span>
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :                         g_warning (&quot;you are registering twice the same counter address&quot;);</span>
+<span class="lineNum">     164 </span><span class="lineNoCov">          0 :                         mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     165 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     166 </span>            :                 }
+<span class="lineNum">     167 </span><span class="lineCov">   46970409 :         }</span>
+<span class="lineNum">     168 </span>            : 
+<span class="lineNum">     169 </span><span class="lineCov">     557000 :         counter = (MonoCounter *) g_malloc (sizeof (MonoCounter));</span>
+<span class="lineNum">     170 </span><span class="lineCov">     557000 :         if (!counter) {</span>
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :                 mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     172 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     173 </span>            :         }
+<span class="lineNum">     174 </span><span class="lineCov">     557000 :         counter-&gt;name = g_strdup (name);</span>
+<span class="lineNum">     175 </span><span class="lineCov">     557000 :         counter-&gt;type = type;</span>
+<span class="lineNum">     176 </span><span class="lineCov">     557000 :         counter-&gt;addr = addr;</span>
+<span class="lineNum">     177 </span><span class="lineCov">     557000 :         counter-&gt;next = NULL;</span>
+<span class="lineNum">     178 </span><span class="lineCov">     557000 :         counter-&gt;size = size;</span>
+<span class="lineNum">     179 </span>            : 
+<span class="lineNum">     180 </span><span class="lineCov">     557000 :         set_mask |= type;</span>
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span>            :         /* Append */
+<span class="lineNum">     183 </span><span class="lineCov">     557000 :         if (counters) {</span>
+<span class="lineNum">     184 </span><span class="lineCov">     553715 :                 MonoCounter *item = counters;</span>
+<span class="lineNum">     185 </span><span class="lineCov">   93940818 :                 while (item-&gt;next)</span>
+<span class="lineNum">     186 </span><span class="lineCov">   46416694 :                         item = item-&gt;next;</span>
+<span class="lineNum">     187 </span><span class="lineCov">     553715 :                 item-&gt;next = counter;</span>
+<span class="lineNum">     188 </span><span class="lineCov">     553715 :         } else {</span>
+<span class="lineNum">     189 </span><span class="lineCov">       3285 :                 counters = counter;</span>
+<span class="lineNum">     190 </span>            :         }
+<span class="lineNum">     191 </span>            : 
+<span class="lineNum">     192 </span><span class="lineCov">    1114432 :         for (register_callback = register_callbacks; register_callback; register_callback = register_callback-&gt;next)</span>
+<span class="lineNum">     193 </span><span class="lineCov">        216 :                 ((MonoCounterRegisterCallback)register_callback-&gt;data) (counter);</span>
+<span class="lineNum">     194 </span>            : 
+<span class="lineNum">     195 </span><span class="lineCov">     557000 :         mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     196 </span><span class="lineCov">    1114000 : }</span>
+<span class="lineNum">     197 </span>            : 
+<span class="lineNum">     198 </span>            : /**
+<span class="lineNum">     199 </span>            :  * mono_counters_register:
+<span class="lineNum">     200 </span>            :  * @name: The name for this counters.
+<span class="lineNum">     201 </span>            :  * @type: One of the possible MONO_COUNTER types, or MONO_COUNTER_CALLBACK for a function pointer.
+<span class="lineNum">     202 </span>            :  * @addr: The address to register.
+<span class="lineNum">     203 </span>            :  *
+<span class="lineNum">     204 </span>            :  * Register addr as the address of a counter of type type.
+<span class="lineNum">     205 </span>            :  * Note that @name must be a valid string at all times until
+<span class="lineNum">     206 </span>            :  * mono_counters_dump () is called.
+<span class="lineNum">     207 </span>            :  *
+<span class="lineNum">     208 </span>            :  * This function should not be used with counter types that require an explicit size such as string
+<span class="lineNum">     209 </span>            :  * as the counter size will be set to zero making them effectively useless.
+<span class="lineNum">     210 </span>            :  *
+<span class="lineNum">     211 </span>            :  *
+<span class="lineNum">     212 </span>            :  * It may be a function pointer if MONO_COUNTER_CALLBACK is specified:
+<span class="lineNum">     213 </span>            :  * the function should return the value and take no arguments.
+<a name="214"><span class="lineNum">     214 </span>            :  */</a>
+<span class="lineNum">     215 </span>            : void 
+<span class="lineNum">     216 </span>            : mono_counters_register (const char* name, int type, void *addr)
+<span class="lineNum">     217 </span>            : {
+<span class="lineNum">     218 </span>            :         int size;
+<span class="lineNum">     219 </span><span class="lineCov">     524154 :         switch (type &amp; MONO_COUNTER_TYPE_MASK) {</span>
+<span class="lineNum">     220 </span>            :         case MONO_COUNTER_INT:
+<span class="lineNum">     221 </span><span class="lineCov">     214420 :                 size = sizeof (int);</span>
+<span class="lineNum">     222 </span><span class="lineCov">     214420 :                 break;</span>
+<span class="lineNum">     223 </span>            :         case MONO_COUNTER_UINT:
+<span class="lineNum">     224 </span><span class="lineCov">       7514 :                 size = sizeof (guint);</span>
+<span class="lineNum">     225 </span><span class="lineCov">       7514 :                 break;</span>
+<span class="lineNum">     226 </span>            :         case MONO_COUNTER_LONG:
+<span class="lineNum">     227 </span>            :         case MONO_COUNTER_TIME_INTERVAL:
+<span class="lineNum">     228 </span><span class="lineNoCov">          0 :                 size = sizeof (gint64);</span>
+<span class="lineNum">     229 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     230 </span>            :         case MONO_COUNTER_ULONG:
+<span class="lineNum">     231 </span><span class="lineCov">     118260 :                 size = sizeof (guint64);</span>
+<span class="lineNum">     232 </span><span class="lineCov">     118260 :                 break;</span>
+<span class="lineNum">     233 </span>            :         case MONO_COUNTER_WORD:
+<span class="lineNum">     234 </span><span class="lineCov">      52560 :                 size = sizeof (gssize);</span>
+<span class="lineNum">     235 </span><span class="lineCov">      52560 :                 break;</span>
+<span class="lineNum">     236 </span>            :         case MONO_COUNTER_DOUBLE:
+<span class="lineNum">     237 </span><span class="lineCov">     131400 :                 size = sizeof (double);</span>
+<span class="lineNum">     238 </span><span class="lineCov">     131400 :                 break;</span>
+<span class="lineNum">     239 </span>            :         case MONO_COUNTER_STRING:
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :                 size = 0;</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     242 </span>            :         default:
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">     524154 :         if (!initialized)</span>
+<span class="lineNum">     247 </span><span class="lineCov">          4 :                 g_debug (&quot;counters not enabled&quot;);</span>
+<span class="lineNum">     248 </span>            :         else
+<span class="lineNum">     249 </span><span class="lineCov">     524150 :                 register_internal (name, type, addr, size);</span>
+<span class="lineNum">     250 </span><span class="lineCov">     524154 : }</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span>            : /**
+<span class="lineNum">     253 </span>            :  * mono_counters_register_with_size:
+<span class="lineNum">     254 </span>            :  * @name: The name for this counters.
+<span class="lineNum">     255 </span>            :  * @type: One of the possible MONO_COUNTER types, or MONO_COUNTER_CALLBACK for a function pointer.
+<span class="lineNum">     256 </span>            :  * @addr: The address to register.
+<span class="lineNum">     257 </span>            :  * @size: Max size of the counter data.
+<span class="lineNum">     258 </span>            :  *
+<span class="lineNum">     259 </span>            :  * Register addr as the address of a counter of type @type.
+<span class="lineNum">     260 </span>            :  * Note that @name must be a valid string at all times until
+<span class="lineNum">     261 </span>            :  * mono_counters_dump () is called.
+<span class="lineNum">     262 </span>            :  *
+<span class="lineNum">     263 </span>            :  * It may be a function pointer if MONO_COUNTER_CALLBACK is specified:
+<span class="lineNum">     264 </span>            :  * the function should return the value and take no arguments.
+<span class="lineNum">     265 </span>            :  *
+<span class="lineNum">     266 </span>            :  * The value of @size is ignored for types with fixed size such as int and long.
+<span class="lineNum">     267 </span>            :  *
+<span class="lineNum">     268 </span>            :  * Use @size for types that can have dynamic size such as string.
+<span class="lineNum">     269 </span>            :  *
+<span class="lineNum">     270 </span>            :  * If @size is negative, it's silently converted to zero.
+<a name="271"><span class="lineNum">     271 </span>            :  */</a>
+<span class="lineNum">     272 </span>            : void
+<span class="lineNum">     273 </span>            : mono_counters_register_with_size (const char *name, int type, void *addr, int size)
+<span class="lineNum">     274 </span>            : {
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :         if (!initialized)</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                 g_debug (&quot;counters not enabled&quot;);</span>
+<span class="lineNum">     277 </span>            :         else
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :                 register_internal (name, type, addr, size);</span>
+<span class="lineNum">     279 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     280 </span>            : 
+<span class="lineNum">     281 </span>            : /**
+<span class="lineNum">     282 </span>            :  * mono_counters_on_register
+<span class="lineNum">     283 </span>            :  * @callback : function to callback when a counter is registered
+<span class="lineNum">     284 </span>            :  *
+<span class="lineNum">     285 </span>            :  * Add a callback that is going to be called when a counter is registered
+<a name="286"><span class="lineNum">     286 </span>            :  */</a>
+<span class="lineNum">     287 </span>            : void
+<span class="lineNum">     288 </span>            : mono_counters_on_register (MonoCounterRegisterCallback callback)
+<span class="lineNum">     289 </span>            : {
+<span class="lineNum">     290 </span><span class="lineCov">         18 :         if (!initialized) {</span>
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :                 g_debug (&quot;counters not enabled&quot;);</span>
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     293 </span>            :         }
+<span class="lineNum">     294 </span>            : 
+<span class="lineNum">     295 </span><span class="lineCov">         18 :         mono_os_mutex_lock (&amp;counters_mutex);</span>
+<span class="lineNum">     296 </span><span class="lineCov">         18 :         register_callbacks = g_slist_append (register_callbacks, (gpointer) callback);</span>
+<span class="lineNum">     297 </span><span class="lineCov">         18 :         mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     298 </span><span class="lineCov">         36 : }</span>
+<span class="lineNum">     299 </span>            : 
+<span class="lineNum">     300 </span>            : typedef int (*IntFunc) (void);
+<span class="lineNum">     301 </span>            : typedef guint (*UIntFunc) (void);
+<span class="lineNum">     302 </span>            : typedef gint64 (*LongFunc) (void);
+<span class="lineNum">     303 </span>            : typedef guint64 (*ULongFunc) (void);
+<span class="lineNum">     304 </span>            : typedef gssize (*PtrFunc) (void);
+<span class="lineNum">     305 </span>            : typedef double (*DoubleFunc) (void);
+<span class="lineNum">     306 </span>            : typedef char* (*StrFunc) (void);
+<a name="307"><span class="lineNum">     307 </span>            : </a>
+<span class="lineNum">     308 </span>            : static gint64
+<span class="lineNum">     309 </span>            : user_time (void)
+<span class="lineNum">     310 </span>            : {
+<span class="lineNum">     311 </span><span class="lineCov">         43 :         return mono_process_get_data (GINT_TO_POINTER (mono_process_current_pid ()), MONO_PROCESS_USER_TIME);</span>
+<span class="lineNum">     312 </span>            : }
+<a name="313"><span class="lineNum">     313 </span>            : </a>
+<span class="lineNum">     314 </span>            : static gint64
+<span class="lineNum">     315 </span>            : system_time (void)
+<span class="lineNum">     316 </span>            : {
+<span class="lineNum">     317 </span><span class="lineCov">         43 :         return mono_process_get_data (GINT_TO_POINTER (mono_process_current_pid ()), MONO_PROCESS_SYSTEM_TIME);</span>
+<span class="lineNum">     318 </span>            : }
+<a name="319"><span class="lineNum">     319 </span>            : </a>
+<span class="lineNum">     320 </span>            : static gint64
+<span class="lineNum">     321 </span>            : total_time (void)
+<span class="lineNum">     322 </span>            : {
+<span class="lineNum">     323 </span><span class="lineCov">         43 :         return mono_process_get_data (GINT_TO_POINTER (mono_process_current_pid ()), MONO_PROCESS_TOTAL_TIME);</span>
+<span class="lineNum">     324 </span>            : }
+<a name="325"><span class="lineNum">     325 </span>            : </a>
+<span class="lineNum">     326 </span>            : static gint64
+<span class="lineNum">     327 </span>            : working_set (void)
+<span class="lineNum">     328 </span>            : {
+<span class="lineNum">     329 </span><span class="lineCov">         43 :         return mono_process_get_data (GINT_TO_POINTER (mono_process_current_pid ()), MONO_PROCESS_WORKING_SET);</span>
+<span class="lineNum">     330 </span>            : }
+<a name="331"><span class="lineNum">     331 </span>            : </a>
+<span class="lineNum">     332 </span>            : static gint64
+<span class="lineNum">     333 </span>            : private_bytes (void)
+<span class="lineNum">     334 </span>            : {
+<span class="lineNum">     335 </span><span class="lineCov">         43 :         return mono_process_get_data (GINT_TO_POINTER (mono_process_current_pid ()), MONO_PROCESS_PRIVATE_BYTES);</span>
+<span class="lineNum">     336 </span>            : }
+<a name="337"><span class="lineNum">     337 </span>            : </a>
+<span class="lineNum">     338 </span>            : static gint64
+<span class="lineNum">     339 </span>            : virtual_bytes (void)
+<span class="lineNum">     340 </span>            : {
+<span class="lineNum">     341 </span><span class="lineCov">         43 :         return mono_process_get_data (GINT_TO_POINTER (mono_process_current_pid ()), MONO_PROCESS_VIRTUAL_BYTES);</span>
+<span class="lineNum">     342 </span>            : }
+<a name="343"><span class="lineNum">     343 </span>            : </a>
+<span class="lineNum">     344 </span>            : static gint64
+<span class="lineNum">     345 </span>            : page_faults (void)
+<span class="lineNum">     346 </span>            : {
+<span class="lineNum">     347 </span><span class="lineCov">         43 :         return mono_process_get_data (GINT_TO_POINTER (mono_process_current_pid ()), MONO_PROCESS_FAULTS);</span>
+<span class="lineNum">     348 </span>            : }
+<span class="lineNum">     349 </span>            : 
+<span class="lineNum">     350 </span>            : 
+<span class="lineNum">     351 </span>            : // If cpu_load gets inlined on Windows then cpu_load_1min, cpu_load_5min and cpu_load_15min can be folded into a single function and that will
+<span class="lineNum">     352 </span>            : // cause a failure when registering counters since the same function address will be used by all three functions. Preventing this method from being inlined
+<span class="lineNum">     353 </span>            : // will make sure the registered callback functions remains unique.
+<span class="lineNum">     354 </span>            : #ifdef _MSC_VER
+<span class="lineNum">     355 </span>            : __declspec(noinline)
+<a name="356"><span class="lineNum">     356 </span>            : #endif</a>
+<span class="lineNum">     357 </span>            : static double
+<span class="lineNum">     358 </span>            : cpu_load (int kind)
+<span class="lineNum">     359 </span>            : {
+<span class="lineNum">     360 </span>            : #if defined(TARGET_WIN32)
+<span class="lineNum">     361 </span>            : #elif defined(TARGET_MACH)
+<span class="lineNum">     362 </span>            :         double load [3];
+<span class="lineNum">     363 </span><span class="lineCov">        129 :         if (getloadavg (load, 3) &gt; 0)</span>
+<span class="lineNum">     364 </span><span class="lineCov">        129 :                 return load [kind];</span>
+<span class="lineNum">     365 </span>            : #else
+<span class="lineNum">     366 </span>            :         char buffer[512], *b;
+<span class="lineNum">     367 </span>            :         int len, i;
+<span class="lineNum">     368 </span>            :         FILE *f = fopen (&quot;/proc/loadavg&quot;, &quot;r&quot;);
+<span class="lineNum">     369 </span>            :         if (f) {
+<span class="lineNum">     370 </span>            :                 len = fread (buffer, 1, sizeof (buffer) - 1, f);
+<span class="lineNum">     371 </span>            :                 fclose (f);
+<span class="lineNum">     372 </span>            :                 if (len &gt; 0) {
+<span class="lineNum">     373 </span>            :                         buffer [len &lt; 511 ? len : 511] = 0;
+<span class="lineNum">     374 </span>            :                         b = buffer;
+<span class="lineNum">     375 </span>            :                         for (i = 0; i &lt; 3; i++) {
+<span class="lineNum">     376 </span>            :                                 if (kind == i)
+<span class="lineNum">     377 </span>            :                                         return strtod (b, NULL);
+<span class="lineNum">     378 </span>            :                                 if (i &lt; 2) {
+<span class="lineNum">     379 </span>            :                                         b = strchr (b, ' ');
+<span class="lineNum">     380 </span>            :                                         if (!b)
+<span class="lineNum">     381 </span>            :                                                 return 0;
+<span class="lineNum">     382 </span>            :                                         b += 1;
+<span class="lineNum">     383 </span>            :                                 }
+<span class="lineNum">     384 </span>            :                         }
+<span class="lineNum">     385 </span>            :                 }
+<span class="lineNum">     386 </span>            :         }
+<span class="lineNum">     387 </span>            : #endif
+<span class="lineNum">     388 </span><span class="lineNoCov">          0 :         return 0;</span>
+<span class="lineNum">     389 </span><span class="lineCov">        129 : }</span>
+<a name="390"><span class="lineNum">     390 </span>            : </a>
+<span class="lineNum">     391 </span>            : static double
+<span class="lineNum">     392 </span>            : cpu_load_1min (void)
+<span class="lineNum">     393 </span>            : {
+<span class="lineNum">     394 </span><span class="lineCov">         43 :         return cpu_load (0);</span>
+<span class="lineNum">     395 </span>            : }
+<a name="396"><span class="lineNum">     396 </span>            : </a>
+<span class="lineNum">     397 </span>            : static double
+<span class="lineNum">     398 </span>            : cpu_load_5min (void)
+<span class="lineNum">     399 </span>            : {
+<span class="lineNum">     400 </span><span class="lineCov">         43 :         return cpu_load (1);</span>
+<span class="lineNum">     401 </span>            : }
+<a name="402"><span class="lineNum">     402 </span>            : </a>
+<span class="lineNum">     403 </span>            : static double
+<span class="lineNum">     404 </span>            : cpu_load_15min (void)
+<span class="lineNum">     405 </span>            : {
+<span class="lineNum">     406 </span><span class="lineCov">         43 :         return cpu_load (2);</span>
+<span class="lineNum">     407 </span>            : }
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span>            : #define SYSCOUNTER_TIME (MONO_COUNTER_SYSTEM | MONO_COUNTER_LONG | MONO_COUNTER_TIME | MONO_COUNTER_MONOTONIC | MONO_COUNTER_CALLBACK)
+<span class="lineNum">     410 </span>            : #define SYSCOUNTER_BYTES (MONO_COUNTER_SYSTEM | MONO_COUNTER_LONG | MONO_COUNTER_BYTES | MONO_COUNTER_VARIABLE | MONO_COUNTER_CALLBACK)
+<span class="lineNum">     411 </span>            : #define SYSCOUNTER_COUNT (MONO_COUNTER_SYSTEM | MONO_COUNTER_LONG | MONO_COUNTER_COUNT | MONO_COUNTER_MONOTONIC | MONO_COUNTER_CALLBACK)
+<span class="lineNum">     412 </span>            : #define SYSCOUNTER_LOAD (MONO_COUNTER_SYSTEM | MONO_COUNTER_DOUBLE | MONO_COUNTER_PERCENTAGE | MONO_COUNTER_VARIABLE | MONO_COUNTER_CALLBACK)
+<a name="413"><span class="lineNum">     413 </span>            : </a>
+<span class="lineNum">     414 </span>            : static void
+<span class="lineNum">     415 </span>            : initialize_system_counters (void)
+<span class="lineNum">     416 </span>            : {
+<span class="lineNum">     417 </span><span class="lineCov">       3285 :         register_internal (&quot;User Time&quot;, SYSCOUNTER_TIME, (gpointer) &amp;user_time, sizeof (gint64));</span>
+<span class="lineNum">     418 </span><span class="lineCov">       3285 :         register_internal (&quot;System Time&quot;, SYSCOUNTER_TIME, (gpointer) &amp;system_time, sizeof (gint64));</span>
+<span class="lineNum">     419 </span><span class="lineCov">       3285 :         register_internal (&quot;Total Time&quot;, SYSCOUNTER_TIME, (gpointer) &amp;total_time, sizeof (gint64));</span>
+<span class="lineNum">     420 </span><span class="lineCov">       3285 :         register_internal (&quot;Working Set&quot;, SYSCOUNTER_BYTES, (gpointer) &amp;working_set, sizeof (gint64));</span>
+<span class="lineNum">     421 </span><span class="lineCov">       3285 :         register_internal (&quot;Private Bytes&quot;, SYSCOUNTER_BYTES, (gpointer) &amp;private_bytes, sizeof (gint64));</span>
+<span class="lineNum">     422 </span><span class="lineCov">       3285 :         register_internal (&quot;Virtual Bytes&quot;, SYSCOUNTER_BYTES, (gpointer) &amp;virtual_bytes, sizeof (gint64));</span>
+<span class="lineNum">     423 </span><span class="lineCov">       3285 :         register_internal (&quot;Page Faults&quot;, SYSCOUNTER_COUNT, (gpointer) &amp;page_faults, sizeof (gint64));</span>
+<span class="lineNum">     424 </span><span class="lineCov">       3285 :         register_internal (&quot;CPU Load Average - 1min&quot;, SYSCOUNTER_LOAD, (gpointer) &amp;cpu_load_1min, sizeof (double));</span>
+<span class="lineNum">     425 </span><span class="lineCov">       3285 :         register_internal (&quot;CPU Load Average - 5min&quot;, SYSCOUNTER_LOAD, (gpointer) &amp;cpu_load_5min, sizeof (double));</span>
+<span class="lineNum">     426 </span><span class="lineCov">       3285 :         register_internal (&quot;CPU Load Average - 15min&quot;, SYSCOUNTER_LOAD, (gpointer) &amp;cpu_load_15min, sizeof (double));</span>
+<span class="lineNum">     427 </span><span class="lineCov">       3285 : }</span>
+<span class="lineNum">     428 </span>            : 
+<span class="lineNum">     429 </span>            : /**
+<span class="lineNum">     430 </span>            :  * mono_counters_foreach:
+<span class="lineNum">     431 </span>            :  * @cb: The callback that will be called for each counter.
+<span class="lineNum">     432 </span>            :  * @user_data: Value passed as second argument of the callback.
+<span class="lineNum">     433 </span>            :  *
+<span class="lineNum">     434 </span>            :  * Iterate over all counters and call @cb for each one of them. Stop iterating if
+<span class="lineNum">     435 </span>            :  * the callback returns FALSE.
+<span class="lineNum">     436 </span>            :  *
+<a name="437"><span class="lineNum">     437 </span>            :  */</a>
+<span class="lineNum">     438 </span>            : void
+<span class="lineNum">     439 </span>            : mono_counters_foreach (CountersEnumCallback cb, gpointer user_data)
+<span class="lineNum">     440 </span>            : {
+<span class="lineNum">     441 </span>            :         MonoCounter *counter;
+<span class="lineNum">     442 </span>            : 
+<span class="lineNum">     443 </span><span class="lineCov">         18 :         if (!initialized) {</span>
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :                 g_debug (&quot;counters not enabled&quot;);</span>
+<span class="lineNum">     445 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     446 </span>            :         }
+<span class="lineNum">     447 </span>            : 
+<span class="lineNum">     448 </span><span class="lineCov">         18 :         mono_os_mutex_lock (&amp;counters_mutex);</span>
+<span class="lineNum">     449 </span>            : 
+<span class="lineNum">     450 </span><span class="lineCov">       7540 :         for (counter = counters; counter; counter = counter-&gt;next) {</span>
+<span class="lineNum">     451 </span><span class="lineCov">       3752 :                 if (!cb (counter, user_data)) {</span>
+<span class="lineNum">     452 </span><span class="lineNoCov">          0 :                         mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     453 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     454 </span>            :                 }
+<span class="lineNum">     455 </span><span class="lineCov">       3752 :         }</span>
+<span class="lineNum">     456 </span>            : 
+<span class="lineNum">     457 </span><span class="lineCov">         18 :         mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     458 </span><span class="lineCov">         36 : }</span>
+<span class="lineNum">     459 </span>            : 
+<span class="lineNum">     460 </span>            : #define COPY_COUNTER(type,functype) do {        \
+<span class="lineNum">     461 </span>            :                 size = sizeof (type);   \
+<span class="lineNum">     462 </span>            :                 if (buffer_size &lt; size)      \
+<span class="lineNum">     463 </span>            :                         size = -1;      \
+<span class="lineNum">     464 </span>            :                 else                    \
+<span class="lineNum">     465 </span>            :                         *(type*)buffer = cb ? ((functype)counter-&gt;addr) () : *(type*)counter-&gt;addr; \
+<span class="lineNum">     466 </span>            :         } while (0);
+<span class="lineNum">     467 </span>            : 
+<a name="468"><span class="lineNum">     468 </span>            : /* lockless */</a>
+<span class="lineNum">     469 </span>            : static int
+<span class="lineNum">     470 </span>            : sample_internal (MonoCounter *counter, void *buffer, int buffer_size)
+<span class="lineNum">     471 </span>            : {
+<span class="lineNum">     472 </span><span class="lineCov">      18784 :         int cb = counter-&gt;type &amp; MONO_COUNTER_CALLBACK;</span>
+<span class="lineNum">     473 </span><span class="lineCov">      18784 :         int size = -1;</span>
+<span class="lineNum">     474 </span>            : 
+<span class="lineNum">     475 </span>            :         char *strval;
+<span class="lineNum">     476 </span>            : 
+<span class="lineNum">     477 </span><span class="lineCov">      18784 :         switch (mono_counter_get_type (counter)) {</span>
+<span class="lineNum">     478 </span>            :         case MONO_COUNTER_INT:
+<span class="lineNum">     479 </span><span class="lineCov">      16008 :                 COPY_COUNTER (int, IntFunc);</span>
+<span class="lineNum">     480 </span><span class="lineCov">       2668 :                 break;</span>
+<span class="lineNum">     481 </span>            :         case MONO_COUNTER_UINT:
+<span class="lineNum">     482 </span><span class="lineCov">      14028 :                 COPY_COUNTER (guint, UIntFunc);</span>
+<span class="lineNum">     483 </span><span class="lineCov">       2338 :                 break;</span>
+<span class="lineNum">     484 </span>            :         case MONO_COUNTER_LONG:
+<span class="lineNum">     485 </span>            :         case MONO_COUNTER_TIME_INTERVAL:
+<span class="lineNum">     486 </span><span class="lineCov">       1806 :                 COPY_COUNTER (gint64, LongFunc);</span>
+<span class="lineNum">     487 </span><span class="lineCov">        301 :                 break;</span>
+<span class="lineNum">     488 </span>            :         case MONO_COUNTER_ULONG:
+<span class="lineNum">     489 </span><span class="lineCov">       9288 :                 COPY_COUNTER (guint64, ULongFunc);</span>
+<span class="lineNum">     490 </span><span class="lineCov">       1548 :                 break;</span>
+<span class="lineNum">     491 </span>            :         case MONO_COUNTER_WORD:
+<span class="lineNum">     492 </span><span class="lineCov">       4128 :                 COPY_COUNTER (gssize, PtrFunc);</span>
+<span class="lineNum">     493 </span><span class="lineCov">        688 :                 break;</span>
+<span class="lineNum">     494 </span>            :         case MONO_COUNTER_DOUBLE:
+<span class="lineNum">     495 </span><span class="lineCov">      11094 :                 COPY_COUNTER (double, DoubleFunc);</span>
+<span class="lineNum">     496 </span><span class="lineCov">       1849 :                 break;</span>
+<span class="lineNum">     497 </span>            :         case MONO_COUNTER_STRING:
+<span class="lineNum">     498 </span><span class="lineNoCov">          0 :                 if (buffer_size &lt; counter-&gt;size) {</span>
+<span class="lineNum">     499 </span><span class="lineNoCov">          0 :                         size = -1;</span>
+<span class="lineNum">     500 </span><span class="lineNoCov">          0 :                 } else if (counter-&gt;size == 0) {</span>
+<span class="lineNum">     501 </span><span class="lineNoCov">          0 :                         size = 0;</span>
+<span class="lineNum">     502 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     503 </span><span class="lineNoCov">          0 :                         strval = cb ? ((StrFunc)counter-&gt;addr) () : (char*)counter-&gt;addr;</span>
+<span class="lineNum">     504 </span><span class="lineNoCov">          0 :                         if (!strval) {</span>
+<span class="lineNum">     505 </span><span class="lineNoCov">          0 :                                 size = 0;</span>
+<span class="lineNum">     506 </span><span class="lineNoCov">          0 :                         } else {</span>
+<span class="lineNum">     507 </span><span class="lineNoCov">          0 :                                 size = counter-&gt;size;</span>
+<span class="lineNum">     508 </span><span class="lineNoCov">          0 :                                 strncpy ((char *) buffer, strval, size - 1);</span>
+<span class="lineNum">     509 </span><span class="lineNoCov">          0 :                                 ((char*)buffer)[size - 1] = '\0';</span>
+<span class="lineNum">     510 </span>            :                         }
+<span class="lineNum">     511 </span>            :                 }
+<span class="lineNum">     512 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     513 </span>            : 
+<span class="lineNum">     514 </span><span class="lineCov">       9392 :         return size;</span>
+<span class="lineNum">     515 </span>            : }
+<a name="516"><span class="lineNum">     516 </span>            : </a>
+<span class="lineNum">     517 </span>            : int
+<span class="lineNum">     518 </span>            : mono_counters_sample (MonoCounter *counter, void *buffer, int buffer_size)
+<span class="lineNum">     519 </span>            : {
+<span class="lineNum">     520 </span><span class="lineCov">       9392 :         if (!initialized) {</span>
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 :                 g_debug (&quot;counters not enabled&quot;);</span>
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :                 return -1;</span>
+<span class="lineNum">     523 </span>            :         }
+<span class="lineNum">     524 </span>            : 
+<span class="lineNum">     525 </span><span class="lineCov">       9392 :         return sample_internal (counter, buffer, buffer_size);</span>
+<span class="lineNum">     526 </span><span class="lineCov">       9392 : }</span>
+<span class="lineNum">     527 </span>            : 
+<a name="528"><span class="lineNum">     528 </span>            : #define ENTRY_FMT &quot;%-36s: &quot;</a>
+<span class="lineNum">     529 </span>            : static void
+<span class="lineNum">     530 </span>            : dump_counter (MonoCounter *counter, FILE *outfile) {
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :         void *buffer = g_malloc0 (counter-&gt;size);</span>
+<span class="lineNum">     532 </span><span class="lineNoCov">          0 :         int size = sample_internal (counter, buffer, counter-&gt;size);</span>
+<span class="lineNum">     533 </span>            : 
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 :         switch (counter-&gt;type &amp; MONO_COUNTER_TYPE_MASK) {</span>
+<span class="lineNum">     535 </span>            :         case MONO_COUNTER_INT:
+<span class="lineNum">     536 </span><span class="lineNoCov">          0 :                 fprintf (outfile, ENTRY_FMT &quot;%d\n&quot;, counter-&gt;name, *(int*)buffer);</span>
+<span class="lineNum">     537 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     538 </span>            :         case MONO_COUNTER_UINT:
+<span class="lineNum">     539 </span><span class="lineNoCov">          0 :                 fprintf (outfile, ENTRY_FMT &quot;%u\n&quot;, counter-&gt;name, *(guint*)buffer);</span>
+<span class="lineNum">     540 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     541 </span>            :         case MONO_COUNTER_LONG:
+<span class="lineNum">     542 </span><span class="lineNoCov">          0 :                 if ((counter-&gt;type &amp; MONO_COUNTER_UNIT_MASK) == MONO_COUNTER_TIME)</span>
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :                         fprintf (outfile, ENTRY_FMT &quot;%.2f ms\n&quot;, counter-&gt;name, (double)(*(gint64*)buffer) / 10000.0);</span>
+<span class="lineNum">     544 </span>            :                 else
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 :                         fprintf (outfile, ENTRY_FMT &quot;%lld\n&quot;, counter-&gt;name, *(long long *)buffer);</span>
+<span class="lineNum">     546 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     547 </span>            :         case MONO_COUNTER_ULONG:
+<span class="lineNum">     548 </span><span class="lineNoCov">          0 :                 if ((counter-&gt;type &amp; MONO_COUNTER_UNIT_MASK) == MONO_COUNTER_TIME)</span>
+<span class="lineNum">     549 </span><span class="lineNoCov">          0 :                         fprintf (outfile, ENTRY_FMT &quot;%.2f ms\n&quot;, counter-&gt;name, (double)(*(guint64*)buffer) / 10000.0);</span>
+<span class="lineNum">     550 </span>            :                 else
+<span class="lineNum">     551 </span><span class="lineNoCov">          0 :                         fprintf (outfile, ENTRY_FMT &quot;%llu\n&quot;, counter-&gt;name, *(unsigned long long *)buffer);</span>
+<span class="lineNum">     552 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     553 </span>            :         case MONO_COUNTER_WORD:
+<span class="lineNum">     554 </span><span class="lineNoCov">          0 :                 fprintf (outfile, ENTRY_FMT &quot;%zd\n&quot;, counter-&gt;name, *(gssize*)buffer);</span>
+<span class="lineNum">     555 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     556 </span>            :         case MONO_COUNTER_DOUBLE:
+<span class="lineNum">     557 </span><span class="lineNoCov">          0 :                 fprintf (outfile, ENTRY_FMT &quot;%.4f\n&quot;, counter-&gt;name, *(double*)buffer);</span>
+<span class="lineNum">     558 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     559 </span>            :         case MONO_COUNTER_STRING:
+<span class="lineNum">     560 </span><span class="lineNoCov">          0 :                 fprintf (outfile, ENTRY_FMT &quot;%s\n&quot;, counter-&gt;name, (size == 0) ? &quot;(null)&quot; : (char*)buffer);</span>
+<span class="lineNum">     561 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     562 </span>            :         case MONO_COUNTER_TIME_INTERVAL:
+<span class="lineNum">     563 </span><span class="lineNoCov">          0 :                 fprintf (outfile, ENTRY_FMT &quot;%.2f ms\n&quot;, counter-&gt;name, (double)(*(gint64*)buffer) / 1000.0);</span>
+<span class="lineNum">     564 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     565 </span>            :         }
+<span class="lineNum">     566 </span>            : 
+<span class="lineNum">     567 </span><span class="lineNoCov">          0 :         g_free (buffer);</span>
+<span class="lineNum">     568 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     569 </span>            : 
+<span class="lineNum">     570 </span>            : static const char
+<span class="lineNum">     571 </span>            : section_names [][12] = {
+<span class="lineNum">     572 </span>            :         &quot;JIT&quot;,
+<span class="lineNum">     573 </span>            :         &quot;GC&quot;,
+<span class="lineNum">     574 </span>            :         &quot;Metadata&quot;,
+<span class="lineNum">     575 </span>            :         &quot;Generics&quot;,
+<span class="lineNum">     576 </span>            :         &quot;Security&quot;,
+<span class="lineNum">     577 </span>            :         &quot;Runtime&quot;,
+<span class="lineNum">     578 </span>            :         &quot;System&quot;,
+<span class="lineNum">     579 </span>            :         &quot;&quot;, // MONO_COUNTER_PERFCOUNTERS - not used.
+<span class="lineNum">     580 </span>            :         &quot;Profiler&quot;,
+<span class="lineNum">     581 </span>            : };
+<a name="582"><span class="lineNum">     582 </span>            : </a>
+<span class="lineNum">     583 </span>            : static void
+<span class="lineNum">     584 </span>            : mono_counters_dump_section (int section, int variance, FILE *outfile)
+<span class="lineNum">     585 </span>            : {
+<span class="lineNum">     586 </span><span class="lineNoCov">          0 :         MonoCounter *counter = counters;</span>
+<span class="lineNum">     587 </span><span class="lineNoCov">          0 :         while (counter) {</span>
+<span class="lineNum">     588 </span><span class="lineNoCov">          0 :                 if ((counter-&gt;type &amp; section) &amp;&amp; (mono_counter_get_variance (counter) &amp; variance))</span>
+<span class="lineNum">     589 </span><span class="lineNoCov">          0 :                         dump_counter (counter, outfile);</span>
+<span class="lineNum">     590 </span><span class="lineNoCov">          0 :                 counter = counter-&gt;next;</span>
+<span class="lineNum">     591 </span>            :         }
+<span class="lineNum">     592 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     593 </span>            : 
+<span class="lineNum">     594 </span>            : /**
+<span class="lineNum">     595 </span>            :  * mono_counters_dump:
+<span class="lineNum">     596 </span>            :  * @section_mask: The sections to dump counters for
+<span class="lineNum">     597 </span>            :  * @outfile: a FILE to dump the results to
+<span class="lineNum">     598 </span>            :  *
+<span class="lineNum">     599 </span>            :  * Displays the counts of all the enabled counters registered. 
+<span class="lineNum">     600 </span>            :  * To filter by variance, you can OR one or more variance with the specific section you want.
+<span class="lineNum">     601 </span>            :  * Use MONO_COUNTER_SECTION_MASK to dump all categories of a specific variance.
+<a name="602"><span class="lineNum">     602 </span>            :  */</a>
+<span class="lineNum">     603 </span>            : void
+<span class="lineNum">     604 </span>            : mono_counters_dump (int section_mask, FILE *outfile)
+<span class="lineNum">     605 </span>            : {
+<span class="lineNum">     606 </span>            :         int i, j;
+<span class="lineNum">     607 </span>            :         int variance;
+<span class="lineNum">     608 </span><span class="lineCov">       3272 :         section_mask &amp;= valid_mask;</span>
+<span class="lineNum">     609 </span>            : 
+<span class="lineNum">     610 </span><span class="lineCov">       3272 :         if (!initialized)</span>
+<span class="lineNum">     611 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     612 </span>            : 
+<span class="lineNum">     613 </span><span class="lineCov">       3272 :         mono_os_mutex_lock (&amp;counters_mutex);</span>
+<span class="lineNum">     614 </span>            : 
+<span class="lineNum">     615 </span><span class="lineCov">       3272 :         if (!counters) {</span>
+<span class="lineNum">     616 </span><span class="lineNoCov">          0 :                 mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     617 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     618 </span>            :         }
+<span class="lineNum">     619 </span>            : 
+<span class="lineNum">     620 </span><span class="lineCov">       3272 :         variance = section_mask &amp; MONO_COUNTER_VARIANCE_MASK;</span>
+<span class="lineNum">     621 </span>            : 
+<span class="lineNum">     622 </span>            :         /* If no variance mask is supplied, we default to all kinds. */
+<span class="lineNum">     623 </span><span class="lineCov">       3272 :         if (!variance)</span>
+<span class="lineNum">     624 </span><span class="lineCov">       3272 :                 variance = MONO_COUNTER_VARIANCE_MASK;</span>
+<span class="lineNum">     625 </span><span class="lineCov">       3272 :         section_mask &amp;= ~MONO_COUNTER_VARIANCE_MASK;</span>
+<span class="lineNum">     626 </span>            : 
+<span class="lineNum">     627 </span><span class="lineCov">      65440 :         for (j = 0, i = MONO_COUNTER_JIT; i &lt; MONO_COUNTER_LAST_SECTION; j++, i &lt;&lt;= 1) {</span>
+<span class="lineNum">     628 </span><span class="lineCov">      29448 :                 if ((section_mask &amp; i) &amp;&amp; (set_mask &amp; i)) {</span>
+<span class="lineNum">     629 </span><span class="lineNoCov">          0 :                         fprintf (outfile, &quot;\n%s statistics\n&quot;, section_names [j]);</span>
+<span class="lineNum">     630 </span><span class="lineNoCov">          0 :                         mono_counters_dump_section (i, variance, outfile);</span>
+<span class="lineNum">     631 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     632 </span><span class="lineCov">      29448 :         }</span>
+<span class="lineNum">     633 </span>            : 
+<span class="lineNum">     634 </span><span class="lineCov">       3272 :         fflush (outfile);</span>
+<span class="lineNum">     635 </span><span class="lineCov">       3272 :         mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     636 </span><span class="lineCov">       6544 : }</span>
+<span class="lineNum">     637 </span>            : 
+<span class="lineNum">     638 </span>            : /**
+<span class="lineNum">     639 </span>            :  * mono_counters_cleanup:
+<span class="lineNum">     640 </span>            :  *
+<span class="lineNum">     641 </span>            :  * Perform any needed cleanup at process exit.
+<a name="642"><span class="lineNum">     642 </span>            :  */</a>
+<span class="lineNum">     643 </span>            : void
+<span class="lineNum">     644 </span>            : mono_counters_cleanup (void)
+<span class="lineNum">     645 </span>            : {
+<span class="lineNum">     646 </span>            :         MonoCounter *counter;
+<span class="lineNum">     647 </span>            : 
+<span class="lineNum">     648 </span><span class="lineNoCov">          0 :         if (!initialized)</span>
+<span class="lineNum">     649 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     650 </span>            : 
+<span class="lineNum">     651 </span><span class="lineNoCov">          0 :         mono_os_mutex_lock (&amp;counters_mutex);</span>
+<span class="lineNum">     652 </span>            : 
+<span class="lineNum">     653 </span><span class="lineNoCov">          0 :         counter = counters;</span>
+<span class="lineNum">     654 </span><span class="lineNoCov">          0 :         counters = NULL;</span>
+<span class="lineNum">     655 </span><span class="lineNoCov">          0 :         while (counter) {</span>
+<span class="lineNum">     656 </span><span class="lineNoCov">          0 :                 MonoCounter *tmp = counter;</span>
+<span class="lineNum">     657 </span><span class="lineNoCov">          0 :                 counter = counter-&gt;next;</span>
+<span class="lineNum">     658 </span><span class="lineNoCov">          0 :                 g_free ((void*)tmp-&gt;name);</span>
+<span class="lineNum">     659 </span><span class="lineNoCov">          0 :                 g_free (tmp);</span>
+<span class="lineNum">     660 </span>            :         }
+<span class="lineNum">     661 </span>            : 
+<span class="lineNum">     662 </span><span class="lineNoCov">          0 :         mono_os_mutex_unlock (&amp;counters_mutex);</span>
+<span class="lineNum">     663 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     664 </span>            : 
+<span class="lineNum">     665 </span>            : static MonoResourceCallback limit_reached = NULL;
+<span class="lineNum">     666 </span>            : static uintptr_t resource_limits [MONO_RESOURCE_COUNT * 2];
+<span class="lineNum">     667 </span>            : 
+<span class="lineNum">     668 </span>            : /**
+<span class="lineNum">     669 </span>            :  * mono_runtime_resource_check_limit:
+<span class="lineNum">     670 </span>            :  * @resource_type: one of the #MonoResourceType enum values
+<span class="lineNum">     671 </span>            :  * @value: the current value of the resource usage
+<span class="lineNum">     672 </span>            :  *
+<span class="lineNum">     673 </span>            :  * Check if a runtime resource limit has been reached. This function
+<span class="lineNum">     674 </span>            :  * is intended to be used by the runtime only.
+<a name="675"><span class="lineNum">     675 </span>            :  */</a>
+<span class="lineNum">     676 </span>            : void
+<span class="lineNum">     677 </span>            : mono_runtime_resource_check_limit (int resource_type, uintptr_t value)
+<span class="lineNum">     678 </span>            : {
+<span class="lineNum">     679 </span><span class="lineCov">     762617 :         if (!limit_reached)</span>
+<span class="lineNum">     680 </span><span class="lineCov">     762617 :                 return;</span>
+<span class="lineNum">     681 </span>            :         /* check the hard limit first */
+<span class="lineNum">     682 </span><span class="lineNoCov">          0 :         if (value &gt; resource_limits [resource_type * 2 + 1]) {</span>
+<span class="lineNum">     683 </span><span class="lineNoCov">          0 :                 limit_reached (resource_type, value, 0);</span>
+<span class="lineNum">     684 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     685 </span>            :         }
+<span class="lineNum">     686 </span><span class="lineNoCov">          0 :         if (value &gt; resource_limits [resource_type * 2])</span>
+<span class="lineNum">     687 </span><span class="lineNoCov">          0 :                 limit_reached (resource_type, value, 1);</span>
+<span class="lineNum">     688 </span><span class="lineCov">     762617 : }</span>
+<span class="lineNum">     689 </span>            : 
+<span class="lineNum">     690 </span>            : /**
+<span class="lineNum">     691 </span>            :  * mono_runtime_resource_limit:
+<span class="lineNum">     692 </span>            :  * @resource_type: one of the #MonoResourceType enum values
+<span class="lineNum">     693 </span>            :  * @soft_limit: the soft limit value
+<span class="lineNum">     694 </span>            :  * @hard_limit: the hard limit value
+<span class="lineNum">     695 </span>            :  *
+<span class="lineNum">     696 </span>            :  * This function sets the soft and hard limit for runtime resources. When the limit
+<span class="lineNum">     697 </span>            :  * is reached, a user-specified callback is called. The callback runs in a restricted
+<span class="lineNum">     698 </span>            :  * environment, in which the world coult be stopped, so it can't take locks, perform
+<span class="lineNum">     699 </span>            :  * allocations etc. The callback may be called multiple times once a limit has been reached
+<span class="lineNum">     700 </span>            :  * if action is not taken to decrease the resource use.
+<span class="lineNum">     701 </span>            :  *
+<span class="lineNum">     702 </span>            :  * Returns: 0 on error or a positive integer otherwise.
+<a name="703"><span class="lineNum">     703 </span>            :  */</a>
+<span class="lineNum">     704 </span>            : int
+<span class="lineNum">     705 </span>            : mono_runtime_resource_limit (int resource_type, uintptr_t soft_limit, uintptr_t hard_limit)
+<span class="lineNum">     706 </span>            : {
+<span class="lineNum">     707 </span><span class="lineNoCov">          0 :         if (resource_type &gt;= MONO_RESOURCE_COUNT || resource_type &lt; 0)</span>
+<span class="lineNum">     708 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">     709 </span><span class="lineNoCov">          0 :         if (soft_limit &gt; hard_limit)</span>
+<span class="lineNum">     710 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">     711 </span><span class="lineNoCov">          0 :         resource_limits [resource_type * 2] = soft_limit;</span>
+<span class="lineNum">     712 </span><span class="lineNoCov">          0 :         resource_limits [resource_type * 2 + 1] = hard_limit;</span>
+<span class="lineNum">     713 </span><span class="lineNoCov">          0 :         return 1;</span>
+<span class="lineNum">     714 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     715 </span>            : 
+<span class="lineNum">     716 </span>            : /**
+<span class="lineNum">     717 </span>            :  * mono_runtime_resource_set_callback:
+<span class="lineNum">     718 </span>            :  * @callback: a function pointer
+<span class="lineNum">     719 </span>            :  * 
+<span class="lineNum">     720 </span>            :  * Set the callback to be invoked when a resource limit is reached.
+<span class="lineNum">     721 </span>            :  * The callback will receive the resource type, the resource amount in resource-specific
+<span class="lineNum">     722 </span>            :  * units and a flag indicating whether the soft or hard limit was reached.
+<a name="723"><span class="lineNum">     723 </span>            :  */</a>
+<span class="lineNum">     724 </span>            : void
+<span class="lineNum">     725 </span>            : mono_runtime_resource_set_callback (MonoResourceCallback callback)
+<span class="lineNum">     726 </span>            : {
+<span class="lineNum">     727 </span><span class="lineNoCov">          0 :         limit_reached = callback;</span>
+<span class="lineNum">     728 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     729 </span>            : 
+<span class="lineNum">     730 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

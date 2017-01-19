@@ -1,0 +1,532 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/mono-threads-coop.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - mono-threads-coop.c<span style="font-size: 80%;"> (source / <a href="mono-threads-coop.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">31</td>
+            <td class="headerCovTableEntry">141</td>
+            <td class="headerCovTableEntryLo">22.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">13</td>
+            <td class="headerCovTableEntry">24</td>
+            <td class="headerCovTableEntryLo">54.2 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            :  /*</a>
+<span class="lineNum">       2 </span>            :  * mono-threads.c: Coop threading
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Rodrigo Kumpera (kumpera@gmail.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * Copyright 2015 Xamarin, Inc (http://www.xamarin.com)
+<span class="lineNum">       8 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       9 </span>            :  */
+<span class="lineNum">      10 </span>            : 
+<span class="lineNum">      11 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      12 </span>            : 
+<span class="lineNum">      13 </span>            : /* enable pthread extensions */
+<span class="lineNum">      14 </span>            : #ifdef TARGET_MACH
+<span class="lineNum">      15 </span>            : #define _DARWIN_C_SOURCE
+<span class="lineNum">      16 </span>            : #endif
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #include &lt;mono/utils/mono-compiler.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/utils/mono-threads.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/utils/mono-tls.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/utils/hazard-pointer.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;mono/utils/mono-memory-model.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/utils/mono-mmap.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;mono/utils/mono-time.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/utils/mono-counters.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;mono/utils/mono-threads-coop.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;mono/utils/mono-threads-api.h&gt;
+<span class="lineNum">      29 </span>            : #include &lt;mono/utils/checked-build.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;mono/utils/mono-threads-debug.h&gt;
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : #ifdef TARGET_OSX
+<span class="lineNum">      33 </span>            : #include &lt;mono/utils/mach-support.h&gt;
+<span class="lineNum">      34 </span>            : #endif
+<span class="lineNum">      35 </span>            : 
+<span class="lineNum">      36 </span>            : #ifdef _MSC_VER
+<span class="lineNum">      37 </span>            : // TODO: Find MSVC replacement for __builtin_unwind_init
+<span class="lineNum">      38 </span>            : #define SAVE_REGS_ON_STACK g_assert_not_reached ();
+<span class="lineNum">      39 </span>            : #else 
+<span class="lineNum">      40 </span>            : #define SAVE_REGS_ON_STACK __builtin_unwind_init ();
+<span class="lineNum">      41 </span>            : #endif
+<span class="lineNum">      42 </span>            : 
+<span class="lineNum">      43 </span>            : volatile size_t mono_polling_required;
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            : // FIXME: This would be more efficient if instead of instantiating the stack it just pushed a simple depth counter up and down,
+<span class="lineNum">      46 </span>            : // perhaps with a per-thread cookie in the high bits.
+<span class="lineNum">      47 </span>            : #ifdef ENABLE_CHECKED_BUILD_GC
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span>            : // Maintains a single per-thread stack of ints, used to ensure nesting is not violated
+<span class="lineNum">      50 </span>            : static MonoNativeTlsKey coop_reset_count_stack_key;
+<span class="lineNum">      51 </span>            : 
+<span class="lineNum">      52 </span>            : static void
+<span class="lineNum">      53 </span>            : coop_tls_push (gpointer cookie)
+<span class="lineNum">      54 </span>            : {
+<span class="lineNum">      55 </span>            :         GArray *stack;
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            :         stack = mono_native_tls_get_value (coop_reset_count_stack_key);
+<span class="lineNum">      58 </span>            :         if (!stack) {
+<span class="lineNum">      59 </span>            :                 stack = g_array_new (FALSE, FALSE, sizeof(gpointer));
+<span class="lineNum">      60 </span>            :                 mono_native_tls_set_value (coop_reset_count_stack_key, stack);
+<span class="lineNum">      61 </span>            :         }
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span>            :         g_array_append_val (stack, cookie);
+<span class="lineNum">      64 </span>            : }
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span>            : static void
+<span class="lineNum">      67 </span>            : coop_tls_pop (gpointer received_cookie)
+<span class="lineNum">      68 </span>            : {
+<span class="lineNum">      69 </span>            :         GArray *stack;
+<span class="lineNum">      70 </span>            :         gpointer expected_cookie;
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            :         stack = mono_native_tls_get_value (coop_reset_count_stack_key);
+<span class="lineNum">      73 </span>            :         if (!stack || 0 == stack-&gt;len)
+<span class="lineNum">      74 </span>            :                 mono_fatal_with_history (&quot;Received cookie %p but found no stack at all\n&quot;, received_cookie);
+<span class="lineNum">      75 </span>            : 
+<span class="lineNum">      76 </span>            :         expected_cookie = g_array_index (stack, gpointer, stack-&gt;len - 1);
+<span class="lineNum">      77 </span>            :         stack-&gt;len --;
+<span class="lineNum">      78 </span>            : 
+<span class="lineNum">      79 </span>            :         if (0 == stack-&gt;len) {
+<span class="lineNum">      80 </span>            :                 g_array_free (stack,TRUE);
+<span class="lineNum">      81 </span>            :                 mono_native_tls_set_value (coop_reset_count_stack_key, NULL);
+<span class="lineNum">      82 </span>            :         }
+<span class="lineNum">      83 </span>            : 
+<span class="lineNum">      84 </span>            :         if (expected_cookie != received_cookie)
+<span class="lineNum">      85 </span>            :                 mono_fatal_with_history (&quot;Received cookie %p but expected %p\n&quot;, received_cookie, expected_cookie);
+<span class="lineNum">      86 </span>            : }
+<span class="lineNum">      87 </span>            : 
+<span class="lineNum">      88 </span>            : #endif
+<a name="89"><span class="lineNum">      89 </span>            : </a>
+<span class="lineNum">      90 </span>            : static void
+<span class="lineNum">      91 </span>            : check_info (MonoThreadInfo *info, const gchar *action, const gchar *state)
+<span class="lineNum">      92 </span>            : {
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :         if (!info)</span>
+<span class="lineNum">      94 </span><span class="lineNoCov">          0 :                 g_error (&quot;Cannot %s GC %s region if the thread is not attached&quot;, action, state);</span>
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :         if (!mono_thread_info_is_current (info))</span>
+<span class="lineNum">      96 </span><span class="lineNoCov">          0 :                 g_error (&quot;[%p] Cannot %s GC %s region on a different thread&quot;, mono_thread_info_get_tid (info), action, state);</span>
+<span class="lineNum">      97 </span><span class="lineNoCov">          0 :         if (!mono_thread_info_is_live (info))</span>
+<span class="lineNum">      98 </span><span class="lineNoCov">          0 :                 g_error (&quot;[%p] Cannot %s GC %s region if the thread is not live&quot;, mono_thread_info_get_tid (info), action, state);</span>
+<span class="lineNum">      99 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span>            : static int coop_reset_blocking_count;
+<span class="lineNum">     102 </span>            : static int coop_try_blocking_count;
+<span class="lineNum">     103 </span>            : static int coop_do_blocking_count;
+<span class="lineNum">     104 </span>            : static int coop_do_polling_count;
+<span class="lineNum">     105 </span>            : static int coop_save_count;
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span>            : static void
+<span class="lineNum">     108 </span>            : mono_threads_state_poll_with_info (MonoThreadInfo *info);
+<a name="109"><span class="lineNum">     109 </span>            : </a>
+<span class="lineNum">     110 </span>            : void
+<span class="lineNum">     111 </span>            : mono_threads_state_poll (void)
+<span class="lineNum">     112 </span>            : {
+<span class="lineNum">     113 </span><span class="lineNoCov">          0 :         mono_threads_state_poll_with_info (mono_thread_info_current_unchecked ());</span>
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 : }</span>
+<a name="115"><span class="lineNum">     115 </span>            : </a>
+<span class="lineNum">     116 </span>            : static void
+<span class="lineNum">     117 </span>            : mono_threads_state_poll_with_info (MonoThreadInfo *info)
+<span class="lineNum">     118 </span>            : {
+<span class="lineNum">     119 </span><span class="lineNoCov">          0 :         g_assert (mono_threads_is_coop_enabled ());</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :         ++coop_do_polling_count;</span>
+<span class="lineNum">     122 </span>            : 
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :         if (!info)</span>
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     125 </span>            : 
+<span class="lineNum">     126 </span>            :         THREADS_SUSPEND_DEBUG (&quot;FINISH SELF SUSPEND OF %p\n&quot;, mono_thread_info_get_tid (info));
+<span class="lineNum">     127 </span>            : 
+<span class="lineNum">     128 </span>            :         /* Fast check for pending suspend requests */
+<span class="lineNum">     129 </span><span class="lineNoCov">          0 :         if (!(info-&gt;thread_state &amp; (STATE_ASYNC_SUSPEND_REQUESTED | STATE_SELF_SUSPEND_REQUESTED)))</span>
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :         ++coop_save_count;</span>
+<span class="lineNum">     133 </span><span class="lineNoCov">          0 :         mono_threads_get_runtime_callbacks ()-&gt;thread_state_init (&amp;info-&gt;thread_saved_state [SELF_SUSPEND_STATE_INDEX]);</span>
+<span class="lineNum">     134 </span>            : 
+<span class="lineNum">     135 </span>            :         /* commit the saved state and notify others if needed */
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         switch (mono_threads_transition_state_poll (info)) {</span>
+<span class="lineNum">     137 </span>            :         case SelfSuspendResumed:
+<span class="lineNum">     138 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     139 </span>            :         case SelfSuspendWait:
+<span class="lineNum">     140 </span><span class="lineNoCov">          0 :                 mono_thread_info_wait_for_resume (info);</span>
+<span class="lineNum">     141 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     142 </span>            :         case SelfSuspendNotifyAndWait:
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :                 mono_threads_notify_initiator_of_suspend (info);</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :                 mono_thread_info_wait_for_resume (info);</span>
+<span class="lineNum">     145 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     146 </span>            :         }
+<span class="lineNum">     147 </span>            : 
+<span class="lineNum">     148 </span><span class="lineNoCov">          0 :         if (info-&gt;async_target) {</span>
+<span class="lineNum">     149 </span><span class="lineNoCov">          0 :                 info-&gt;async_target (info-&gt;user_data);</span>
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :                 info-&gt;async_target = NULL;</span>
+<span class="lineNum">     151 </span><span class="lineNoCov">          0 :                 info-&gt;user_data = NULL;</span>
+<span class="lineNum">     152 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     153 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     154 </span>            : 
+<span class="lineNum">     155 </span>            : static volatile gpointer* dummy_global;
+<span class="lineNum">     156 </span>            : 
+<a name="157"><span class="lineNum">     157 </span>            : static MONO_NEVER_INLINE</a>
+<span class="lineNum">     158 </span>            : void*
+<span class="lineNum">     159 </span>            : return_stack_ptr (gpointer *i)
+<span class="lineNum">     160 </span>            : {
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         dummy_global = i;</span>
+<span class="lineNum">     162 </span><span class="lineNoCov">          0 :         return i;</span>
+<span class="lineNum">     163 </span>            : }
+<a name="164"><span class="lineNum">     164 </span>            : </a>
+<span class="lineNum">     165 </span>            : static void
+<span class="lineNum">     166 </span>            : copy_stack_data (MonoThreadInfo *info, gpointer *stackdata_begin)
+<span class="lineNum">     167 </span>            : {
+<span class="lineNum">     168 </span>            :         MonoThreadUnwindState *state;
+<span class="lineNum">     169 </span>            :         int stackdata_size;
+<span class="lineNum">     170 </span>            :         gpointer dummy;
+<span class="lineNum">     171 </span><span class="lineNoCov">          0 :         void* stackdata_end = return_stack_ptr (&amp;dummy);</span>
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :         SAVE_REGS_ON_STACK;</span>
+<span class="lineNum">     174 </span>            : 
+<span class="lineNum">     175 </span><span class="lineNoCov">          0 :         state = &amp;info-&gt;thread_saved_state [SELF_SUSPEND_STATE_INDEX];</span>
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineNoCov">          0 :         stackdata_size = (char*)stackdata_begin - (char*)stackdata_end;</span>
+<span class="lineNum">     178 </span>            : 
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :         if (((gsize) stackdata_begin &amp; (SIZEOF_VOID_P - 1)) != 0)</span>
+<span class="lineNum">     180 </span><span class="lineNoCov">          0 :                 g_error (&quot;stackdata_begin (%p) must be %d-byte aligned&quot;, stackdata_begin, SIZEOF_VOID_P);</span>
+<span class="lineNum">     181 </span><span class="lineNoCov">          0 :         if (((gsize) stackdata_end &amp; (SIZEOF_VOID_P - 1)) != 0)</span>
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :                 g_error (&quot;stackdata_end (%p) must be %d-byte aligned&quot;, stackdata_end, SIZEOF_VOID_P);</span>
+<span class="lineNum">     183 </span>            : 
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :         if (stackdata_size &lt;= 0)</span>
+<span class="lineNum">     185 </span><span class="lineNoCov">          0 :                 g_error (&quot;stackdata_size = %d, but must be &gt; 0, stackdata_begin = %p, stackdata_end = %p&quot;, stackdata_size, stackdata_begin, stackdata_end);</span>
+<span class="lineNum">     186 </span>            : 
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :         g_byte_array_set_size (info-&gt;stackdata, stackdata_size);</span>
+<span class="lineNum">     188 </span><span class="lineNoCov">          0 :         state-&gt;gc_stackdata = info-&gt;stackdata-&gt;data;</span>
+<span class="lineNum">     189 </span><span class="lineNoCov">          0 :         memcpy (state-&gt;gc_stackdata, stackdata_end, stackdata_size);</span>
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span><span class="lineNoCov">          0 :         state-&gt;gc_stackdata_size = stackdata_size;</span>
+<span class="lineNum">     192 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span>            : static gpointer
+<span class="lineNum">     195 </span>            : mono_threads_enter_gc_safe_region_unbalanced_with_info (MonoThreadInfo *info, gpointer *stackdata);
+<a name="196"><span class="lineNum">     196 </span>            : </a>
+<span class="lineNum">     197 </span>            : gpointer
+<span class="lineNum">     198 </span>            : mono_threads_enter_gc_safe_region (gpointer *stackdata)
+<span class="lineNum">     199 </span>            : {
+<span class="lineNum">     200 </span><span class="lineCov">   66463208 :         return mono_threads_enter_gc_safe_region_with_info (mono_thread_info_current_unchecked (), stackdata);</span>
+<span class="lineNum">     201 </span>            : }
+<a name="202"><span class="lineNum">     202 </span>            : </a>
+<span class="lineNum">     203 </span>            : gpointer
+<span class="lineNum">     204 </span>            : mono_threads_enter_gc_safe_region_with_info (MonoThreadInfo *info, gpointer *stackdata)
+<span class="lineNum">     205 </span>            : {
+<span class="lineNum">     206 </span>            :         gpointer cookie;
+<span class="lineNum">     207 </span>            : 
+<span class="lineNum">     208 </span><span class="lineCov">   66845023 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     209 </span><span class="lineCov">   66847487 :                 return NULL;</span>
+<span class="lineNum">     210 </span>            : 
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :         cookie = mono_threads_enter_gc_safe_region_unbalanced_with_info (info, stackdata);</span>
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span>            : #ifdef ENABLE_CHECKED_BUILD_GC
+<span class="lineNum">     214 </span>            :         if (mono_check_mode_enabled (MONO_CHECK_MODE_GC))
+<span class="lineNum">     215 </span>            :                 coop_tls_push (cookie);
+<span class="lineNum">     216 </span>            : #endif
+<span class="lineNum">     217 </span>            : 
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :         return cookie;</span>
+<span class="lineNum">     219 </span><span class="lineCov">   66847400 : }</span>
+<a name="220"><span class="lineNum">     220 </span>            : </a>
+<span class="lineNum">     221 </span>            : gpointer
+<span class="lineNum">     222 </span>            : mono_threads_enter_gc_safe_region_unbalanced (gpointer *stackdata)
+<span class="lineNum">     223 </span>            : {
+<span class="lineNum">     224 </span><span class="lineNoCov">          0 :         return mono_threads_enter_gc_safe_region_unbalanced_with_info (mono_thread_info_current_unchecked (), stackdata);</span>
+<span class="lineNum">     225 </span>            : }
+<a name="226"><span class="lineNum">     226 </span>            : </a>
+<span class="lineNum">     227 </span>            : static gpointer
+<span class="lineNum">     228 </span>            : mono_threads_enter_gc_safe_region_unbalanced_with_info (MonoThreadInfo *info, gpointer *stackdata)
+<span class="lineNum">     229 </span>            : {
+<span class="lineNum">     230 </span><span class="lineNoCov">          0 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     232 </span>            : 
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :         ++coop_do_blocking_count;</span>
+<span class="lineNum">     234 </span>            : 
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :         check_info (info, &quot;enter&quot;, &quot;safe&quot;);</span>
+<span class="lineNum">     236 </span>            : 
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :         copy_stack_data (info, stackdata);</span>
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span>            : retry:
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :         ++coop_save_count;</span>
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :         mono_threads_get_runtime_callbacks ()-&gt;thread_state_init (&amp;info-&gt;thread_saved_state [SELF_SUSPEND_STATE_INDEX]);</span>
+<span class="lineNum">     242 </span>            : 
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :         switch (mono_threads_transition_do_blocking (info)) {</span>
+<span class="lineNum">     244 </span>            :         case DoBlockingContinue:
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     246 </span>            :         case DoBlockingPollAndRetry:
+<span class="lineNum">     247 </span><span class="lineNoCov">          0 :                 mono_threads_state_poll_with_info (info);</span>
+<span class="lineNum">     248 </span><span class="lineNoCov">          0 :                 goto retry;</span>
+<span class="lineNum">     249 </span>            :         }
+<span class="lineNum">     250 </span>            : 
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :         return info;</span>
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 : }</span>
+<a name="253"><span class="lineNum">     253 </span>            : </a>
+<span class="lineNum">     254 </span>            : void
+<span class="lineNum">     255 </span>            : mono_threads_exit_gc_safe_region (gpointer cookie, gpointer *stackdata)
+<span class="lineNum">     256 </span>            : {
+<span class="lineNum">     257 </span><span class="lineCov">   66855136 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     258 </span><span class="lineCov">   66855599 :                 return;</span>
+<span class="lineNum">     259 </span>            : 
+<span class="lineNum">     260 </span>            : #ifdef ENABLE_CHECKED_BUILD_GC
+<span class="lineNum">     261 </span>            :         if (mono_check_mode_enabled (MONO_CHECK_MODE_GC))
+<span class="lineNum">     262 </span>            :                 coop_tls_pop (cookie);
+<span class="lineNum">     263 </span>            : #endif
+<span class="lineNum">     264 </span>            : 
+<span class="lineNum">     265 </span><span class="lineNoCov">          0 :         mono_threads_exit_gc_safe_region_unbalanced (cookie, stackdata);</span>
+<span class="lineNum">     266 </span><span class="lineCov">   66855753 : }</span>
+<a name="267"><span class="lineNum">     267 </span>            : </a>
+<span class="lineNum">     268 </span>            : void
+<span class="lineNum">     269 </span>            : mono_threads_exit_gc_safe_region_unbalanced (gpointer cookie, gpointer *stackdata)
+<span class="lineNum">     270 </span>            : {
+<span class="lineNum">     271 </span>            :         MonoThreadInfo *info;
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span><span class="lineNoCov">          0 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     274 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :         info = (MonoThreadInfo *)cookie;</span>
+<span class="lineNum">     277 </span>            : 
+<span class="lineNum">     278 </span><span class="lineNoCov">          0 :         check_info (info, &quot;exit&quot;, &quot;safe&quot;);</span>
+<span class="lineNum">     279 </span>            : 
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :         switch (mono_threads_transition_done_blocking (info)) {</span>
+<span class="lineNum">     281 </span>            :         case DoneBlockingOk:
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :                 info-&gt;thread_saved_state [SELF_SUSPEND_STATE_INDEX].valid = FALSE;</span>
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     284 </span>            :         case DoneBlockingWait:
+<span class="lineNum">     285 </span>            :                 THREADS_SUSPEND_DEBUG (&quot;state polling done, notifying of resume\n&quot;);
+<span class="lineNum">     286 </span><span class="lineNoCov">          0 :                 mono_thread_info_wait_for_resume (info);</span>
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     288 </span>            :         default:
+<span class="lineNum">     289 </span><span class="lineNoCov">          0 :                 g_error (&quot;Unknown thread state&quot;);</span>
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 : }</span>
+<a name="292"><span class="lineNum">     292 </span>            : </a>
+<span class="lineNum">     293 </span>            : void
+<span class="lineNum">     294 </span>            : mono_threads_assert_gc_safe_region (void)
+<span class="lineNum">     295 </span>            : {
+<span class="lineNum">     296 </span>            :         MONO_REQ_GC_SAFE_MODE;
+<span class="lineNum">     297 </span><span class="lineNoCov">          0 : }</span>
+<a name="298"><span class="lineNum">     298 </span>            : </a>
+<span class="lineNum">     299 </span>            : gpointer
+<span class="lineNum">     300 </span>            : mono_threads_enter_gc_unsafe_region (gpointer *stackdata)
+<span class="lineNum">     301 </span>            : {
+<span class="lineNum">     302 </span><span class="lineCov">         90 :         return mono_threads_enter_gc_unsafe_region_with_info (mono_thread_info_current_unchecked (), stackdata);</span>
+<span class="lineNum">     303 </span>            : }
+<a name="304"><span class="lineNum">     304 </span>            : </a>
+<span class="lineNum">     305 </span>            : gpointer
+<span class="lineNum">     306 </span>            : mono_threads_enter_gc_unsafe_region_with_info (THREAD_INFO_TYPE *info, gpointer *stackdata)
+<span class="lineNum">     307 </span>            : {
+<span class="lineNum">     308 </span>            :         gpointer cookie;
+<span class="lineNum">     309 </span>            : 
+<span class="lineNum">     310 </span><span class="lineCov">         90 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     311 </span><span class="lineCov">         90 :                 return NULL;</span>
+<span class="lineNum">     312 </span>            : 
+<span class="lineNum">     313 </span><span class="lineNoCov">          0 :         cookie = mono_threads_enter_gc_unsafe_region_unbalanced_with_info (info, stackdata);</span>
+<span class="lineNum">     314 </span>            : 
+<span class="lineNum">     315 </span>            : #ifdef ENABLE_CHECKED_BUILD_GC
+<span class="lineNum">     316 </span>            :         if (mono_check_mode_enabled (MONO_CHECK_MODE_GC))
+<span class="lineNum">     317 </span>            :                 coop_tls_push (cookie);
+<span class="lineNum">     318 </span>            : #endif
+<span class="lineNum">     319 </span>            : 
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :         return cookie;</span>
+<span class="lineNum">     321 </span><span class="lineCov">         90 : }</span>
+<a name="322"><span class="lineNum">     322 </span>            : </a>
+<span class="lineNum">     323 </span>            : gpointer
+<span class="lineNum">     324 </span>            : mono_threads_enter_gc_unsafe_region_unbalanced (gpointer *stackdata)
+<span class="lineNum">     325 </span>            : {
+<span class="lineNum">     326 </span><span class="lineCov">   25292156 :         return mono_threads_enter_gc_unsafe_region_unbalanced_with_info (mono_thread_info_current_unchecked (), stackdata);</span>
+<span class="lineNum">     327 </span>            : }
+<a name="328"><span class="lineNum">     328 </span>            : </a>
+<span class="lineNum">     329 </span>            : gpointer
+<span class="lineNum">     330 </span>            : mono_threads_enter_gc_unsafe_region_unbalanced_with_info (MonoThreadInfo *info, gpointer *stackdata)
+<span class="lineNum">     331 </span>            : {
+<span class="lineNum">     332 </span><span class="lineCov">   25310190 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     333 </span><span class="lineCov">   25310265 :                 return NULL;</span>
+<span class="lineNum">     334 </span>            : 
+<span class="lineNum">     335 </span><span class="lineNoCov">          0 :         ++coop_reset_blocking_count;</span>
+<span class="lineNum">     336 </span>            : 
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :         check_info (info, &quot;enter&quot;, &quot;unsafe&quot;);</span>
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :         copy_stack_data (info, stackdata);</span>
+<span class="lineNum">     340 </span>            : 
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :         switch (mono_threads_transition_abort_blocking (info)) {</span>
+<span class="lineNum">     342 </span>            :         case AbortBlockingIgnore:
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :                 info-&gt;thread_saved_state [SELF_SUSPEND_STATE_INDEX].valid = FALSE;</span>
+<span class="lineNum">     344 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     345 </span>            :         case AbortBlockingIgnoreAndPoll:
+<span class="lineNum">     346 </span><span class="lineNoCov">          0 :                 mono_threads_state_poll_with_info (info);</span>
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     348 </span>            :         case AbortBlockingOk:
+<span class="lineNum">     349 </span><span class="lineNoCov">          0 :                 info-&gt;thread_saved_state [SELF_SUSPEND_STATE_INDEX].valid = FALSE;</span>
+<span class="lineNum">     350 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     351 </span>            :         case AbortBlockingWait:
+<span class="lineNum">     352 </span><span class="lineNoCov">          0 :                 mono_thread_info_wait_for_resume (info);</span>
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     354 </span>            :         default:
+<span class="lineNum">     355 </span><span class="lineNoCov">          0 :                 g_error (&quot;Unknown thread state&quot;);</span>
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     357 </span>            : 
+<span class="lineNum">     358 </span><span class="lineNoCov">          0 :         return info;</span>
+<span class="lineNum">     359 </span><span class="lineCov">   25309949 : }</span>
+<a name="360"><span class="lineNum">     360 </span>            : </a>
+<span class="lineNum">     361 </span>            : gpointer
+<span class="lineNum">     362 </span>            : mono_threads_enter_gc_unsafe_region_cookie (void)
+<span class="lineNum">     363 </span>            : {
+<span class="lineNum">     364 </span>            :         MonoThreadInfo *info;
+<span class="lineNum">     365 </span>            : 
+<span class="lineNum">     366 </span><span class="lineNoCov">          0 :         g_assert (mono_threads_is_coop_enabled ());</span>
+<span class="lineNum">     367 </span>            : 
+<span class="lineNum">     368 </span><span class="lineNoCov">          0 :         info = mono_thread_info_current_unchecked ();</span>
+<span class="lineNum">     369 </span>            : 
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :         check_info (info, &quot;enter (cookie)&quot;, &quot;unsafe&quot;);</span>
+<span class="lineNum">     371 </span>            : 
+<span class="lineNum">     372 </span>            : #ifdef ENABLE_CHECKED_BUILD_GC
+<span class="lineNum">     373 </span>            :         if (mono_check_mode_enabled (MONO_CHECK_MODE_GC))
+<span class="lineNum">     374 </span>            :                 coop_tls_push (info);
+<span class="lineNum">     375 </span>            : #endif
+<span class="lineNum">     376 </span>            : 
+<span class="lineNum">     377 </span><span class="lineNoCov">          0 :         return info;</span>
+<span class="lineNum">     378 </span>            : }
+<a name="379"><span class="lineNum">     379 </span>            : </a>
+<span class="lineNum">     380 </span>            : void
+<span class="lineNum">     381 </span>            : mono_threads_exit_gc_unsafe_region (gpointer cookie, gpointer *stackdata)
+<span class="lineNum">     382 </span>            : {
+<span class="lineNum">     383 </span><span class="lineCov">         90 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     384 </span><span class="lineCov">         90 :                 return;</span>
+<span class="lineNum">     385 </span>            : 
+<span class="lineNum">     386 </span>            : #ifdef ENABLE_CHECKED_BUILD_GC
+<span class="lineNum">     387 </span>            :         if (mono_check_mode_enabled (MONO_CHECK_MODE_GC))
+<span class="lineNum">     388 </span>            :                 coop_tls_pop (cookie);
+<span class="lineNum">     389 </span>            : #endif
+<span class="lineNum">     390 </span>            : 
+<span class="lineNum">     391 </span><span class="lineNoCov">          0 :         mono_threads_exit_gc_unsafe_region_unbalanced (cookie, stackdata);</span>
+<span class="lineNum">     392 </span><span class="lineCov">         90 : }</span>
+<a name="393"><span class="lineNum">     393 </span>            : </a>
+<span class="lineNum">     394 </span>            : void
+<span class="lineNum">     395 </span>            : mono_threads_exit_gc_unsafe_region_unbalanced (gpointer cookie, gpointer *stackdata)
+<span class="lineNum">     396 </span>            : {
+<span class="lineNum">     397 </span><span class="lineCov">   25293146 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     398 </span><span class="lineCov">   25293221 :                 return;</span>
+<span class="lineNum">     399 </span>            : 
+<span class="lineNum">     400 </span><span class="lineNoCov">          0 :         if (!cookie)</span>
+<span class="lineNum">     401 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     402 </span>            : 
+<span class="lineNum">     403 </span><span class="lineNoCov">          0 :         mono_threads_enter_gc_safe_region_unbalanced (stackdata);</span>
+<span class="lineNum">     404 </span><span class="lineCov">   25293266 : }</span>
+<a name="405"><span class="lineNum">     405 </span>            : </a>
+<span class="lineNum">     406 </span>            : void
+<span class="lineNum">     407 </span>            : mono_threads_assert_gc_unsafe_region (void)
+<span class="lineNum">     408 </span>            : {
+<span class="lineNum">     409 </span>            :         MONO_REQ_GC_UNSAFE_MODE;
+<span class="lineNum">     410 </span><span class="lineNoCov">          0 : }</span>
+<a name="411"><span class="lineNum">     411 </span>            : </a>
+<span class="lineNum">     412 </span>            : gboolean
+<span class="lineNum">     413 </span>            : mono_threads_is_coop_enabled (void)
+<span class="lineNum">     414 </span>            : {
+<span class="lineNum">     415 </span>            : #if defined(USE_COOP_GC)
+<span class="lineNum">     416 </span>            :         return TRUE;
+<span class="lineNum">     417 </span>            : #else
+<span class="lineNum">     418 </span>            :         static int is_coop_enabled = -1;
+<span class="lineNum">     419 </span><span class="lineCov">  215173956 :         if (G_UNLIKELY (is_coop_enabled == -1))</span>
+<span class="lineNum">     420 </span><span class="lineCov">       3289 :                 is_coop_enabled = g_getenv (&quot;MONO_ENABLE_COOP&quot;) != NULL ? 1 : 0;</span>
+<span class="lineNum">     421 </span><span class="lineCov">  215194161 :         return is_coop_enabled == 1;</span>
+<span class="lineNum">     422 </span>            : #endif
+<span class="lineNum">     423 </span>            : }
+<span class="lineNum">     424 </span>            : 
+<a name="425"><span class="lineNum">     425 </span>            : </a>
+<span class="lineNum">     426 </span>            : void
+<span class="lineNum">     427 </span>            : mono_threads_coop_init (void)
+<span class="lineNum">     428 </span>            : {
+<span class="lineNum">     429 </span><span class="lineCov">       3289 :         if (!mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     430 </span><span class="lineCov">       3289 :                 return;</span>
+<span class="lineNum">     431 </span>            : 
+<span class="lineNum">     432 </span><span class="lineNoCov">          0 :         mono_counters_register (&quot;Coop Reset Blocking&quot;, MONO_COUNTER_GC | MONO_COUNTER_INT, &amp;coop_reset_blocking_count);</span>
+<span class="lineNum">     433 </span><span class="lineNoCov">          0 :         mono_counters_register (&quot;Coop Try Blocking&quot;, MONO_COUNTER_GC | MONO_COUNTER_INT, &amp;coop_try_blocking_count);</span>
+<span class="lineNum">     434 </span><span class="lineNoCov">          0 :         mono_counters_register (&quot;Coop Do Blocking&quot;, MONO_COUNTER_GC | MONO_COUNTER_INT, &amp;coop_do_blocking_count);</span>
+<span class="lineNum">     435 </span><span class="lineNoCov">          0 :         mono_counters_register (&quot;Coop Do Polling&quot;, MONO_COUNTER_GC | MONO_COUNTER_INT, &amp;coop_do_polling_count);</span>
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 :         mono_counters_register (&quot;Coop Save Count&quot;, MONO_COUNTER_GC | MONO_COUNTER_INT, &amp;coop_save_count);</span>
+<span class="lineNum">     437 </span>            :         //See the above for what's wrong here.
+<span class="lineNum">     438 </span>            : 
+<span class="lineNum">     439 </span>            : #ifdef ENABLE_CHECKED_BUILD_GC
+<span class="lineNum">     440 </span>            :         mono_native_tls_alloc (&amp;coop_reset_count_stack_key, NULL);
+<span class="lineNum">     441 </span>            : #endif
+<span class="lineNum">     442 </span><span class="lineCov">       3289 : }</span>
+<a name="443"><span class="lineNum">     443 </span>            : </a>
+<span class="lineNum">     444 </span>            : void
+<span class="lineNum">     445 </span>            : mono_threads_coop_begin_global_suspend (void)
+<span class="lineNum">     446 </span>            : {
+<span class="lineNum">     447 </span><span class="lineCov">     279499 :         if (mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :                 mono_polling_required = 1;</span>
+<span class="lineNum">     449 </span><span class="lineCov">     279499 : }</span>
+<a name="450"><span class="lineNum">     450 </span>            : </a>
+<span class="lineNum">     451 </span>            : void
+<span class="lineNum">     452 </span>            : mono_threads_coop_end_global_suspend (void)
+<span class="lineNum">     453 </span>            : {
+<span class="lineNum">     454 </span><span class="lineCov">     279499 :         if (mono_threads_is_coop_enabled ())</span>
+<span class="lineNum">     455 </span><span class="lineNoCov">          0 :                 mono_polling_required = 0;</span>
+<span class="lineNum">     456 </span><span class="lineCov">     279499 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

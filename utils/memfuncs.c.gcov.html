@@ -1,0 +1,297 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - utils/memfuncs.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">utils</a> - memfuncs.c<span style="font-size: 80%;"> (source / <a href="memfuncs.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">60</td>
+            <td class="headerCovTableEntry">60</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntryHi">100.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * memfuncs.c: Our own bzero/memmove.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright (C) 2013-2015 Xamarin Inc
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">       7 </span>            :  */
+<span class="lineNum">       8 </span>            : 
+<span class="lineNum">       9 </span>            : /*
+<span class="lineNum">      10 </span>            :  * SGen cannot deal with invalid pointers on the heap or in registered roots.  Sometimes we
+<span class="lineNum">      11 </span>            :  * need to copy or zero out memory in code that might be interrupted by collections.  To
+<span class="lineNum">      12 </span>            :  * guarantee that those operations will not result in invalid pointers, we must do it
+<span class="lineNum">      13 </span>            :  * word-atomically.
+<span class="lineNum">      14 </span>            :  *
+<span class="lineNum">      15 </span>            :  * libc's bzero() and memcpy()/memmove() functions do not guarantee word-atomicity, even in
+<span class="lineNum">      16 </span>            :  * cases where one would assume so.  For instance, some implementations (like Darwin's on
+<span class="lineNum">      17 </span>            :  * x86) have variants of memcpy() using vector instructions.  Those may copy bytewise for
+<span class="lineNum">      18 </span>            :  * the region preceding the first vector-aligned address.  That region could be
+<span class="lineNum">      19 </span>            :  * word-aligned, but it would still be copied byte-wise.
+<span class="lineNum">      20 </span>            :  *
+<span class="lineNum">      21 </span>            :  * All our memory writes here are to &quot;volatile&quot; locations.  This is so that C compilers
+<span class="lineNum">      22 </span>            :  * don't &quot;optimize&quot; our code back to calls to bzero()/memmove().  LLVM, specifically, will
+<span class="lineNum">      23 </span>            :  * do that.
+<span class="lineNum">      24 </span>            :  */
+<span class="lineNum">      25 </span>            : 
+<span class="lineNum">      26 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      29 </span>            : 
+<span class="lineNum">      30 </span>            : #include &quot;memfuncs.h&quot;
+<span class="lineNum">      31 </span>            : 
+<span class="lineNum">      32 </span>            : #define ptr_mask ((sizeof (void*) - 1))
+<span class="lineNum">      33 </span>            : #define _toi(ptr) ((size_t)ptr)
+<span class="lineNum">      34 </span>            : #define unaligned_bytes(ptr) (_toi(ptr) &amp; ptr_mask)
+<span class="lineNum">      35 </span>            : #define align_down(ptr) ((void*)(_toi(ptr) &amp; ~ptr_mask))
+<span class="lineNum">      36 </span>            : #define align_up(ptr) ((void*) ((_toi(ptr) + ptr_mask) &amp; ~ptr_mask))
+<span class="lineNum">      37 </span>            : #if SIZEOF_VOID_P == 4
+<span class="lineNum">      38 </span>            : #define bytes_to_words(n)       ((size_t)(n) &gt;&gt; 2)
+<span class="lineNum">      39 </span>            : #elif SIZEOF_VOID_P == 8
+<span class="lineNum">      40 </span>            : #define bytes_to_words(n)       ((size_t)(n) &gt;&gt; 3)
+<span class="lineNum">      41 </span>            : #else
+<span class="lineNum">      42 </span>            : #error We only support 32 and 64 bit architectures.
+<span class="lineNum">      43 </span>            : #endif
+<span class="lineNum">      44 </span>            : 
+<span class="lineNum">      45 </span>            : #define BZERO_WORDS(dest,words) do {                    \
+<span class="lineNum">      46 </span>            :                 void * volatile *__d = (void* volatile*)(dest);         \
+<span class="lineNum">      47 </span>            :                 int __n = (words);                      \
+<span class="lineNum">      48 </span>            :                 int __i;                                \
+<span class="lineNum">      49 </span>            :                 for (__i = 0; __i &lt; __n; ++__i)              \
+<span class="lineNum">      50 </span>            :                         __d [__i] = NULL;               \
+<span class="lineNum">      51 </span>            :         } while (0)
+<span class="lineNum">      52 </span>            : 
+<span class="lineNum">      53 </span>            : 
+<span class="lineNum">      54 </span>            : /**
+<span class="lineNum">      55 </span>            :  * mono_gc_bzero_aligned:
+<span class="lineNum">      56 </span>            :  * @dest: address to start to clear
+<span class="lineNum">      57 </span>            :  * @size: size of the region to clear
+<span class="lineNum">      58 </span>            :  *
+<span class="lineNum">      59 </span>            :  * Zero @size bytes starting at @dest.
+<span class="lineNum">      60 </span>            :  * The address of @dest MUST be aligned to word boundaries
+<span class="lineNum">      61 </span>            :  *
+<span class="lineNum">      62 </span>            :  * FIXME borrow faster code from some BSD libc or bionic
+<a name="63"><span class="lineNum">      63 </span>            :  */</a>
+<span class="lineNum">      64 </span>            : void
+<span class="lineNum">      65 </span>            : mono_gc_bzero_aligned (void *dest, size_t size)
+<span class="lineNum">      66 </span>            : {
+<span class="lineNum">      67 </span><span class="lineCov">    7660396 :         volatile char *d = (char*)dest;</span>
+<span class="lineNum">      68 </span>            :         size_t tail_bytes, word_bytes;
+<span class="lineNum">      69 </span>            : 
+<span class="lineNum">      70 </span><span class="lineCov">   22981413 :         g_assert (unaligned_bytes (dest) == 0);</span>
+<span class="lineNum">      71 </span>            : 
+<span class="lineNum">      72 </span>            :         /* copy all words with memmove */
+<span class="lineNum">      73 </span><span class="lineCov">    7663304 :         word_bytes = (size_t)align_down (size);</span>
+<span class="lineNum">      74 </span><span class="lineCov">    7663304 :         switch (word_bytes) {</span>
+<span class="lineNum">      75 </span>            :         case sizeof (void*) * 1:
+<span class="lineNum">      76 </span><span class="lineCov">    3343813 :                 BZERO_WORDS (d, 1);</span>
+<span class="lineNum">      77 </span><span class="lineCov">     477703 :                 break;</span>
+<span class="lineNum">      78 </span>            :         case sizeof (void*) * 2:
+<span class="lineNum">      79 </span><span class="lineCov">    5678684 :                 BZERO_WORDS (d, 2);</span>
+<span class="lineNum">      80 </span><span class="lineCov">     567877 :                 break;</span>
+<span class="lineNum">      81 </span>            :         case sizeof (void*) * 3:
+<span class="lineNum">      82 </span><span class="lineCov">   28397255 :                 BZERO_WORDS (d, 3);</span>
+<span class="lineNum">      83 </span><span class="lineCov">    2185214 :                 break;</span>
+<span class="lineNum">      84 </span>            :         case sizeof (void*) * 4:
+<span class="lineNum">      85 </span><span class="lineCov">   11915621 :                 BZERO_WORDS (d, 4);</span>
+<span class="lineNum">      86 </span><span class="lineCov">     746038 :                 break;</span>
+<span class="lineNum">      87 </span>            :         default:
+<span class="lineNum">      88 </span><span class="lineCov">  322171578 :                 BZERO_WORDS (d, bytes_to_words (word_bytes));</span>
+<span class="lineNum">      89 </span><span class="lineCov">    3688632 :         }</span>
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span><span class="lineCov">    7664444 :         tail_bytes = unaligned_bytes (size);</span>
+<span class="lineNum">      92 </span><span class="lineCov">    7664444 :         if (tail_bytes) {</span>
+<span class="lineNum">      93 </span><span class="lineCov">    2100736 :                 d += word_bytes;</span>
+<span class="lineNum">      94 </span><span class="lineCov">    2100736 :                 do {</span>
+<span class="lineNum">      95 </span><span class="lineCov">    8393176 :                         *d++ = 0;</span>
+<span class="lineNum">      96 </span><span class="lineCov">   16786884 :                 } while (--tail_bytes);</span>
+<span class="lineNum">      97 </span><span class="lineCov">    2100499 :         }</span>
+<span class="lineNum">      98 </span><span class="lineCov">    7663045 : }</span>
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span>            : /**
+<span class="lineNum">     101 </span>            :  * mono_gc_bzero_atomic:
+<span class="lineNum">     102 </span>            :  * @dest: address to start to clear
+<span class="lineNum">     103 </span>            :  * @size: size of the region to clear
+<span class="lineNum">     104 </span>            :  *
+<span class="lineNum">     105 </span>            :  * Zero @size bytes starting at @dest.
+<span class="lineNum">     106 </span>            :  *
+<span class="lineNum">     107 </span>            :  * Use this to zero memory without word tearing when dest is aligned.
+<a name="108"><span class="lineNum">     108 </span>            :  */</a>
+<span class="lineNum">     109 </span>            : void
+<span class="lineNum">     110 </span>            : mono_gc_bzero_atomic (void *dest, size_t size)
+<span class="lineNum">     111 </span>            : {
+<span class="lineNum">     112 </span><span class="lineCov">    7666138 :         if (unaligned_bytes (dest))</span>
+<span class="lineNum">     113 </span><span class="lineCov">      29224 :                 memset (dest, 0, size);</span>
+<span class="lineNum">     114 </span>            :         else
+<span class="lineNum">     115 </span><span class="lineCov">    7636980 :                 mono_gc_bzero_aligned (dest, size);</span>
+<span class="lineNum">     116 </span><span class="lineCov">    7668635 : }</span>
+<span class="lineNum">     117 </span>            : 
+<span class="lineNum">     118 </span>            : #define MEMMOVE_WORDS_UPWARD(dest,src,words) do {       \
+<span class="lineNum">     119 </span>            :                 void * volatile *__d = (void* volatile*)(dest);         \
+<span class="lineNum">     120 </span>            :                 void **__s = (void**)(src);             \
+<span class="lineNum">     121 </span>            :                 int __n = (int)(words);                 \
+<span class="lineNum">     122 </span>            :                 int __i;                                \
+<span class="lineNum">     123 </span>            :                 for (__i = 0; __i &lt; __n; ++__i)              \
+<span class="lineNum">     124 </span>            :                         __d [__i] = __s [__i];          \
+<span class="lineNum">     125 </span>            :         } while (0)
+<span class="lineNum">     126 </span>            : 
+<span class="lineNum">     127 </span>            : #define MEMMOVE_WORDS_DOWNWARD(dest,src,words) do {     \
+<span class="lineNum">     128 </span>            :                 void * volatile *__d = (void* volatile*)(dest);         \
+<span class="lineNum">     129 </span>            :                 void **__s = (void**)(src);             \
+<span class="lineNum">     130 </span>            :                 int __n = (int)(words);                 \
+<span class="lineNum">     131 </span>            :                 int __i;                                \
+<span class="lineNum">     132 </span>            :                 for (__i = __n - 1; __i &gt;= 0; --__i) \
+<span class="lineNum">     133 </span>            :                         __d [__i] = __s [__i];          \
+<span class="lineNum">     134 </span>            :         } while (0)
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span>            : 
+<span class="lineNum">     137 </span>            : /**
+<span class="lineNum">     138 </span>            :  * mono_gc_memmove_aligned:
+<span class="lineNum">     139 </span>            :  * @dest: destination of the move
+<span class="lineNum">     140 </span>            :  * @src: source
+<span class="lineNum">     141 </span>            :  * @size: size of the block to move
+<span class="lineNum">     142 </span>            :  *
+<span class="lineNum">     143 </span>            :  * Move @size bytes from @src to @dest.
+<span class="lineNum">     144 </span>            :  *
+<a name="145"><span class="lineNum">     145 </span>            :  * Use this to copy memory without word tearing when both pointers are aligned</a>
+<span class="lineNum">     146 </span>            :  */void
+<span class="lineNum">     147 </span>            : mono_gc_memmove_aligned (void *dest, const void *src, size_t size)
+<span class="lineNum">     148 </span>            : {
+<span class="lineNum">     149 </span><span class="lineCov">  153774352 :         g_assert (unaligned_bytes (dest) == 0);</span>
+<span class="lineNum">     150 </span><span class="lineCov">  153847082 :         g_assert (unaligned_bytes (src) == 0);</span>
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span>            :         /*
+<span class="lineNum">     153 </span>            :         If we're copying less than a word we don't need to worry about word tearing
+<span class="lineNum">     154 </span>            :         so we bailout to memmove early.
+<span class="lineNum">     155 </span>            :         */
+<span class="lineNum">     156 </span><span class="lineCov">   51310613 :         if (size &lt; sizeof(void*)) {</span>
+<span class="lineNum">     157 </span><span class="lineCov">    5946962 :                 memmove (dest, src, size);</span>
+<span class="lineNum">     158 </span><span class="lineCov">    5946962 :                 return;</span>
+<span class="lineNum">     159 </span>            :         }
+<span class="lineNum">     160 </span>            : 
+<span class="lineNum">     161 </span>            :         /*
+<span class="lineNum">     162 </span>            :          * A bit of explanation on why we align only dest before doing word copies.
+<span class="lineNum">     163 </span>            :          * Pointers to managed objects must always be stored in word aligned addresses, so
+<span class="lineNum">     164 </span>            :          * even if dest is misaligned, src will be by the same amount - this ensure proper atomicity of reads.
+<span class="lineNum">     165 </span>            :          *
+<span class="lineNum">     166 </span>            :          * We don't need to case when source and destination have different alignments since we only do word stores
+<span class="lineNum">     167 </span>            :          * using memmove, which must handle it.
+<span class="lineNum">     168 </span>            :          */
+<span class="lineNum">     169 </span><span class="lineCov">   75323121 :         if (dest &gt; src &amp;&amp; ((size_t)((char*)dest - (char*)src) &lt; size)) { /*backward copy*/</span>
+<span class="lineNum">     170 </span><span class="lineCov">     351808 :                         volatile char *p = (char*)dest + size;</span>
+<span class="lineNum">     171 </span><span class="lineCov">     351808 :                         char *s = (char*)src + size;</span>
+<span class="lineNum">     172 </span><span class="lineCov">     351808 :                         char *start = (char*)dest;</span>
+<span class="lineNum">     173 </span><span class="lineCov">    1055443 :                         char *align_end = MAX((char*)dest, (char*)align_down (p));</span>
+<span class="lineNum">     174 </span>            :                         char *word_start;
+<span class="lineNum">     175 </span>            :                         size_t bytes_to_memmove;
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span><span class="lineCov">     819206 :                         while (p &gt; align_end)</span>
+<span class="lineNum">     178 </span><span class="lineCov">      57792 :                                 *--p = *--s;</span>
+<span class="lineNum">     179 </span>            : 
+<span class="lineNum">     180 </span><span class="lineCov">     351807 :                         word_start = (char *)align_up (start);</span>
+<span class="lineNum">     181 </span><span class="lineCov">     351807 :                         bytes_to_memmove = p - word_start;</span>
+<span class="lineNum">     182 </span><span class="lineCov">     351807 :                         p -= bytes_to_memmove;</span>
+<span class="lineNum">     183 </span><span class="lineCov">     351807 :                         s -= bytes_to_memmove;</span>
+<span class="lineNum">     184 </span><span class="lineCov">    7335639 :                         MEMMOVE_WORDS_DOWNWARD (p, s, bytes_to_words (bytes_to_memmove));</span>
+<span class="lineNum">     185 </span><span class="lineCov">     351842 :         } else {</span>
+<span class="lineNum">     186 </span><span class="lineCov">   45004911 :                 volatile char *d = (char*)dest;</span>
+<span class="lineNum">     187 </span><span class="lineCov">   45004911 :                 const char *s = (const char*)src;</span>
+<span class="lineNum">     188 </span>            :                 size_t tail_bytes;
+<span class="lineNum">     189 </span>            : 
+<span class="lineNum">     190 </span>            :                 /* copy all words with memmove */
+<span class="lineNum">     191 </span><span class="lineCov"> 1064414773 :                 MEMMOVE_WORDS_UPWARD (d, s, bytes_to_words (align_down (size)));</span>
+<span class="lineNum">     192 </span>            : 
+<span class="lineNum">     193 </span><span class="lineCov">   45093322 :                 tail_bytes = unaligned_bytes (size);</span>
+<span class="lineNum">     194 </span><span class="lineCov">   45093322 :                 if (tail_bytes) {</span>
+<span class="lineNum">     195 </span><span class="lineCov">    1788824 :                         d += (size_t)align_down (size);</span>
+<span class="lineNum">     196 </span><span class="lineCov">    1788824 :                         s += (size_t)align_down (size);</span>
+<span class="lineNum">     197 </span><span class="lineCov">    1788824 :                         do {</span>
+<span class="lineNum">     198 </span><span class="lineCov">    6685842 :                                 *d++ = *s++;</span>
+<span class="lineNum">     199 </span><span class="lineCov">   13371822 :                         } while (--tail_bytes);</span>
+<span class="lineNum">     200 </span><span class="lineCov">    1788840 :                 }</span>
+<span class="lineNum">     201 </span>            :         }
+<span class="lineNum">     202 </span><span class="lineCov">   51375958 : }</span>
+<span class="lineNum">     203 </span>            : 
+<span class="lineNum">     204 </span>            : /**
+<span class="lineNum">     205 </span>            :  * mono_gc_memmove_atomic:
+<span class="lineNum">     206 </span>            :  * @dest: destination of the move
+<span class="lineNum">     207 </span>            :  * @src: source
+<span class="lineNum">     208 </span>            :  * @size: size of the block to move
+<span class="lineNum">     209 </span>            :  *
+<span class="lineNum">     210 </span>            :  * Move @size bytes from @src to @dest.
+<span class="lineNum">     211 </span>            :  *
+<span class="lineNum">     212 </span>            :  * Use this to copy memory without word tearing when both pointers are aligned
+<a name="213"><span class="lineNum">     213 </span>            :  */</a>
+<span class="lineNum">     214 </span>            : void
+<span class="lineNum">     215 </span>            : mono_gc_memmove_atomic (void *dest, const void *src, size_t size)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span><span class="lineCov">   23506659 :         if (unaligned_bytes (_toi (dest) | _toi (src)))</span>
+<span class="lineNum">     218 </span><span class="lineCov">    6536291 :                 memmove (dest, src, size);</span>
+<span class="lineNum">     219 </span>            :         else
+<span class="lineNum">     220 </span><span class="lineCov">   16973488 :                 mono_gc_memmove_aligned (dest, src, size);</span>
+<span class="lineNum">     221 </span><span class="lineCov">   23519163 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

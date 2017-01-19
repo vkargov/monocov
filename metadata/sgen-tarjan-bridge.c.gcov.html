@@ -1,0 +1,1312 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/sgen-tarjan-bridge.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - sgen-tarjan-bridge.c<span style="font-size: 80%;"> (source / <a href="sgen-tarjan-bridge.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">465</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">44</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * sgen-tarjan-bridge.c: Tarjan-based bridge implementation.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Copyright 2011 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       5 </span>            :  * Copyright 2014 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  *
+<span class="lineNum">       8 </span>            :  * Copyright 2001-2003 Ximian, Inc
+<span class="lineNum">       9 </span>            :  * Copyright 2003-2010 Novell, Inc.
+<span class="lineNum">      10 </span>            :  *
+<span class="lineNum">      11 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      12 </span>            :  */
+<span class="lineNum">      13 </span>            : 
+<span class="lineNum">      14 </span>            : #include &quot;config.h&quot;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">      17 </span>            : 
+<span class="lineNum">      18 </span>            : #include &lt;stdlib.h&gt;
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : #include &quot;sgen/sgen-gc.h&quot;
+<span class="lineNum">      21 </span>            : #include &quot;sgen-bridge-internals.h&quot;
+<span class="lineNum">      22 </span>            : #include &quot;tabledefs.h&quot;
+<span class="lineNum">      23 </span>            : #include &quot;utils/mono-logger-internals.h&quot;
+<span class="lineNum">      24 </span>            : 
+<span class="lineNum">      25 </span>            : #include &quot;sgen-dynarray.h&quot;
+<span class="lineNum">      26 </span>            : 
+<span class="lineNum">      27 </span>            : /*
+<span class="lineNum">      28 </span>            :  * See comments in sgen-bridge.h
+<span class="lineNum">      29 </span>            :  *
+<span class="lineNum">      30 </span>            :  * This bridge implementation is based on the tarjan algorithm for strongly
+<span class="lineNum">      31 </span>            :  * connected components. It has two elements:
+<span class="lineNum">      32 </span>            :  *
+<span class="lineNum">      33 </span>            :  *   - Standard tarjan SCC algorithm to convert graph to SCC forest
+<span class="lineNum">      34 </span>            :  *
+<span class="lineNum">      35 </span>            :  *   - &quot;Colors&quot;: We reduce the SCC forest to bridged-SCCs-only by using a
+<span class="lineNum">      36 </span>            :  *     &quot;color&quot; algorithm devised by Kumpera. Consider the set of bridged SCCs
+<span class="lineNum">      37 </span>            :  *     which is reachable from a given object. We call each such unique set a
+<span class="lineNum">      38 </span>            :  *     &quot;color&quot;. We compute the set of colors and which colors contain links to
+<span class="lineNum">      39 </span>            :  *     which colors. The color graph then becomes the reduced SCC graph.
+<span class="lineNum">      40 </span>            :  */
+<span class="lineNum">      41 </span>            : 
+<span class="lineNum">      42 </span>            : // Is this class bridged or not, and should its dependencies be scanned or not?
+<a name="43"><span class="lineNum">      43 </span>            : // The result of this callback will be cached for use by is_opaque_object later.</a>
+<span class="lineNum">      44 </span>            : static MonoGCBridgeObjectKind
+<span class="lineNum">      45 </span><span class="lineNoCov">          0 : class_kind (MonoClass *klass)</span>
+<span class="lineNum">      46 </span>            : {
+<span class="lineNum">      47 </span><span class="lineNoCov">          0 :         MonoGCBridgeObjectKind res = bridge_callbacks.bridge_class_kind (klass);</span>
+<span class="lineNum">      48 </span>            : 
+<span class="lineNum">      49 </span><span class="lineNoCov">          0 :         /* If it's a bridge, nothing we can do about it. */</span>
+<span class="lineNum">      50 </span><span class="lineNoCov">          0 :         if (res == GC_BRIDGE_TRANSPARENT_BRIDGE_CLASS || res == GC_BRIDGE_OPAQUE_BRIDGE_CLASS)</span>
+<span class="lineNum">      51 </span><span class="lineNoCov">          0 :                 return res;</span>
+<span class="lineNum">      52 </span><span class="lineNoCov">          0 : </span>
+<span class="lineNum">      53 </span>            :         /* Non bridge classes with no pointers will never point to a bridge, so we can savely ignore them. */
+<span class="lineNum">      54 </span><span class="lineNoCov">          0 :         if (!klass-&gt;has_references) {</span>
+<span class="lineNum">      55 </span><span class="lineNoCov">          0 :                 SGEN_LOG (6, &quot;class %s is opaque\n&quot;, klass-&gt;name);</span>
+<span class="lineNum">      56 </span><span class="lineNoCov">          0 :                 return GC_BRIDGE_OPAQUE_CLASS;</span>
+<span class="lineNum">      57 </span>            :         }
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span><span class="lineNoCov">          0 :         /* Some arrays can be ignored */</span>
+<span class="lineNum">      60 </span><span class="lineNoCov">          0 :         if (klass-&gt;rank == 1) {</span>
+<span class="lineNum">      61 </span><span class="lineNoCov">          0 :                 MonoClass *elem_class = klass-&gt;element_class;</span>
+<span class="lineNum">      62 </span>            : 
+<span class="lineNum">      63 </span><span class="lineNoCov">          0 :                 /* FIXME the bridge check can be quite expensive, cache it at the class level. */</span>
+<span class="lineNum">      64 </span>            :                 /* An array of a sealed type that is not a bridge will never get to a bridge */
+<span class="lineNum">      65 </span><span class="lineNoCov">          0 :                 if ((mono_class_get_flags (elem_class) &amp; TYPE_ATTRIBUTE_SEALED) &amp;&amp; !elem_class-&gt;has_references &amp;&amp; !bridge_callbacks.bridge_class_kind (elem_class)) {</span>
+<span class="lineNum">      66 </span><span class="lineNoCov">          0 :                         SGEN_LOG (6, &quot;class %s is opaque\n&quot;, klass-&gt;name);</span>
+<span class="lineNum">      67 </span><span class="lineNoCov">          0 :                         return GC_BRIDGE_OPAQUE_CLASS;</span>
+<span class="lineNum">      68 </span>            :                 }
+<span class="lineNum">      69 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span><span class="lineNoCov">          0 :         return GC_BRIDGE_TRANSPARENT_CLASS;</span>
+<span class="lineNum">      72 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span><span class="lineNoCov">          0 : //enable usage logging</span>
+<span class="lineNum">      75 </span>            : // #define DUMP_GRAPH 1
+<span class="lineNum">      76 </span>            : 
+<span class="lineNum">      77 </span>            : /* Used in bridgeless_color_is_heavy:
+<span class="lineNum">      78 </span>            :  * The idea here is as long as the reference fanin and fanout on a node are both 2 or greater, then
+<span class="lineNum">      79 </span>            :  * removing that node will result in a net increase in edge count. So the question is which node
+<span class="lineNum">      80 </span><span class="lineNoCov">          0 :  * removals are counterproductive (i.e., how many edges saved balances out one node added).</span>
+<span class="lineNum">      81 </span>            :  * The number of edges saved by preserving a node is (fanin*fanout - fanin - fanout).
+<span class="lineNum">      82 </span>            :  *
+<span class="lineNum">      83 </span><span class="lineNoCov">          0 :  * With all that in mind:</span>
+<span class="lineNum">      84 </span>            :  *
+<span class="lineNum">      85 </span>            :  * - HEAVY_REFS_MIN is the number that *both* fanin and fanout must meet to preserve the node.
+<span class="lineNum">      86 </span>            :  * - HEAVY_COMBINED_REFS_MIN is the number (fanin*fanout) must meet to preserve the node.
+<span class="lineNum">      87 </span>            :  *
+<span class="lineNum">      88 </span><span class="lineNoCov">          0 :  * Note HEAVY_COMBINED_REFS_MIN must be &lt;= 2*INCOMING_COLORS_MAX, or we won't know the true fanin.</span>
+<span class="lineNum">      89 </span>            :  */
+<span class="lineNum">      90 </span><span class="lineNoCov">          0 : </span>
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 : #define HEAVY_REFS_MIN 2</span>
+<span class="lineNum">      92 </span>            : #define HEAVY_COMBINED_REFS_MIN 60
+<span class="lineNum">      93 </span>            : 
+<span class="lineNum">      94 </span>            : /* Used in ColorData:
+<span class="lineNum">      95 </span>            :  * The higher INCOMING_COLORS_BITS is the higher HEAVY_COMBINED_REFS_MIN can be (see above).
+<span class="lineNum">      96 </span>            :  * However, API_INDEX_BITS + INCOMING_COLORS_BITS must be equal to 31, and if API_INDEX_BITS is too
+<span class="lineNum">      97 </span>            :  * low then terrible things will happen if too many colors are generated. (The number of colors we
+<span class="lineNum">      98 </span>            :  * will ever attempt to generate is currently naturally limited by the JNI GREF limit.)
+<span class="lineNum">      99 </span>            :  */
+<span class="lineNum">     100 </span>            : 
+<span class="lineNum">     101 </span>            : #define API_INDEX_BITS        26
+<span class="lineNum">     102 </span>            : #define INCOMING_COLORS_BITS  5
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span>            : #define API_INDEX_MAX         ((1&lt;&lt;API_INDEX_BITS)-1)
+<span class="lineNum">     105 </span>            : #define INCOMING_COLORS_MAX   ((1&lt;&lt;INCOMING_COLORS_BITS)-1)
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span>            : // ScanData state
+<span class="lineNum">     108 </span>            : enum {
+<span class="lineNum">     109 </span>            :         INITIAL,
+<span class="lineNum">     110 </span>            :         SCANNED,
+<span class="lineNum">     111 </span>            :         FINISHED_ON_STACK,
+<span class="lineNum">     112 </span>            :         FINISHED_OFF_STACK
+<span class="lineNum">     113 </span>            : };
+<span class="lineNum">     114 </span>            : 
+<span class="lineNum">     115 </span>            : /*
+<span class="lineNum">     116 </span>            : Optimizations:
+<span class="lineNum">     117 </span>            :         We can split this data structure in two, those with bridges and those without
+<span class="lineNum">     118 </span>            :         (and only bridgeless need to record incoming_colors)
+<span class="lineNum">     119 </span>            : */
+<span class="lineNum">     120 </span>            : typedef struct {
+<span class="lineNum">     121 </span>            :         // Colors (ColorDatas) linked to by objects with this color
+<span class="lineNum">     122 </span>            :         DynPtrArray other_colors;
+<span class="lineNum">     123 </span>            :         // Bridge objects (GCObjects) held by objects with this color
+<span class="lineNum">     124 </span>            :         DynPtrArray bridges;
+<span class="lineNum">     125 </span>            :         // Index of this color's MonoGCBridgeSCC in the array passed to the client (or -1 for none)
+<span class="lineNum">     126 </span>            :         signed api_index         : API_INDEX_BITS;
+<span class="lineNum">     127 </span>            :         // Count of colors that list this color in their other_colors
+<span class="lineNum">     128 </span>            :         unsigned incoming_colors : INCOMING_COLORS_BITS;
+<span class="lineNum">     129 </span>            :         unsigned visited : 1;
+<span class="lineNum">     130 </span>            : } ColorData;
+<span class="lineNum">     131 </span>            : 
+<span class="lineNum">     132 </span>            : // Represents one managed object. Equivalent of new/old bridge &quot;HashEntry&quot;
+<span class="lineNum">     133 </span>            : typedef struct _ScanData {
+<span class="lineNum">     134 </span>            :         // FIXME this can be eliminated; if we have a ScanData we generally looked it up from its GCObject
+<span class="lineNum">     135 </span>            :         GCObject *obj;
+<span class="lineNum">     136 </span>            :         // We use the sgen lock_word in GCObject to store a pointer to the ScanData. Cache the original here to restore later:
+<span class="lineNum">     137 </span>            :         mword lock_word;
+<span class="lineNum">     138 </span>            : 
+<span class="lineNum">     139 </span>            :         ColorData *color;
+<span class="lineNum">     140 </span>            :         // Tarjan algorithm index (order visited)
+<span class="lineNum">     141 </span>            :         int index;
+<span class="lineNum">     142 </span>            :         // Tarjan index of lowest-index object known reachable from here
+<span class="lineNum">     143 </span>            :         signed low_index : 27;
+<span class="lineNum">     144 </span>            : 
+<span class="lineNum">     145 </span>            :         // See &quot;ScanData state&quot; enum above
+<span class="lineNum">     146 </span>            :         unsigned state : 2;
+<span class="lineNum">     147 </span>            :         unsigned is_bridge : 1;
+<span class="lineNum">     148 </span>            :         // Similar to lock_word, we use these bits in the GCObject as scratch space then restore them when done
+<span class="lineNum">     149 </span>            :         unsigned obj_state : 2;
+<span class="lineNum">     150 </span>            : } ScanData;
+<span class="lineNum">     151 </span>            : 
+<span class="lineNum">     152 </span>            : /* Should color be made visible to client even though it has no bridges?
+<span class="lineNum">     153 </span>            :  * True if we predict the number of reduced edges to be enough to justify the extra node.
+<a name="154"><span class="lineNum">     154 </span>            :  */</a>
+<span class="lineNum">     155 </span>            : static inline gboolean
+<span class="lineNum">     156 </span>            : bridgeless_color_is_heavy (ColorData *data) {
+<span class="lineNum">     157 </span><span class="lineNoCov">          0 :         int fanin = data-&gt;incoming_colors;</span>
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :         int fanout = dyn_array_ptr_size (&amp;data-&gt;other_colors);</span>
+<span class="lineNum">     159 </span><span class="lineNoCov">          0 :         return fanin &gt; HEAVY_REFS_MIN &amp;&amp; fanout &gt; HEAVY_REFS_MIN</span>
+<span class="lineNum">     160 </span><span class="lineNoCov">          0 :                 &amp;&amp; fanin*fanout &gt;= HEAVY_COMBINED_REFS_MIN;</span>
+<span class="lineNum">     161 </span>            : }
+<span class="lineNum">     162 </span>            : 
+<a name="163"><span class="lineNum">     163 </span>            : // Should color be made visible to client?</a>
+<span class="lineNum">     164 </span>            : static inline gboolean
+<span class="lineNum">     165 </span>            : color_visible_to_client (ColorData *data) {
+<span class="lineNum">     166 </span><span class="lineNoCov">          0 :         return dyn_array_ptr_size (&amp;data-&gt;bridges) || bridgeless_color_is_heavy (data);</span>
+<span class="lineNum">     167 </span>            : }
+<span class="lineNum">     168 </span>            : 
+<span class="lineNum">     169 </span>            : // Stacks of ScanData objects used for tarjan algorithm.
+<span class="lineNum">     170 </span>            : // The Tarjan algorithm is normally defined recursively; here scan_stack simulates the call stack of a recursive algorithm,
+<span class="lineNum">     171 </span>            : // and loop_stack is the stack structure used by the algorithm itself.
+<span class="lineNum">     172 </span>            : static DynPtrArray scan_stack, loop_stack;
+<span class="lineNum">     173 </span>            : 
+<span class="lineNum">     174 </span>            : // GCObjects on which register_finalized_object has been called
+<span class="lineNum">     175 </span>            : static DynPtrArray registered_bridges;
+<span class="lineNum">     176 </span>            : 
+<span class="lineNum">     177 </span>            : // As we traverse the graph, which ColorData objects are accessible from our current position?
+<span class="lineNum">     178 </span>            : static DynPtrArray color_merge_array;
+<span class="lineNum">     179 </span>            : // Running hash of the contents of the color_merge_array.
+<a name="180"><span class="lineNum">     180 </span>            : static unsigned int color_merge_array_hash;</a>
+<span class="lineNum">     181 </span>            : 
+<span class="lineNum">     182 </span>            : static void color_merge_array_empty ()
+<span class="lineNum">     183 </span>            : {
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :         dyn_array_ptr_empty (&amp;color_merge_array);</span>
+<span class="lineNum">     185 </span><span class="lineNoCov">          0 :         color_merge_array_hash = 0;</span>
+<span class="lineNum">     186 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     187 </span>            : 
+<span class="lineNum">     188 </span>            : static int ignored_objects;
+<span class="lineNum">     189 </span>            : static int object_index;
+<span class="lineNum">     190 </span>            : static int num_colors_with_bridges;
+<span class="lineNum">     191 </span>            : static int num_sccs;
+<span class="lineNum">     192 </span>            : static int xref_count;
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span>            : static size_t setup_time, tarjan_time, scc_setup_time, gather_xref_time, xref_setup_time, cleanup_time;
+<span class="lineNum">     195 </span>            : static SgenBridgeProcessor *bridge_processor;
+<span class="lineNum">     196 </span>            : 
+<span class="lineNum">     197 </span>            : #define BUCKET_SIZE 8184
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span>            : //ScanData buckets
+<span class="lineNum">     200 </span>            : #define NUM_SCAN_ENTRIES ((BUCKET_SIZE - SIZEOF_VOID_P * 2) / sizeof (ScanData))
+<span class="lineNum">     201 </span>            : 
+<span class="lineNum">     202 </span>            : typedef struct _ObjectBucket ObjectBucket;
+<span class="lineNum">     203 </span>            : struct _ObjectBucket {
+<span class="lineNum">     204 </span>            :         ObjectBucket *next;
+<span class="lineNum">     205 </span>            :         ScanData *next_data;
+<span class="lineNum">     206 </span>            :         ScanData data [NUM_SCAN_ENTRIES];
+<span class="lineNum">     207 </span>            : };
+<span class="lineNum">     208 </span>            : 
+<span class="lineNum">     209 </span>            : static ObjectBucket *root_object_bucket;
+<span class="lineNum">     210 </span>            : static ObjectBucket *cur_object_bucket;
+<span class="lineNum">     211 </span>            : static int object_data_count;
+<span class="lineNum">     212 </span>            : 
+<a name="213"><span class="lineNum">     213 </span>            : // Arenas to allocate ScanData from</a>
+<span class="lineNum">     214 </span>            : static ObjectBucket*
+<span class="lineNum">     215 </span>            : new_object_bucket (void)
+<span class="lineNum">     216 </span>            : {
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :         ObjectBucket *res = (ObjectBucket *)sgen_alloc_internal (INTERNAL_MEM_TARJAN_OBJ_BUCKET);</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :         res-&gt;next_data = &amp;res-&gt;data [0];</span>
+<span class="lineNum">     219 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">     220 </span>            : }
+<a name="221"><span class="lineNum">     221 </span>            : </a>
+<span class="lineNum">     222 </span>            : static void
+<span class="lineNum">     223 </span>            : object_alloc_init (void)
+<span class="lineNum">     224 </span>            : {
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :         root_object_bucket = cur_object_bucket = new_object_bucket ();</span>
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 : }</span>
+<a name="227"><span class="lineNum">     227 </span>            : </a>
+<span class="lineNum">     228 </span>            : static ScanData*
+<span class="lineNum">     229 </span>            : alloc_object_data (void)
+<span class="lineNum">     230 </span>            : {
+<span class="lineNum">     231 </span><span class="lineNoCov">          0 :         ScanData *res;</span>
+<span class="lineNum">     232 </span>            : retry:
+<span class="lineNum">     233 </span>            : 
+<span class="lineNum">     234 </span>            :         /* next_data points to the first free entry */
+<span class="lineNum">     235 </span><span class="lineNoCov">          0 :         res = cur_object_bucket-&gt;next_data;</span>
+<span class="lineNum">     236 </span><span class="lineNoCov">          0 :         if (res &gt;= &amp;cur_object_bucket-&gt;data [NUM_SCAN_ENTRIES]) {</span>
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :                 ObjectBucket *b = new_object_bucket ();</span>
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :                 cur_object_bucket-&gt;next = b;</span>
+<span class="lineNum">     239 </span><span class="lineNoCov">          0 :                 cur_object_bucket = b;</span>
+<span class="lineNum">     240 </span><span class="lineNoCov">          0 :                 goto retry;</span>
+<span class="lineNum">     241 </span>            :         }
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :         cur_object_bucket-&gt;next_data = res + 1;</span>
+<span class="lineNum">     243 </span><span class="lineNoCov">          0 :         object_data_count++;</span>
+<span class="lineNum">     244 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">     245 </span>            : }
+<a name="246"><span class="lineNum">     246 </span>            : </a>
+<span class="lineNum">     247 </span>            : static void
+<span class="lineNum">     248 </span>            : free_object_buckets (void)
+<span class="lineNum">     249 </span>            : {
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :         ObjectBucket *cur = root_object_bucket;</span>
+<span class="lineNum">     251 </span>            : 
+<span class="lineNum">     252 </span><span class="lineNoCov">          0 :         object_data_count = 0;</span>
+<span class="lineNum">     253 </span>            : 
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :         while (cur) {</span>
+<span class="lineNum">     255 </span><span class="lineNoCov">          0 :                 ObjectBucket *tmp = cur-&gt;next;</span>
+<span class="lineNum">     256 </span><span class="lineNoCov">          0 :                 sgen_free_internal (cur, INTERNAL_MEM_TARJAN_OBJ_BUCKET);</span>
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :                 cur = tmp;</span>
+<span class="lineNum">     258 </span>            :         }
+<span class="lineNum">     259 </span>            : 
+<span class="lineNum">     260 </span><span class="lineNoCov">          0 :         root_object_bucket = cur_object_bucket = NULL;</span>
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     262 </span>            : 
+<span class="lineNum">     263 </span>            : //ColorData buckets
+<span class="lineNum">     264 </span>            : #define NUM_COLOR_ENTRIES ((BUCKET_SIZE - SIZEOF_VOID_P * 2) / sizeof (ColorData))
+<span class="lineNum">     265 </span>            : 
+<span class="lineNum">     266 </span>            : // Arenas for ColorDatas, same as ObjectBucket except items-per-bucket differs
+<span class="lineNum">     267 </span>            : typedef struct _ColorBucket ColorBucket;
+<span class="lineNum">     268 </span>            : struct _ColorBucket {
+<span class="lineNum">     269 </span>            :         ColorBucket *next;
+<span class="lineNum">     270 </span>            :         ColorData *next_data;
+<span class="lineNum">     271 </span>            :         ColorData data [NUM_COLOR_ENTRIES];
+<span class="lineNum">     272 </span>            : };
+<span class="lineNum">     273 </span>            : 
+<span class="lineNum">     274 </span>            : static ColorBucket *root_color_bucket;
+<span class="lineNum">     275 </span>            : static ColorBucket *cur_color_bucket;
+<span class="lineNum">     276 </span>            : static int color_data_count;
+<span class="lineNum">     277 </span>            : 
+<a name="278"><span class="lineNum">     278 </span>            : </a>
+<span class="lineNum">     279 </span>            : static ColorBucket*
+<span class="lineNum">     280 </span>            : new_color_bucket (void)
+<span class="lineNum">     281 </span>            : {
+<span class="lineNum">     282 </span><span class="lineNoCov">          0 :         ColorBucket *res = (ColorBucket *)sgen_alloc_internal (INTERNAL_MEM_TARJAN_OBJ_BUCKET);</span>
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :         res-&gt;next_data = &amp;res-&gt;data [0];</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">     285 </span>            : }
+<a name="286"><span class="lineNum">     286 </span>            : </a>
+<span class="lineNum">     287 </span>            : static void
+<span class="lineNum">     288 </span>            : color_alloc_init (void)
+<span class="lineNum">     289 </span>            : {
+<span class="lineNum">     290 </span><span class="lineNoCov">          0 :         root_color_bucket = cur_color_bucket = new_color_bucket ();</span>
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 : }</span>
+<a name="292"><span class="lineNum">     292 </span>            : </a>
+<span class="lineNum">     293 </span>            : static ColorData*
+<span class="lineNum">     294 </span>            : alloc_color_data (void)
+<span class="lineNum">     295 </span>            : {
+<span class="lineNum">     296 </span><span class="lineNoCov">          0 :         ColorData *res;</span>
+<span class="lineNum">     297 </span>            : retry:
+<span class="lineNum">     298 </span>            : 
+<span class="lineNum">     299 </span>            :         /* next_data points to the first free entry */
+<span class="lineNum">     300 </span><span class="lineNoCov">          0 :         res = cur_color_bucket-&gt;next_data;</span>
+<span class="lineNum">     301 </span><span class="lineNoCov">          0 :         if (res &gt;= &amp;cur_color_bucket-&gt;data [NUM_COLOR_ENTRIES]) {</span>
+<span class="lineNum">     302 </span><span class="lineNoCov">          0 :                 ColorBucket *b = new_color_bucket ();</span>
+<span class="lineNum">     303 </span><span class="lineNoCov">          0 :                 cur_color_bucket-&gt;next = b;</span>
+<span class="lineNum">     304 </span><span class="lineNoCov">          0 :                 cur_color_bucket = b;</span>
+<span class="lineNum">     305 </span><span class="lineNoCov">          0 :                 goto retry;</span>
+<span class="lineNum">     306 </span>            :         }
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :         cur_color_bucket-&gt;next_data = res + 1;</span>
+<span class="lineNum">     308 </span><span class="lineNoCov">          0 :         color_data_count++;</span>
+<span class="lineNum">     309 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">     310 </span>            : }
+<a name="311"><span class="lineNum">     311 </span>            : </a>
+<span class="lineNum">     312 </span>            : static void
+<span class="lineNum">     313 </span>            : free_color_buckets (void)
+<span class="lineNum">     314 </span>            : {
+<span class="lineNum">     315 </span>            :         ColorBucket *cur, *tmp;
+<span class="lineNum">     316 </span>            : 
+<span class="lineNum">     317 </span><span class="lineNoCov">          0 :         color_data_count = 0;</span>
+<span class="lineNum">     318 </span>            : 
+<span class="lineNum">     319 </span><span class="lineNoCov">          0 :         for (cur = root_color_bucket; cur; cur = tmp) {</span>
+<span class="lineNum">     320 </span>            :                 ColorData *cd;
+<span class="lineNum">     321 </span><span class="lineNoCov">          0 :                 for (cd = &amp;cur-&gt;data [0]; cd &lt; cur-&gt;next_data; ++cd) {</span>
+<span class="lineNum">     322 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_uninit (&amp;cd-&gt;other_colors);</span>
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_uninit (&amp;cd-&gt;bridges);</span>
+<span class="lineNum">     324 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :                 tmp = cur-&gt;next;</span>
+<span class="lineNum">     326 </span><span class="lineNoCov">          0 :                 sgen_free_internal (cur, INTERNAL_MEM_TARJAN_OBJ_BUCKET);</span>
+<span class="lineNum">     327 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :         root_color_bucket = cur_color_bucket = NULL;</span>
+<span class="lineNum">     329 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     330 </span>            : 
+<a name="331"><span class="lineNum">     331 </span>            : </a>
+<span class="lineNum">     332 </span>            : static ScanData*
+<span class="lineNum">     333 </span>            : create_data (GCObject *obj)
+<span class="lineNum">     334 </span>            : {
+<span class="lineNum">     335 </span><span class="lineNoCov">          0 :         mword *o = (mword*)obj;</span>
+<span class="lineNum">     336 </span><span class="lineNoCov">          0 :         ScanData *res = alloc_object_data ();</span>
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :         res-&gt;obj = obj;</span>
+<span class="lineNum">     338 </span><span class="lineNoCov">          0 :         res-&gt;color = NULL;</span>
+<span class="lineNum">     339 </span><span class="lineNoCov">          0 :         res-&gt;index = res-&gt;low_index = -1;</span>
+<span class="lineNum">     340 </span><span class="lineNoCov">          0 :         res-&gt;state = INITIAL;</span>
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :         res-&gt;is_bridge = FALSE;</span>
+<span class="lineNum">     342 </span><span class="lineNoCov">          0 :         res-&gt;obj_state = o [0] &amp; SGEN_VTABLE_BITS_MASK;</span>
+<span class="lineNum">     343 </span><span class="lineNoCov">          0 :         res-&gt;lock_word = o [1];</span>
+<span class="lineNum">     344 </span>            : 
+<span class="lineNum">     345 </span><span class="lineNoCov">          0 :         o [0] |= SGEN_VTABLE_BITS_MASK;</span>
+<span class="lineNum">     346 </span><span class="lineNoCov">          0 :         o [1] = (mword)res;</span>
+<span class="lineNum">     347 </span><span class="lineNoCov">          0 :         return res;</span>
+<span class="lineNum">     348 </span>            : }
+<a name="349"><span class="lineNum">     349 </span>            : </a>
+<span class="lineNum">     350 </span>            : static ScanData*
+<span class="lineNum">     351 </span>            : find_data (GCObject *obj)
+<span class="lineNum">     352 </span>            : {
+<span class="lineNum">     353 </span><span class="lineNoCov">          0 :         ScanData *a = NULL;</span>
+<span class="lineNum">     354 </span><span class="lineNoCov">          0 :         mword *o = (mword*)obj;</span>
+<span class="lineNum">     355 </span><span class="lineNoCov">          0 :         if ((o [0] &amp; SGEN_VTABLE_BITS_MASK) == SGEN_VTABLE_BITS_MASK)</span>
+<span class="lineNum">     356 </span><span class="lineNoCov">          0 :                 a = (ScanData*)o [1];</span>
+<span class="lineNum">     357 </span><span class="lineNoCov">          0 :         return a;</span>
+<span class="lineNum">     358 </span>            : }
+<a name="359"><span class="lineNum">     359 </span>            : </a>
+<span class="lineNum">     360 </span>            : static void
+<span class="lineNum">     361 </span>            : clear_after_processing (void)
+<span class="lineNum">     362 </span>            : {
+<span class="lineNum">     363 </span>            :         ObjectBucket *cur;
+<span class="lineNum">     364 </span>            : 
+<span class="lineNum">     365 </span><span class="lineNoCov">          0 :         for (cur = root_object_bucket; cur; cur = cur-&gt;next) {</span>
+<span class="lineNum">     366 </span>            :                 ScanData *sd;
+<span class="lineNum">     367 </span><span class="lineNoCov">          0 :                 for (sd = &amp;cur-&gt;data [0]; sd &lt; cur-&gt;next_data; ++sd) {</span>
+<span class="lineNum">     368 </span><span class="lineNoCov">          0 :                         mword *o = (mword*)sd-&gt;obj;</span>
+<span class="lineNum">     369 </span><span class="lineNoCov">          0 :                         o [0] &amp;= ~SGEN_VTABLE_BITS_MASK;</span>
+<span class="lineNum">     370 </span><span class="lineNoCov">          0 :                         o [0] |= sd-&gt;obj_state;</span>
+<span class="lineNum">     371 </span><span class="lineNoCov">          0 :                         o [1] = sd-&gt;lock_word;</span>
+<span class="lineNum">     372 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     373 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     374 </span><span class="lineNoCov">          0 : }</span>
+<a name="375"><span class="lineNum">     375 </span>            : </a>
+<span class="lineNum">     376 </span>            : static GCObject*
+<span class="lineNum">     377 </span>            : bridge_object_forward (GCObject *obj)
+<span class="lineNum">     378 </span>            : {
+<span class="lineNum">     379 </span>            :         GCObject *fwd;
+<span class="lineNum">     380 </span><span class="lineNoCov">          0 :         mword *o = (mword*)obj;</span>
+<span class="lineNum">     381 </span><span class="lineNoCov">          0 :         if ((o [0] &amp; SGEN_VTABLE_BITS_MASK) == SGEN_VTABLE_BITS_MASK)</span>
+<span class="lineNum">     382 </span><span class="lineNoCov">          0 :                 return obj;</span>
+<span class="lineNum">     383 </span>            : 
+<span class="lineNum">     384 </span><span class="lineNoCov">          0 :         fwd = SGEN_OBJECT_IS_FORWARDED (obj);</span>
+<span class="lineNum">     385 </span><span class="lineNoCov">          0 :         return fwd ? fwd : obj;</span>
+<span class="lineNum">     386 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     387 </span>            : 
+<span class="lineNum">     388 </span>            : #ifdef DUMP_GRAPH
+<span class="lineNum">     389 </span>            : static const char*
+<span class="lineNum">     390 </span>            : safe_name_bridge (GCObject *obj)
+<span class="lineNum">     391 </span>            : {
+<span class="lineNum">     392 </span>            :         GCVTable vt = SGEN_LOAD_VTABLE (obj);
+<span class="lineNum">     393 </span>            :         return vt-&gt;klass-&gt;name;
+<span class="lineNum">     394 </span>            : }
+<span class="lineNum">     395 </span>            : 
+<span class="lineNum">     396 </span>            : static ScanData*
+<span class="lineNum">     397 </span>            : find_or_create_data (GCObject *obj)
+<span class="lineNum">     398 </span>            : {
+<span class="lineNum">     399 </span>            :         ScanData *entry = find_data (obj);
+<span class="lineNum">     400 </span>            :         if (!entry)
+<span class="lineNum">     401 </span>            :                 entry = create_data (obj);
+<span class="lineNum">     402 </span>            :         return entry;
+<span class="lineNum">     403 </span>            : }
+<span class="lineNum">     404 </span>            : #endif
+<span class="lineNum">     405 </span>            : 
+<span class="lineNum">     406 </span>            : //----------
+<span class="lineNum">     407 </span>            : typedef struct {
+<span class="lineNum">     408 </span>            :         ColorData *color;
+<span class="lineNum">     409 </span>            :         unsigned int hash;
+<span class="lineNum">     410 </span>            : } HashEntry;
+<span class="lineNum">     411 </span>            : 
+<span class="lineNum">     412 </span>            : /*
+<span class="lineNum">     413 </span>            : The merge cache maps an ordered list of ColorDatas [the color_merge_array] to a single ColorData.
+<span class="lineNum">     414 </span>            : 
+<span class="lineNum">     415 </span>            : About cache bucket tuning: We tried 2/32, 2/128, 4/32, 4/128, 6/128 and 8/128.
+<span class="lineNum">     416 </span>            : 
+<span class="lineNum">     417 </span>            : The performance cost between 4/128 and 8/128 is so small since cache movement happens completely in the same cacheline,
+<span class="lineNum">     418 </span>            : making the extra space pretty much free.
+<span class="lineNum">     419 </span>            : 
+<span class="lineNum">     420 </span>            : The cost between 32 and 128 itens is minimal too, it's mostly a fixed, setup cost.
+<span class="lineNum">     421 </span>            : 
+<span class="lineNum">     422 </span>            : Memory wise, 4/32 takes 512 and 8/128 takes 8k, so it's quite reasonable.
+<span class="lineNum">     423 </span>            : */
+<span class="lineNum">     424 </span>            : 
+<span class="lineNum">     425 </span>            : #define ELEMENTS_PER_BUCKET 8
+<span class="lineNum">     426 </span>            : #define COLOR_CACHE_SIZE 128
+<span class="lineNum">     427 </span>            : static HashEntry merge_cache [COLOR_CACHE_SIZE][ELEMENTS_PER_BUCKET];
+<span class="lineNum">     428 </span>            : static unsigned int hash_perturb;
+<span class="lineNum">     429 </span>            : 
+<span class="lineNum">     430 </span>            : // If true, disable an optimization where sometimes SCC nodes are merged without a perfect check
+<span class="lineNum">     431 </span>            : static gboolean scc_precise_merge;
+<a name="432"><span class="lineNum">     432 </span>            : </a>
+<span class="lineNum">     433 </span>            : static unsigned int
+<span class="lineNum">     434 </span>            : mix_hash (uintptr_t source)
+<span class="lineNum">     435 </span>            : {
+<span class="lineNum">     436 </span><span class="lineNoCov">          0 :         unsigned int hash = source;</span>
+<span class="lineNum">     437 </span>            : 
+<span class="lineNum">     438 </span>            :         // The full hash determines whether two colors can be merged-- sometimes exclusively.
+<span class="lineNum">     439 </span>            :         // This value changes every GC, so XORing it in before performing the hash will make the
+<span class="lineNum">     440 </span>            :         // chance that two different colors will produce the same hash on successive GCs very low.
+<span class="lineNum">     441 </span><span class="lineNoCov">          0 :         hash = hash ^ hash_perturb;</span>
+<span class="lineNum">     442 </span>            : 
+<span class="lineNum">     443 </span>            :         // Actual hash
+<span class="lineNum">     444 </span><span class="lineNoCov">          0 :         hash = (((hash * 215497) &gt;&gt; 16) ^ ((hash * 1823231) + hash));</span>
+<span class="lineNum">     445 </span>            : 
+<span class="lineNum">     446 </span>            :         // Mix in highest bits on 64-bit systems only
+<span class="lineNum">     447 </span>            :         if (sizeof (source) &gt; 4)
+<span class="lineNum">     448 </span><span class="lineNoCov">          0 :                 hash = hash ^ (source &gt;&gt; 32);</span>
+<span class="lineNum">     449 </span>            : 
+<span class="lineNum">     450 </span><span class="lineNoCov">          0 :         return hash;</span>
+<span class="lineNum">     451 </span>            : }
+<a name="452"><span class="lineNum">     452 </span>            : </a>
+<span class="lineNum">     453 </span>            : static void
+<span class="lineNum">     454 </span>            : reset_cache (void)
+<span class="lineNum">     455 </span>            : {
+<span class="lineNum">     456 </span><span class="lineNoCov">          0 :         memset (merge_cache, 0, sizeof (merge_cache));</span>
+<span class="lineNum">     457 </span>            : 
+<span class="lineNum">     458 </span>            :         // When using the precise merge debug option, we do not want the inconsistency caused by hash_perturb.
+<span class="lineNum">     459 </span><span class="lineNoCov">          0 :         if (!scc_precise_merge)</span>
+<span class="lineNum">     460 </span><span class="lineNoCov">          0 :                 ++hash_perturb;</span>
+<span class="lineNum">     461 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     462 </span>            : 
+<a name="463"><span class="lineNum">     463 </span>            : </a>
+<span class="lineNum">     464 </span>            : static gboolean
+<span class="lineNum">     465 </span>            : dyn_array_ptr_contains (DynPtrArray *da, void *x)
+<span class="lineNum">     466 </span>            : {
+<span class="lineNum">     467 </span>            :         int i;
+<span class="lineNum">     468 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_ptr_size (da); ++i)</span>
+<span class="lineNum">     469 </span><span class="lineNoCov">          0 :                 if (dyn_array_ptr_get (da, i) == x)</span>
+<span class="lineNum">     470 </span><span class="lineNoCov">          0 :                         return TRUE;</span>
+<span class="lineNum">     471 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     472 </span><span class="lineNoCov">          0 : }</span>
+<a name="473"><span class="lineNum">     473 </span>            : </a>
+<span class="lineNum">     474 </span>            : static gboolean
+<span class="lineNum">     475 </span>            : match_colors_estimate (DynPtrArray *a, DynPtrArray *b)
+<span class="lineNum">     476 </span>            : {
+<span class="lineNum">     477 </span><span class="lineNoCov">          0 :         return dyn_array_ptr_size (a) == dyn_array_ptr_size (b);</span>
+<span class="lineNum">     478 </span>            : }
+<span class="lineNum">     479 </span>            : 
+<a name="480"><span class="lineNum">     480 </span>            : </a>
+<span class="lineNum">     481 </span>            : static gboolean
+<span class="lineNum">     482 </span>            : match_colors (DynPtrArray *a, DynPtrArray *b)
+<span class="lineNum">     483 </span>            : {
+<span class="lineNum">     484 </span>            :         int i;
+<span class="lineNum">     485 </span><span class="lineNoCov">          0 :         if (dyn_array_ptr_size (a) != dyn_array_ptr_size (b))</span>
+<span class="lineNum">     486 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     487 </span>            : 
+<span class="lineNum">     488 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_ptr_size (a); ++i) {</span>
+<span class="lineNum">     489 </span><span class="lineNoCov">          0 :                 if (!dyn_array_ptr_contains (b, dyn_array_ptr_get (a, i)))</span>
+<span class="lineNum">     490 </span><span class="lineNoCov">          0 :                         return FALSE;</span>
+<span class="lineNum">     491 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     492 </span><span class="lineNoCov">          0 :         return TRUE;</span>
+<span class="lineNum">     493 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     494 </span>            : 
+<span class="lineNum">     495 </span>            : // If scc_precise_merge, &quot;semihits&quot; refers to find_in_cache calls aborted because the merge array was too large.
+<span class="lineNum">     496 </span>            : // Otherwise &quot;semihits&quot; refers to cache hits where the match was only estimated.
+<span class="lineNum">     497 </span>            : static int cache_hits, cache_semihits, cache_misses;
+<span class="lineNum">     498 </span>            : 
+<a name="499"><span class="lineNum">     499 </span>            : // The cache contains only non-bridged colors.</a>
+<span class="lineNum">     500 </span>            : static ColorData*
+<span class="lineNum">     501 </span>            : find_in_cache (int *insert_index)
+<span class="lineNum">     502 </span>            : {
+<span class="lineNum">     503 </span>            :         HashEntry *bucket;
+<span class="lineNum">     504 </span>            :         int i, size, index;
+<span class="lineNum">     505 </span>            : 
+<span class="lineNum">     506 </span><span class="lineNoCov">          0 :         size = dyn_array_ptr_size (&amp;color_merge_array);</span>
+<span class="lineNum">     507 </span>            : 
+<span class="lineNum">     508 </span>            :         /* Color equality checking is very expensive with a lot of elements, so when there are many
+<span class="lineNum">     509 </span>            :          * elements we switch to a cheap comparison method which allows false positives. When false
+<span class="lineNum">     510 </span>            :          * positives occur the worst that can happen is two items will be inappropriately merged
+<span class="lineNum">     511 </span>            :          * and memory will be retained longer than it should be. We assume that will correct itself
+<span class="lineNum">     512 </span>            :          * on the next GC (the hash_perturb mechanism increases the probability of this).
+<span class="lineNum">     513 </span>            :          *
+<span class="lineNum">     514 </span>            :          * Because this has *some* potential to create problems, if the user set the debug option
+<span class="lineNum">     515 </span>            :          * 'enable-tarjan-precise-merge' we bail out early (and never merge SCCs with &gt;3 colors).
+<span class="lineNum">     516 </span>            :          */
+<span class="lineNum">     517 </span><span class="lineNoCov">          0 :         gboolean color_merge_array_large = size &gt; 3;</span>
+<span class="lineNum">     518 </span><span class="lineNoCov">          0 :         if (scc_precise_merge &amp;&amp; color_merge_array_large) {</span>
+<span class="lineNum">     519 </span><span class="lineNoCov">          0 :                 ++cache_semihits;</span>
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :                 return NULL;</span>
+<span class="lineNum">     521 </span>            :         }
+<span class="lineNum">     522 </span>            : 
+<span class="lineNum">     523 </span><span class="lineNoCov">          0 :         unsigned int hash = color_merge_array_hash;</span>
+<span class="lineNum">     524 </span><span class="lineNoCov">          0 :         if (!hash) // 0 is used to indicate an empty bucket entry</span>
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :                 hash = 1;</span>
+<span class="lineNum">     526 </span>            : 
+<span class="lineNum">     527 </span><span class="lineNoCov">          0 :         index = hash &amp; (COLOR_CACHE_SIZE - 1);</span>
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :         bucket = merge_cache [index];</span>
+<span class="lineNum">     529 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; ELEMENTS_PER_BUCKET; ++i) {</span>
+<span class="lineNum">     530 </span><span class="lineNoCov">          0 :                 if (bucket [i].hash != hash)</span>
+<span class="lineNum">     531 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     532 </span>            : 
+<span class="lineNum">     533 </span><span class="lineNoCov">          0 :                 if (color_merge_array_large) {</span>
+<span class="lineNum">     534 </span><span class="lineNoCov">          0 :                         if (match_colors_estimate (&amp;bucket [i].color-&gt;other_colors, &amp;color_merge_array)) {</span>
+<span class="lineNum">     535 </span><span class="lineNoCov">          0 :                                 ++cache_semihits;</span>
+<span class="lineNum">     536 </span><span class="lineNoCov">          0 :                                 return bucket [i].color;</span>
+<span class="lineNum">     537 </span>            :                         }
+<span class="lineNum">     538 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     539 </span><span class="lineNoCov">          0 :                         if (match_colors (&amp;bucket [i].color-&gt;other_colors, &amp;color_merge_array)) {</span>
+<span class="lineNum">     540 </span><span class="lineNoCov">          0 :                                 ++cache_hits;</span>
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :                                 return bucket [i].color;</span>
+<span class="lineNum">     542 </span>            :                         }
+<span class="lineNum">     543 </span>            :                 }
+<span class="lineNum">     544 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     545 </span>            : 
+<span class="lineNum">     546 </span>            :         //move elements to the back
+<span class="lineNum">     547 </span><span class="lineNoCov">          0 :         for (i = ELEMENTS_PER_BUCKET - 1; i &gt; 0; --i)</span>
+<span class="lineNum">     548 </span><span class="lineNoCov">          0 :                 bucket [i] = bucket [i - 1];</span>
+<span class="lineNum">     549 </span><span class="lineNoCov">          0 :         ++cache_misses;</span>
+<span class="lineNum">     550 </span><span class="lineNoCov">          0 :         *insert_index = index;</span>
+<span class="lineNum">     551 </span><span class="lineNoCov">          0 :         bucket [0].hash = hash;</span>
+<span class="lineNum">     552 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     553 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     554 </span>            : 
+<span class="lineNum">     555 </span>            : // A color is needed for an SCC. If the SCC has bridges, the color MUST be newly allocated.
+<a name="556"><span class="lineNum">     556 </span>            : // If the SCC lacks bridges, the allocator MAY use the cache to merge it with an existing one.</a>
+<span class="lineNum">     557 </span>            : static ColorData*
+<span class="lineNum">     558 </span>            : new_color (gboolean has_bridges)
+<span class="lineNum">     559 </span>            : {
+<span class="lineNum">     560 </span><span class="lineNoCov">          0 :         int cacheSlot = -1;</span>
+<span class="lineNum">     561 </span>            :         ColorData *cd;
+<span class="lineNum">     562 </span>            :         /* XXX Try to find an equal one and return it */
+<span class="lineNum">     563 </span><span class="lineNoCov">          0 :         if (!has_bridges) {</span>
+<span class="lineNum">     564 </span><span class="lineNoCov">          0 :                 cd = find_in_cache (&amp;cacheSlot);</span>
+<span class="lineNum">     565 </span><span class="lineNoCov">          0 :                 if (cd)</span>
+<span class="lineNum">     566 </span><span class="lineNoCov">          0 :                         return cd;</span>
+<span class="lineNum">     567 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     568 </span>            : 
+<span class="lineNum">     569 </span><span class="lineNoCov">          0 :         cd = alloc_color_data ();</span>
+<span class="lineNum">     570 </span><span class="lineNoCov">          0 :         cd-&gt;api_index = -1;</span>
+<span class="lineNum">     571 </span><span class="lineNoCov">          0 :         dyn_array_ptr_set_all (&amp;cd-&gt;other_colors, &amp;color_merge_array);</span>
+<span class="lineNum">     572 </span>            : 
+<span class="lineNum">     573 </span>            :         // Inform targets
+<span class="lineNum">     574 </span><span class="lineNoCov">          0 :         for (int i = 0; i &lt; dyn_array_ptr_size (&amp;color_merge_array); ++i) {</span>
+<span class="lineNum">     575 </span><span class="lineNoCov">          0 :                 ColorData *points_to = (ColorData *)dyn_array_ptr_get (&amp;color_merge_array, i);</span>
+<span class="lineNum">     576 </span><span class="lineNoCov">          0 :                 points_to-&gt;incoming_colors = MIN (points_to-&gt;incoming_colors + 1, INCOMING_COLORS_MAX);</span>
+<span class="lineNum">     577 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     578 </span>            : 
+<span class="lineNum">     579 </span>            :         /* if cacheSlot &gt;= 0, it means we prepared a given slot to receive the new color */
+<span class="lineNum">     580 </span><span class="lineNoCov">          0 :         if (cacheSlot &gt;= 0)</span>
+<span class="lineNum">     581 </span><span class="lineNoCov">          0 :                 merge_cache [cacheSlot][0].color = cd;</span>
+<span class="lineNum">     582 </span>            : 
+<span class="lineNum">     583 </span><span class="lineNoCov">          0 :         return cd;</span>
+<span class="lineNum">     584 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     585 </span>            : 
+<a name="586"><span class="lineNum">     586 </span>            : </a>
+<span class="lineNum">     587 </span>            : static void
+<span class="lineNum">     588 </span>            : register_bridge_object (GCObject *obj)
+<span class="lineNum">     589 </span>            : {
+<span class="lineNum">     590 </span><span class="lineNoCov">          0 :         create_data (obj)-&gt;is_bridge = TRUE;</span>
+<span class="lineNum">     591 </span><span class="lineNoCov">          0 : }</span>
+<a name="592"><span class="lineNum">     592 </span>            : </a>
+<span class="lineNum">     593 </span>            : static gboolean
+<span class="lineNum">     594 </span>            : is_opaque_object (GCObject *obj)
+<span class="lineNum">     595 </span>            : {
+<span class="lineNum">     596 </span><span class="lineNoCov">          0 :         MonoVTable *vt = SGEN_LOAD_VTABLE (obj);</span>
+<span class="lineNum">     597 </span><span class="lineNoCov">          0 :         if ((vt-&gt;gc_bits &amp; SGEN_GC_BIT_BRIDGE_OPAQUE_OBJECT) == SGEN_GC_BIT_BRIDGE_OPAQUE_OBJECT) {</span>
+<span class="lineNum">     598 </span><span class="lineNoCov">          0 :                 SGEN_LOG (6, &quot;ignoring %s\n&quot;, vt-&gt;klass-&gt;name);</span>
+<span class="lineNum">     599 </span><span class="lineNoCov">          0 :                 ++ignored_objects;</span>
+<span class="lineNum">     600 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     601 </span>            :         }
+<span class="lineNum">     602 </span><span class="lineNoCov">          0 :         return FALSE;</span>
+<span class="lineNum">     603 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     604 </span>            : 
+<a name="605"><span class="lineNum">     605 </span>            : // Called during DFS; visits one child. If it is a candidate to be scanned, pushes it to the stacks.</a>
+<span class="lineNum">     606 </span>            : static void
+<span class="lineNum">     607 </span>            : push_object (GCObject *obj)
+<span class="lineNum">     608 </span>            : {
+<span class="lineNum">     609 </span>            :         ScanData *data;
+<span class="lineNum">     610 </span><span class="lineNoCov">          0 :         obj = bridge_object_forward (obj);</span>
+<span class="lineNum">     611 </span>            : 
+<span class="lineNum">     612 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     613 </span>            :         printf (&quot;\t= pushing %p %s -&gt; &quot;, obj, safe_name_bridge (obj));
+<span class="lineNum">     614 </span>            : #endif
+<span class="lineNum">     615 </span>            : 
+<span class="lineNum">     616 </span>            :         /* Object types we can ignore */
+<span class="lineNum">     617 </span><span class="lineNoCov">          0 :         if (is_opaque_object (obj)) {</span>
+<span class="lineNum">     618 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     619 </span>            :                 printf (&quot;opaque\n&quot;);
+<span class="lineNum">     620 </span>            : #endif
+<span class="lineNum">     621 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     622 </span>            :         }
+<span class="lineNum">     623 </span>            : 
+<span class="lineNum">     624 </span><span class="lineNoCov">          0 :         data = find_data (obj);</span>
+<span class="lineNum">     625 </span>            : 
+<span class="lineNum">     626 </span>            :         /* Already marked - XXX must be done this way as the bridge themselves are alive. */
+<span class="lineNum">     627 </span><span class="lineNoCov">          0 :         if (data &amp;&amp; data-&gt;state != INITIAL) {</span>
+<span class="lineNum">     628 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     629 </span>            :                 printf (&quot;already marked\n&quot;);
+<span class="lineNum">     630 </span>            : #endif
+<span class="lineNum">     631 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     632 </span>            :         }
+<span class="lineNum">     633 </span>            : 
+<span class="lineNum">     634 </span>            :         /* We only care about dead objects */
+<span class="lineNum">     635 </span><span class="lineNoCov">          0 :         if (!data &amp;&amp; sgen_object_is_live (obj)) {</span>
+<span class="lineNum">     636 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     637 </span>            :                 printf (&quot;alive\n&quot;);
+<span class="lineNum">     638 </span>            : #endif
+<span class="lineNum">     639 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     640 </span>            :         }
+<span class="lineNum">     641 </span>            : 
+<span class="lineNum">     642 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     643 </span>            :         printf (&quot;pushed!\n&quot;);
+<span class="lineNum">     644 </span>            : #endif
+<span class="lineNum">     645 </span>            : 
+<span class="lineNum">     646 </span><span class="lineNoCov">          0 :         if (!data)</span>
+<span class="lineNum">     647 </span><span class="lineNoCov">          0 :                 data = create_data (obj);</span>
+<span class="lineNum">     648 </span><span class="lineNoCov">          0 :         g_assert (data-&gt;state == INITIAL);</span>
+<span class="lineNum">     649 </span><span class="lineNoCov">          0 :         g_assert (data-&gt;index == -1);</span>
+<span class="lineNum">     650 </span><span class="lineNoCov">          0 :         dyn_array_ptr_push (&amp;scan_stack, data);</span>
+<span class="lineNum">     651 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     652 </span>            : 
+<span class="lineNum">     653 </span>            : #undef HANDLE_PTR
+<span class="lineNum">     654 </span>            : #define HANDLE_PTR(ptr,obj)     do {                                    \
+<span class="lineNum">     655 </span>            :                 GCObject *dst = (GCObject*)*(ptr);                      \
+<span class="lineNum">     656 </span>            :                 if (dst) push_object (dst);                     \
+<span class="lineNum">     657 </span>            :         } while (0)
+<span class="lineNum">     658 </span>            : 
+<a name="659"><span class="lineNum">     659 </span>            : // dfs () function's queue-children-of-object operation.</a>
+<span class="lineNum">     660 </span>            : static void
+<span class="lineNum">     661 </span>            : push_all (ScanData *data)
+<span class="lineNum">     662 </span>            : {
+<span class="lineNum">     663 </span><span class="lineNoCov">          0 :         GCObject *obj = data-&gt;obj;</span>
+<span class="lineNum">     664 </span><span class="lineNoCov">          0 :         char *start = (char*)obj;</span>
+<span class="lineNum">     665 </span><span class="lineNoCov">          0 :         mword desc = sgen_obj_get_descriptor_safe (obj);</span>
+<span class="lineNum">     666 </span>            : 
+<span class="lineNum">     667 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     668 </span>            :         printf (&quot;+scanning %s (%p) index %d color %p\n&quot;, safe_name_bridge (data-&gt;obj), data-&gt;obj, data-&gt;index, data-&gt;color);
+<span class="lineNum">     669 </span>            : #endif
+<span class="lineNum">     670 </span>            : 
+<span class="lineNum">     671 </span>            :         #include &quot;sgen/sgen-scan-object.h&quot;
+<span class="lineNum">     672 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     673 </span>            : 
+<a name="674"><span class="lineNum">     674 </span>            : </a>
+<span class="lineNum">     675 </span>            : static void
+<span class="lineNum">     676 </span>            : compute_low_index (ScanData *data, GCObject *obj)
+<span class="lineNum">     677 </span>            : {
+<span class="lineNum">     678 </span>            :         ScanData *other;
+<span class="lineNum">     679 </span>            :         ColorData *cd;
+<span class="lineNum">     680 </span>            : 
+<span class="lineNum">     681 </span><span class="lineNoCov">          0 :         obj = bridge_object_forward (obj);</span>
+<span class="lineNum">     682 </span><span class="lineNoCov">          0 :         other = find_data (obj);</span>
+<span class="lineNum">     683 </span>            : 
+<span class="lineNum">     684 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     685 </span>            :         printf (&quot;\tcompute low %p -&gt;%p (%s) %p (%d / %d)\n&quot;, data-&gt;obj, obj, safe_name_bridge (obj), other, other ? other-&gt;index : -2, other ? other-&gt;low_index : -2);
+<span class="lineNum">     686 </span>            : #endif
+<span class="lineNum">     687 </span><span class="lineNoCov">          0 :         if (!other)</span>
+<span class="lineNum">     688 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     689 </span>            : 
+<span class="lineNum">     690 </span><span class="lineNoCov">          0 :         g_assert (other-&gt;state != INITIAL);</span>
+<span class="lineNum">     691 </span>            : 
+<span class="lineNum">     692 </span><span class="lineNoCov">          0 :         if ((other-&gt;state == SCANNED || other-&gt;state == FINISHED_ON_STACK) &amp;&amp; data-&gt;low_index &gt; other-&gt;low_index)</span>
+<span class="lineNum">     693 </span><span class="lineNoCov">          0 :                 data-&gt;low_index = other-&gt;low_index;</span>
+<span class="lineNum">     694 </span>            : 
+<span class="lineNum">     695 </span>            :         /* Compute the low color */
+<span class="lineNum">     696 </span><span class="lineNoCov">          0 :         if (other-&gt;color == NULL)</span>
+<span class="lineNum">     697 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     698 </span>            : 
+<span class="lineNum">     699 </span><span class="lineNoCov">          0 :         cd = other-&gt;color;</span>
+<span class="lineNum">     700 </span><span class="lineNoCov">          0 :         if (!cd-&gt;visited) {</span>
+<span class="lineNum">     701 </span><span class="lineNoCov">          0 :                 color_merge_array_hash += mix_hash ((uintptr_t) other-&gt;color);</span>
+<span class="lineNum">     702 </span><span class="lineNoCov">          0 :                 dyn_array_ptr_add (&amp;color_merge_array, other-&gt;color);</span>
+<span class="lineNum">     703 </span><span class="lineNoCov">          0 :                 cd-&gt;visited = TRUE;</span>
+<span class="lineNum">     704 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     705 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     706 </span>            : 
+<span class="lineNum">     707 </span>            : #undef HANDLE_PTR
+<span class="lineNum">     708 </span>            : #define HANDLE_PTR(ptr,obj)     do {                                    \
+<span class="lineNum">     709 </span>            :                 GCObject *dst = (GCObject*)*(ptr);                      \
+<span class="lineNum">     710 </span>            :                 if (dst) compute_low_index (data, dst);                         \
+<span class="lineNum">     711 </span>            :         } while (0)
+<a name="712"><span class="lineNum">     712 </span>            : </a>
+<span class="lineNum">     713 </span>            : static void
+<span class="lineNum">     714 </span>            : compute_low (ScanData *data)
+<span class="lineNum">     715 </span>            : {
+<span class="lineNum">     716 </span><span class="lineNoCov">          0 :         GCObject *obj = data-&gt;obj;</span>
+<span class="lineNum">     717 </span><span class="lineNoCov">          0 :         char *start = (char*)obj;</span>
+<span class="lineNum">     718 </span><span class="lineNoCov">          0 :         mword desc = sgen_obj_get_descriptor_safe (obj);</span>
+<span class="lineNum">     719 </span>            : 
+<span class="lineNum">     720 </span>            :         #include &quot;sgen/sgen-scan-object.h&quot;
+<span class="lineNum">     721 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     722 </span>            : 
+<a name="723"><span class="lineNum">     723 </span>            : // A non-bridged object needs a single color describing the current merge array.</a>
+<span class="lineNum">     724 </span>            : static ColorData*
+<span class="lineNum">     725 </span>            : reduce_color (void)
+<span class="lineNum">     726 </span>            : {
+<span class="lineNum">     727 </span><span class="lineNoCov">          0 :         ColorData *color = NULL;</span>
+<span class="lineNum">     728 </span><span class="lineNoCov">          0 :         int size = dyn_array_ptr_size (&amp;color_merge_array);</span>
+<span class="lineNum">     729 </span>            : 
+<span class="lineNum">     730 </span>            :         // Merge array is empty-- this SCC points to no bridged colors.
+<span class="lineNum">     731 </span>            :         // This SCC can be ignored completely.
+<span class="lineNum">     732 </span><span class="lineNoCov">          0 :         if (size == 0)</span>
+<span class="lineNum">     733 </span><span class="lineNoCov">          0 :                 color = NULL;</span>
+<span class="lineNum">     734 </span>            : 
+<span class="lineNum">     735 </span>            :         // Merge array has one item-- this SCC points to a single bridged color.
+<span class="lineNum">     736 </span>            :         // This SCC can be forwarded to the pointed-to color.
+<span class="lineNum">     737 </span><span class="lineNoCov">          0 :         else if (size == 1) {</span>
+<span class="lineNum">     738 </span><span class="lineNoCov">          0 :                 color = (ColorData *)dyn_array_ptr_get (&amp;color_merge_array, 0);</span>
+<span class="lineNum">     739 </span>            : 
+<span class="lineNum">     740 </span>            :         // This SCC gets to talk to the color allocator.
+<span class="lineNum">     741 </span><span class="lineNoCov">          0 :         } else</span>
+<span class="lineNum">     742 </span><span class="lineNoCov">          0 :                 color = new_color (FALSE);</span>
+<span class="lineNum">     743 </span>            : 
+<span class="lineNum">     744 </span><span class="lineNoCov">          0 :         return color;</span>
+<span class="lineNum">     745 </span>            : }
+<a name="746"><span class="lineNum">     746 </span>            : </a>
+<span class="lineNum">     747 </span>            : static void
+<span class="lineNum">     748 </span>            : create_scc (ScanData *data)
+<span class="lineNum">     749 </span>            : {
+<span class="lineNum">     750 </span>            :         int i;
+<span class="lineNum">     751 </span><span class="lineNoCov">          0 :         gboolean found = FALSE;</span>
+<span class="lineNum">     752 </span><span class="lineNoCov">          0 :         gboolean found_bridge = FALSE;</span>
+<span class="lineNum">     753 </span><span class="lineNoCov">          0 :         ColorData *color_data = NULL;</span>
+<span class="lineNum">     754 </span>            : 
+<span class="lineNum">     755 </span><span class="lineNoCov">          0 :         for (i = dyn_array_ptr_size (&amp;loop_stack) - 1; i &gt;= 0; --i) {</span>
+<span class="lineNum">     756 </span><span class="lineNoCov">          0 :                 ScanData *other = (ScanData *)dyn_array_ptr_get (&amp;loop_stack, i);</span>
+<span class="lineNum">     757 </span><span class="lineNoCov">          0 :                 found_bridge |= other-&gt;is_bridge;</span>
+<span class="lineNum">     758 </span><span class="lineNoCov">          0 :                 if (found_bridge || other == data)</span>
+<span class="lineNum">     759 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     760 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     761 </span>            : 
+<span class="lineNum">     762 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     763 </span>            :         printf (&quot;|SCC rooted in %s (%p) has bridge %d\n&quot;, safe_name_bridge (data-&gt;obj), data-&gt;obj, found_bridge);
+<span class="lineNum">     764 </span>            :         printf (&quot;\tpoints-to-colors: &quot;);
+<span class="lineNum">     765 </span>            :         for (int i = 0; i &lt; dyn_array_ptr_size (&amp;color_merge_array); ++i)
+<span class="lineNum">     766 </span>            :                 printf (&quot;%p &quot;, dyn_array_ptr_get (&amp;color_merge_array, i));
+<span class="lineNum">     767 </span>            :         printf (&quot;\n&quot;);
+<span class="lineNum">     768 </span>            : 
+<span class="lineNum">     769 </span>            :         printf (&quot;loop stack: &quot;);
+<span class="lineNum">     770 </span>            :         for (int i = 0; i &lt; dyn_array_ptr_size (&amp;loop_stack); ++i) {
+<span class="lineNum">     771 </span>            :                 ScanData *other = dyn_array_ptr_get (&amp;loop_stack, i);
+<span class="lineNum">     772 </span>            :                 printf (&quot;(%d/%d)&quot;, other-&gt;index, other-&gt;low_index);
+<span class="lineNum">     773 </span>            :         }
+<span class="lineNum">     774 </span>            :         printf (&quot;\n&quot;);
+<span class="lineNum">     775 </span>            : #endif
+<span class="lineNum">     776 </span>            : 
+<span class="lineNum">     777 </span><span class="lineNoCov">          0 :         if (found_bridge) {</span>
+<span class="lineNum">     778 </span><span class="lineNoCov">          0 :                 color_data = new_color (TRUE);</span>
+<span class="lineNum">     779 </span><span class="lineNoCov">          0 :                 ++num_colors_with_bridges;</span>
+<span class="lineNum">     780 </span><span class="lineNoCov">          0 :         } else {</span>
+<span class="lineNum">     781 </span><span class="lineNoCov">          0 :                 color_data = reduce_color ();</span>
+<span class="lineNum">     782 </span>            :         }
+<span class="lineNum">     783 </span>            : 
+<span class="lineNum">     784 </span><span class="lineNoCov">          0 :         while (dyn_array_ptr_size (&amp;loop_stack) &gt; 0) {</span>
+<span class="lineNum">     785 </span><span class="lineNoCov">          0 :                 ScanData *other = (ScanData *)dyn_array_ptr_pop (&amp;loop_stack);</span>
+<span class="lineNum">     786 </span>            : 
+<span class="lineNum">     787 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     788 </span>            :                 printf (&quot;\tmember %s (%p) index %d low-index %d color %p state %d\n&quot;, safe_name_bridge (other-&gt;obj), other-&gt;obj, other-&gt;index, other-&gt;low_index, other-&gt;color, other-&gt;state);
+<span class="lineNum">     789 </span>            : #endif
+<span class="lineNum">     790 </span>            : 
+<span class="lineNum">     791 </span><span class="lineNoCov">          0 :                 other-&gt;color = color_data;</span>
+<span class="lineNum">     792 </span><span class="lineNoCov">          0 :                 switch (other-&gt;state) {</span>
+<span class="lineNum">     793 </span>            :                 case FINISHED_ON_STACK:
+<span class="lineNum">     794 </span><span class="lineNoCov">          0 :                         other-&gt;state = FINISHED_OFF_STACK;</span>
+<span class="lineNum">     795 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     796 </span>            :                 case FINISHED_OFF_STACK:
+<span class="lineNum">     797 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     798 </span>            :                 default:
+<span class="lineNum">     799 </span><span class="lineNoCov">          0 :                         g_error (&quot;Invalid state when building SCC %d&quot;, other-&gt;state);</span>
+<span class="lineNum">     800 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     801 </span>            : 
+<span class="lineNum">     802 </span><span class="lineNoCov">          0 :                 if (other-&gt;is_bridge)</span>
+<span class="lineNum">     803 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_add (&amp;color_data-&gt;bridges, other-&gt;obj);</span>
+<span class="lineNum">     804 </span>            : 
+<span class="lineNum">     805 </span><span class="lineNoCov">          0 :                 if (other == data) {</span>
+<span class="lineNum">     806 </span><span class="lineNoCov">          0 :                         found = TRUE;</span>
+<span class="lineNum">     807 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     808 </span>            :                 }
+<span class="lineNum">     809 </span>            :         }
+<span class="lineNum">     810 </span><span class="lineNoCov">          0 :         g_assert (found);</span>
+<span class="lineNum">     811 </span>            : 
+<span class="lineNum">     812 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_ptr_size (&amp;color_merge_array); ++i) {</span>
+<span class="lineNum">     813 </span><span class="lineNoCov">          0 :                 ColorData *cd  = (ColorData *)dyn_array_ptr_get (&amp;color_merge_array, i);</span>
+<span class="lineNum">     814 </span><span class="lineNoCov">          0 :                 g_assert (cd-&gt;visited);</span>
+<span class="lineNum">     815 </span><span class="lineNoCov">          0 :                 cd-&gt;visited = FALSE;</span>
+<span class="lineNum">     816 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     817 </span><span class="lineNoCov">          0 :         color_merge_array_empty ();</span>
+<span class="lineNum">     818 </span><span class="lineNoCov">          0 :         found_bridge = FALSE;</span>
+<span class="lineNum">     819 </span><span class="lineNoCov">          0 : }</span>
+<a name="820"><span class="lineNum">     820 </span>            : </a>
+<span class="lineNum">     821 </span>            : static void
+<span class="lineNum">     822 </span>            : dfs (void)
+<span class="lineNum">     823 </span>            : {
+<span class="lineNum">     824 </span><span class="lineNoCov">          0 :         g_assert (dyn_array_ptr_size (&amp;scan_stack) == 1);</span>
+<span class="lineNum">     825 </span><span class="lineNoCov">          0 :         g_assert (dyn_array_ptr_size (&amp;loop_stack) == 0);</span>
+<span class="lineNum">     826 </span>            : 
+<span class="lineNum">     827 </span><span class="lineNoCov">          0 :         color_merge_array_empty ();</span>
+<span class="lineNum">     828 </span>            : 
+<span class="lineNum">     829 </span><span class="lineNoCov">          0 :         while (dyn_array_ptr_size (&amp;scan_stack) &gt; 0) {</span>
+<span class="lineNum">     830 </span><span class="lineNoCov">          0 :                 ScanData *data = (ScanData *)dyn_array_ptr_pop (&amp;scan_stack);</span>
+<span class="lineNum">     831 </span>            : 
+<span class="lineNum">     832 </span>            :                 /**
+<span class="lineNum">     833 </span>            :                  * Ignore finished objects on stack, they happen due to loops. For example:
+<span class="lineNum">     834 </span>            :                  * A -&gt; C
+<span class="lineNum">     835 </span>            :                  * A -&gt; B
+<span class="lineNum">     836 </span>            :                  * B -&gt; C
+<span class="lineNum">     837 </span>            :                  * C -&gt; A
+<span class="lineNum">     838 </span>            :                  *
+<span class="lineNum">     839 </span>            :                  * We start scanning from A and push C before B. So, after the first iteration, the scan stack will have: A C B.
+<span class="lineNum">     840 </span>            :                  * We then visit B, which will find C in its initial state and push again.
+<span class="lineNum">     841 </span>            :                  * Finally after finish with C and B, the stack will be left with &quot;A C&quot; and at this point C should be ignored.
+<span class="lineNum">     842 </span>            :          *
+<span class="lineNum">     843 </span>            :          * The above explains FINISHED_ON_STACK, to explain FINISHED_OFF_STACK, consider if the root was D, which pointed
+<span class="lineNum">     844 </span>            :                  * to A and C. A is processed first, leaving C on stack after that in the mentioned state.
+<span class="lineNum">     845 </span>            :                  */
+<span class="lineNum">     846 </span><span class="lineNoCov">          0 :                 if (data-&gt;state == FINISHED_ON_STACK || data-&gt;state == FINISHED_OFF_STACK)</span>
+<span class="lineNum">     847 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">     848 </span>            : 
+<span class="lineNum">     849 </span><span class="lineNoCov">          0 :                 if (data-&gt;state == INITIAL) {</span>
+<span class="lineNum">     850 </span><span class="lineNoCov">          0 :                         g_assert (data-&gt;index == -1);</span>
+<span class="lineNum">     851 </span><span class="lineNoCov">          0 :                         g_assert (data-&gt;low_index == -1);</span>
+<span class="lineNum">     852 </span>            : 
+<span class="lineNum">     853 </span><span class="lineNoCov">          0 :                         data-&gt;state = SCANNED;</span>
+<span class="lineNum">     854 </span><span class="lineNoCov">          0 :                         data-&gt;low_index = data-&gt;index = object_index++;</span>
+<span class="lineNum">     855 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_push (&amp;scan_stack, data);</span>
+<span class="lineNum">     856 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_push (&amp;loop_stack, data);</span>
+<span class="lineNum">     857 </span>            : 
+<span class="lineNum">     858 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     859 </span>            :                         printf (&quot;+scanning %s (%p) index %d color %p\n&quot;, safe_name_bridge (data-&gt;obj), data-&gt;obj, data-&gt;index, data-&gt;color);
+<span class="lineNum">     860 </span>            : #endif
+<span class="lineNum">     861 </span>            :                         /*push all refs */
+<span class="lineNum">     862 </span><span class="lineNoCov">          0 :                         push_all (data);</span>
+<span class="lineNum">     863 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     864 </span><span class="lineNoCov">          0 :                         g_assert (data-&gt;state == SCANNED);</span>
+<span class="lineNum">     865 </span><span class="lineNoCov">          0 :                         data-&gt;state = FINISHED_ON_STACK;</span>
+<span class="lineNum">     866 </span>            : 
+<span class="lineNum">     867 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     868 </span>            :                         printf (&quot;-finishing %s (%p) index %d low-index %d color %p\n&quot;, safe_name_bridge (data-&gt;obj), data-&gt;obj, data-&gt;index, data-&gt;low_index, data-&gt;color);
+<span class="lineNum">     869 </span>            : #endif
+<span class="lineNum">     870 </span>            : 
+<span class="lineNum">     871 </span>            :                         /* Compute low index */
+<span class="lineNum">     872 </span><span class="lineNoCov">          0 :                         compute_low (data);</span>
+<span class="lineNum">     873 </span>            : 
+<span class="lineNum">     874 </span>            : #if DUMP_GRAPH
+<span class="lineNum">     875 </span>            :                         printf (&quot;-finished %s (%p) index %d low-index %d color %p\n&quot;, safe_name_bridge (data-&gt;obj), data-&gt;obj, data-&gt;index, data-&gt;low_index, data-&gt;color);
+<span class="lineNum">     876 </span>            : #endif
+<span class="lineNum">     877 </span>            :                         //SCC root
+<span class="lineNum">     878 </span><span class="lineNoCov">          0 :                         if (data-&gt;index == data-&gt;low_index)</span>
+<span class="lineNum">     879 </span><span class="lineNoCov">          0 :                                 create_scc (data);</span>
+<span class="lineNum">     880 </span>            :                 }
+<span class="lineNum">     881 </span>            :         }
+<span class="lineNum">     882 </span><span class="lineNoCov">          0 : }</span>
+<a name="883"><span class="lineNum">     883 </span>            : </a>
+<span class="lineNum">     884 </span>            : static void
+<span class="lineNum">     885 </span>            : register_finalized_object (GCObject *obj)
+<span class="lineNum">     886 </span>            : {
+<span class="lineNum">     887 </span><span class="lineNoCov">          0 :         g_assert (sgen_need_bridge_processing ());</span>
+<span class="lineNum">     888 </span><span class="lineNoCov">          0 :         dyn_array_ptr_push (&amp;registered_bridges, obj);</span>
+<span class="lineNum">     889 </span><span class="lineNoCov">          0 : }</span>
+<a name="890"><span class="lineNum">     890 </span>            : </a>
+<span class="lineNum">     891 </span>            : static void
+<span class="lineNum">     892 </span>            : reset_data (void)
+<span class="lineNum">     893 </span>            : {
+<span class="lineNum">     894 </span><span class="lineNoCov">          0 :         dyn_array_ptr_empty (&amp;registered_bridges);</span>
+<span class="lineNum">     895 </span><span class="lineNoCov">          0 : }</span>
+<a name="896"><span class="lineNum">     896 </span>            : </a>
+<span class="lineNum">     897 </span>            : static void
+<span class="lineNum">     898 </span>            : cleanup (void)
+<span class="lineNum">     899 </span>            : {
+<span class="lineNum">     900 </span><span class="lineNoCov">          0 :         dyn_array_ptr_empty (&amp;scan_stack);</span>
+<span class="lineNum">     901 </span><span class="lineNoCov">          0 :         dyn_array_ptr_empty (&amp;loop_stack);</span>
+<span class="lineNum">     902 </span><span class="lineNoCov">          0 :         dyn_array_ptr_empty (&amp;registered_bridges);</span>
+<span class="lineNum">     903 </span><span class="lineNoCov">          0 :         free_object_buckets ();</span>
+<span class="lineNum">     904 </span><span class="lineNoCov">          0 :         free_color_buckets ();</span>
+<span class="lineNum">     905 </span><span class="lineNoCov">          0 :         reset_cache ();</span>
+<span class="lineNum">     906 </span><span class="lineNoCov">          0 :         object_index = 0;</span>
+<span class="lineNum">     907 </span><span class="lineNoCov">          0 :         num_colors_with_bridges = 0;</span>
+<span class="lineNum">     908 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">     909 </span>            : 
+<span class="lineNum">     910 </span>            : #ifdef DUMP_GRAPH
+<span class="lineNum">     911 </span>            : static void
+<span class="lineNum">     912 </span>            : dump_color_table (const char *why, gboolean do_index)
+<span class="lineNum">     913 </span>            : {
+<span class="lineNum">     914 </span>            :         ColorBucket *cur;
+<span class="lineNum">     915 </span>            :         int i = 0, j;
+<span class="lineNum">     916 </span>            :         printf (&quot;colors%s:\n&quot;, why);
+<span class="lineNum">     917 </span>            : 
+<span class="lineNum">     918 </span>            :         for (cur = root_color_bucket; cur; cur = cur-&gt;next, ++i) {
+<span class="lineNum">     919 </span>            :                 ColorData *cd;
+<span class="lineNum">     920 </span>            :                 for (cd = &amp;cur-&gt;data [0]; cd &lt; cur-&gt;next_data; ++cd) {
+<span class="lineNum">     921 </span>            :                         if (do_index)
+<span class="lineNum">     922 </span>            :                                 printf (&quot;\t%d(%d):&quot;, i, cd-&gt;api_index);
+<span class="lineNum">     923 </span>            :                         else
+<span class="lineNum">     924 </span>            :                                 printf (&quot;\t%d: &quot;, i);
+<span class="lineNum">     925 </span>            :                         for (j = 0; j &lt; dyn_array_ptr_size (&amp;cd-&gt;other_colors); ++j) {
+<span class="lineNum">     926 </span>            :                                 printf (&quot;%p &quot;, dyn_array_ptr_get (&amp;cd-&gt;other_colors, j));
+<span class="lineNum">     927 </span>            :                         }
+<span class="lineNum">     928 </span>            :                         if (dyn_array_ptr_size (&amp;cd-&gt;bridges)) {
+<span class="lineNum">     929 </span>            :                                 printf (&quot; bridges: &quot;);
+<span class="lineNum">     930 </span>            :                                 for (j = 0; j &lt; dyn_array_ptr_size (&amp;cd-&gt;bridges); ++j) {
+<span class="lineNum">     931 </span>            :                                         GCObject *obj = dyn_array_ptr_get (&amp;cd-&gt;bridges, j);
+<span class="lineNum">     932 </span>            :                                         ScanData *data = find_or_create_data (obj);
+<span class="lineNum">     933 </span>            :                                         printf (&quot;%d &quot;, data-&gt;index);
+<span class="lineNum">     934 </span>            :                                 }
+<span class="lineNum">     935 </span>            :                         }
+<span class="lineNum">     936 </span>            :                         printf (&quot;\n&quot;);
+<span class="lineNum">     937 </span>            :                 }
+<span class="lineNum">     938 </span>            :         }
+<span class="lineNum">     939 </span>            : 
+<span class="lineNum">     940 </span>            : }
+<span class="lineNum">     941 </span>            : #endif
+<a name="942"><span class="lineNum">     942 </span>            : </a>
+<span class="lineNum">     943 </span>            : static gint64
+<span class="lineNum">     944 </span>            : step_timer (gint64 *timer)
+<span class="lineNum">     945 </span>            : {
+<span class="lineNum">     946 </span>            :         gint64 curtime, diff;
+<span class="lineNum">     947 </span>            : 
+<span class="lineNum">     948 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (curtime); </span>
+<span class="lineNum">     949 </span><span class="lineNoCov">          0 :         diff = SGEN_TV_ELAPSED (*timer, curtime);</span>
+<span class="lineNum">     950 </span><span class="lineNoCov">          0 :         *timer = curtime;</span>
+<span class="lineNum">     951 </span><span class="lineNoCov">          0 :         return diff;</span>
+<a name="952"><span class="lineNum">     952 </span>            : }</a>
+<span class="lineNum">     953 </span>            : static void
+<span class="lineNum">     954 </span>            : processing_stw_step (void)
+<span class="lineNum">     955 </span>            : {
+<span class="lineNum">     956 </span>            :         int i;
+<span class="lineNum">     957 </span>            :         int bridge_count;
+<span class="lineNum">     958 </span>            :         gint64 curtime;
+<span class="lineNum">     959 </span>            : 
+<span class="lineNum">     960 </span><span class="lineNoCov">          0 :         if (!dyn_array_ptr_size (&amp;registered_bridges))</span>
+<span class="lineNum">     961 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     962 </span>            : 
+<span class="lineNum">     963 </span>            : #if defined (DUMP_GRAPH)
+<span class="lineNum">     964 </span>            :         printf (&quot;-----------------\n&quot;);
+<span class="lineNum">     965 </span>            : #endif
+<span class="lineNum">     966 </span>            : 
+<span class="lineNum">     967 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (curtime);</span>
+<span class="lineNum">     968 </span>            : 
+<span class="lineNum">     969 </span><span class="lineNoCov">          0 :         object_alloc_init ();</span>
+<span class="lineNum">     970 </span><span class="lineNoCov">          0 :         color_alloc_init ();</span>
+<span class="lineNum">     971 </span>            : 
+<span class="lineNum">     972 </span><span class="lineNoCov">          0 :         bridge_count = dyn_array_ptr_size (&amp;registered_bridges);</span>
+<span class="lineNum">     973 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; bridge_count ; ++i)</span>
+<span class="lineNum">     974 </span><span class="lineNoCov">          0 :                 register_bridge_object ((GCObject *)dyn_array_ptr_get (&amp;registered_bridges, i));</span>
+<span class="lineNum">     975 </span>            : 
+<span class="lineNum">     976 </span><span class="lineNoCov">          0 :         setup_time = step_timer (&amp;curtime);</span>
+<span class="lineNum">     977 </span>            : 
+<span class="lineNum">     978 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; bridge_count; ++i) {</span>
+<span class="lineNum">     979 </span><span class="lineNoCov">          0 :                 ScanData *sd = find_data ((GCObject *)dyn_array_ptr_get (&amp;registered_bridges, i));</span>
+<span class="lineNum">     980 </span><span class="lineNoCov">          0 :                 if (sd-&gt;state == INITIAL) {</span>
+<span class="lineNum">     981 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_push (&amp;scan_stack, sd);</span>
+<span class="lineNum">     982 </span><span class="lineNoCov">          0 :                         dfs ();</span>
+<span class="lineNum">     983 </span><span class="lineNoCov">          0 :                 } else {</span>
+<span class="lineNum">     984 </span><span class="lineNoCov">          0 :                         g_assert (sd-&gt;state == FINISHED_OFF_STACK);</span>
+<span class="lineNum">     985 </span>            :                 }
+<span class="lineNum">     986 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     987 </span>            : 
+<span class="lineNum">     988 </span><span class="lineNoCov">          0 :         tarjan_time = step_timer (&amp;curtime);</span>
+<span class="lineNum">     989 </span>            : 
+<span class="lineNum">     990 </span>            : #if defined (DUMP_GRAPH)
+<span class="lineNum">     991 </span>            :         printf (&quot;----summary----\n&quot;);
+<span class="lineNum">     992 </span>            :         printf (&quot;bridges:\n&quot;);
+<span class="lineNum">     993 </span>            :         for (int i = 0; i &lt; bridge_count; ++i) {
+<span class="lineNum">     994 </span>            :                 ScanData *sd = find_data (dyn_array_ptr_get (&amp;registered_bridges, i));
+<span class="lineNum">     995 </span>            :                 printf (&quot;\t%s (%p) index %d color %p\n&quot;, safe_name_bridge (sd-&gt;obj), sd-&gt;obj, sd-&gt;index, sd-&gt;color);
+<span class="lineNum">     996 </span>            :         }
+<span class="lineNum">     997 </span>            : 
+<span class="lineNum">     998 </span>            :         dump_color_table (&quot; after tarjan&quot;, FALSE);
+<span class="lineNum">     999 </span>            : #endif
+<span class="lineNum">    1000 </span>            : 
+<span class="lineNum">    1001 </span><span class="lineNoCov">          0 :         clear_after_processing ();</span>
+<span class="lineNum">    1002 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1003 </span>            : 
+<a name="1004"><span class="lineNum">    1004 </span>            : </a>
+<span class="lineNum">    1005 </span>            : static void
+<span class="lineNum">    1006 </span>            : gather_xrefs (ColorData *color)
+<span class="lineNum">    1007 </span>            : {
+<span class="lineNum">    1008 </span>            :         int i;
+<span class="lineNum">    1009 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_ptr_size (&amp;color-&gt;other_colors); ++i) {</span>
+<span class="lineNum">    1010 </span><span class="lineNoCov">          0 :                 ColorData *src = (ColorData *)dyn_array_ptr_get (&amp;color-&gt;other_colors, i);</span>
+<span class="lineNum">    1011 </span><span class="lineNoCov">          0 :                 if (src-&gt;visited)</span>
+<span class="lineNum">    1012 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">    1013 </span><span class="lineNoCov">          0 :                 src-&gt;visited = TRUE;</span>
+<span class="lineNum">    1014 </span><span class="lineNoCov">          0 :                 if (color_visible_to_client (src))</span>
+<span class="lineNum">    1015 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_add (&amp;color_merge_array, src);</span>
+<span class="lineNum">    1016 </span>            :                 else
+<span class="lineNum">    1017 </span><span class="lineNoCov">          0 :                         gather_xrefs (src);</span>
+<span class="lineNum">    1018 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1019 </span><span class="lineNoCov">          0 : }</span>
+<a name="1020"><span class="lineNum">    1020 </span>            : </a>
+<span class="lineNum">    1021 </span>            : static void
+<span class="lineNum">    1022 </span>            : reset_xrefs (ColorData *color)
+<span class="lineNum">    1023 </span>            : {
+<span class="lineNum">    1024 </span>            :         int i;
+<span class="lineNum">    1025 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_ptr_size (&amp;color-&gt;other_colors); ++i) {</span>
+<span class="lineNum">    1026 </span><span class="lineNoCov">          0 :                 ColorData *src = (ColorData *)dyn_array_ptr_get (&amp;color-&gt;other_colors, i);</span>
+<span class="lineNum">    1027 </span><span class="lineNoCov">          0 :                 if (!src-&gt;visited)</span>
+<span class="lineNum">    1028 </span><span class="lineNoCov">          0 :                         continue;</span>
+<span class="lineNum">    1029 </span><span class="lineNoCov">          0 :                 src-&gt;visited = FALSE;</span>
+<span class="lineNum">    1030 </span><span class="lineNoCov">          0 :                 if (!color_visible_to_client (src))</span>
+<span class="lineNum">    1031 </span><span class="lineNoCov">          0 :                         reset_xrefs (src);</span>
+<span class="lineNum">    1032 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1033 </span><span class="lineNoCov">          0 : }</span>
+<a name="1034"><span class="lineNum">    1034 </span>            : </a>
+<span class="lineNum">    1035 </span>            : static void
+<span class="lineNum">    1036 </span>            : processing_build_callback_data (int generation)
+<span class="lineNum">    1037 </span>            : {
+<span class="lineNum">    1038 </span>            :         int j;
+<span class="lineNum">    1039 </span>            :         gint64 curtime;
+<span class="lineNum">    1040 </span>            :         ColorBucket *cur;
+<span class="lineNum">    1041 </span>            : 
+<span class="lineNum">    1042 </span><span class="lineNoCov">          0 :         g_assert (bridge_processor-&gt;num_sccs == 0 &amp;&amp; bridge_processor-&gt;num_xrefs == 0);</span>
+<span class="lineNum">    1043 </span><span class="lineNoCov">          0 :         g_assert (!bridge_processor-&gt;api_sccs &amp;&amp; !bridge_processor-&gt;api_xrefs);</span>
+<span class="lineNum">    1044 </span>            : 
+<span class="lineNum">    1045 </span><span class="lineNoCov">          0 :         if (!dyn_array_ptr_size (&amp;registered_bridges))</span>
+<span class="lineNum">    1046 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1047 </span>            : 
+<span class="lineNum">    1048 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (curtime);</span>
+<span class="lineNum">    1049 </span>            : 
+<span class="lineNum">    1050 </span>            :         /*create API objects */
+<span class="lineNum">    1051 </span>            : 
+<span class="lineNum">    1052 </span>            : #if defined (DUMP_GRAPH)
+<span class="lineNum">    1053 </span>            :         printf (&quot;***** API *****\n&quot;);
+<span class="lineNum">    1054 </span>            :         printf (&quot;number of SCCs %d\n&quot;, num_colors_with_bridges);
+<span class="lineNum">    1055 </span>            : #endif
+<span class="lineNum">    1056 </span>            : 
+<span class="lineNum">    1057 </span>            :         // Count the number of SCCs visible to the client
+<span class="lineNum">    1058 </span><span class="lineNoCov">          0 :         num_sccs = 0;</span>
+<span class="lineNum">    1059 </span><span class="lineNoCov">          0 :         for (cur = root_color_bucket; cur; cur = cur-&gt;next) {</span>
+<span class="lineNum">    1060 </span>            :                 ColorData *cd;
+<span class="lineNum">    1061 </span><span class="lineNoCov">          0 :                 for (cd = &amp;cur-&gt;data [0]; cd &lt; cur-&gt;next_data; ++cd) {</span>
+<span class="lineNum">    1062 </span><span class="lineNoCov">          0 :                         if (color_visible_to_client (cd))</span>
+<span class="lineNum">    1063 </span><span class="lineNoCov">          0 :                                 num_sccs++;</span>
+<span class="lineNum">    1064 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1065 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1066 </span>            : 
+<span class="lineNum">    1067 </span>            :         /* This is a straightforward translation from colors to the bridge callback format. */
+<span class="lineNum">    1068 </span><span class="lineNoCov">          0 :         MonoGCBridgeSCC **api_sccs = (MonoGCBridgeSCC **)sgen_alloc_internal_dynamic (sizeof (MonoGCBridgeSCC*) * num_sccs, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">    1069 </span><span class="lineNoCov">          0 :         int api_index = 0;</span>
+<span class="lineNum">    1070 </span><span class="lineNoCov">          0 :         xref_count = 0;</span>
+<span class="lineNum">    1071 </span>            : 
+<span class="lineNum">    1072 </span>            :         // Convert visible SCCs, along with their bridged object list, to MonoGCBridgeSCCs in the client's SCC list
+<span class="lineNum">    1073 </span><span class="lineNoCov">          0 :         for (cur = root_color_bucket; cur; cur = cur-&gt;next) {</span>
+<span class="lineNum">    1074 </span>            :                 ColorData *cd;
+<span class="lineNum">    1075 </span><span class="lineNoCov">          0 :                 for (cd = &amp;cur-&gt;data [0]; cd &lt; cur-&gt;next_data; ++cd) {</span>
+<span class="lineNum">    1076 </span><span class="lineNoCov">          0 :                         int bridges = dyn_array_ptr_size (&amp;cd-&gt;bridges);</span>
+<span class="lineNum">    1077 </span><span class="lineNoCov">          0 :                         if (!(bridges || bridgeless_color_is_heavy (cd)))</span>
+<span class="lineNum">    1078 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">    1079 </span>            : 
+<span class="lineNum">    1080 </span><span class="lineNoCov">          0 :                         api_sccs [api_index] = (MonoGCBridgeSCC *)sgen_alloc_internal_dynamic (sizeof (MonoGCBridgeSCC) + sizeof (MonoObject*) * bridges, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">    1081 </span><span class="lineNoCov">          0 :                         api_sccs [api_index]-&gt;is_alive = FALSE;</span>
+<span class="lineNum">    1082 </span><span class="lineNoCov">          0 :                         api_sccs [api_index]-&gt;num_objs = bridges;</span>
+<span class="lineNum">    1083 </span>            : 
+<span class="lineNum">    1084 </span><span class="lineNoCov">          0 :                         cd-&gt;api_index = api_index;</span>
+<span class="lineNum">    1085 </span>            : 
+<span class="lineNum">    1086 </span><span class="lineNoCov">          0 :                         for (j = 0; j &lt; bridges; ++j)</span>
+<span class="lineNum">    1087 </span><span class="lineNoCov">          0 :                                 api_sccs [api_index]-&gt;objs [j] = (MonoObject *)dyn_array_ptr_get (&amp;cd-&gt;bridges, j);</span>
+<span class="lineNum">    1088 </span>            : 
+<span class="lineNum">    1089 </span><span class="lineNoCov">          0 :                         g_assert(api_index &lt; API_INDEX_MAX);</span>
+<span class="lineNum">    1090 </span><span class="lineNoCov">          0 :                         api_index++;</span>
+<span class="lineNum">    1091 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1092 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1093 </span>            : 
+<span class="lineNum">    1094 </span><span class="lineNoCov">          0 :         scc_setup_time = step_timer (&amp;curtime);</span>
+<span class="lineNum">    1095 </span>            : 
+<span class="lineNum">    1096 </span>            :         // Eliminate non-visible SCCs from the SCC list and redistribute xrefs
+<span class="lineNum">    1097 </span><span class="lineNoCov">          0 :         for (cur = root_color_bucket; cur; cur = cur-&gt;next) {</span>
+<span class="lineNum">    1098 </span>            :                 ColorData *cd;
+<span class="lineNum">    1099 </span><span class="lineNoCov">          0 :                 for (cd = &amp;cur-&gt;data [0]; cd &lt; cur-&gt;next_data; ++cd) {</span>
+<span class="lineNum">    1100 </span><span class="lineNoCov">          0 :                         if (!color_visible_to_client (cd))</span>
+<span class="lineNum">    1101 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">    1102 </span>            : 
+<span class="lineNum">    1103 </span><span class="lineNoCov">          0 :                         color_merge_array_empty ();</span>
+<span class="lineNum">    1104 </span><span class="lineNoCov">          0 :                         gather_xrefs (cd);</span>
+<span class="lineNum">    1105 </span><span class="lineNoCov">          0 :                         reset_xrefs (cd);</span>
+<span class="lineNum">    1106 </span><span class="lineNoCov">          0 :                         dyn_array_ptr_set_all (&amp;cd-&gt;other_colors, &amp;color_merge_array);</span>
+<span class="lineNum">    1107 </span><span class="lineNoCov">          0 :                         xref_count += dyn_array_ptr_size (&amp;cd-&gt;other_colors);</span>
+<span class="lineNum">    1108 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1109 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1110 </span>            : 
+<span class="lineNum">    1111 </span><span class="lineNoCov">          0 :         gather_xref_time = step_timer (&amp;curtime);</span>
+<span class="lineNum">    1112 </span>            : 
+<span class="lineNum">    1113 </span>            : #if defined (DUMP_GRAPH)
+<span class="lineNum">    1114 </span>            :         printf (&quot;TOTAL XREFS %d\n&quot;, xref_count);
+<span class="lineNum">    1115 </span>            :         dump_color_table (&quot; after xref pass&quot;, TRUE);
+<span class="lineNum">    1116 </span>            : #endif
+<span class="lineNum">    1117 </span>            : 
+<span class="lineNum">    1118 </span>            :         // Write out xrefs array
+<span class="lineNum">    1119 </span><span class="lineNoCov">          0 :         MonoGCBridgeXRef *api_xrefs = (MonoGCBridgeXRef *)sgen_alloc_internal_dynamic (sizeof (MonoGCBridgeXRef) * xref_count, INTERNAL_MEM_BRIDGE_DATA, TRUE);</span>
+<span class="lineNum">    1120 </span><span class="lineNoCov">          0 :         int xref_index = 0;</span>
+<span class="lineNum">    1121 </span><span class="lineNoCov">          0 :         for (cur = root_color_bucket; cur; cur = cur-&gt;next) {</span>
+<span class="lineNum">    1122 </span>            :                 ColorData *src;
+<span class="lineNum">    1123 </span><span class="lineNoCov">          0 :                 for (src = &amp;cur-&gt;data [0]; src &lt; cur-&gt;next_data; ++src) {</span>
+<span class="lineNum">    1124 </span><span class="lineNoCov">          0 :                         if (!color_visible_to_client (src))</span>
+<span class="lineNum">    1125 </span><span class="lineNoCov">          0 :                                 continue;</span>
+<span class="lineNum">    1126 </span>            : 
+<span class="lineNum">    1127 </span><span class="lineNoCov">          0 :                         for (j = 0; j &lt; dyn_array_ptr_size (&amp;src-&gt;other_colors); ++j) {</span>
+<span class="lineNum">    1128 </span><span class="lineNoCov">          0 :                                 ColorData *dest = (ColorData *)dyn_array_ptr_get (&amp;src-&gt;other_colors, j);</span>
+<span class="lineNum">    1129 </span><span class="lineNoCov">          0 :                                 g_assert (color_visible_to_client (dest)); /* Supposedly we already eliminated all xrefs to non-visible objects. */</span>
+<span class="lineNum">    1130 </span>            : 
+<span class="lineNum">    1131 </span><span class="lineNoCov">          0 :                                 api_xrefs [xref_index].src_scc_index = src-&gt;api_index;</span>
+<span class="lineNum">    1132 </span><span class="lineNoCov">          0 :                                 api_xrefs [xref_index].dst_scc_index = dest-&gt;api_index;</span>
+<span class="lineNum">    1133 </span>            : 
+<span class="lineNum">    1134 </span><span class="lineNoCov">          0 :                                 ++xref_index;</span>
+<span class="lineNum">    1135 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1136 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">    1137 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1138 </span>            : 
+<span class="lineNum">    1139 </span><span class="lineNoCov">          0 :         g_assert (xref_count == xref_index);</span>
+<span class="lineNum">    1140 </span><span class="lineNoCov">          0 :         xref_setup_time = step_timer (&amp;curtime);</span>
+<span class="lineNum">    1141 </span>            : 
+<span class="lineNum">    1142 </span>            : #if defined (DUMP_GRAPH)
+<span class="lineNum">    1143 </span>            :         printf (&quot;---xrefs:\n&quot;);
+<span class="lineNum">    1144 </span>            :         for (int i = 0; i &lt; xref_count; ++i)
+<span class="lineNum">    1145 </span>            :                 printf (&quot;\t%d -&gt; %d\n&quot;, api_xrefs [i].src_scc_index, api_xrefs [i].dst_scc_index);
+<span class="lineNum">    1146 </span>            : #endif
+<span class="lineNum">    1147 </span>            : 
+<span class="lineNum">    1148 </span>            :         //FIXME move half of the cleanup to before the bridge callback?
+<span class="lineNum">    1149 </span><span class="lineNoCov">          0 :         bridge_processor-&gt;num_sccs = num_sccs;</span>
+<span class="lineNum">    1150 </span><span class="lineNoCov">          0 :         bridge_processor-&gt;api_sccs = api_sccs;</span>
+<span class="lineNum">    1151 </span><span class="lineNoCov">          0 :         bridge_processor-&gt;num_xrefs = xref_count;</span>
+<span class="lineNum">    1152 </span><span class="lineNoCov">          0 :         bridge_processor-&gt;api_xrefs = api_xrefs;</span>
+<span class="lineNum">    1153 </span><span class="lineNoCov">          0 : }</span>
+<a name="1154"><span class="lineNum">    1154 </span>            : </a>
+<span class="lineNum">    1155 </span>            : static void
+<span class="lineNum">    1156 </span>            : processing_after_callback (int generation)
+<span class="lineNum">    1157 </span>            : {
+<span class="lineNum">    1158 </span>            :         gint64 curtime;
+<span class="lineNum">    1159 </span><span class="lineNoCov">          0 :         int bridge_count = dyn_array_ptr_size (&amp;registered_bridges);</span>
+<span class="lineNum">    1160 </span><span class="lineNoCov">          0 :         int object_count = object_data_count;</span>
+<span class="lineNum">    1161 </span><span class="lineNoCov">          0 :         int color_count = color_data_count;</span>
+<span class="lineNum">    1162 </span><span class="lineNoCov">          0 :         int colors_with_bridges_count = num_colors_with_bridges;</span>
+<span class="lineNum">    1163 </span>            : 
+<span class="lineNum">    1164 </span><span class="lineNoCov">          0 :         SGEN_TV_GETTIME (curtime);</span>
+<span class="lineNum">    1165 </span>            : 
+<span class="lineNum">    1166 </span>            :         /* cleanup */
+<span class="lineNum">    1167 </span><span class="lineNoCov">          0 :         cleanup ();</span>
+<span class="lineNum">    1168 </span>            : 
+<span class="lineNum">    1169 </span><span class="lineNoCov">          0 :         cleanup_time = step_timer (&amp;curtime);</span>
+<span class="lineNum">    1170 </span>            : 
+<span class="lineNum">    1171 </span><span class="lineNoCov">          0 :         mono_trace (G_LOG_LEVEL_INFO, MONO_TRACE_GC, &quot;GC_TAR_BRIDGE bridges %d objects %d opaque %d colors %d colors-bridged %d colors-visible %d xref %d cache-hit %d cache-%s %d cache-miss %d setup %.2fms tarjan %.2fms scc-setup %.2fms gather-xref %.2fms xref-setup %.2fms cleanup %.2fms&quot;,</span>
+<span class="lineNum">    1172 </span><span class="lineNoCov">          0 :                 bridge_count, object_count, ignored_objects,</span>
+<span class="lineNum">    1173 </span><span class="lineNoCov">          0 :                 color_count, colors_with_bridges_count, num_sccs, xref_count,</span>
+<span class="lineNum">    1174 </span><span class="lineNoCov">          0 :                 cache_hits, (scc_precise_merge ? &quot;abstain&quot; : &quot;semihit&quot;), cache_semihits, cache_misses,</span>
+<span class="lineNum">    1175 </span><span class="lineNoCov">          0 :                 setup_time / 10000.0f,</span>
+<span class="lineNum">    1176 </span><span class="lineNoCov">          0 :                 tarjan_time / 10000.0f,</span>
+<span class="lineNum">    1177 </span><span class="lineNoCov">          0 :                 scc_setup_time / 10000.0f,</span>
+<span class="lineNum">    1178 </span><span class="lineNoCov">          0 :                 gather_xref_time / 10000.0f,</span>
+<span class="lineNum">    1179 </span><span class="lineNoCov">          0 :                 xref_setup_time / 10000.0f,</span>
+<span class="lineNum">    1180 </span><span class="lineNoCov">          0 :                 cleanup_time / 10000.0f);</span>
+<span class="lineNum">    1181 </span>            : 
+<span class="lineNum">    1182 </span><span class="lineNoCov">          0 :         cache_hits = cache_semihits = cache_misses = 0;</span>
+<span class="lineNum">    1183 </span><span class="lineNoCov">          0 :         ignored_objects = 0;</span>
+<span class="lineNum">    1184 </span><span class="lineNoCov">          0 : }</span>
+<a name="1185"><span class="lineNum">    1185 </span>            : </a>
+<span class="lineNum">    1186 </span>            : static void
+<span class="lineNum">    1187 </span>            : describe_pointer (GCObject *obj)
+<span class="lineNum">    1188 </span>            : {
+<span class="lineNum">    1189 </span>            :         // HashEntry *entry;
+<span class="lineNum">    1190 </span>            :         int i;
+<span class="lineNum">    1191 </span>            : 
+<span class="lineNum">    1192 </span><span class="lineNoCov">          0 :         for (i = 0; i &lt; dyn_array_ptr_size (&amp;registered_bridges); ++i) {</span>
+<span class="lineNum">    1193 </span><span class="lineNoCov">          0 :                 if (obj == dyn_array_ptr_get (&amp;registered_bridges, i)) {</span>
+<span class="lineNum">    1194 </span><span class="lineNoCov">          0 :                         printf (&quot;Pointer is a registered bridge object.\n&quot;);</span>
+<span class="lineNum">    1195 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">    1196 </span>            :                 }
+<span class="lineNum">    1197 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1198 </span>            : 
+<span class="lineNum">    1199 </span>            :         // entry = sgen_hash_table_lookup (&amp;hash_table, obj);
+<span class="lineNum">    1200 </span>            :         // if (!entry)
+<span class="lineNum">    1201 </span>            :         //      return;
+<span class="lineNum">    1202 </span>            :         //
+<span class="lineNum">    1203 </span>            :         // printf (&quot;Bridge hash table entry %p:\n&quot;, entry);
+<span class="lineNum">    1204 </span>            :         // printf (&quot;  is bridge: %d\n&quot;, (int)entry-&gt;is_bridge);
+<span class="lineNum">    1205 </span>            :         // printf (&quot;  is visited: %d\n&quot;, (int)entry-&gt;is_visited);
+<span class="lineNum">    1206 </span><span class="lineNoCov">          0 : }</span>
+<a name="1207"><span class="lineNum">    1207 </span>            : </a>
+<span class="lineNum">    1208 </span>            : static void
+<span class="lineNum">    1209 </span>            : set_config (const SgenBridgeProcessorConfig *config)
+<span class="lineNum">    1210 </span>            : {
+<span class="lineNum">    1211 </span><span class="lineNoCov">          0 :         if (config-&gt;scc_precise_merge) {</span>
+<span class="lineNum">    1212 </span><span class="lineNoCov">          0 :                 hash_perturb = 0;</span>
+<span class="lineNum">    1213 </span><span class="lineNoCov">          0 :                 scc_precise_merge = TRUE;</span>
+<span class="lineNum">    1214 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">    1215 </span><span class="lineNoCov">          0 : }</span>
+<a name="1216"><span class="lineNum">    1216 </span>            : </a>
+<span class="lineNum">    1217 </span>            : void
+<span class="lineNum">    1218 </span>            : sgen_tarjan_bridge_init (SgenBridgeProcessor *collector)
+<span class="lineNum">    1219 </span>            : {
+<span class="lineNum">    1220 </span><span class="lineNoCov">          0 :         collector-&gt;reset_data = reset_data;</span>
+<span class="lineNum">    1221 </span><span class="lineNoCov">          0 :         collector-&gt;processing_stw_step = processing_stw_step;</span>
+<span class="lineNum">    1222 </span><span class="lineNoCov">          0 :         collector-&gt;processing_build_callback_data = processing_build_callback_data;</span>
+<span class="lineNum">    1223 </span><span class="lineNoCov">          0 :         collector-&gt;processing_after_callback = processing_after_callback;</span>
+<span class="lineNum">    1224 </span><span class="lineNoCov">          0 :         collector-&gt;class_kind = class_kind;</span>
+<span class="lineNum">    1225 </span><span class="lineNoCov">          0 :         collector-&gt;register_finalized_object = register_finalized_object;</span>
+<span class="lineNum">    1226 </span><span class="lineNoCov">          0 :         collector-&gt;describe_pointer = describe_pointer;</span>
+<span class="lineNum">    1227 </span><span class="lineNoCov">          0 :         collector-&gt;set_config = set_config;</span>
+<span class="lineNum">    1228 </span>            : 
+<span class="lineNum">    1229 </span><span class="lineNoCov">          0 :         sgen_register_fixed_internal_mem_type (INTERNAL_MEM_TARJAN_OBJ_BUCKET, BUCKET_SIZE);</span>
+<span class="lineNum">    1230 </span><span class="lineNoCov">          0 :         g_assert (sizeof (ObjectBucket) &lt;= BUCKET_SIZE);</span>
+<span class="lineNum">    1231 </span><span class="lineNoCov">          0 :         g_assert (sizeof (ColorBucket) &lt;= BUCKET_SIZE);</span>
+<span class="lineNum">    1232 </span><span class="lineNoCov">          0 :         g_assert (API_INDEX_BITS + INCOMING_COLORS_BITS &lt;= 31);</span>
+<span class="lineNum">    1233 </span><span class="lineNoCov">          0 :         bridge_processor = collector;</span>
+<span class="lineNum">    1234 </span><span class="lineNoCov">          0 : }</span>
+<span class="lineNum">    1235 </span>            : 
+<span class="lineNum">    1236 </span>            : #endif
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

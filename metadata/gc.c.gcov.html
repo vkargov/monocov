@@ -1,0 +1,1369 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - metadata/gc.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">metadata</a> - gc.c<span style="font-size: 80%;"> (source / <a href="gc.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">357</td>
+            <td class="headerCovTableEntry">469</td>
+            <td class="headerCovTableEntryMed">76.1 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">34</td>
+            <td class="headerCovTableEntry">44</td>
+            <td class="headerCovTableEntryMed">77.3 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * metadata/gc.c: GC icalls.
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author: Paolo Molaro &lt;lupus@ximian.com&gt;
+<span class="lineNum">       5 </span>            :  *
+<span class="lineNum">       6 </span>            :  * Copyright 2002-2003 Ximian, Inc (http://www.ximian.com)
+<span class="lineNum">       7 </span>            :  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+<span class="lineNum">       8 </span>            :  * Copyright 2012 Xamarin Inc (http://www.xamarin.com)
+<span class="lineNum">       9 </span>            :  * Licensed under the MIT license. See LICENSE file in the project root for full license information.
+<span class="lineNum">      10 </span>            :  */
+<span class="lineNum">      11 </span>            : 
+<span class="lineNum">      12 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &lt;mono/metadata/gc-internals.h&gt;
+<span class="lineNum">      17 </span>            : #include &lt;mono/metadata/mono-gc.h&gt;
+<span class="lineNum">      18 </span>            : #include &lt;mono/metadata/threads.h&gt;
+<span class="lineNum">      19 </span>            : #include &lt;mono/metadata/tabledefs.h&gt;
+<span class="lineNum">      20 </span>            : #include &lt;mono/metadata/exception.h&gt;
+<span class="lineNum">      21 </span>            : #include &lt;mono/metadata/profiler-private.h&gt;
+<span class="lineNum">      22 </span>            : #include &lt;mono/metadata/domain-internals.h&gt;
+<span class="lineNum">      23 </span>            : #include &lt;mono/metadata/class-internals.h&gt;
+<span class="lineNum">      24 </span>            : #include &lt;mono/metadata/metadata-internals.h&gt;
+<span class="lineNum">      25 </span>            : #include &lt;mono/metadata/mono-mlist.h&gt;
+<span class="lineNum">      26 </span>            : #include &lt;mono/metadata/threads-types.h&gt;
+<span class="lineNum">      27 </span>            : #include &lt;mono/metadata/threadpool.h&gt;
+<span class="lineNum">      28 </span>            : #include &lt;mono/sgen/sgen-conf.h&gt;
+<span class="lineNum">      29 </span>            : #include &lt;mono/sgen/sgen-gc.h&gt;
+<span class="lineNum">      30 </span>            : #include &lt;mono/utils/mono-logger-internals.h&gt;
+<span class="lineNum">      31 </span>            : #include &lt;mono/metadata/gc-internals.h&gt;
+<span class="lineNum">      32 </span>            : #include &lt;mono/metadata/marshal.h&gt; /* for mono_delegate_free_ftnptr () */
+<span class="lineNum">      33 </span>            : #include &lt;mono/metadata/attach.h&gt;
+<span class="lineNum">      34 </span>            : #include &lt;mono/metadata/console-io.h&gt;
+<span class="lineNum">      35 </span>            : #include &lt;mono/utils/mono-os-semaphore.h&gt;
+<span class="lineNum">      36 </span>            : #include &lt;mono/utils/mono-memory-model.h&gt;
+<span class="lineNum">      37 </span>            : #include &lt;mono/utils/mono-counters.h&gt;
+<span class="lineNum">      38 </span>            : #include &lt;mono/utils/mono-time.h&gt;
+<span class="lineNum">      39 </span>            : #include &lt;mono/utils/dtrace.h&gt;
+<span class="lineNum">      40 </span>            : #include &lt;mono/utils/mono-threads.h&gt;
+<span class="lineNum">      41 </span>            : #include &lt;mono/utils/mono-threads-coop.h&gt;
+<span class="lineNum">      42 </span>            : #include &lt;mono/utils/atomic.h&gt;
+<span class="lineNum">      43 </span>            : #include &lt;mono/utils/mono-coop-semaphore.h&gt;
+<span class="lineNum">      44 </span>            : #include &lt;mono/utils/hazard-pointer.h&gt;
+<span class="lineNum">      45 </span>            : #include &lt;mono/io-layer/io-layer.h&gt;
+<span class="lineNum">      46 </span>            : 
+<span class="lineNum">      47 </span>            : #ifndef HOST_WIN32
+<span class="lineNum">      48 </span>            : #include &lt;pthread.h&gt;
+<span class="lineNum">      49 </span>            : #endif
+<span class="lineNum">      50 </span>            : 
+<span class="lineNum">      51 </span>            : typedef struct DomainFinalizationReq {
+<span class="lineNum">      52 </span>            :         gint32 ref;
+<span class="lineNum">      53 </span>            :         MonoDomain *domain;
+<span class="lineNum">      54 </span>            :         MonoCoopSem done;
+<span class="lineNum">      55 </span>            : } DomainFinalizationReq;
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span>            : static gboolean gc_disabled;
+<span class="lineNum">      58 </span>            : 
+<span class="lineNum">      59 </span>            : static gboolean finalizing_root_domain;
+<span class="lineNum">      60 </span>            : 
+<span class="lineNum">      61 </span>            : gboolean log_finalizers;
+<span class="lineNum">      62 </span>            : gboolean mono_do_not_finalize;
+<span class="lineNum">      63 </span>            : volatile gboolean suspend_finalizers;
+<span class="lineNum">      64 </span>            : gchar **mono_do_not_finalize_class_names ;
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span>            : #define mono_finalizer_lock() mono_coop_mutex_lock (&amp;finalizer_mutex)
+<span class="lineNum">      67 </span>            : #define mono_finalizer_unlock() mono_coop_mutex_unlock (&amp;finalizer_mutex)
+<span class="lineNum">      68 </span>            : static MonoCoopMutex finalizer_mutex;
+<span class="lineNum">      69 </span>            : static MonoCoopMutex reference_queue_mutex;
+<span class="lineNum">      70 </span>            : 
+<span class="lineNum">      71 </span>            : static GSList *domains_to_finalize;
+<span class="lineNum">      72 </span>            : static MonoMList *threads_to_finalize;
+<span class="lineNum">      73 </span>            : 
+<span class="lineNum">      74 </span>            : static gboolean finalizer_thread_exited;
+<span class="lineNum">      75 </span>            : /* Uses finalizer_mutex */
+<span class="lineNum">      76 </span>            : static MonoCoopCond exited_cond;
+<span class="lineNum">      77 </span>            : 
+<span class="lineNum">      78 </span>            : static MonoInternalThread *gc_thread;
+<span class="lineNum">      79 </span>            : 
+<span class="lineNum">      80 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">      81 </span>            : static HANDLE pending_done_event;
+<span class="lineNum">      82 </span>            : #else
+<span class="lineNum">      83 </span>            : static gboolean pending_done;
+<span class="lineNum">      84 </span>            : static MonoCoopCond pending_done_cond;
+<span class="lineNum">      85 </span>            : static MonoCoopMutex pending_done_mutex;
+<span class="lineNum">      86 </span>            : #endif
+<span class="lineNum">      87 </span>            : 
+<span class="lineNum">      88 </span>            : static void object_register_finalizer (MonoObject *obj, void (*callback)(void *, void*));
+<span class="lineNum">      89 </span>            : 
+<span class="lineNum">      90 </span>            : static void reference_queue_proccess_all (void);
+<span class="lineNum">      91 </span>            : static void mono_reference_queue_cleanup (void);
+<span class="lineNum">      92 </span>            : static void reference_queue_clear_for_domain (MonoDomain *domain);
+<span class="lineNum">      93 </span>            : 
+<a name="94"><span class="lineNum">      94 </span>            : </a>
+<span class="lineNum">      95 </span>            : static MonoThreadInfoWaitRet
+<span class="lineNum">      96 </span>            : guarded_wait (MonoThreadHandle *thread_handle, guint32 timeout, gboolean alertable)
+<span class="lineNum">      97 </span>            : {
+<span class="lineNum">      98 </span>            :         MonoThreadInfoWaitRet result;
+<span class="lineNum">      99 </span>            : 
+<span class="lineNum">     100 </span><span class="lineCov">       6528 :         MONO_ENTER_GC_SAFE;</span>
+<span class="lineNum">     101 </span><span class="lineCov">       3264 :         result = mono_thread_info_wait_one_handle (thread_handle, timeout, alertable);</span>
+<span class="lineNum">     102 </span><span class="lineCov">       3264 :         MONO_EXIT_GC_SAFE;</span>
+<span class="lineNum">     103 </span>            : 
+<span class="lineNum">     104 </span><span class="lineCov">       3264 :         return result;</span>
+<span class="lineNum">     105 </span>            : }
+<span class="lineNum">     106 </span>            : 
+<span class="lineNum">     107 </span>            : typedef struct {
+<span class="lineNum">     108 </span>            :         MonoCoopCond *cond;
+<span class="lineNum">     109 </span>            :         MonoCoopMutex *mutex;
+<span class="lineNum">     110 </span>            : } BreakCoopAlertableWaitUD;
+<a name="111"><span class="lineNum">     111 </span>            : </a>
+<span class="lineNum">     112 </span>            : static inline void
+<span class="lineNum">     113 </span>            : break_coop_alertable_wait (gpointer user_data)
+<span class="lineNum">     114 </span>            : {
+<span class="lineNum">     115 </span><span class="lineCov">          2 :         BreakCoopAlertableWaitUD *ud = (BreakCoopAlertableWaitUD*)user_data;</span>
+<span class="lineNum">     116 </span>            : 
+<span class="lineNum">     117 </span><span class="lineCov">          2 :         mono_coop_mutex_lock (ud-&gt;mutex);</span>
+<span class="lineNum">     118 </span><span class="lineCov">          2 :         mono_coop_cond_signal (ud-&gt;cond);</span>
+<span class="lineNum">     119 </span><span class="lineCov">          2 :         mono_coop_mutex_unlock (ud-&gt;mutex);</span>
+<span class="lineNum">     120 </span>            : 
+<span class="lineNum">     121 </span><span class="lineCov">          2 :         g_free (ud);</span>
+<span class="lineNum">     122 </span><span class="lineCov">          2 : }</span>
+<span class="lineNum">     123 </span>            : 
+<span class="lineNum">     124 </span>            : /*
+<span class="lineNum">     125 </span>            :  * coop_cond_timedwait_alertable:
+<span class="lineNum">     126 </span>            :  *
+<span class="lineNum">     127 </span>            :  *   Wait on COND/MUTEX. If ALERTABLE is non-null, the wait can be interrupted.
+<span class="lineNum">     128 </span>            :  * In that case, *ALERTABLE will be set to TRUE, and 0 is returned.
+<a name="129"><span class="lineNum">     129 </span>            :  */</a>
+<span class="lineNum">     130 </span>            : static inline gint
+<span class="lineNum">     131 </span>            : coop_cond_timedwait_alertable (MonoCoopCond *cond, MonoCoopMutex *mutex, guint32 timeout_ms, gboolean *alertable)
+<span class="lineNum">     132 </span>            : {
+<span class="lineNum">     133 </span>            :         BreakCoopAlertableWaitUD *ud;
+<span class="lineNum">     134 </span>            :         int res;
+<span class="lineNum">     135 </span>            : 
+<span class="lineNum">     136 </span><span class="lineCov">       1953 :         if (alertable) {</span>
+<span class="lineNum">     137 </span><span class="lineCov">       1953 :                 ud = g_new0 (BreakCoopAlertableWaitUD, 1);</span>
+<span class="lineNum">     138 </span><span class="lineCov">       1953 :                 ud-&gt;cond = cond;</span>
+<span class="lineNum">     139 </span><span class="lineCov">       1953 :                 ud-&gt;mutex = mutex;</span>
+<span class="lineNum">     140 </span>            : 
+<span class="lineNum">     141 </span><span class="lineCov">       1953 :                 mono_thread_info_install_interrupt (break_coop_alertable_wait, ud, alertable);</span>
+<span class="lineNum">     142 </span><span class="lineCov">       1953 :                 if (*alertable) {</span>
+<span class="lineNum">     143 </span><span class="lineNoCov">          0 :                         g_free (ud);</span>
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :                         return 0;</span>
+<span class="lineNum">     145 </span>            :                 }
+<span class="lineNum">     146 </span><span class="lineCov">       1953 :         }</span>
+<span class="lineNum">     147 </span><span class="lineCov">       1951 :         res = mono_coop_cond_timedwait (cond, mutex, timeout_ms);</span>
+<span class="lineNum">     148 </span><span class="lineCov">       1951 :         if (alertable) {</span>
+<span class="lineNum">     149 </span><span class="lineCov">       1951 :                 mono_thread_info_uninstall_interrupt (alertable);</span>
+<span class="lineNum">     150 </span><span class="lineCov">       1951 :                 if (*alertable)</span>
+<span class="lineNum">     151 </span><span class="lineCov">          2 :                         return 0;</span>
+<span class="lineNum">     152 </span>            :                 else {
+<span class="lineNum">     153 </span>            :                         /* the interrupt token has not been taken by another
+<span class="lineNum">     154 </span>            :                          * thread, so it's our responsability to free it up. */
+<span class="lineNum">     155 </span><span class="lineCov">       1949 :                         g_free (ud);</span>
+<span class="lineNum">     156 </span>            :                 }
+<span class="lineNum">     157 </span><span class="lineCov">       1949 :         }</span>
+<span class="lineNum">     158 </span><span class="lineCov">       1949 :         return res;</span>
+<span class="lineNum">     159 </span><span class="lineCov">       1951 : }</span>
+<a name="160"><span class="lineNum">     160 </span>            : </a>
+<span class="lineNum">     161 </span>            : static gboolean
+<span class="lineNum">     162 </span>            : add_thread_to_finalize (MonoInternalThread *thread, MonoError *error)
+<span class="lineNum">     163 </span>            : {
+<span class="lineNum">     164 </span><span class="lineCov">      10285 :         mono_error_init (error);</span>
+<span class="lineNum">     165 </span><span class="lineCov">      10285 :         mono_finalizer_lock ();</span>
+<span class="lineNum">     166 </span><span class="lineCov">      10285 :         if (!threads_to_finalize)</span>
+<span class="lineNum">     167 </span><span class="lineCov">       5570 :                 MONO_GC_REGISTER_ROOT_SINGLE (threads_to_finalize, MONO_ROOT_SOURCE_FINALIZER_QUEUE, &quot;finalizable threads list&quot;);</span>
+<span class="lineNum">     168 </span><span class="lineCov">      10285 :         threads_to_finalize = mono_mlist_append_checked (threads_to_finalize, (MonoObject*)thread, error);</span>
+<span class="lineNum">     169 </span><span class="lineCov">      10285 :         mono_finalizer_unlock ();</span>
+<span class="lineNum">     170 </span><span class="lineCov">      10285 :         return is_ok (error);</span>
+<span class="lineNum">     171 </span>            : }
+<span class="lineNum">     172 </span>            : 
+<span class="lineNum">     173 </span>            : /* 
+<span class="lineNum">     174 </span>            :  * actually, we might want to queue the finalize requests in a separate thread,
+<span class="lineNum">     175 </span>            :  * but we need to be careful about the execution domain of the thread...
+<a name="176"><span class="lineNum">     176 </span>            :  */</a>
+<span class="lineNum">     177 </span>            : void
+<span class="lineNum">     178 </span>            : mono_gc_run_finalize (void *obj, void *data)
+<span class="lineNum">     179 </span>            : {
+<span class="lineNum">     180 </span>            :         MonoError error;
+<span class="lineNum">     181 </span><span class="lineCov">    1880260 :         MonoObject *exc = NULL;</span>
+<span class="lineNum">     182 </span>            :         MonoObject *o;
+<span class="lineNum">     183 </span>            : #ifndef HAVE_SGEN_GC
+<span class="lineNum">     184 </span>            :         MonoObject *o2;
+<span class="lineNum">     185 </span>            : #endif
+<span class="lineNum">     186 </span><span class="lineCov">    1880260 :         MonoMethod* finalizer = NULL;</span>
+<span class="lineNum">     187 </span><span class="lineCov">    1880260 :         MonoDomain *caller_domain = mono_domain_get ();</span>
+<span class="lineNum">     188 </span>            :         MonoDomain *domain;
+<span class="lineNum">     189 </span>            :         RuntimeInvokeFunction runtime_invoke;
+<span class="lineNum">     190 </span>            : 
+<span class="lineNum">     191 </span>            :         // This function is called from the innards of the GC, so our best alternative for now is to do polling here
+<span class="lineNum">     192 </span><span class="lineCov">    1880260 :         mono_threads_safepoint ();</span>
+<span class="lineNum">     193 </span>            : 
+<span class="lineNum">     194 </span><span class="lineCov">    1880260 :         o = (MonoObject*)((char*)obj + GPOINTER_TO_UINT (data));</span>
+<span class="lineNum">     195 </span>            : 
+<span class="lineNum">     196 </span><span class="lineCov">    1880260 :         if (mono_do_not_finalize) {</span>
+<span class="lineNum">     197 </span><span class="lineNoCov">          0 :                 if (!mono_do_not_finalize_class_names)</span>
+<span class="lineNum">     198 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     199 </span>            : 
+<span class="lineNum">     200 </span><span class="lineNoCov">          0 :                 size_t namespace_len = strlen (o-&gt;vtable-&gt;klass-&gt;name_space);</span>
+<span class="lineNum">     201 </span><span class="lineNoCov">          0 :                 for (int i = 0; mono_do_not_finalize_class_names [i]; ++i) {</span>
+<span class="lineNum">     202 </span><span class="lineNoCov">          0 :                         const char *name = mono_do_not_finalize_class_names [i];</span>
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :                         if (strncmp (name, o-&gt;vtable-&gt;klass-&gt;name_space, namespace_len))</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     205 </span><span class="lineNoCov">          0 :                         if (name [namespace_len] != '.')</span>
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     207 </span><span class="lineNoCov">          0 :                         if (strcmp (name + namespace_len + 1, o-&gt;vtable-&gt;klass-&gt;name))</span>
+<span class="lineNum">     208 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     209 </span><span class="lineNoCov">          0 :                         return;</span>
+<span class="lineNum">     210 </span>            :                 }
+<span class="lineNum">     211 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     212 </span>            : 
+<span class="lineNum">     213 </span><span class="lineCov">    1880260 :         if (log_finalizers)</span>
+<span class="lineNum">     214 </span><span class="lineNoCov">          0 :                 g_log (&quot;mono-gc-finalizers&quot;, G_LOG_LEVEL_DEBUG, &quot;&lt;%s at %p&gt; Starting finalizer checks.&quot;, o-&gt;vtable-&gt;klass-&gt;name, o);</span>
+<span class="lineNum">     215 </span>            : 
+<span class="lineNum">     216 </span><span class="lineCov">    1880260 :         if (suspend_finalizers)</span>
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     218 </span>            : 
+<span class="lineNum">     219 </span><span class="lineCov">    1880260 :         domain = o-&gt;vtable-&gt;domain;</span>
+<span class="lineNum">     220 </span>            : 
+<span class="lineNum">     221 </span>            : #ifndef HAVE_SGEN_GC
+<span class="lineNum">     222 </span>            :         mono_domain_finalizers_lock (domain);
+<span class="lineNum">     223 </span>            : 
+<span class="lineNum">     224 </span>            :         o2 = (MonoObject *)g_hash_table_lookup (domain-&gt;finalizable_objects_hash, o);
+<span class="lineNum">     225 </span>            : 
+<span class="lineNum">     226 </span>            :         mono_domain_finalizers_unlock (domain);
+<span class="lineNum">     227 </span>            : 
+<span class="lineNum">     228 </span>            :         if (!o2)
+<span class="lineNum">     229 </span>            :                 /* Already finalized somehow */
+<span class="lineNum">     230 </span>            :                 return;
+<span class="lineNum">     231 </span>            : #endif
+<span class="lineNum">     232 </span>            : 
+<span class="lineNum">     233 </span>            :         /* make sure the finalizer is not called again if the object is resurrected */
+<span class="lineNum">     234 </span><span class="lineCov">    1880260 :         object_register_finalizer ((MonoObject *)obj, NULL);</span>
+<span class="lineNum">     235 </span>            : 
+<span class="lineNum">     236 </span><span class="lineCov">    1880260 :         if (log_finalizers)</span>
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :                 g_log (&quot;mono-gc-finalizers&quot;, G_LOG_LEVEL_MESSAGE, &quot;&lt;%s at %p&gt; Registered finalizer as processed.&quot;, o-&gt;vtable-&gt;klass-&gt;name, o);</span>
+<span class="lineNum">     238 </span>            : 
+<span class="lineNum">     239 </span><span class="lineCov">    1880260 :         if (o-&gt;vtable-&gt;klass == mono_defaults.internal_thread_class) {</span>
+<span class="lineNum">     240 </span><span class="lineCov">      31317 :                 MonoInternalThread *t = (MonoInternalThread*)o;</span>
+<span class="lineNum">     241 </span>            : 
+<span class="lineNum">     242 </span><span class="lineCov">      31317 :                 if (mono_gc_is_finalizer_internal_thread (t))</span>
+<span class="lineNum">     243 </span>            :                         /* Avoid finalizing ourselves */
+<span class="lineNum">     244 </span><span class="lineCov">       3264 :                         return;</span>
+<span class="lineNum">     245 </span>            : 
+<span class="lineNum">     246 </span><span class="lineCov">      38339 :                 if (t-&gt;threadpool_thread &amp;&amp; finalizing_root_domain) {</span>
+<span class="lineNum">     247 </span>            :                         /* Don't finalize threadpool threads when
+<span class="lineNum">     248 </span>            :                            shutting down - they're finalized when the
+<span class="lineNum">     249 </span>            :                            threadpool shuts down. */
+<span class="lineNum">     250 </span><span class="lineCov">      10285 :                         if (!add_thread_to_finalize (t, &amp;error))</span>
+<span class="lineNum">     251 </span><span class="lineNoCov">          0 :                                 goto unhandled_error;</span>
+<span class="lineNum">     252 </span><span class="lineCov">      10285 :                         return;</span>
+<span class="lineNum">     253 </span>            :                 }
+<span class="lineNum">     254 </span><span class="lineCov">      17768 :         }</span>
+<span class="lineNum">     255 </span>            : 
+<span class="lineNum">     256 </span><span class="lineCov">    3727294 :         if (o-&gt;vtable-&gt;klass-&gt;image == mono_defaults.corlib &amp;&amp; !strcmp (o-&gt;vtable-&gt;klass-&gt;name, &quot;DynamicMethod&quot;) &amp;&amp; finalizing_root_domain) {</span>
+<span class="lineNum">     257 </span>            :                 /*
+<span class="lineNum">     258 </span>            :                  * These can't be finalized during unloading/shutdown, since that would
+<span class="lineNum">     259 </span>            :                  * free the native code which can still be referenced by other
+<span class="lineNum">     260 </span>            :                  * finalizers.
+<span class="lineNum">     261 </span>            :                  * FIXME: This is not perfect, objects dying at the same time as 
+<span class="lineNum">     262 </span>            :                  * dynamic methods can still reference them even when !shutdown.
+<span class="lineNum">     263 </span>            :                  */
+<span class="lineNum">     264 </span><span class="lineCov">       8010 :                 return;</span>
+<span class="lineNum">     265 </span>            :         }
+<span class="lineNum">     266 </span>            : 
+<span class="lineNum">     267 </span><span class="lineCov">    1858701 :         if (mono_runtime_get_no_exec ())</span>
+<span class="lineNum">     268 </span><span class="lineCov">         28 :                 return;</span>
+<span class="lineNum">     269 </span>            : 
+<span class="lineNum">     270 </span>            :         /* speedup later... and use a timeout */
+<span class="lineNum">     271 </span>            :         /* g_print (&quot;Finalize run on %p %s.%s\n&quot;, o, mono_object_class (o)-&gt;name_space, mono_object_class (o)-&gt;name); */
+<span class="lineNum">     272 </span>            : 
+<span class="lineNum">     273 </span>            :         /* Use _internal here, since this thread can enter a doomed appdomain */
+<span class="lineNum">     274 </span><span class="lineCov">    1858673 :         mono_domain_set_internal (mono_object_domain (o));</span>
+<span class="lineNum">     275 </span>            : 
+<span class="lineNum">     276 </span>            :         /* delegates that have a native function pointer allocated are
+<span class="lineNum">     277 </span>            :          * registered for finalization, but they don't have a Finalize
+<span class="lineNum">     278 </span>            :          * method, because in most cases it's not needed and it's just a waste.
+<span class="lineNum">     279 </span>            :          */
+<span class="lineNum">     280 </span><span class="lineCov">    1858673 :         if (o-&gt;vtable-&gt;klass-&gt;delegate) {</span>
+<span class="lineNum">     281 </span><span class="lineCov">        184 :                 MonoDelegate* del = (MonoDelegate*)o;</span>
+<span class="lineNum">     282 </span><span class="lineCov">        184 :                 if (del-&gt;delegate_trampoline)</span>
+<span class="lineNum">     283 </span><span class="lineCov">        184 :                         mono_delegate_free_ftnptr ((MonoDelegate*)o);</span>
+<span class="lineNum">     284 </span><span class="lineCov">        184 :                 mono_domain_set_internal (caller_domain);</span>
+<span class="lineNum">     285 </span><span class="lineCov">        184 :                 return;</span>
+<span class="lineNum">     286 </span>            :         }
+<span class="lineNum">     287 </span>            : 
+<span class="lineNum">     288 </span><span class="lineCov">    1858489 :         finalizer = mono_class_get_finalizer (o-&gt;vtable-&gt;klass);</span>
+<span class="lineNum">     289 </span>            : 
+<span class="lineNum">     290 </span>            :         /* If object has a CCW but has no finalizer, it was only
+<span class="lineNum">     291 </span>            :          * registered for finalization in order to free the CCW.
+<span class="lineNum">     292 </span>            :          * Else it needs the regular finalizer run.
+<span class="lineNum">     293 </span>            :          * FIXME: what to do about ressurection and suppression
+<span class="lineNum">     294 </span>            :          * of finalizer on object with CCW.
+<span class="lineNum">     295 </span>            :          */
+<span class="lineNum">     296 </span><span class="lineCov">    1858499 :         if (mono_marshal_free_ccw (o) &amp;&amp; !finalizer) {</span>
+<span class="lineNum">     297 </span><span class="lineCov">         10 :                 mono_domain_set_internal (caller_domain);</span>
+<span class="lineNum">     298 </span><span class="lineCov">         10 :                 return;</span>
+<span class="lineNum">     299 </span>            :         }
+<span class="lineNum">     300 </span>            : 
+<span class="lineNum">     301 </span>            :         /* 
+<span class="lineNum">     302 </span>            :          * To avoid the locking plus the other overhead of mono_runtime_invoke_checked (),
+<span class="lineNum">     303 </span>            :          * create and precompile a wrapper which calls the finalize method using
+<span class="lineNum">     304 </span>            :          * a CALLVIRT.
+<span class="lineNum">     305 </span>            :          */
+<span class="lineNum">     306 </span><span class="lineCov">    1858479 :         if (log_finalizers)</span>
+<span class="lineNum">     307 </span><span class="lineNoCov">          0 :                 g_log (&quot;mono-gc-finalizers&quot;, G_LOG_LEVEL_MESSAGE, &quot;&lt;%s at %p&gt; Compiling finalizer.&quot;, o-&gt;vtable-&gt;klass-&gt;name, o);</span>
+<span class="lineNum">     308 </span>            : 
+<span class="lineNum">     309 </span><span class="lineCov">    1858479 :         if (!domain-&gt;finalize_runtime_invoke) {</span>
+<span class="lineNum">     310 </span><span class="lineCov">       3485 :                 MonoMethod *invoke = mono_marshal_get_runtime_invoke (mono_class_get_method_from_name_flags (mono_defaults.object_class, &quot;Finalize&quot;, 0, 0), TRUE);</span>
+<span class="lineNum">     311 </span>            : 
+<span class="lineNum">     312 </span><span class="lineCov">       3485 :                 domain-&gt;finalize_runtime_invoke = mono_compile_method_checked (invoke, &amp;error);</span>
+<span class="lineNum">     313 </span><span class="lineCov">       3485 :                 mono_error_assert_ok (&amp;error); /* expect this not to fail */</span>
+<span class="lineNum">     314 </span><span class="lineCov">       3485 :         }</span>
+<span class="lineNum">     315 </span>            : 
+<span class="lineNum">     316 </span><span class="lineCov">    1858479 :         runtime_invoke = (RuntimeInvokeFunction)domain-&gt;finalize_runtime_invoke;</span>
+<span class="lineNum">     317 </span>            : 
+<span class="lineNum">     318 </span><span class="lineCov">    1858479 :         mono_runtime_class_init_full (o-&gt;vtable, &amp;error);</span>
+<span class="lineNum">     319 </span><span class="lineCov">    1858479 :         if (!is_ok (&amp;error))</span>
+<span class="lineNum">     320 </span><span class="lineNoCov">          0 :                 goto unhandled_error;</span>
+<span class="lineNum">     321 </span>            : 
+<span class="lineNum">     322 </span><span class="lineCov">    1858479 :         if (G_UNLIKELY (MONO_GC_FINALIZE_INVOKE_ENABLED ())) {</span>
+<span class="lineNum">     323 </span><span class="lineNoCov">          0 :                 MONO_GC_FINALIZE_INVOKE ((unsigned long)o, mono_object_get_size (o),</span>
+<span class="lineNum">     324 </span>            :                                 o-&gt;vtable-&gt;klass-&gt;name_space, o-&gt;vtable-&gt;klass-&gt;name);
+<span class="lineNum">     325 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     326 </span>            : 
+<span class="lineNum">     327 </span><span class="lineCov">    1858479 :         if (log_finalizers)</span>
+<span class="lineNum">     328 </span><span class="lineNoCov">          0 :                 g_log (&quot;mono-gc-finalizers&quot;, G_LOG_LEVEL_MESSAGE, &quot;&lt;%s at %p&gt; Calling finalizer.&quot;, o-&gt;vtable-&gt;klass-&gt;name, o);</span>
+<span class="lineNum">     329 </span>            : 
+<span class="lineNum">     330 </span><span class="lineCov">    1858473 :         mono_profiler_gc_finalize_object_begin (o);</span>
+<span class="lineNum">     331 </span>            : 
+<span class="lineNum">     332 </span><span class="lineCov">    1858473 :         runtime_invoke (o, NULL, &amp;exc, NULL);</span>
+<span class="lineNum">     333 </span>            : 
+<span class="lineNum">     334 </span><span class="lineCov">    1858473 :         mono_profiler_gc_finalize_object_end (o);</span>
+<span class="lineNum">     335 </span>            : 
+<span class="lineNum">     336 </span><span class="lineCov">    3716946 :         if (log_finalizers)</span>
+<span class="lineNum">     337 </span><span class="lineNoCov">          0 :                 g_log (&quot;mono-gc-finalizers&quot;, G_LOG_LEVEL_MESSAGE, &quot;&lt;%s at %p&gt; Returned from finalizer.&quot;, o-&gt;vtable-&gt;klass-&gt;name, o);</span>
+<span class="lineNum">     338 </span>            : 
+<span class="lineNum">     339 </span>            : unhandled_error:
+<span class="lineNum">     340 </span><span class="lineCov">    1858473 :         if (!is_ok (&amp;error))</span>
+<span class="lineNum">     341 </span><span class="lineNoCov">          0 :                 exc = (MonoObject*)mono_error_convert_to_exception (&amp;error);</span>
+<span class="lineNum">     342 </span><span class="lineCov">    1858473 :         if (exc)</span>
+<span class="lineNum">     343 </span><span class="lineCov">         26 :                 mono_thread_internal_unhandled_exception (exc);</span>
+<span class="lineNum">     344 </span>            : 
+<span class="lineNum">     345 </span><span class="lineCov">    1858469 :         mono_domain_set_internal (caller_domain);</span>
+<span class="lineNum">     346 </span><span class="lineCov">    3738719 : }</span>
+<a name="347"><span class="lineNum">     347 </span>            : </a>
+<span class="lineNum">     348 </span>            : void
+<span class="lineNum">     349 </span>            : mono_gc_finalize_threadpool_threads (void)
+<span class="lineNum">     350 </span>            : {
+<span class="lineNum">     351 </span><span class="lineCov">      27098 :         while (threads_to_finalize) {</span>
+<span class="lineNum">     352 </span><span class="lineCov">      10285 :                 MonoInternalThread *thread = (MonoInternalThread*) mono_mlist_get_data (threads_to_finalize);</span>
+<span class="lineNum">     353 </span>            : 
+<span class="lineNum">     354 </span>            :                 /* Force finalization of the thread. */
+<span class="lineNum">     355 </span><span class="lineCov">      10285 :                 thread-&gt;threadpool_thread = FALSE;</span>
+<span class="lineNum">     356 </span><span class="lineCov">      10285 :                 mono_object_register_finalizer ((MonoObject*)thread);</span>
+<span class="lineNum">     357 </span>            : 
+<span class="lineNum">     358 </span><span class="lineCov">      10285 :                 mono_gc_run_finalize (thread, NULL);</span>
+<span class="lineNum">     359 </span>            : 
+<span class="lineNum">     360 </span><span class="lineCov">      10285 :                 threads_to_finalize = mono_mlist_next (threads_to_finalize);</span>
+<span class="lineNum">     361 </span>            :         }
+<span class="lineNum">     362 </span><span class="lineCov">       3264 : }</span>
+<a name="363"><span class="lineNum">     363 </span>            : </a>
+<span class="lineNum">     364 </span>            : gpointer
+<span class="lineNum">     365 </span>            : mono_gc_out_of_memory (size_t size)
+<span class="lineNum">     366 </span>            : {
+<span class="lineNum">     367 </span>            :         /* 
+<span class="lineNum">     368 </span>            :          * we could allocate at program startup some memory that we could release 
+<span class="lineNum">     369 </span>            :          * back to the system at this point if we're really low on memory (ie, size is
+<span class="lineNum">     370 </span>            :          * lower than the memory we set apart)
+<span class="lineNum">     371 </span>            :          */
+<span class="lineNum">     372 </span><span class="lineNoCov">          0 :         mono_raise_exception (mono_domain_get ()-&gt;out_of_memory_ex);</span>
+<span class="lineNum">     373 </span>            : 
+<span class="lineNum">     374 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     375 </span>            : }
+<span class="lineNum">     376 </span>            : 
+<span class="lineNum">     377 </span>            : /*
+<span class="lineNum">     378 </span>            :  * Some of our objects may point to a different address than the address returned by GC_malloc()
+<span class="lineNum">     379 </span>            :  * (because of the GetHashCode hack), but we need to pass the real address to register_finalizer.
+<span class="lineNum">     380 </span>            :  * This also means that in the callback we need to adjust the pointer to get back the real
+<span class="lineNum">     381 </span>            :  * MonoObject*.
+<span class="lineNum">     382 </span>            :  * We also need to be consistent in the use of the GC_debug* variants of malloc and register_finalizer, 
+<span class="lineNum">     383 </span>            :  * since that, too, can cause the underlying pointer to be offset.
+<a name="384"><span class="lineNum">     384 </span>            :  */</a>
+<span class="lineNum">     385 </span>            : static void
+<span class="lineNum">     386 </span>            : object_register_finalizer (MonoObject *obj, void (*callback)(void *, void*))
+<span class="lineNum">     387 </span>            : {
+<span class="lineNum">     388 </span>            :         MonoDomain *domain;
+<span class="lineNum">     389 </span>            : 
+<span class="lineNum">     390 </span><span class="lineCov">   21558898 :         g_assert (obj != NULL);</span>
+<span class="lineNum">     391 </span>            : 
+<span class="lineNum">     392 </span><span class="lineCov">    7186492 :         domain = obj-&gt;vtable-&gt;domain;</span>
+<span class="lineNum">     393 </span>            : 
+<span class="lineNum">     394 </span>            : #if HAVE_BOEHM_GC
+<span class="lineNum">     395 </span>            :         if (mono_domain_is_unloading (domain) &amp;&amp; (callback != NULL))
+<span class="lineNum">     396 </span>            :                 /*
+<span class="lineNum">     397 </span>            :                  * Can't register finalizers in a dying appdomain, since they
+<span class="lineNum">     398 </span>            :                  * could be invoked after the appdomain has been unloaded.
+<span class="lineNum">     399 </span>            :                  */
+<span class="lineNum">     400 </span>            :                 return;
+<span class="lineNum">     401 </span>            : 
+<span class="lineNum">     402 </span>            :         mono_domain_finalizers_lock (domain);
+<span class="lineNum">     403 </span>            : 
+<span class="lineNum">     404 </span>            :         if (callback)
+<span class="lineNum">     405 </span>            :                 g_hash_table_insert (domain-&gt;finalizable_objects_hash, obj, obj);
+<span class="lineNum">     406 </span>            :         else
+<span class="lineNum">     407 </span>            :                 g_hash_table_remove (domain-&gt;finalizable_objects_hash, obj);
+<span class="lineNum">     408 </span>            : 
+<span class="lineNum">     409 </span>            :         mono_domain_finalizers_unlock (domain);
+<span class="lineNum">     410 </span>            : 
+<span class="lineNum">     411 </span>            :         mono_gc_register_for_finalization (obj, callback);
+<span class="lineNum">     412 </span>            : #elif defined(HAVE_SGEN_GC)
+<span class="lineNum">     413 </span>            :         /*
+<span class="lineNum">     414 </span>            :          * If we register finalizers for domains that are unloading we might
+<span class="lineNum">     415 </span>            :          * end up running them while or after the domain is being cleared, so
+<span class="lineNum">     416 </span>            :          * the objects will not be valid anymore.
+<span class="lineNum">     417 </span>            :          */
+<span class="lineNum">     418 </span><span class="lineCov">    7186492 :         if (!mono_domain_is_unloading (domain))</span>
+<span class="lineNum">     419 </span><span class="lineCov">    7184351 :                 mono_gc_register_for_finalization (obj, callback);</span>
+<span class="lineNum">     420 </span>            : #endif
+<span class="lineNum">     421 </span><span class="lineCov">    7186675 : }</span>
+<span class="lineNum">     422 </span>            : 
+<span class="lineNum">     423 </span>            : /**
+<span class="lineNum">     424 </span>            :  * mono_object_register_finalizer:
+<span class="lineNum">     425 </span>            :  * @obj: object to register
+<span class="lineNum">     426 </span>            :  *
+<span class="lineNum">     427 </span>            :  * Records that object @obj has a finalizer, this will call the
+<span class="lineNum">     428 </span>            :  * Finalize method when the garbage collector disposes the object.
+<span class="lineNum">     429 </span>            :  * 
+<a name="430"><span class="lineNum">     430 </span>            :  */</a>
+<span class="lineNum">     431 </span>            : void
+<span class="lineNum">     432 </span>            : mono_object_register_finalizer (MonoObject *obj)
+<span class="lineNum">     433 </span>            : {
+<span class="lineNum">     434 </span>            :         /* g_print (&quot;Registered finalizer on %p %s.%s\n&quot;, obj, mono_object_class (obj)-&gt;name_space, mono_object_class (obj)-&gt;name); */
+<span class="lineNum">     435 </span><span class="lineCov">    3992415 :         object_register_finalizer (obj, mono_gc_run_finalize);</span>
+<span class="lineNum">     436 </span><span class="lineCov">    3992415 : }</span>
+<span class="lineNum">     437 </span>            : 
+<span class="lineNum">     438 </span>            : /**
+<span class="lineNum">     439 </span>            :  * mono_domain_finalize:
+<span class="lineNum">     440 </span>            :  * @domain: the domain to finalize
+<span class="lineNum">     441 </span>            :  * @timeout: msects to wait for the finalization to complete, -1 to wait indefinitely
+<span class="lineNum">     442 </span>            :  *
+<span class="lineNum">     443 </span>            :  *  Request finalization of all finalizable objects inside @domain. Wait
+<span class="lineNum">     444 </span>            :  * @timeout msecs for the finalization to complete.
+<span class="lineNum">     445 </span>            :  *
+<span class="lineNum">     446 </span>            :  * Returns: TRUE if succeeded, FALSE if there was a timeout
+<span class="lineNum">     447 </span>            :  */
+<a name="448"><span class="lineNum">     448 </span>            : </a>
+<span class="lineNum">     449 </span>            : gboolean
+<span class="lineNum">     450 </span>            : mono_domain_finalize (MonoDomain *domain, guint32 timeout) 
+<span class="lineNum">     451 </span>            : {
+<span class="lineNum">     452 </span>            :         DomainFinalizationReq *req;
+<span class="lineNum">     453 </span><span class="lineCov">       3485 :         MonoInternalThread *thread = mono_thread_internal_current ();</span>
+<span class="lineNum">     454 </span>            :         gint res;
+<span class="lineNum">     455 </span>            :         gboolean ret;
+<span class="lineNum">     456 </span>            :         gint64 start;
+<span class="lineNum">     457 </span>            : 
+<span class="lineNum">     458 </span>            : #if defined(__native_client__)
+<span class="lineNum">     459 </span>            :         return FALSE;
+<span class="lineNum">     460 </span>            : #endif
+<span class="lineNum">     461 </span>            : 
+<span class="lineNum">     462 </span><span class="lineCov">       3485 :         if (mono_thread_internal_current () == gc_thread)</span>
+<span class="lineNum">     463 </span>            :                 /* We are called from inside a finalizer, not much we can do here */
+<span class="lineNum">     464 </span><span class="lineCov">          8 :                 return FALSE;</span>
+<span class="lineNum">     465 </span>            : 
+<span class="lineNum">     466 </span>            :         /* 
+<span class="lineNum">     467 </span>            :          * No need to create another thread 'cause the finalizer thread
+<span class="lineNum">     468 </span>            :          * is still working and will take care of running the finalizers
+<span class="lineNum">     469 </span>            :          */ 
+<span class="lineNum">     470 </span>            :         
+<span class="lineNum">     471 </span><span class="lineCov">       3477 :         if (gc_disabled)</span>
+<span class="lineNum">     472 </span><span class="lineNoCov">          0 :                 return TRUE;</span>
+<span class="lineNum">     473 </span>            : 
+<span class="lineNum">     474 </span>            :         /* We don't support domain finalization without a GC */
+<span class="lineNum">     475 </span><span class="lineCov">       3477 :         if (mono_gc_is_null ())</span>
+<span class="lineNum">     476 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">     477 </span>            : 
+<span class="lineNum">     478 </span><span class="lineCov">       3477 :         mono_gc_collect (mono_gc_max_generation ());</span>
+<span class="lineNum">     479 </span>            : 
+<span class="lineNum">     480 </span><span class="lineCov">       3477 :         req = g_new0 (DomainFinalizationReq, 1);</span>
+<span class="lineNum">     481 </span><span class="lineCov">       3477 :         req-&gt;ref = 2;</span>
+<span class="lineNum">     482 </span><span class="lineCov">       3477 :         req-&gt;domain = domain;</span>
+<span class="lineNum">     483 </span><span class="lineCov">       3477 :         mono_coop_sem_init (&amp;req-&gt;done, 0);</span>
+<span class="lineNum">     484 </span>            : 
+<span class="lineNum">     485 </span><span class="lineCov">       3477 :         if (domain == mono_get_root_domain ())</span>
+<span class="lineNum">     486 </span><span class="lineCov">       3264 :                 finalizing_root_domain = TRUE;</span>
+<span class="lineNum">     487 </span>            :         
+<span class="lineNum">     488 </span><span class="lineCov">       3477 :         mono_finalizer_lock ();</span>
+<span class="lineNum">     489 </span>            : 
+<span class="lineNum">     490 </span><span class="lineCov">       3477 :         domains_to_finalize = g_slist_append (domains_to_finalize, req);</span>
+<span class="lineNum">     491 </span>            : 
+<span class="lineNum">     492 </span><span class="lineCov">       3477 :         mono_finalizer_unlock ();</span>
+<span class="lineNum">     493 </span>            : 
+<span class="lineNum">     494 </span>            :         /* Tell the finalizer thread to finalize this appdomain */
+<span class="lineNum">     495 </span><span class="lineCov">       3477 :         mono_gc_finalize_notify ();</span>
+<span class="lineNum">     496 </span>            : 
+<span class="lineNum">     497 </span><span class="lineCov">       3477 :         if (timeout == -1)</span>
+<span class="lineNum">     498 </span><span class="lineCov">        213 :                 timeout = MONO_INFINITE_WAIT;</span>
+<span class="lineNum">     499 </span><span class="lineCov">       3477 :         if (timeout != MONO_INFINITE_WAIT)</span>
+<span class="lineNum">     500 </span><span class="lineCov">       3264 :                 start = mono_msec_ticks ();</span>
+<span class="lineNum">     501 </span>            : 
+<span class="lineNum">     502 </span><span class="lineCov">       3477 :         ret = TRUE;</span>
+<span class="lineNum">     503 </span>            : 
+<span class="lineNum">     504 </span><span class="lineCov">       3477 :         for (;;) {</span>
+<span class="lineNum">     505 </span><span class="lineCov">       3477 :                 if (timeout == MONO_INFINITE_WAIT) {</span>
+<span class="lineNum">     506 </span><span class="lineCov">        213 :                         res = mono_coop_sem_wait (&amp;req-&gt;done, MONO_SEM_FLAGS_ALERTABLE);</span>
+<span class="lineNum">     507 </span><span class="lineCov">        213 :                 } else {</span>
+<span class="lineNum">     508 </span><span class="lineCov">       3264 :                         gint64 elapsed = mono_msec_ticks () - start;</span>
+<span class="lineNum">     509 </span><span class="lineCov">       3264 :                         if (elapsed &gt;= timeout) {</span>
+<span class="lineNum">     510 </span><span class="lineNoCov">          0 :                                 ret = FALSE;</span>
+<span class="lineNum">     511 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     512 </span>            :                         }
+<span class="lineNum">     513 </span>            : 
+<span class="lineNum">     514 </span><span class="lineCov">       3264 :                         res = mono_coop_sem_timedwait (&amp;req-&gt;done, timeout - elapsed, MONO_SEM_FLAGS_ALERTABLE);</span>
+<span class="lineNum">     515 </span>            :                 }
+<span class="lineNum">     516 </span>            : 
+<span class="lineNum">     517 </span><span class="lineCov">       3477 :                 if (res == MONO_SEM_TIMEDWAIT_RET_SUCCESS) {</span>
+<span class="lineNum">     518 </span><span class="lineCov">       3477 :                         break;</span>
+<span class="lineNum">     519 </span><span class="lineNoCov">          0 :                 } else if (res == MONO_SEM_TIMEDWAIT_RET_ALERTED) {</span>
+<span class="lineNum">     520 </span><span class="lineNoCov">          0 :                         if ((thread-&gt;state &amp; (ThreadState_StopRequested | ThreadState_SuspendRequested)) != 0) {</span>
+<span class="lineNum">     521 </span><span class="lineNoCov">          0 :                                 ret = FALSE;</span>
+<span class="lineNum">     522 </span><span class="lineNoCov">          0 :                                 break;</span>
+<span class="lineNum">     523 </span>            :                         }
+<span class="lineNum">     524 </span><span class="lineNoCov">          0 :                 } else if (res == MONO_SEM_TIMEDWAIT_RET_TIMEDOUT) {</span>
+<span class="lineNum">     525 </span><span class="lineNoCov">          0 :                         ret = FALSE;</span>
+<span class="lineNum">     526 </span><span class="lineNoCov">          0 :                         break;</span>
+<span class="lineNum">     527 </span>            :                 } else {
+<span class="lineNum">     528 </span><span class="lineNoCov">          0 :                         g_error (&quot;%s: unknown result %d&quot;, __func__, res);</span>
+<span class="lineNum">     529 </span>            :                 }
+<span class="lineNum">     530 </span>            :         }
+<span class="lineNum">     531 </span>            : 
+<span class="lineNum">     532 </span><span class="lineCov">       3477 :         if (!ret) {</span>
+<span class="lineNum">     533 </span>            :                 /* Try removing the req from domains_to_finalize:
+<span class="lineNum">     534 </span>            :                  *  - if it's not found: the domain is being finalized,
+<span class="lineNum">     535 </span>            :                  *     so we the ref count is already decremented
+<span class="lineNum">     536 </span>            :                  *  - if it's found: the domain is not yet being finalized,
+<span class="lineNum">     537 </span>            :                  *     so we can safely decrement the ref */
+<span class="lineNum">     538 </span>            : 
+<span class="lineNum">     539 </span>            :                 gboolean found;
+<span class="lineNum">     540 </span>            : 
+<span class="lineNum">     541 </span><span class="lineNoCov">          0 :                 mono_finalizer_lock ();</span>
+<span class="lineNum">     542 </span>            : 
+<span class="lineNum">     543 </span><span class="lineNoCov">          0 :                 found = g_slist_index (domains_to_finalize, req) != -1;</span>
+<span class="lineNum">     544 </span><span class="lineNoCov">          0 :                 if (found)</span>
+<span class="lineNum">     545 </span><span class="lineNoCov">          0 :                         domains_to_finalize = g_slist_remove (domains_to_finalize, req);</span>
+<span class="lineNum">     546 </span>            : 
+<span class="lineNum">     547 </span><span class="lineNoCov">          0 :                 mono_finalizer_unlock ();</span>
+<span class="lineNum">     548 </span>            : 
+<span class="lineNum">     549 </span><span class="lineNoCov">          0 :                 if (found) {</span>
+<span class="lineNum">     550 </span>            :                         /* We have to decrement it wherever we
+<span class="lineNum">     551 </span>            :                          * remove it from domains_to_finalize */
+<span class="lineNum">     552 </span><span class="lineNoCov">          0 :                         if (InterlockedDecrement (&amp;req-&gt;ref) != 1)</span>
+<span class="lineNum">     553 </span><span class="lineNoCov">          0 :                                 g_error (&quot;%s: req-&gt;ref should be 1, as we are the first one to decrement it&quot;, __func__);</span>
+<span class="lineNum">     554 </span><span class="lineNoCov">          0 :                 }</span>
+<span class="lineNum">     555 </span>            : 
+<span class="lineNum">     556 </span><span class="lineNoCov">          0 :                 goto done;</span>
+<span class="lineNum">     557 </span>            :         }
+<span class="lineNum">     558 </span>            : 
+<span class="lineNum">     559 </span><span class="lineCov">       6954 :         if (domain == mono_get_root_domain ()) {</span>
+<span class="lineNum">     560 </span><span class="lineCov">       3264 :                 mono_threadpool_cleanup ();</span>
+<span class="lineNum">     561 </span><span class="lineCov">       3264 :                 mono_gc_finalize_threadpool_threads ();</span>
+<span class="lineNum">     562 </span><span class="lineCov">       3264 :         }</span>
+<span class="lineNum">     563 </span>            : 
+<span class="lineNum">     564 </span>            : done:
+<span class="lineNum">     565 </span><span class="lineCov">       3477 :         if (InterlockedDecrement (&amp;req-&gt;ref) == 0) {</span>
+<span class="lineNum">     566 </span><span class="lineCov">       3476 :                 mono_coop_sem_destroy (&amp;req-&gt;done);</span>
+<span class="lineNum">     567 </span><span class="lineCov">       3476 :                 g_free (req);</span>
+<span class="lineNum">     568 </span><span class="lineCov">       3476 :         }</span>
+<span class="lineNum">     569 </span>            : 
+<span class="lineNum">     570 </span><span class="lineCov">       3477 :         return ret;</span>
+<span class="lineNum">     571 </span><span class="lineCov">       3485 : }</span>
+<a name="572"><span class="lineNum">     572 </span>            : </a>
+<span class="lineNum">     573 </span>            : void
+<span class="lineNum">     574 </span>            : ves_icall_System_GC_InternalCollect (int generation)
+<span class="lineNum">     575 </span>            : {
+<span class="lineNum">     576 </span><span class="lineCov">     175836 :         mono_gc_collect (generation);</span>
+<span class="lineNum">     577 </span><span class="lineCov">     175836 : }</span>
+<a name="578"><span class="lineNum">     578 </span>            : </a>
+<span class="lineNum">     579 </span>            : gint64
+<span class="lineNum">     580 </span>            : ves_icall_System_GC_GetTotalMemory (MonoBoolean forceCollection)
+<span class="lineNum">     581 </span>            : {
+<span class="lineNum">     582 </span><span class="lineNoCov">          0 :         if (forceCollection)</span>
+<span class="lineNum">     583 </span><span class="lineNoCov">          0 :                 mono_gc_collect (mono_gc_max_generation ());</span>
+<span class="lineNum">     584 </span><span class="lineNoCov">          0 :         return mono_gc_get_used_size ();</span>
+<span class="lineNum">     585 </span>            : }
+<a name="586"><span class="lineNum">     586 </span>            : </a>
+<span class="lineNum">     587 </span>            : void
+<span class="lineNum">     588 </span>            : ves_icall_System_GC_KeepAlive (MonoObject *obj)
+<span class="lineNum">     589 </span>            : {
+<span class="lineNum">     590 </span>            :         /*
+<span class="lineNum">     591 </span>            :          * Does nothing.
+<span class="lineNum">     592 </span>            :          */
+<span class="lineNum">     593 </span><span class="lineNoCov">          0 : }</span>
+<a name="594"><span class="lineNum">     594 </span>            : </a>
+<span class="lineNum">     595 </span>            : void
+<span class="lineNum">     596 </span>            : ves_icall_System_GC_ReRegisterForFinalize (MonoObject *obj)
+<span class="lineNum">     597 </span>            : {
+<span class="lineNum">     598 </span><span class="lineNoCov">          0 :         MONO_CHECK_ARG_NULL (obj,);</span>
+<span class="lineNum">     599 </span>            : 
+<span class="lineNum">     600 </span><span class="lineNoCov">          0 :         object_register_finalizer (obj, mono_gc_run_finalize);</span>
+<span class="lineNum">     601 </span><span class="lineNoCov">          0 : }</span>
+<a name="602"><span class="lineNum">     602 </span>            : </a>
+<span class="lineNum">     603 </span>            : void
+<span class="lineNum">     604 </span>            : ves_icall_System_GC_SuppressFinalize (MonoObject *obj)
+<span class="lineNum">     605 </span>            : {
+<span class="lineNum">     606 </span><span class="lineCov">    3941324 :         MONO_CHECK_ARG_NULL (obj,);</span>
+<span class="lineNum">     607 </span>            : 
+<span class="lineNum">     608 </span>            :         /* delegates have no finalizers, but we register them to deal with the
+<span class="lineNum">     609 </span>            :          * unmanaged-&gt;managed trampoline. We don't let the user suppress it
+<span class="lineNum">     610 </span>            :          * otherwise we'd leak it.
+<span class="lineNum">     611 </span>            :          */
+<span class="lineNum">     612 </span><span class="lineCov">    1313677 :         if (obj-&gt;vtable-&gt;klass-&gt;delegate)</span>
+<span class="lineNum">     613 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     614 </span>            : 
+<span class="lineNum">     615 </span>            :         /* FIXME: Need to handle case where obj has COM Callable Wrapper
+<span class="lineNum">     616 </span>            :          * generated for it that needs cleaned up, but user wants to suppress
+<span class="lineNum">     617 </span>            :          * their derived object finalizer. */
+<span class="lineNum">     618 </span>            : 
+<span class="lineNum">     619 </span><span class="lineCov">    1313785 :         object_register_finalizer (obj, NULL);</span>
+<span class="lineNum">     620 </span><span class="lineCov">    2627652 : }</span>
+<a name="621"><span class="lineNum">     621 </span>            : </a>
+<span class="lineNum">     622 </span>            : void
+<span class="lineNum">     623 </span>            : ves_icall_System_GC_WaitForPendingFinalizers (void)
+<span class="lineNum">     624 </span>            : {
+<span class="lineNum">     625 </span><span class="lineCov">       2020 :         if (mono_gc_is_null ())</span>
+<span class="lineNum">     626 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     627 </span>            : 
+<span class="lineNum">     628 </span><span class="lineCov">       2020 :         if (!mono_gc_pending_finalizers ())</span>
+<span class="lineNum">     629 </span><span class="lineCov">         67 :                 return;</span>
+<span class="lineNum">     630 </span>            : 
+<span class="lineNum">     631 </span><span class="lineCov">       1953 :         if (mono_thread_internal_current () == gc_thread)</span>
+<span class="lineNum">     632 </span>            :                 /* Avoid deadlocks */
+<span class="lineNum">     633 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     634 </span>            : 
+<span class="lineNum">     635 </span>            :         /*
+<span class="lineNum">     636 </span>            :         If the finalizer thread is not live, lets pretend no finalizers are pending since the current thread might
+<span class="lineNum">     637 </span>            :         be the one responsible for starting it up.
+<span class="lineNum">     638 </span>            :         */
+<span class="lineNum">     639 </span><span class="lineCov">       1953 :         if (gc_thread == NULL)</span>
+<span class="lineNum">     640 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     641 </span>            : 
+<span class="lineNum">     642 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     643 </span>            :         ResetEvent (pending_done_event);
+<span class="lineNum">     644 </span>            :         mono_gc_finalize_notify ();
+<span class="lineNum">     645 </span>            :         /* g_print (&quot;Waiting for pending finalizers....\n&quot;); */
+<span class="lineNum">     646 </span>            :         MONO_ENTER_GC_SAFE;
+<span class="lineNum">     647 </span>            :         WaitForSingleObjectEx (pending_done_event, INFINITE, TRUE);
+<span class="lineNum">     648 </span>            :         MONO_EXIT_GC_SAFE;
+<span class="lineNum">     649 </span>            :         /* g_print (&quot;Done pending....\n&quot;); */
+<span class="lineNum">     650 </span>            : #else
+<span class="lineNum">     651 </span><span class="lineCov">       1953 :         gboolean alerted = FALSE;</span>
+<span class="lineNum">     652 </span><span class="lineCov">       1953 :         mono_coop_mutex_lock (&amp;pending_done_mutex);</span>
+<span class="lineNum">     653 </span><span class="lineCov">       1953 :         pending_done = FALSE;</span>
+<span class="lineNum">     654 </span><span class="lineCov">       1953 :         mono_gc_finalize_notify ();</span>
+<span class="lineNum">     655 </span><span class="lineCov">       7804 :         while (!pending_done) {</span>
+<span class="lineNum">     656 </span><span class="lineCov">       1951 :                 coop_cond_timedwait_alertable (&amp;pending_done_cond, &amp;pending_done_mutex, MONO_INFINITE_WAIT, &amp;alerted);</span>
+<span class="lineNum">     657 </span><span class="lineCov">       1951 :                 if (alerted)</span>
+<span class="lineNum">     658 </span><span class="lineCov">          2 :                         break;</span>
+<span class="lineNum">     659 </span>            :         }
+<span class="lineNum">     660 </span><span class="lineCov">       1951 :         mono_coop_mutex_unlock (&amp;pending_done_mutex);</span>
+<span class="lineNum">     661 </span>            : #endif
+<span class="lineNum">     662 </span><span class="lineCov">       3969 : }</span>
+<a name="663"><span class="lineNum">     663 </span>            : </a>
+<span class="lineNum">     664 </span>            : void
+<span class="lineNum">     665 </span>            : ves_icall_System_GC_register_ephemeron_array (MonoObject *array)
+<span class="lineNum">     666 </span>            : {
+<span class="lineNum">     667 </span>            : #ifdef HAVE_SGEN_GC
+<span class="lineNum">     668 </span><span class="lineCov">       9138 :         if (!mono_gc_ephemeron_array_add (array)) {</span>
+<span class="lineNum">     669 </span><span class="lineNoCov">          0 :                 mono_set_pending_exception (mono_object_domain (array)-&gt;out_of_memory_ex);</span>
+<span class="lineNum">     670 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     671 </span>            :         }
+<span class="lineNum">     672 </span>            : #endif
+<span class="lineNum">     673 </span><span class="lineCov">       9138 : }</span>
+<a name="674"><span class="lineNum">     674 </span>            : </a>
+<span class="lineNum">     675 </span>            : MonoObject*
+<span class="lineNum">     676 </span>            : ves_icall_System_GC_get_ephemeron_tombstone (void)
+<span class="lineNum">     677 </span>            : {
+<span class="lineNum">     678 </span><span class="lineCov">       2654 :         return mono_domain_get ()-&gt;ephemeron_tombstone;</span>
+<span class="lineNum">     679 </span>            : }
+<a name="680"><span class="lineNum">     680 </span>            : </a>
+<span class="lineNum">     681 </span>            : MonoObject *
+<span class="lineNum">     682 </span>            : ves_icall_System_GCHandle_GetTarget (guint32 handle)
+<span class="lineNum">     683 </span>            : {
+<span class="lineNum">     684 </span><span class="lineCov">    7869328 :         return mono_gchandle_get_target (handle);</span>
+<span class="lineNum">     685 </span>            : }
+<span class="lineNum">     686 </span>            : 
+<span class="lineNum">     687 </span>            : /*
+<span class="lineNum">     688 </span>            :  * if type == -1, change the target of the handle, otherwise allocate a new handle.
+<a name="689"><span class="lineNum">     689 </span>            :  */</a>
+<span class="lineNum">     690 </span>            : guint32
+<span class="lineNum">     691 </span>            : ves_icall_System_GCHandle_GetTargetHandle (MonoObject *obj, guint32 handle, gint32 type)
+<span class="lineNum">     692 </span>            : {
+<span class="lineNum">     693 </span><span class="lineCov">    2457966 :         if (type == -1) {</span>
+<span class="lineNum">     694 </span><span class="lineCov">      34689 :                 mono_gchandle_set_target (handle, obj);</span>
+<span class="lineNum">     695 </span>            :                 /* the handle doesn't change */
+<span class="lineNum">     696 </span><span class="lineCov">      34689 :                 return handle;</span>
+<span class="lineNum">     697 </span>            :         }
+<span class="lineNum">     698 </span><span class="lineCov">    2423109 :         switch (type) {</span>
+<span class="lineNum">     699 </span>            :         case HANDLE_WEAK:
+<span class="lineNum">     700 </span><span class="lineCov">    2423205 :                 return mono_gchandle_new_weakref (obj, FALSE);</span>
+<span class="lineNum">     701 </span>            :         case HANDLE_WEAK_TRACK:
+<span class="lineNum">     702 </span><span class="lineCov">          4 :                 return mono_gchandle_new_weakref (obj, TRUE);</span>
+<span class="lineNum">     703 </span>            :         case HANDLE_NORMAL:
+<span class="lineNum">     704 </span><span class="lineNoCov">          0 :                 return mono_gchandle_new (obj, FALSE);</span>
+<span class="lineNum">     705 </span>            :         case HANDLE_PINNED:
+<span class="lineNum">     706 </span><span class="lineCov">         22 :                 return mono_gchandle_new (obj, TRUE);</span>
+<span class="lineNum">     707 </span>            :         default:
+<span class="lineNum">     708 </span><span class="lineNoCov">          0 :                 g_assert_not_reached ();</span>
+<span class="lineNum">     709 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     710 </span><span class="lineNoCov">          0 :         return 0;</span>
+<span class="lineNum">     711 </span><span class="lineCov">    2458395 : }</span>
+<a name="712"><span class="lineNum">     712 </span>            : </a>
+<span class="lineNum">     713 </span>            : void
+<span class="lineNum">     714 </span>            : ves_icall_System_GCHandle_FreeHandle (guint32 handle)
+<span class="lineNum">     715 </span>            : {
+<span class="lineNum">     716 </span><span class="lineCov">    1751388 :         mono_gchandle_free (handle);</span>
+<span class="lineNum">     717 </span><span class="lineCov">    1751388 : }</span>
+<a name="718"><span class="lineNum">     718 </span>            : </a>
+<span class="lineNum">     719 </span>            : gpointer
+<span class="lineNum">     720 </span>            : ves_icall_System_GCHandle_GetAddrOfPinnedObject (guint32 handle)
+<span class="lineNum">     721 </span>            : {
+<span class="lineNum">     722 </span>            :         MonoObject *obj;
+<span class="lineNum">     723 </span>            : 
+<span class="lineNum">     724 </span><span class="lineNoCov">          0 :         if (MONO_GC_HANDLE_TYPE (handle) != HANDLE_PINNED)</span>
+<span class="lineNum">     725 </span><span class="lineNoCov">          0 :                 return (gpointer)-2;</span>
+<span class="lineNum">     726 </span><span class="lineNoCov">          0 :         obj = mono_gchandle_get_target (handle);</span>
+<span class="lineNum">     727 </span><span class="lineNoCov">          0 :         if (obj) {</span>
+<span class="lineNum">     728 </span><span class="lineNoCov">          0 :                 MonoClass *klass = mono_object_class (obj);</span>
+<span class="lineNum">     729 </span><span class="lineNoCov">          0 :                 if (klass == mono_defaults.string_class) {</span>
+<span class="lineNum">     730 </span><span class="lineNoCov">          0 :                         return mono_string_chars ((MonoString*)obj);</span>
+<span class="lineNum">     731 </span><span class="lineNoCov">          0 :                 } else if (klass-&gt;rank) {</span>
+<span class="lineNum">     732 </span><span class="lineNoCov">          0 :                         return mono_array_addr ((MonoArray*)obj, char, 0);</span>
+<span class="lineNum">     733 </span>            :                 } else {
+<span class="lineNum">     734 </span>            :                         /* the C# code will check and throw the exception */
+<span class="lineNum">     735 </span>            :                         /* FIXME: missing !klass-&gt;blittable test, see bug #61134 */
+<span class="lineNum">     736 </span><span class="lineNoCov">          0 :                         if (mono_class_is_auto_layout (klass))</span>
+<span class="lineNum">     737 </span><span class="lineNoCov">          0 :                                 return (gpointer)-1;</span>
+<span class="lineNum">     738 </span><span class="lineNoCov">          0 :                         return (char*)obj + sizeof (MonoObject);</span>
+<span class="lineNum">     739 </span>            :                 }
+<span class="lineNum">     740 </span>            :         }
+<span class="lineNum">     741 </span><span class="lineNoCov">          0 :         return NULL;</span>
+<span class="lineNum">     742 </span><span class="lineNoCov">          0 : }</span>
+<a name="743"><span class="lineNum">     743 </span>            : </a>
+<span class="lineNum">     744 </span>            : MonoBoolean
+<span class="lineNum">     745 </span>            : mono_gc_GCHandle_CheckCurrentDomain (guint32 gchandle)
+<span class="lineNum">     746 </span>            : {
+<span class="lineNum">     747 </span><span class="lineNoCov">          0 :         return mono_gchandle_is_in_domain (gchandle, mono_domain_get ());</span>
+<span class="lineNum">     748 </span>            : }
+<span class="lineNum">     749 </span>            : 
+<span class="lineNum">     750 </span>            : static MonoCoopSem finalizer_sem;
+<span class="lineNum">     751 </span>            : static volatile gboolean finished;
+<span class="lineNum">     752 </span>            : 
+<span class="lineNum">     753 </span>            : /*
+<span class="lineNum">     754 </span>            :  * mono_gc_finalize_notify:
+<span class="lineNum">     755 </span>            :  *
+<span class="lineNum">     756 </span>            :  *   Notify the finalizer thread that finalizers etc.
+<span class="lineNum">     757 </span>            :  * are available to be processed.
+<a name="758"><span class="lineNum">     758 </span>            :  */</a>
+<span class="lineNum">     759 </span>            : void
+<span class="lineNum">     760 </span>            : mono_gc_finalize_notify (void)
+<span class="lineNum">     761 </span>            : {
+<span class="lineNum">     762 </span>            : #ifdef DEBUG
+<span class="lineNum">     763 </span>            :         g_message ( &quot;%s: prodding finalizer&quot;, __func__);
+<span class="lineNum">     764 </span>            : #endif
+<span class="lineNum">     765 </span>            : 
+<span class="lineNum">     766 </span><span class="lineCov">      31816 :         if (mono_gc_is_null ())</span>
+<span class="lineNum">     767 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     768 </span>            : 
+<span class="lineNum">     769 </span><span class="lineCov">      31816 :         mono_coop_sem_post (&amp;finalizer_sem);</span>
+<span class="lineNum">     770 </span><span class="lineCov">      63630 : }</span>
+<span class="lineNum">     771 </span>            : 
+<span class="lineNum">     772 </span>            : /*
+<span class="lineNum">     773 </span>            : This is the number of entries allowed in the hazard free queue before
+<span class="lineNum">     774 </span>            : we explicitly cycle the finalizer thread to trigger pumping the queue.
+<span class="lineNum">     775 </span>            : 
+<span class="lineNum">     776 </span>            : It was picked empirically by running the corlib test suite in a stress
+<span class="lineNum">     777 </span>            : scenario where all hazard entries are queued.
+<span class="lineNum">     778 </span>            : 
+<span class="lineNum">     779 </span>            : In this extreme scenario we double the number of times we cycle the finalizer
+<span class="lineNum">     780 </span>            : thread compared to just GC calls.
+<span class="lineNum">     781 </span>            : 
+<span class="lineNum">     782 </span>            : Entries are usually in the order of 100's of bytes each, so we're limiting
+<span class="lineNum">     783 </span>            : floating garbage to be in the order of a dozen kb.
+<span class="lineNum">     784 </span>            : */
+<span class="lineNum">     785 </span>            : static gboolean finalizer_thread_pulsed;
+<span class="lineNum">     786 </span>            : #define HAZARD_QUEUE_OVERFLOW_SIZE 20
+<a name="787"><span class="lineNum">     787 </span>            : </a>
+<span class="lineNum">     788 </span>            : static void
+<span class="lineNum">     789 </span>            : hazard_free_queue_is_too_big (size_t size)
+<span class="lineNum">     790 </span>            : {
+<span class="lineNum">     791 </span><span class="lineCov">         32 :         if (size &lt; HAZARD_QUEUE_OVERFLOW_SIZE)</span>
+<span class="lineNum">     792 </span><span class="lineCov">         32 :                 return;</span>
+<span class="lineNum">     793 </span>            : 
+<span class="lineNum">     794 </span><span class="lineNoCov">          0 :         if (finalizer_thread_pulsed || InterlockedCompareExchange (&amp;finalizer_thread_pulsed, TRUE, FALSE))</span>
+<span class="lineNum">     795 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     796 </span>            : 
+<span class="lineNum">     797 </span><span class="lineNoCov">          0 :         mono_gc_finalize_notify ();</span>
+<span class="lineNum">     798 </span><span class="lineCov">         32 : }</span>
+<a name="799"><span class="lineNum">     799 </span>            : </a>
+<span class="lineNum">     800 </span>            : static void
+<span class="lineNum">     801 </span>            : hazard_free_queue_pump (void)
+<span class="lineNum">     802 </span>            : {
+<span class="lineNum">     803 </span><span class="lineCov">      28160 :         mono_thread_hazardous_try_free_all ();</span>
+<span class="lineNum">     804 </span><span class="lineCov">      28160 :         finalizer_thread_pulsed = FALSE;</span>
+<span class="lineNum">     805 </span><span class="lineCov">      28160 : }</span>
+<span class="lineNum">     806 </span>            : 
+<span class="lineNum">     807 </span>            : #ifdef HAVE_BOEHM_GC
+<span class="lineNum">     808 </span>            : 
+<span class="lineNum">     809 </span>            : static void
+<span class="lineNum">     810 </span>            : collect_objects (gpointer key, gpointer value, gpointer user_data)
+<span class="lineNum">     811 </span>            : {
+<span class="lineNum">     812 </span>            :         GPtrArray *arr = (GPtrArray*)user_data;
+<span class="lineNum">     813 </span>            :         g_ptr_array_add (arr, key);
+<span class="lineNum">     814 </span>            : }
+<span class="lineNum">     815 </span>            : 
+<span class="lineNum">     816 </span>            : #endif
+<span class="lineNum">     817 </span>            : 
+<span class="lineNum">     818 </span>            : /*
+<span class="lineNum">     819 </span>            :  * finalize_domain_objects:
+<span class="lineNum">     820 </span>            :  *
+<span class="lineNum">     821 </span>            :  *  Run the finalizers of all finalizable objects in req-&gt;domain.
+<a name="822"><span class="lineNum">     822 </span>            :  */</a>
+<span class="lineNum">     823 </span>            : static void
+<span class="lineNum">     824 </span>            : finalize_domain_objects (void)
+<span class="lineNum">     825 </span>            : {
+<span class="lineNum">     826 </span><span class="lineCov">      28170 :         DomainFinalizationReq *req = NULL;</span>
+<span class="lineNum">     827 </span>            :         MonoDomain *domain;
+<span class="lineNum">     828 </span>            : 
+<span class="lineNum">     829 </span><span class="lineCov">      28170 :         if (domains_to_finalize) {</span>
+<span class="lineNum">     830 </span><span class="lineCov">       3477 :                 mono_finalizer_lock ();</span>
+<span class="lineNum">     831 </span><span class="lineCov">       3477 :                 if (domains_to_finalize) {</span>
+<span class="lineNum">     832 </span><span class="lineCov">       3477 :                         req = (DomainFinalizationReq *)domains_to_finalize-&gt;data;</span>
+<span class="lineNum">     833 </span><span class="lineCov">       3477 :                         domains_to_finalize = g_slist_remove (domains_to_finalize, req);</span>
+<span class="lineNum">     834 </span><span class="lineCov">       3477 :                 }</span>
+<span class="lineNum">     835 </span><span class="lineCov">       3477 :                 mono_finalizer_unlock ();</span>
+<span class="lineNum">     836 </span><span class="lineCov">       3477 :         }</span>
+<span class="lineNum">     837 </span>            : 
+<span class="lineNum">     838 </span><span class="lineCov">      28170 :         if (!req)</span>
+<span class="lineNum">     839 </span><span class="lineCov">      24693 :                 return;</span>
+<span class="lineNum">     840 </span>            : 
+<span class="lineNum">     841 </span><span class="lineCov">       3477 :         domain = req-&gt;domain;</span>
+<span class="lineNum">     842 </span>            : 
+<span class="lineNum">     843 </span>            :         /* Process finalizers which are already in the queue */
+<span class="lineNum">     844 </span><span class="lineCov">       3477 :         mono_gc_invoke_finalizers ();</span>
+<span class="lineNum">     845 </span>            : 
+<span class="lineNum">     846 </span>            : #ifdef HAVE_BOEHM_GC
+<span class="lineNum">     847 </span>            :         while (g_hash_table_size (domain-&gt;finalizable_objects_hash) &gt; 0) {
+<span class="lineNum">     848 </span>            :                 int i;
+<span class="lineNum">     849 </span>            :                 GPtrArray *objs;
+<span class="lineNum">     850 </span>            :                 /* 
+<span class="lineNum">     851 </span>            :                  * Since the domain is unloading, nobody is allowed to put
+<span class="lineNum">     852 </span>            :                  * new entries into the hash table. But finalize_object might
+<span class="lineNum">     853 </span>            :                  * remove entries from the hash table, so we make a copy.
+<span class="lineNum">     854 </span>            :                  */
+<span class="lineNum">     855 </span>            :                 objs = g_ptr_array_new ();
+<span class="lineNum">     856 </span>            :                 g_hash_table_foreach (domain-&gt;finalizable_objects_hash, collect_objects, objs);
+<span class="lineNum">     857 </span>            :                 /* printf (&quot;FINALIZING %d OBJECTS.\n&quot;, objs-&gt;len); */
+<span class="lineNum">     858 </span>            : 
+<span class="lineNum">     859 </span>            :                 for (i = 0; i &lt; objs-&gt;len; ++i) {
+<span class="lineNum">     860 </span>            :                         MonoObject *o = (MonoObject*)g_ptr_array_index (objs, i);
+<span class="lineNum">     861 </span>            :                         /* FIXME: Avoid finalizing threads, etc */
+<span class="lineNum">     862 </span>            :                         mono_gc_run_finalize (o, 0);
+<span class="lineNum">     863 </span>            :                 }
+<span class="lineNum">     864 </span>            : 
+<span class="lineNum">     865 </span>            :                 g_ptr_array_free (objs, TRUE);
+<span class="lineNum">     866 </span>            :         }
+<span class="lineNum">     867 </span>            : #elif defined(HAVE_SGEN_GC)
+<span class="lineNum">     868 </span><span class="lineCov">       3477 :         mono_gc_finalize_domain (domain);</span>
+<span class="lineNum">     869 </span><span class="lineCov">       3477 :         mono_gc_invoke_finalizers ();</span>
+<span class="lineNum">     870 </span>            : #endif
+<span class="lineNum">     871 </span>            : 
+<span class="lineNum">     872 </span>            :         /* cleanup the reference queue */
+<span class="lineNum">     873 </span><span class="lineCov">       3477 :         reference_queue_clear_for_domain (domain);</span>
+<span class="lineNum">     874 </span>            :         
+<span class="lineNum">     875 </span>            :         /* printf (&quot;DONE.\n&quot;); */
+<span class="lineNum">     876 </span><span class="lineCov">       3477 :         mono_coop_sem_post (&amp;req-&gt;done);</span>
+<span class="lineNum">     877 </span>            : 
+<span class="lineNum">     878 </span><span class="lineCov">       3477 :         if (InterlockedDecrement (&amp;req-&gt;ref) == 0) {</span>
+<span class="lineNum">     879 </span>            :                 /* mono_domain_finalize already returned, and
+<span class="lineNum">     880 </span>            :                  * doesn't hold a reference to req anymore. */
+<span class="lineNum">     881 </span><span class="lineCov">          1 :                 mono_coop_sem_destroy (&amp;req-&gt;done);</span>
+<span class="lineNum">     882 </span><span class="lineCov">          1 :                 g_free (req);</span>
+<span class="lineNum">     883 </span><span class="lineCov">          1 :         }</span>
+<span class="lineNum">     884 </span><span class="lineCov">      28170 : }</span>
+<a name="885"><span class="lineNum">     885 </span>            : </a>
+<span class="lineNum">     886 </span>            : static gsize WINAPI
+<span class="lineNum">     887 </span>            : finalizer_thread (gpointer unused)
+<span class="lineNum">     888 </span>            : {
+<span class="lineNum">     889 </span>            :         MonoError error;
+<span class="lineNum">     890 </span><span class="lineCov">       3285 :         gboolean wait = TRUE;</span>
+<span class="lineNum">     891 </span>            : 
+<span class="lineNum">     892 </span><span class="lineCov">       3285 :         mono_thread_set_name_internal (mono_thread_internal_current (), mono_string_new (mono_get_root_domain (), &quot;Finalizer&quot;), FALSE, &amp;error);</span>
+<span class="lineNum">     893 </span><span class="lineCov">       3285 :         mono_error_assert_ok (&amp;error);</span>
+<span class="lineNum">     894 </span>            : 
+<span class="lineNum">     895 </span>            :         /* Register a hazard free queue pump callback */
+<span class="lineNum">     896 </span><span class="lineCov">       3285 :         mono_hazard_pointer_install_free_queue_size_callback (hazard_free_queue_is_too_big);</span>
+<span class="lineNum">     897 </span>            : 
+<span class="lineNum">     898 </span><span class="lineCov">      62890 :         while (!finished) {</span>
+<span class="lineNum">     899 </span>            :                 /* Wait to be notified that there's at least one
+<span class="lineNum">     900 </span>            :                  * finaliser to run
+<span class="lineNum">     901 </span>            :                  */
+<span class="lineNum">     902 </span>            : 
+<span class="lineNum">     903 </span><span class="lineCov">      84543 :                 g_assert (mono_domain_get () == mono_get_root_domain ());</span>
+<span class="lineNum">     904 </span><span class="lineCov">      28181 :                 mono_gc_set_skip_thread (TRUE);</span>
+<span class="lineNum">     905 </span>            : 
+<span class="lineNum">     906 </span><span class="lineCov">      28181 :                 if (wait) {</span>
+<span class="lineNum">     907 </span>            :                         /* An alertable wait is required so this thread can be suspended on windows */
+<span class="lineNum">     908 </span><span class="lineCov">      12971 :                         mono_coop_sem_wait (&amp;finalizer_sem, MONO_SEM_FLAGS_ALERTABLE);</span>
+<span class="lineNum">     909 </span><span class="lineCov">      12971 :                 }</span>
+<span class="lineNum">     910 </span><span class="lineCov">      28160 :                 wait = TRUE;</span>
+<span class="lineNum">     911 </span>            : 
+<span class="lineNum">     912 </span><span class="lineCov">      28160 :                 mono_gc_set_skip_thread (FALSE);</span>
+<span class="lineNum">     913 </span>            : 
+<span class="lineNum">     914 </span><span class="lineCov">      28160 :                 mono_threads_perform_thread_dump ();</span>
+<span class="lineNum">     915 </span>            : 
+<span class="lineNum">     916 </span><span class="lineCov">      28160 :                 mono_console_handle_async_ops ();</span>
+<span class="lineNum">     917 </span>            : 
+<span class="lineNum">     918 </span><span class="lineCov">      28160 :                 mono_attach_maybe_start ();</span>
+<span class="lineNum">     919 </span>            : 
+<span class="lineNum">     920 </span><span class="lineCov">      28160 :                 finalize_domain_objects ();</span>
+<span class="lineNum">     921 </span>            : 
+<span class="lineNum">     922 </span><span class="lineCov">      28160 :                 mono_profiler_gc_finalize_begin ();</span>
+<span class="lineNum">     923 </span>            : 
+<span class="lineNum">     924 </span>            :                 /* If finished == TRUE, mono_gc_cleanup has been called (from mono_runtime_cleanup),
+<span class="lineNum">     925 </span>            :                  * before the domain is unloaded.
+<span class="lineNum">     926 </span>            :                  */
+<span class="lineNum">     927 </span><span class="lineCov">      28160 :                 mono_gc_invoke_finalizers ();</span>
+<span class="lineNum">     928 </span>            : 
+<span class="lineNum">     929 </span><span class="lineCov">      28160 :                 mono_profiler_gc_finalize_end ();</span>
+<span class="lineNum">     930 </span>            : 
+<span class="lineNum">     931 </span><span class="lineCov">      28160 :                 mono_threads_join_threads ();</span>
+<span class="lineNum">     932 </span>            : 
+<span class="lineNum">     933 </span><span class="lineCov">      28160 :                 reference_queue_proccess_all ();</span>
+<span class="lineNum">     934 </span>            : 
+<span class="lineNum">     935 </span><span class="lineCov">      28160 :                 hazard_free_queue_pump ();</span>
+<span class="lineNum">     936 </span>            : 
+<span class="lineNum">     937 </span>            :                 /* Avoid posting the pending done event until there are pending finalizers */
+<span class="lineNum">     938 </span><span class="lineCov">      28160 :                 if (mono_coop_sem_timedwait (&amp;finalizer_sem, 0, MONO_SEM_FLAGS_NONE) == MONO_SEM_TIMEDWAIT_RET_SUCCESS) {</span>
+<span class="lineNum">     939 </span>            :                         /* Don't wait again at the start of the loop */
+<span class="lineNum">     940 </span><span class="lineCov">      15281 :                         wait = FALSE;</span>
+<span class="lineNum">     941 </span><span class="lineCov">      15281 :                 } else {</span>
+<span class="lineNum">     942 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     943 </span>            :                         SetEvent (pending_done_event);
+<span class="lineNum">     944 </span>            : #else
+<span class="lineNum">     945 </span><span class="lineCov">      12879 :                         mono_coop_mutex_lock (&amp;pending_done_mutex);</span>
+<span class="lineNum">     946 </span><span class="lineCov">      12879 :                         pending_done = TRUE;</span>
+<span class="lineNum">     947 </span><span class="lineCov">      12879 :                         mono_coop_cond_signal (&amp;pending_done_cond);</span>
+<span class="lineNum">     948 </span><span class="lineCov">      12879 :                         mono_coop_mutex_unlock (&amp;pending_done_mutex);</span>
+<span class="lineNum">     949 </span>            : #endif
+<span class="lineNum">     950 </span>            :                 }
+<span class="lineNum">     951 </span>            :         }
+<span class="lineNum">     952 </span>            : 
+<span class="lineNum">     953 </span><span class="lineCov">       3264 :         mono_finalizer_lock ();</span>
+<span class="lineNum">     954 </span><span class="lineCov">       3264 :         finalizer_thread_exited = TRUE;</span>
+<span class="lineNum">     955 </span><span class="lineCov">       3264 :         mono_coop_cond_signal (&amp;exited_cond);</span>
+<span class="lineNum">     956 </span><span class="lineCov">       3264 :         mono_finalizer_unlock ();</span>
+<span class="lineNum">     957 </span>            : 
+<span class="lineNum">     958 </span><span class="lineCov">       3264 :         return 0;</span>
+<span class="lineNum">     959 </span>            : }
+<span class="lineNum">     960 </span>            : 
+<span class="lineNum">     961 </span>            : #ifndef LAZY_GC_THREAD_CREATION
+<span class="lineNum">     962 </span>            : static
+<a name="963"><span class="lineNum">     963 </span>            : #endif</a>
+<span class="lineNum">     964 </span>            : void
+<span class="lineNum">     965 </span>            : mono_gc_init_finalizer_thread (void)
+<span class="lineNum">     966 </span>            : {
+<span class="lineNum">     967 </span>            :         MonoError error;
+<span class="lineNum">     968 </span><span class="lineCov">       3285 :         gc_thread = mono_thread_create_internal (mono_domain_get (), finalizer_thread, NULL, FALSE, 0, &amp;error);</span>
+<span class="lineNum">     969 </span><span class="lineCov">       3285 :         mono_error_assert_ok (&amp;error);</span>
+<span class="lineNum">     970 </span><span class="lineCov">       3285 : }</span>
+<a name="971"><span class="lineNum">     971 </span>            : </a>
+<span class="lineNum">     972 </span>            : void
+<span class="lineNum">     973 </span>            : mono_gc_init (void)
+<span class="lineNum">     974 </span>            : {
+<span class="lineNum">     975 </span><span class="lineCov">       3285 :         mono_coop_mutex_init_recursive (&amp;finalizer_mutex);</span>
+<span class="lineNum">     976 </span><span class="lineCov">       3285 :         mono_coop_mutex_init_recursive (&amp;reference_queue_mutex);</span>
+<span class="lineNum">     977 </span>            : 
+<span class="lineNum">     978 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;Minor GC collections&quot;, MONO_COUNTER_GC | MONO_COUNTER_UINT, &amp;gc_stats.minor_gc_count);</span>
+<span class="lineNum">     979 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;Major GC collections&quot;, MONO_COUNTER_GC | MONO_COUNTER_UINT, &amp;gc_stats.major_gc_count);</span>
+<span class="lineNum">     980 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;Minor GC time&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG | MONO_COUNTER_TIME, &amp;gc_stats.minor_gc_time);</span>
+<span class="lineNum">     981 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;Major GC time&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG | MONO_COUNTER_TIME, &amp;gc_stats.major_gc_time);</span>
+<span class="lineNum">     982 </span><span class="lineCov">       3285 :         mono_counters_register (&quot;Major GC time concurrent&quot;, MONO_COUNTER_GC | MONO_COUNTER_ULONG | MONO_COUNTER_TIME, &amp;gc_stats.major_gc_time_concurrent);</span>
+<span class="lineNum">     983 </span>            : 
+<span class="lineNum">     984 </span><span class="lineCov">       3285 :         mono_gc_base_init ();</span>
+<span class="lineNum">     985 </span>            : 
+<span class="lineNum">     986 </span><span class="lineCov">       3285 :         if (mono_gc_is_disabled ()) {</span>
+<span class="lineNum">     987 </span><span class="lineNoCov">          0 :                 gc_disabled = TRUE;</span>
+<span class="lineNum">     988 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">     989 </span>            :         }
+<span class="lineNum">     990 </span>            : 
+<span class="lineNum">     991 </span>            : #ifdef TARGET_WIN32
+<span class="lineNum">     992 </span>            :         pending_done_event = CreateEvent (NULL, TRUE, FALSE, NULL);
+<span class="lineNum">     993 </span>            :         g_assert (pending_done_event);
+<span class="lineNum">     994 </span>            : #else
+<span class="lineNum">     995 </span><span class="lineCov">       3285 :         mono_coop_cond_init (&amp;pending_done_cond);</span>
+<span class="lineNum">     996 </span><span class="lineCov">       3285 :         mono_coop_mutex_init (&amp;pending_done_mutex);</span>
+<span class="lineNum">     997 </span>            : #endif
+<span class="lineNum">     998 </span>            : 
+<span class="lineNum">     999 </span><span class="lineCov">       3285 :         mono_coop_cond_init (&amp;exited_cond);</span>
+<span class="lineNum">    1000 </span><span class="lineCov">       3285 :         mono_coop_sem_init (&amp;finalizer_sem, 0);</span>
+<span class="lineNum">    1001 </span>            : 
+<span class="lineNum">    1002 </span>            : #ifndef LAZY_GC_THREAD_CREATION
+<span class="lineNum">    1003 </span><span class="lineCov">       3285 :         mono_gc_init_finalizer_thread ();</span>
+<span class="lineNum">    1004 </span>            : #endif
+<span class="lineNum">    1005 </span><span class="lineCov">       6570 : }</span>
+<a name="1006"><span class="lineNum">    1006 </span>            : </a>
+<span class="lineNum">    1007 </span>            : void
+<span class="lineNum">    1008 </span>            : mono_gc_cleanup (void)
+<span class="lineNum">    1009 </span>            : {
+<span class="lineNum">    1010 </span>            : #ifdef DEBUG
+<span class="lineNum">    1011 </span>            :         g_message (&quot;%s: cleaning up finalizer&quot;, __func__);
+<span class="lineNum">    1012 </span>            : #endif
+<span class="lineNum">    1013 </span>            : 
+<span class="lineNum">    1014 </span><span class="lineCov">       3272 :         if (mono_gc_is_null ())</span>
+<span class="lineNum">    1015 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">    1016 </span>            : 
+<span class="lineNum">    1017 </span><span class="lineCov">       3272 :         if (!gc_disabled) {</span>
+<span class="lineNum">    1018 </span><span class="lineCov">       3272 :                 finished = TRUE;</span>
+<span class="lineNum">    1019 </span><span class="lineCov">       3272 :                 if (mono_thread_internal_current () != gc_thread) {</span>
+<span class="lineNum">    1020 </span>            :                         int ret;
+<span class="lineNum">    1021 </span><span class="lineCov">       3264 :                         gint64 start_ticks = mono_msec_ticks ();</span>
+<span class="lineNum">    1022 </span><span class="lineCov">       3264 :                         gint64 end_ticks = start_ticks + 40000;</span>
+<span class="lineNum">    1023 </span>            : 
+<span class="lineNum">    1024 </span><span class="lineCov">       3264 :                         mono_gc_finalize_notify ();</span>
+<span class="lineNum">    1025 </span>            :                         /* Finishing the finalizer thread, so wait a little bit... */
+<span class="lineNum">    1026 </span>            :                         /* MS seems to wait for about 2 seconds per finalizer thread */
+<span class="lineNum">    1027 </span>            :                         /* and 40 seconds for all finalizers to finish */
+<span class="lineNum">    1028 </span><span class="lineCov">      12648 :                         while (!finalizer_thread_exited) {</span>
+<span class="lineNum">    1029 </span><span class="lineCov">       3060 :                                 gint64 current_ticks = mono_msec_ticks ();</span>
+<span class="lineNum">    1030 </span>            :                                 guint32 timeout;
+<span class="lineNum">    1031 </span>            : 
+<span class="lineNum">    1032 </span><span class="lineCov">       3060 :                                 if (current_ticks &gt;= end_ticks)</span>
+<span class="lineNum">    1033 </span><span class="lineNoCov">          0 :                                         break;</span>
+<span class="lineNum">    1034 </span>            :                                 else
+<span class="lineNum">    1035 </span><span class="lineCov">       3060 :                                         timeout = end_ticks - current_ticks;</span>
+<span class="lineNum">    1036 </span><span class="lineCov">       3060 :                                 mono_finalizer_lock ();</span>
+<span class="lineNum">    1037 </span><span class="lineCov">       3060 :                                 if (!finalizer_thread_exited)</span>
+<span class="lineNum">    1038 </span><span class="lineCov">       3056 :                                         mono_coop_cond_timedwait (&amp;exited_cond, &amp;finalizer_mutex, timeout);</span>
+<span class="lineNum">    1039 </span><span class="lineCov">       3060 :                                 mono_finalizer_unlock ();</span>
+<span class="lineNum">    1040 </span>            :                         }
+<span class="lineNum">    1041 </span>            : 
+<span class="lineNum">    1042 </span><span class="lineCov">       3264 :                         if (!finalizer_thread_exited) {</span>
+<span class="lineNum">    1043 </span>            :                                 /* Set a flag which the finalizer thread can check */
+<span class="lineNum">    1044 </span><span class="lineNoCov">          0 :                                 suspend_finalizers = TRUE;</span>
+<span class="lineNum">    1045 </span><span class="lineNoCov">          0 :                                 mono_gc_suspend_finalizers ();</span>
+<span class="lineNum">    1046 </span>            : 
+<span class="lineNum">    1047 </span>            :                                 /* Try to abort the thread, in the hope that it is running managed code */
+<span class="lineNum">    1048 </span><span class="lineNoCov">          0 :                                 mono_thread_internal_abort (gc_thread);</span>
+<span class="lineNum">    1049 </span>            : 
+<span class="lineNum">    1050 </span>            :                                 /* Wait for it to stop */
+<span class="lineNum">    1051 </span><span class="lineNoCov">          0 :                                 ret = guarded_wait (gc_thread-&gt;handle, 100, TRUE);</span>
+<span class="lineNum">    1052 </span>            : 
+<span class="lineNum">    1053 </span><span class="lineNoCov">          0 :                                 if (ret == MONO_THREAD_INFO_WAIT_RET_TIMEOUT) {</span>
+<span class="lineNum">    1054 </span>            :                                         /*
+<span class="lineNum">    1055 </span>            :                                          * The finalizer thread refused to exit. Make it stop.
+<span class="lineNum">    1056 </span>            :                                          */
+<span class="lineNum">    1057 </span><span class="lineNoCov">          0 :                                         mono_thread_internal_stop (gc_thread);</span>
+<span class="lineNum">    1058 </span><span class="lineNoCov">          0 :                                         ret = guarded_wait (gc_thread-&gt;handle, 100, TRUE);</span>
+<span class="lineNum">    1059 </span><span class="lineNoCov">          0 :                                         g_assert (ret != MONO_THREAD_INFO_WAIT_RET_TIMEOUT);</span>
+<span class="lineNum">    1060 </span>            :                                         /* The thread can't set this flag */
+<span class="lineNum">    1061 </span><span class="lineNoCov">          0 :                                         finalizer_thread_exited = TRUE;</span>
+<span class="lineNum">    1062 </span><span class="lineNoCov">          0 :                                 }</span>
+<span class="lineNum">    1063 </span><span class="lineNoCov">          0 :                         }</span>
+<span class="lineNum">    1064 </span>            : 
+<span class="lineNum">    1065 </span>            : 
+<span class="lineNum">    1066 </span>            :                         /* Wait for the thread to actually exit */
+<span class="lineNum">    1067 </span><span class="lineCov">       3264 :                         ret = guarded_wait (gc_thread-&gt;handle, MONO_INFINITE_WAIT, TRUE);</span>
+<span class="lineNum">    1068 </span><span class="lineCov">       9792 :                         g_assert (ret == MONO_THREAD_INFO_WAIT_RET_SUCCESS_0);</span>
+<span class="lineNum">    1069 </span>            : 
+<span class="lineNum">    1070 </span><span class="lineCov">       3264 :                         mono_thread_join (GUINT_TO_POINTER (gc_thread-&gt;tid));</span>
+<span class="lineNum">    1071 </span><span class="lineCov">       9792 :                         g_assert (finalizer_thread_exited);</span>
+<span class="lineNum">    1072 </span><span class="lineCov">       3264 :                 }</span>
+<span class="lineNum">    1073 </span><span class="lineCov">       3272 :                 gc_thread = NULL;</span>
+<span class="lineNum">    1074 </span><span class="lineCov">       3272 :                 mono_gc_base_cleanup ();</span>
+<span class="lineNum">    1075 </span><span class="lineCov">       3272 :         }</span>
+<span class="lineNum">    1076 </span>            : 
+<span class="lineNum">    1077 </span><span class="lineCov">       3272 :         mono_reference_queue_cleanup ();</span>
+<span class="lineNum">    1078 </span>            : 
+<span class="lineNum">    1079 </span><span class="lineCov">       3272 :         mono_coop_mutex_destroy (&amp;finalizer_mutex);</span>
+<span class="lineNum">    1080 </span><span class="lineCov">       3272 :         mono_coop_mutex_destroy (&amp;reference_queue_mutex);</span>
+<span class="lineNum">    1081 </span><span class="lineCov">       6544 : }</span>
+<a name="1082"><span class="lineNum">    1082 </span>            : </a>
+<span class="lineNum">    1083 </span>            : gboolean
+<span class="lineNum">    1084 </span>            : mono_gc_is_finalizer_internal_thread (MonoInternalThread *thread)
+<span class="lineNum">    1085 </span>            : {
+<span class="lineNum">    1086 </span><span class="lineCov">      47293 :         return thread == gc_thread;</span>
+<span class="lineNum">    1087 </span>            : }
+<span class="lineNum">    1088 </span>            : 
+<span class="lineNum">    1089 </span>            : /**
+<span class="lineNum">    1090 </span>            :  * mono_gc_is_finalizer_thread:
+<span class="lineNum">    1091 </span>            :  * @thread: the thread to test.
+<span class="lineNum">    1092 </span>            :  *
+<span class="lineNum">    1093 </span>            :  * In Mono objects are finalized asynchronously on a separate thread.
+<span class="lineNum">    1094 </span>            :  * This routine tests whether the @thread argument represents the
+<span class="lineNum">    1095 </span>            :  * finalization thread.
+<span class="lineNum">    1096 </span>            :  * 
+<span class="lineNum">    1097 </span>            :  * Returns: TRUE if @thread is the finalization thread.
+<a name="1098"><span class="lineNum">    1098 </span>            :  */</a>
+<span class="lineNum">    1099 </span>            : gboolean
+<span class="lineNum">    1100 </span>            : mono_gc_is_finalizer_thread (MonoThread *thread)
+<span class="lineNum">    1101 </span>            : {
+<span class="lineNum">    1102 </span><span class="lineNoCov">          0 :         return mono_gc_is_finalizer_internal_thread (thread-&gt;internal_thread);</span>
+<span class="lineNum">    1103 </span>            : }
+<span class="lineNum">    1104 </span>            : 
+<span class="lineNum">    1105 </span>            : #if defined(__MACH__)
+<span class="lineNum">    1106 </span>            : static pthread_t mach_exception_thread;
+<a name="1107"><span class="lineNum">    1107 </span>            : </a>
+<span class="lineNum">    1108 </span>            : void
+<span class="lineNum">    1109 </span>            : mono_gc_register_mach_exception_thread (pthread_t thread)
+<span class="lineNum">    1110 </span>            : {
+<span class="lineNum">    1111 </span><span class="lineNoCov">          0 :         mach_exception_thread = thread;</span>
+<span class="lineNum">    1112 </span><span class="lineNoCov">          0 : }</span>
+<a name="1113"><span class="lineNum">    1113 </span>            : </a>
+<span class="lineNum">    1114 </span>            : pthread_t
+<span class="lineNum">    1115 </span>            : mono_gc_get_mach_exception_thread (void)
+<span class="lineNum">    1116 </span>            : {
+<span class="lineNum">    1117 </span><span class="lineNoCov">          0 :         return mach_exception_thread;</span>
+<span class="lineNum">    1118 </span>            : }
+<span class="lineNum">    1119 </span>            : #endif
+<span class="lineNum">    1120 </span>            : 
+<span class="lineNum">    1121 </span>            : static MonoReferenceQueue *ref_queues;
+<a name="1122"><span class="lineNum">    1122 </span>            : </a>
+<span class="lineNum">    1123 </span>            : static void
+<span class="lineNum">    1124 </span>            : ref_list_remove_element (RefQueueEntry **prev, RefQueueEntry *element)
+<span class="lineNum">    1125 </span>            : {
+<span class="lineNum">    1126 </span><span class="lineCov">      13543 :         do {</span>
+<span class="lineNum">    1127 </span>            :                 /* Guard if head is changed concurrently. */
+<span class="lineNum">    1128 </span><span class="lineCov">      27086 :                 while (*prev != element)</span>
+<span class="lineNum">    1129 </span><span class="lineNoCov">          0 :                         prev = &amp;(*prev)-&gt;next;</span>
+<span class="lineNum">    1130 </span><span class="lineCov">      54172 :         } while (prev &amp;&amp; InterlockedCompareExchangePointer ((volatile gpointer *)prev, element-&gt;next, element) != element);</span>
+<span class="lineNum">    1131 </span><span class="lineCov">      13543 : }</span>
+<a name="1132"><span class="lineNum">    1132 </span>            : </a>
+<span class="lineNum">    1133 </span>            : static void
+<span class="lineNum">    1134 </span>            : ref_list_push (RefQueueEntry **head, RefQueueEntry *value)
+<span class="lineNum">    1135 </span>            : {
+<span class="lineNum">    1136 </span>            :         RefQueueEntry *current;
+<span class="lineNum">    1137 </span><span class="lineCov">      13558 :         do {</span>
+<span class="lineNum">    1138 </span><span class="lineCov">      13558 :                 current = *head;</span>
+<span class="lineNum">    1139 </span><span class="lineCov">      13558 :                 value-&gt;next = current;</span>
+<span class="lineNum">    1140 </span>            :                 STORE_STORE_FENCE; /*Must make sure the previous store is visible before the CAS. */
+<span class="lineNum">    1141 </span><span class="lineCov">      27116 :         } while (InterlockedCompareExchangePointer ((volatile gpointer *)head, value, current) != current);</span>
+<span class="lineNum">    1142 </span><span class="lineCov">      13558 : }</span>
+<a name="1143"><span class="lineNum">    1143 </span>            : </a>
+<span class="lineNum">    1144 </span>            : static void
+<span class="lineNum">    1145 </span>            : reference_queue_proccess (MonoReferenceQueue *queue)
+<span class="lineNum">    1146 </span>            : {
+<span class="lineNum">    1147 </span><span class="lineCov">      37449 :         RefQueueEntry **iter = &amp;queue-&gt;queue;</span>
+<span class="lineNum">    1148 </span>            :         RefQueueEntry *entry;
+<span class="lineNum">    1149 </span><span class="lineCov">     148806 :         while ((entry = *iter)) {</span>
+<span class="lineNum">    1150 </span><span class="lineCov">      73862 :                 if (queue-&gt;should_be_deleted || !mono_gchandle_get_target (entry-&gt;gchandle)) {</span>
+<span class="lineNum">    1151 </span><span class="lineCov">       2044 :                         mono_gchandle_free ((guint32)entry-&gt;gchandle);</span>
+<span class="lineNum">    1152 </span><span class="lineCov">       2044 :                         ref_list_remove_element (iter, entry);</span>
+<span class="lineNum">    1153 </span><span class="lineCov">       2044 :                         queue-&gt;callback (entry-&gt;user_data);</span>
+<span class="lineNum">    1154 </span><span class="lineCov">       2044 :                         g_free (entry);</span>
+<span class="lineNum">    1155 </span><span class="lineCov">       2044 :                 } else {</span>
+<span class="lineNum">    1156 </span><span class="lineCov">      34910 :                         iter = &amp;entry-&gt;next;</span>
+<span class="lineNum">    1157 </span>            :                 }
+<span class="lineNum">    1158 </span>            :         }
+<span class="lineNum">    1159 </span><span class="lineCov">      37449 : }</span>
+<a name="1160"><span class="lineNum">    1160 </span>            : </a>
+<span class="lineNum">    1161 </span>            : static void
+<span class="lineNum">    1162 </span>            : reference_queue_proccess_all (void)
+<span class="lineNum">    1163 </span>            : {
+<span class="lineNum">    1164 </span>            :         MonoReferenceQueue **iter;
+<span class="lineNum">    1165 </span><span class="lineCov">      31432 :         MonoReferenceQueue *queue = ref_queues;</span>
+<span class="lineNum">    1166 </span><span class="lineCov">     137762 :         for (; queue; queue = queue-&gt;next)</span>
+<span class="lineNum">    1167 </span><span class="lineCov">      68881 :                 reference_queue_proccess (queue);</span>
+<span class="lineNum">    1168 </span>            : 
+<span class="lineNum">    1169 </span>            : restart:
+<span class="lineNum">    1170 </span><span class="lineCov">      31432 :         mono_coop_mutex_lock (&amp;reference_queue_mutex);</span>
+<span class="lineNum">    1171 </span><span class="lineCov">     103603 :         for (iter = &amp;ref_queues; *iter;) {</span>
+<span class="lineNum">    1172 </span><span class="lineCov">      37449 :                 queue = *iter;</span>
+<span class="lineNum">    1173 </span><span class="lineCov">      37449 :                 if (!queue-&gt;should_be_deleted) {</span>
+<span class="lineNum">    1174 </span><span class="lineCov">      34159 :                         iter = &amp;queue-&gt;next;</span>
+<span class="lineNum">    1175 </span><span class="lineCov">      34159 :                         continue;</span>
+<span class="lineNum">    1176 </span>            :                 }
+<span class="lineNum">    1177 </span><span class="lineCov">       3290 :                 if (queue-&gt;queue) {</span>
+<span class="lineNum">    1178 </span><span class="lineNoCov">          0 :                         mono_coop_mutex_unlock (&amp;reference_queue_mutex);</span>
+<span class="lineNum">    1179 </span><span class="lineNoCov">          0 :                         reference_queue_proccess (queue);</span>
+<span class="lineNum">    1180 </span><span class="lineNoCov">          0 :                         goto restart;</span>
+<span class="lineNum">    1181 </span>            :                 }
+<span class="lineNum">    1182 </span><span class="lineCov">       3290 :                 *iter = queue-&gt;next;</span>
+<span class="lineNum">    1183 </span><span class="lineCov">       3290 :                 g_free (queue);</span>
+<span class="lineNum">    1184 </span>            :         }
+<span class="lineNum">    1185 </span><span class="lineCov">      31432 :         mono_coop_mutex_unlock (&amp;reference_queue_mutex);</span>
+<span class="lineNum">    1186 </span><span class="lineCov">      31432 : }</span>
+<a name="1187"><span class="lineNum">    1187 </span>            : </a>
+<span class="lineNum">    1188 </span>            : static void
+<span class="lineNum">    1189 </span>            : mono_reference_queue_cleanup (void)
+<span class="lineNum">    1190 </span>            : {
+<span class="lineNum">    1191 </span><span class="lineCov">       3272 :         MonoReferenceQueue *queue = ref_queues;</span>
+<span class="lineNum">    1192 </span><span class="lineCov">      13124 :         for (; queue; queue = queue-&gt;next)</span>
+<span class="lineNum">    1193 </span><span class="lineCov">       3290 :                 queue-&gt;should_be_deleted = TRUE;</span>
+<span class="lineNum">    1194 </span><span class="lineCov">       3272 :         reference_queue_proccess_all ();</span>
+<span class="lineNum">    1195 </span><span class="lineCov">       3272 : }</span>
+<a name="1196"><span class="lineNum">    1196 </span>            : </a>
+<span class="lineNum">    1197 </span>            : static void
+<span class="lineNum">    1198 </span>            : reference_queue_clear_for_domain (MonoDomain *domain)
+<span class="lineNum">    1199 </span>            : {
+<span class="lineNum">    1200 </span><span class="lineCov">       3477 :         MonoReferenceQueue *queue = ref_queues;</span>
+<span class="lineNum">    1201 </span><span class="lineCov">      13944 :         for (; queue; queue = queue-&gt;next) {</span>
+<span class="lineNum">    1202 </span><span class="lineCov">       3495 :                 RefQueueEntry **iter = &amp;queue-&gt;queue;</span>
+<span class="lineNum">    1203 </span>            :                 RefQueueEntry *entry;
+<span class="lineNum">    1204 </span><span class="lineCov">      31762 :                 while ((entry = *iter)) {</span>
+<span class="lineNum">    1205 </span><span class="lineCov">      12386 :                         if (entry-&gt;domain == domain) {</span>
+<span class="lineNum">    1206 </span><span class="lineCov">      11499 :                                 mono_gchandle_free ((guint32)entry-&gt;gchandle);</span>
+<span class="lineNum">    1207 </span><span class="lineCov">      11499 :                                 ref_list_remove_element (iter, entry);</span>
+<span class="lineNum">    1208 </span><span class="lineCov">      11499 :                                 queue-&gt;callback (entry-&gt;user_data);</span>
+<span class="lineNum">    1209 </span><span class="lineCov">      11499 :                                 g_free (entry);</span>
+<span class="lineNum">    1210 </span><span class="lineCov">      11499 :                         } else {</span>
+<span class="lineNum">    1211 </span><span class="lineCov">        887 :                                 iter = &amp;entry-&gt;next;</span>
+<span class="lineNum">    1212 </span>            :                         }
+<span class="lineNum">    1213 </span>            :                 }
+<span class="lineNum">    1214 </span><span class="lineCov">       3495 :         }</span>
+<span class="lineNum">    1215 </span><span class="lineCov">       3477 : }</span>
+<span class="lineNum">    1216 </span>            : /**
+<span class="lineNum">    1217 </span>            :  * mono_gc_reference_queue_new:
+<span class="lineNum">    1218 </span>            :  * @callback callback used when processing collected entries.
+<span class="lineNum">    1219 </span>            :  *
+<span class="lineNum">    1220 </span>            :  * Create a new reference queue used to process collected objects.
+<span class="lineNum">    1221 </span>            :  * A reference queue let you add a pair of (managed object, user data)
+<span class="lineNum">    1222 </span>            :  * using the mono_gc_reference_queue_add method.
+<span class="lineNum">    1223 </span>            :  *
+<span class="lineNum">    1224 </span>            :  * Once the managed object is collected @callback will be called
+<span class="lineNum">    1225 </span>            :  * in the finalizer thread with 'user data' as argument.
+<span class="lineNum">    1226 </span>            :  *
+<span class="lineNum">    1227 </span>            :  * The callback is called from the finalizer thread without any locks held.
+<span class="lineNum">    1228 </span>            :  * When a AppDomain is unloaded, all callbacks for objects belonging to it
+<span class="lineNum">    1229 </span>            :  * will be invoked.
+<span class="lineNum">    1230 </span>            :  *
+<span class="lineNum">    1231 </span>            :  * @returns the new queue.
+<a name="1232"><span class="lineNum">    1232 </span>            :  */</a>
+<span class="lineNum">    1233 </span>            : MonoReferenceQueue*
+<span class="lineNum">    1234 </span>            : mono_gc_reference_queue_new (mono_reference_queue_callback callback)
+<span class="lineNum">    1235 </span>            : {
+<span class="lineNum">    1236 </span><span class="lineCov">       3303 :         MonoReferenceQueue *res = g_new0 (MonoReferenceQueue, 1);</span>
+<span class="lineNum">    1237 </span><span class="lineCov">       3303 :         res-&gt;callback = callback;</span>
+<span class="lineNum">    1238 </span>            : 
+<span class="lineNum">    1239 </span><span class="lineCov">       3303 :         mono_coop_mutex_lock (&amp;reference_queue_mutex);</span>
+<span class="lineNum">    1240 </span><span class="lineCov">       3303 :         res-&gt;next = ref_queues;</span>
+<span class="lineNum">    1241 </span><span class="lineCov">       3303 :         ref_queues = res;</span>
+<span class="lineNum">    1242 </span><span class="lineCov">       3303 :         mono_coop_mutex_unlock (&amp;reference_queue_mutex);</span>
+<span class="lineNum">    1243 </span>            : 
+<span class="lineNum">    1244 </span><span class="lineCov">       3303 :         return res;</span>
+<span class="lineNum">    1245 </span>            : }
+<span class="lineNum">    1246 </span>            : 
+<span class="lineNum">    1247 </span>            : /**
+<span class="lineNum">    1248 </span>            :  * mono_gc_reference_queue_add:
+<span class="lineNum">    1249 </span>            :  * @queue the queue to add the reference to.
+<span class="lineNum">    1250 </span>            :  * @obj the object to be watched for collection
+<span class="lineNum">    1251 </span>            :  * @user_data parameter to be passed to the queue callback
+<span class="lineNum">    1252 </span>            :  *
+<span class="lineNum">    1253 </span>            :  * Queue an object to be watched for collection, when the @obj is
+<span class="lineNum">    1254 </span>            :  * collected, the callback that was registered for the @queue will
+<span class="lineNum">    1255 </span>            :  * be invoked with @user_data as argument.
+<span class="lineNum">    1256 </span>            :  *
+<span class="lineNum">    1257 </span>            :  * @returns false if the queue is scheduled to be freed.
+<a name="1258"><span class="lineNum">    1258 </span>            :  */</a>
+<span class="lineNum">    1259 </span>            : gboolean
+<span class="lineNum">    1260 </span>            : mono_gc_reference_queue_add (MonoReferenceQueue *queue, MonoObject *obj, void *user_data)
+<span class="lineNum">    1261 </span>            : {
+<span class="lineNum">    1262 </span>            :         RefQueueEntry *entry;
+<span class="lineNum">    1263 </span><span class="lineCov">      13558 :         if (queue-&gt;should_be_deleted)</span>
+<span class="lineNum">    1264 </span><span class="lineNoCov">          0 :                 return FALSE;</span>
+<span class="lineNum">    1265 </span>            : 
+<span class="lineNum">    1266 </span><span class="lineCov">      40674 :         g_assert (obj != NULL);</span>
+<span class="lineNum">    1267 </span>            : 
+<span class="lineNum">    1268 </span><span class="lineCov">      13558 :         entry = g_new0 (RefQueueEntry, 1);</span>
+<span class="lineNum">    1269 </span><span class="lineCov">      13558 :         entry-&gt;user_data = user_data;</span>
+<span class="lineNum">    1270 </span><span class="lineCov">      13558 :         entry-&gt;domain = mono_object_domain (obj);</span>
+<span class="lineNum">    1271 </span>            : 
+<span class="lineNum">    1272 </span><span class="lineCov">      13558 :         entry-&gt;gchandle = mono_gchandle_new_weakref (obj, TRUE);</span>
+<span class="lineNum">    1273 </span><span class="lineCov">      13558 :         mono_object_register_finalizer (obj);</span>
+<span class="lineNum">    1274 </span>            : 
+<span class="lineNum">    1275 </span><span class="lineCov">      13558 :         ref_list_push (&amp;queue-&gt;queue, entry);</span>
+<span class="lineNum">    1276 </span><span class="lineCov">      13558 :         return TRUE;</span>
+<span class="lineNum">    1277 </span><span class="lineCov">      13558 : }</span>
+<span class="lineNum">    1278 </span>            : 
+<span class="lineNum">    1279 </span>            : /**
+<span class="lineNum">    1280 </span>            :  * mono_gc_reference_queue_free:
+<span class="lineNum">    1281 </span>            :  * @queue the queue that should be freed.
+<span class="lineNum">    1282 </span>            :  *
+<span class="lineNum">    1283 </span>            :  * This operation signals that @queue should be freed. This operation is deferred
+<span class="lineNum">    1284 </span>            :  * as it happens on the finalizer thread.
+<span class="lineNum">    1285 </span>            :  *
+<span class="lineNum">    1286 </span>            :  * After this call, no further objects can be queued. It's the responsibility of the
+<span class="lineNum">    1287 </span>            :  * caller to make sure that no further attempt to access queue will be made.
+<a name="1288"><span class="lineNum">    1288 </span>            :  */</a>
+<span class="lineNum">    1289 </span>            : void
+<span class="lineNum">    1290 </span>            : mono_gc_reference_queue_free (MonoReferenceQueue *queue)
+<span class="lineNum">    1291 </span>            : {
+<span class="lineNum">    1292 </span><span class="lineNoCov">          0 :         queue-&gt;should_be_deleted = TRUE;</span>
+<span class="lineNum">    1293 </span><span class="lineNoCov">          0 : }</span>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

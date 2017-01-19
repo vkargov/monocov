@@ -1,0 +1,374 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - mono.info - io-layer/error.c</title>
+  <link rel="stylesheet" type="text/css" href="../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../index.html">top level</a> - <a href="index.html">io-layer</a> - error.c<span style="font-size: 80%;"> (source / <a href="error.c.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">mono.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">23</td>
+            <td class="headerCovTableEntry">111</td>
+            <td class="headerCovTableEntryLo">20.7 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2017-01-18 17:24:17</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">6</td>
+            <td class="headerCovTableEntry">7</td>
+            <td class="headerCovTableEntryMed">85.7 %</td>
+          </tr>
+          <tr><td><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /*</a>
+<span class="lineNum">       2 </span>            :  * error.c:  Error reporting
+<span class="lineNum">       3 </span>            :  *
+<span class="lineNum">       4 </span>            :  * Author:
+<span class="lineNum">       5 </span>            :  *      Dick Porter (dick@ximian.com)
+<span class="lineNum">       6 </span>            :  *
+<span class="lineNum">       7 </span>            :  * (C) 2002 Ximian, Inc.
+<span class="lineNum">       8 </span>            :  */
+<span class="lineNum">       9 </span>            : 
+<span class="lineNum">      10 </span>            : #include &lt;config.h&gt;
+<span class="lineNum">      11 </span>            : #include &lt;glib.h&gt;
+<span class="lineNum">      12 </span>            : #include &lt;pthread.h&gt;
+<span class="lineNum">      13 </span>            : #include &lt;string.h&gt;
+<span class="lineNum">      14 </span>            : #include &lt;errno.h&gt;
+<span class="lineNum">      15 </span>            : 
+<span class="lineNum">      16 </span>            : #include &quot;mono/io-layer/wapi.h&quot;
+<span class="lineNum">      17 </span>            : #include &quot;mono/io-layer/wapi-private.h&quot;
+<span class="lineNum">      18 </span>            : #include &quot;mono/utils/mono-lazy-init.h&quot;
+<span class="lineNum">      19 </span>            : 
+<span class="lineNum">      20 </span>            : static pthread_key_t error_key;
+<a name="21"><span class="lineNum">      21 </span>            : static mono_lazy_init_t error_key_once = MONO_LAZY_INIT_STATUS_NOT_INITIALIZED;</a>
+<span class="lineNum">      22 </span>            : 
+<span class="lineNum">      23 </span>            : static void error_init(void)
+<span class="lineNum">      24 </span>            : {
+<span class="lineNum">      25 </span>            :         int ret;
+<span class="lineNum">      26 </span>            :         
+<span class="lineNum">      27 </span><span class="lineCov">       1867 :         ret = pthread_key_create(&amp;error_key, NULL);</span>
+<span class="lineNum">      28 </span><span class="lineCov">       5601 :         g_assert (ret == 0);</span>
+<a name="29"><span class="lineNum">      29 </span><span class="lineCov">       1867 : }</span></a>
+<span class="lineNum">      30 </span>            : 
+<span class="lineNum">      31 </span>            : static void error_cleanup (void)
+<span class="lineNum">      32 </span>            : {
+<span class="lineNum">      33 </span>            :         int ret;
+<span class="lineNum">      34 </span>            : 
+<span class="lineNum">      35 </span><span class="lineCov">       1858 :         ret = pthread_key_delete (error_key);</span>
+<span class="lineNum">      36 </span><span class="lineCov">       5574 :         g_assert (ret == 0);</span>
+<a name="37"><span class="lineNum">      37 </span><span class="lineCov">       1858 : }</span></a>
+<span class="lineNum">      38 </span>            : 
+<span class="lineNum">      39 </span>            : void _wapi_error_cleanup (void)
+<span class="lineNum">      40 </span>            : {
+<span class="lineNum">      41 </span><span class="lineCov">       3272 :         mono_lazy_cleanup (&amp;error_key_once, error_cleanup);</span>
+<span class="lineNum">      42 </span><span class="lineCov">       3272 : }</span>
+<span class="lineNum">      43 </span>            : 
+<span class="lineNum">      44 </span>            : /**
+<span class="lineNum">      45 </span>            :  * GetLastError:
+<span class="lineNum">      46 </span>            :  *
+<span class="lineNum">      47 </span>            :  * Retrieves the last error that occurred in the calling thread.
+<span class="lineNum">      48 </span>            :  *
+<span class="lineNum">      49 </span>            :  * Return value: The error code for the last error that happened on
+<a name="50"><span class="lineNum">      50 </span>            :  * the calling thread.</a>
+<span class="lineNum">      51 </span>            :  */
+<span class="lineNum">      52 </span>            : guint32 GetLastError(void)
+<span class="lineNum">      53 </span>            : {
+<span class="lineNum">      54 </span>            :         guint32 err;
+<span class="lineNum">      55 </span>            :         void *errptr;
+<span class="lineNum">      56 </span>            : 
+<span class="lineNum">      57 </span><span class="lineCov">      53985 :         if (_wapi_has_shut_down)</span>
+<span class="lineNum">      58 </span><span class="lineNoCov">          0 :                 return 0;</span>
+<span class="lineNum">      59 </span><span class="lineCov">      53985 :         mono_lazy_initialize(&amp;error_key_once, error_init);</span>
+<span class="lineNum">      60 </span><span class="lineCov">      53985 :         errptr=pthread_getspecific(error_key);</span>
+<span class="lineNum">      61 </span><span class="lineCov">      53985 :         err=GPOINTER_TO_UINT(errptr);</span>
+<span class="lineNum">      62 </span>            :         
+<span class="lineNum">      63 </span><span class="lineCov">      53985 :         return(err);</span>
+<span class="lineNum">      64 </span><span class="lineCov">      53985 : }</span>
+<span class="lineNum">      65 </span>            : 
+<span class="lineNum">      66 </span>            : /**
+<span class="lineNum">      67 </span>            :  * SetLastError:
+<span class="lineNum">      68 </span>            :  * @code: The error code.
+<span class="lineNum">      69 </span>            :  *
+<a name="70"><span class="lineNum">      70 </span>            :  * Sets the error code in the calling thread.</a>
+<span class="lineNum">      71 </span>            :  */
+<span class="lineNum">      72 </span>            : void SetLastError(guint32 code)
+<span class="lineNum">      73 </span>            : {
+<span class="lineNum">      74 </span>            :         int ret;
+<span class="lineNum">      75 </span>            :         
+<span class="lineNum">      76 </span><span class="lineCov">     265147 :         if (_wapi_has_shut_down)</span>
+<span class="lineNum">      77 </span><span class="lineNoCov">          0 :                 return;</span>
+<span class="lineNum">      78 </span>            :         /* Set the thread-local error code */
+<span class="lineNum">      79 </span><span class="lineCov">     265145 :         mono_lazy_initialize(&amp;error_key_once, error_init);</span>
+<span class="lineNum">      80 </span><span class="lineCov">     265145 :         ret = pthread_setspecific(error_key, GUINT_TO_POINTER(code));</span>
+<span class="lineNum">      81 </span><span class="lineCov">     795451 :         g_assert (ret == 0);</span>
+<span class="lineNum">      82 </span><span class="lineCov">     265166 : }</span>
+<a name="83"><span class="lineNum">      83 </span>            : </a>
+<span class="lineNum">      84 </span>            : guint32
+<span class="lineNum">      85 </span>            : errno_to_WSA (guint32 code, const gchar *function_name)
+<span class="lineNum">      86 </span>            : {
+<span class="lineNum">      87 </span><span class="lineNoCov">          0 :         gint result = -1;</span>
+<span class="lineNum">      88 </span>            :         char *sys_error;
+<span class="lineNum">      89 </span>            :         gchar *msg;
+<span class="lineNum">      90 </span>            : 
+<span class="lineNum">      91 </span><span class="lineNoCov">          0 :         switch (code) {</span>
+<span class="lineNum">      92 </span><span class="lineNoCov">          0 :         case 0: result = ERROR_SUCCESS; break;</span>
+<span class="lineNum">      93 </span><span class="lineNoCov">          0 :         case EACCES: result = WSAEACCES; break;</span>
+<span class="lineNum">      94 </span>            : #ifdef EADDRINUSE
+<span class="lineNum">      95 </span><span class="lineNoCov">          0 :         case EADDRINUSE: result = WSAEADDRINUSE; break;</span>
+<span class="lineNum">      96 </span>            : #endif
+<span class="lineNum">      97 </span>            : #ifdef EAFNOSUPPORT
+<span class="lineNum">      98 </span><span class="lineNoCov">          0 :         case EAFNOSUPPORT: result = WSAEAFNOSUPPORT; break;</span>
+<span class="lineNum">      99 </span>            : #endif
+<span class="lineNum">     100 </span>            : #if EAGAIN != EWOULDBLOCK
+<span class="lineNum">     101 </span>            :         case EAGAIN: result = WSAEWOULDBLOCK; break;
+<span class="lineNum">     102 </span>            : #endif
+<span class="lineNum">     103 </span>            : #ifdef EALREADY
+<span class="lineNum">     104 </span><span class="lineNoCov">          0 :         case EALREADY: result = WSAEALREADY; break;</span>
+<span class="lineNum">     105 </span>            : #endif
+<span class="lineNum">     106 </span><span class="lineNoCov">          0 :         case EBADF: result = WSAENOTSOCK; break;</span>
+<span class="lineNum">     107 </span>            : #ifdef ECONNABORTED
+<span class="lineNum">     108 </span><span class="lineNoCov">          0 :         case ECONNABORTED: result = WSAENETDOWN; break;</span>
+<span class="lineNum">     109 </span>            : #endif
+<span class="lineNum">     110 </span>            : #ifdef ECONNREFUSED
+<span class="lineNum">     111 </span><span class="lineNoCov">          0 :         case ECONNREFUSED: result = WSAECONNREFUSED; break;</span>
+<span class="lineNum">     112 </span>            : #endif
+<span class="lineNum">     113 </span>            : #ifdef ECONNRESET
+<span class="lineNum">     114 </span><span class="lineNoCov">          0 :         case ECONNRESET: result = WSAECONNRESET; break;</span>
+<span class="lineNum">     115 </span>            : #endif
+<span class="lineNum">     116 </span><span class="lineNoCov">          0 :         case EFAULT: result = WSAEFAULT; break;</span>
+<span class="lineNum">     117 </span>            : #ifdef EHOSTUNREACH
+<span class="lineNum">     118 </span><span class="lineNoCov">          0 :         case EHOSTUNREACH: result = WSAEHOSTUNREACH; break;</span>
+<span class="lineNum">     119 </span>            : #endif
+<span class="lineNum">     120 </span>            : #ifdef EINPROGRESS
+<span class="lineNum">     121 </span><span class="lineNoCov">          0 :         case EINPROGRESS: result = WSAEINPROGRESS; break;</span>
+<span class="lineNum">     122 </span>            : #endif
+<span class="lineNum">     123 </span><span class="lineNoCov">          0 :         case EINTR: result = WSAEINTR; break;</span>
+<span class="lineNum">     124 </span><span class="lineNoCov">          0 :         case EINVAL: result = WSAEINVAL; break;</span>
+<span class="lineNum">     125 </span>            :         /*FIXME: case EIO: result = WSAE????; break; */
+<span class="lineNum">     126 </span>            : #ifdef EISCONN
+<span class="lineNum">     127 </span><span class="lineNoCov">          0 :         case EISCONN: result = WSAEISCONN; break;</span>
+<span class="lineNum">     128 </span>            : #endif
+<span class="lineNum">     129 </span>            :         /* FIXME: case ELOOP: result = WSA????; break; */
+<span class="lineNum">     130 </span><span class="lineNoCov">          0 :         case EMFILE: result = WSAEMFILE; break;</span>
+<span class="lineNum">     131 </span>            : #ifdef EMSGSIZE
+<span class="lineNum">     132 </span><span class="lineNoCov">          0 :         case EMSGSIZE: result = WSAEMSGSIZE; break;</span>
+<span class="lineNum">     133 </span>            : #endif
+<span class="lineNum">     134 </span>            :         /* FIXME: case ENAMETOOLONG: result = WSAEACCES; break; */
+<span class="lineNum">     135 </span>            : #ifdef ENETUNREACH
+<span class="lineNum">     136 </span><span class="lineNoCov">          0 :         case ENETUNREACH: result = WSAENETUNREACH; break;</span>
+<span class="lineNum">     137 </span>            : #endif
+<span class="lineNum">     138 </span>            : #ifdef ENOBUFS
+<span class="lineNum">     139 </span><span class="lineNoCov">          0 :         case ENOBUFS: result = WSAENOBUFS; break; /* not documented */</span>
+<span class="lineNum">     140 </span>            : #endif
+<span class="lineNum">     141 </span>            :         /* case ENOENT: result = WSAE????; break; */
+<span class="lineNum">     142 </span><span class="lineNoCov">          0 :         case ENOMEM: result = WSAENOBUFS; break;</span>
+<span class="lineNum">     143 </span>            : #ifdef ENOPROTOOPT
+<span class="lineNum">     144 </span><span class="lineNoCov">          0 :         case ENOPROTOOPT: result = WSAENOPROTOOPT; break;</span>
+<span class="lineNum">     145 </span>            : #endif
+<span class="lineNum">     146 </span>            : #ifdef ENOSR
+<span class="lineNum">     147 </span><span class="lineNoCov">          0 :         case ENOSR: result = WSAENETDOWN; break;</span>
+<span class="lineNum">     148 </span>            : #endif
+<span class="lineNum">     149 </span>            : #ifdef ENOTCONN
+<span class="lineNum">     150 </span><span class="lineNoCov">          0 :         case ENOTCONN: result = WSAENOTCONN; break;</span>
+<span class="lineNum">     151 </span>            : #endif
+<span class="lineNum">     152 </span>            :         /*FIXME: case ENOTDIR: result = WSAE????; break; */
+<span class="lineNum">     153 </span>            : #ifdef ENOTSOCK
+<span class="lineNum">     154 </span><span class="lineNoCov">          0 :         case ENOTSOCK: result = WSAENOTSOCK; break;</span>
+<span class="lineNum">     155 </span>            : #endif
+<span class="lineNum">     156 </span><span class="lineNoCov">          0 :         case ENOTTY: result = WSAENOTSOCK; break;</span>
+<span class="lineNum">     157 </span>            : #ifdef EOPNOTSUPP
+<span class="lineNum">     158 </span><span class="lineNoCov">          0 :         case EOPNOTSUPP: result = WSAEOPNOTSUPP; break;</span>
+<span class="lineNum">     159 </span>            : #endif
+<span class="lineNum">     160 </span><span class="lineNoCov">          0 :         case EPERM: result = WSAEACCES; break;</span>
+<span class="lineNum">     161 </span><span class="lineNoCov">          0 :         case EPIPE: result = WSAESHUTDOWN; break;</span>
+<span class="lineNum">     162 </span>            : #ifdef EPROTONOSUPPORT
+<span class="lineNum">     163 </span><span class="lineNoCov">          0 :         case EPROTONOSUPPORT: result = WSAEPROTONOSUPPORT; break;</span>
+<span class="lineNum">     164 </span>            : #endif
+<span class="lineNum">     165 </span>            : #if ERESTARTSYS
+<span class="lineNum">     166 </span>            :         case ERESTARTSYS: result = WSAENETDOWN; break;
+<span class="lineNum">     167 </span>            : #endif
+<span class="lineNum">     168 </span>            :         /*FIXME: case EROFS: result = WSAE????; break; */
+<span class="lineNum">     169 </span>            : #ifdef ESOCKTNOSUPPORT
+<span class="lineNum">     170 </span><span class="lineNoCov">          0 :         case ESOCKTNOSUPPORT: result = WSAESOCKTNOSUPPORT; break;</span>
+<span class="lineNum">     171 </span>            : #endif
+<span class="lineNum">     172 </span>            : #ifdef ETIMEDOUT
+<span class="lineNum">     173 </span><span class="lineNoCov">          0 :         case ETIMEDOUT: result = WSAETIMEDOUT; break;</span>
+<span class="lineNum">     174 </span>            : #endif
+<span class="lineNum">     175 </span>            : #ifdef EWOULDBLOCK
+<span class="lineNum">     176 </span><span class="lineNoCov">          0 :         case EWOULDBLOCK: result = WSAEWOULDBLOCK; break;</span>
+<span class="lineNum">     177 </span>            : #endif
+<span class="lineNum">     178 </span>            : #ifdef EADDRNOTAVAIL
+<span class="lineNum">     179 </span><span class="lineNoCov">          0 :         case EADDRNOTAVAIL: result = WSAEADDRNOTAVAIL; break;</span>
+<span class="lineNum">     180 </span>            : #endif
+<span class="lineNum">     181 </span>            :         /* This might happen with unix sockets */
+<span class="lineNum">     182 </span><span class="lineNoCov">          0 :         case ENOENT: result = WSAECONNREFUSED; break;</span>
+<span class="lineNum">     183 </span>            : #ifdef EDESTADDRREQ
+<span class="lineNum">     184 </span><span class="lineNoCov">          0 :         case EDESTADDRREQ: result = WSAEDESTADDRREQ; break;</span>
+<span class="lineNum">     185 </span>            : #endif
+<span class="lineNum">     186 </span>            : #ifdef EHOSTDOWN
+<span class="lineNum">     187 </span><span class="lineNoCov">          0 :         case EHOSTDOWN: result = WSAEHOSTDOWN; break;</span>
+<span class="lineNum">     188 </span>            : #endif
+<span class="lineNum">     189 </span>            : #ifdef ENETDOWN
+<span class="lineNum">     190 </span><span class="lineNoCov">          0 :         case ENETDOWN: result = WSAENETDOWN; break;</span>
+<span class="lineNum">     191 </span>            : #endif  
+<span class="lineNum">     192 </span><span class="lineNoCov">          0 :         case ENODEV: result = WSAENETDOWN; break;</span>
+<span class="lineNum">     193 </span>            :         default:
+<span class="lineNum">     194 </span><span class="lineNoCov">          0 :                 sys_error = strerror (code);</span>
+<span class="lineNum">     195 </span><span class="lineNoCov">          0 :                 msg = g_locale_to_utf8 (sys_error, strlen (sys_error), NULL, NULL, NULL);</span>
+<span class="lineNum">     196 </span><span class="lineNoCov">          0 :                 if (function_name == NULL)</span>
+<span class="lineNum">     197 </span><span class="lineNoCov">          0 :                         function_name = __func__;</span>
+<span class="lineNum">     198 </span>            : 
+<span class="lineNum">     199 </span><span class="lineNoCov">          0 :                 g_warning (&quot;%s: Need to translate %d [%s] into winsock error&quot;,</span>
+<span class="lineNum">     200 </span>            :                            function_name, code, msg);
+<span class="lineNum">     201 </span>            : 
+<span class="lineNum">     202 </span><span class="lineNoCov">          0 :                 g_free (msg);</span>
+<span class="lineNum">     203 </span><span class="lineNoCov">          0 :                 result = WSASYSCALLFAILURE;</span>
+<span class="lineNum">     204 </span><span class="lineNoCov">          0 :         }</span>
+<span class="lineNum">     205 </span>            : 
+<span class="lineNum">     206 </span><span class="lineNoCov">          0 :         return result;</span>
+<span class="lineNum">     207 </span>            : }
+<a name="208"><span class="lineNum">     208 </span>            : </a>
+<span class="lineNum">     209 </span>            : gint
+<span class="lineNum">     210 </span>            : _wapi_get_win32_file_error (gint err)
+<span class="lineNum">     211 </span>            : {
+<span class="lineNum">     212 </span>            :         gint ret;
+<span class="lineNum">     213 </span>            :         /* mapping ideas borrowed from wine. they may need some work */
+<span class="lineNum">     214 </span>            : 
+<span class="lineNum">     215 </span><span class="lineCov">        156 :         switch (err) {</span>
+<span class="lineNum">     216 </span>            :         case EACCES: case EPERM: case EROFS:
+<span class="lineNum">     217 </span><span class="lineNoCov">          0 :                 ret = ERROR_ACCESS_DENIED;</span>
+<span class="lineNum">     218 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     219 </span>            :         
+<span class="lineNum">     220 </span>            :         case EAGAIN:
+<span class="lineNum">     221 </span><span class="lineNoCov">          0 :                 ret = ERROR_SHARING_VIOLATION;</span>
+<span class="lineNum">     222 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     223 </span>            :         
+<span class="lineNum">     224 </span>            :         case EBUSY:
+<span class="lineNum">     225 </span><span class="lineNoCov">          0 :                 ret = ERROR_LOCK_VIOLATION;</span>
+<span class="lineNum">     226 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     227 </span>            :         
+<span class="lineNum">     228 </span>            :         case EEXIST:
+<span class="lineNum">     229 </span><span class="lineCov">        156 :                 ret = ERROR_FILE_EXISTS;</span>
+<span class="lineNum">     230 </span><span class="lineCov">        156 :                 break;</span>
+<span class="lineNum">     231 </span>            :         
+<span class="lineNum">     232 </span>            :         case EINVAL: case ESPIPE:
+<span class="lineNum">     233 </span><span class="lineNoCov">          0 :                 ret = ERROR_SEEK;</span>
+<span class="lineNum">     234 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     235 </span>            :         
+<span class="lineNum">     236 </span>            :         case EISDIR:
+<span class="lineNum">     237 </span><span class="lineNoCov">          0 :                 ret = ERROR_CANNOT_MAKE;</span>
+<span class="lineNum">     238 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     239 </span>            :         
+<span class="lineNum">     240 </span>            :         case ENFILE: case EMFILE:
+<span class="lineNum">     241 </span><span class="lineNoCov">          0 :                 ret = ERROR_TOO_MANY_OPEN_FILES;</span>
+<span class="lineNum">     242 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     243 </span>            : 
+<span class="lineNum">     244 </span>            :         case ENOENT: case ENOTDIR:
+<span class="lineNum">     245 </span><span class="lineNoCov">          0 :                 ret = ERROR_FILE_NOT_FOUND;</span>
+<span class="lineNum">     246 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     247 </span>            :         
+<span class="lineNum">     248 </span>            :         case ENOSPC:
+<span class="lineNum">     249 </span><span class="lineNoCov">          0 :                 ret = ERROR_HANDLE_DISK_FULL;</span>
+<span class="lineNum">     250 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     251 </span>            :         
+<span class="lineNum">     252 </span>            :         case ENOTEMPTY:
+<span class="lineNum">     253 </span><span class="lineNoCov">          0 :                 ret = ERROR_DIR_NOT_EMPTY;</span>
+<span class="lineNum">     254 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     255 </span>            : 
+<span class="lineNum">     256 </span>            :         case ENOEXEC:
+<span class="lineNum">     257 </span><span class="lineNoCov">          0 :                 ret = ERROR_BAD_FORMAT;</span>
+<span class="lineNum">     258 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     259 </span>            : 
+<span class="lineNum">     260 </span>            :         case ENAMETOOLONG:
+<span class="lineNum">     261 </span><span class="lineNoCov">          0 :                 ret = ERROR_FILENAME_EXCED_RANGE;</span>
+<span class="lineNum">     262 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     263 </span>            :         
+<span class="lineNum">     264 </span>            : #ifdef EINPROGRESS
+<span class="lineNum">     265 </span>            :         case EINPROGRESS:
+<span class="lineNum">     266 </span><span class="lineNoCov">          0 :                 ret = ERROR_IO_PENDING;</span>
+<span class="lineNum">     267 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     268 </span>            : #endif
+<span class="lineNum">     269 </span>            :         
+<span class="lineNum">     270 </span>            :         case ENOSYS:
+<span class="lineNum">     271 </span><span class="lineNoCov">          0 :                 ret = ERROR_NOT_SUPPORTED;</span>
+<span class="lineNum">     272 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     273 </span>            :         
+<span class="lineNum">     274 </span>            :         case EBADF:
+<span class="lineNum">     275 </span><span class="lineNoCov">          0 :                 ret = ERROR_INVALID_HANDLE;</span>
+<span class="lineNum">     276 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     277 </span>            :                 
+<span class="lineNum">     278 </span>            :         case EIO:
+<span class="lineNum">     279 </span><span class="lineNoCov">          0 :                 ret = ERROR_INVALID_HANDLE;</span>
+<span class="lineNum">     280 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     281 </span>            :                 
+<span class="lineNum">     282 </span>            :         case EINTR:
+<span class="lineNum">     283 </span><span class="lineNoCov">          0 :                 ret = ERROR_IO_PENDING;         /* best match I could find */</span>
+<span class="lineNum">     284 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     285 </span>            :                 
+<span class="lineNum">     286 </span>            :         case EPIPE:
+<span class="lineNum">     287 </span><span class="lineNoCov">          0 :                 ret = ERROR_WRITE_FAULT;</span>
+<span class="lineNum">     288 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     289 </span>            :                 
+<span class="lineNum">     290 </span>            :         default:
+<span class="lineNum">     291 </span><span class="lineNoCov">          0 :                 g_message (&quot;Unknown errno: %s\n&quot;, g_strerror (err));</span>
+<span class="lineNum">     292 </span><span class="lineNoCov">          0 :                 ret = ERROR_GEN_FAILURE;</span>
+<span class="lineNum">     293 </span><span class="lineNoCov">          0 :                 break;</span>
+<span class="lineNum">     294 </span>            :         }
+<span class="lineNum">     295 </span>            : 
+<span class="lineNum">     296 </span><span class="lineCov">        156 :         return ret;</span>
+<span class="lineNum">     297 </span>            : }
+<span class="lineNum">     298 </span>            : 
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.13</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>
